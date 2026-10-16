@@ -131,45 +131,52 @@ Agents d'itération : ils consomment `CardEvent` (`CardApproved`, `CardRefineReq
 
 ## 5. Flux d'identité
 
+Vérifié de bout en bout contre FerrisKey `sha-ab8a2b8` (le 2026-10-16).
+
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as Utilisateur
-  participant C as Console
+  participant C as Console (client public)
   participant FK as FerrisKey (realm de l'org)
-  participant API as apps/api
-  participant W as worker (agent = client FK)
-  participant MCP as mcp-kanban
-  participant PDP as PDP AuthZEN
+  participant API as apps/api (capitainerie-api)
+  participant W as worker (capitainerie-agent-writer)
+  participant MCP as mcp-kanban (capitainerie-mcp)
+  participant PDP as Authorizer (local, audité)
 
   U->>C: login
-  C->>FK: Authorization Code + PKCE
-  FK-->>C: access token (aud = capitainerie-api)
+  C->>FK: Authorization Code + PKCE, resource=http://localhost:4100 (RFC 8707)
+  FK-->>C: token { sub: U, azp: console, aud: [http://localhost:4100] }
   C->>API: requêtes Bearer
-  API->>FK: JWKS de l'issuer (cache par realm)
-  Note over API: realm = org ; issuer autorisé si présent dans la table organizations
-  API->>FK: crée un grant de délégation (user, agent X, aud capitainerie-mcp, run_id) (A2)
-  FK-->>API: handle du grant
-  W->>FK: client_credentials (agent X) → actor_token
-  W->>FK: token exchange : subject = grant, actor = actor_token (à chaque expiration)
-  FK-->>W: jeton { sub: user, act: { sub: agent X } }, aud = capitainerie-mcp
+  Note over API: issuer connu (organizations) puis signature, exp, aud = AUTH_AUDIENCE, azp accepté
+  API->>FK: token exchange (impersonation) subject = token U, audience = capitainerie-agent-writer
+  Note over API,FK: capitainerie-api possède la ressource http://localhost:4100, donc il est partie au token de U
+  FK-->>API: token { sub: U, azp: api, aud: [agent-writer] }, même exp
+  W->>FK: client_credentials → actor_token { sub: compte de service, azp: agent-writer }
+  W->>FK: token exchange (délégation) subject = token précédent, actor = actor_token, audience = capitainerie-mcp
+  FK-->>W: token { sub: U, azp: agent-writer, aud: [capitainerie-mcp], act: { client_id: agent-writer } }, même exp
   W->>MCP: tools/call create_card (Bearer délégué)
-  MCP->>MCP: vérifie la signature, l'aud, la présence d'act
-  MCP->>PDP: evaluate(subject = user, action = card.create, resource = card, context.actor = agent X)
-  PDP-->>MCP: allow / deny
-  MCP->>MCP: audit (user, agent, décision, trace_id)
+  MCP->>MCP: issuer connu, signature, aud = capitainerie-mcp, act présent (sinon 403 delegation_required)
+  MCP->>PDP: evaluate(subject = U, actor = agent-writer, card.create, run_id)
+  PDP-->>MCP: allow / deny, écrit dans authorization_decisions
 ```
 
 - Un realm FerrisKey par organisation. L'API accepte plusieurs issuers, connus via la table `organizations`.
-- Vérification d'un token (`libs/auth`, middleware `libs/handlers/src/auth.rs`), dans cet ordre :
+- Vérification d'un token (`libs/auth`), dans cet ordre :
   1. lecture de `iss` sans vérification ;
   2. l'issuer doit appartenir à une organisation, sinon 401 (aucune clé n'est jamais récupérée chez un issuer inconnu) ;
   3. JWKS obtenu via la découverte OIDC, en cache par issuer, re-fetch au plus une fois par 30 s sur `kid` inconnu ;
-  4. signature RS256, `iss`, `exp` (30 s de tolérance), `typ = Bearer` ;
-  5. `azp` dans `AUTH_ACCEPTED_CLIENTS`, car FerrisKey n'émet pas d'audience API (`docs/ferriskey-needs.md`, besoin 3). Pour un token délégué, c'est le `client_id` de l'acteur courant (`act`) qui est vérifié.
-- La console utilise le flux Authorization Code + PKCE, avec `redirect_uri = /callback`. Cette route est hors du layout authentifié : elle traite le `code`, puis renvoie vers la page demandée au départ (`returnTo`, chemin local uniquement).
-- Chaque agent est un client FerrisKey confidentiel du realm de l'org. Une `token_exchange_policy` FerrisKey (`allow_delegation = true`, `target_audience = capitainerie-mcp`) autorise l'échange. Le support existe dans FerrisKey : `core/src/domain/authentication/token_exchange/services.rs`.
-- Le MCP Kanban est une ressource protégée : métadonnées RFC 9728, challenge `WWW-Authenticate`, comme `mestier/apps/mcp-gateway`.
+  4. signature RS256, `iss`, `exp` (30 s de tolérance), `typ = Bearer`, `aud` (API : `AUTH_AUDIENCE` ; MCP : `capitainerie-mcp`) ;
+  5. `azp` dans la liste des clients acceptés ; pour un token délégué, c'est le `client_id` de l'acteur courant (`act`) qui compte.
+- La console utilise le flux Authorization Code + PKCE, avec `redirect_uri = /callback` et `resource` (RFC 8707). La route `/callback` est hors du layout authentifié : elle traite le `code`, puis renvoie vers la page demandée au départ (`returnTo`, chemin local uniquement).
+- Provisioning : `deploy/ferriskey/terraform` (realm, clients) et `scripts/bootstrap-ferriskey.sh` (`allowed_resources`, propriétaire de la ressource API, `token_exchange_enabled`, policies `api → agent` en impersonation et `agent → capitainerie-mcp` en délégation).
+- Chaque jeton de la chaîne garde l'`exp` du jeton de l'utilisateur (30 min sur la stack locale) : voir A2 et `docs/ferriskey-needs.md`, besoin 2.
+- Le MCP Kanban est une ressource protégée : métadonnées RFC 9728 (`/.well-known/oauth-protected-resource`), challenge `WWW-Authenticate: Bearer resource_metadata=…`, comme `mestier/apps/mcp-gateway`. Il est sans état : chaque requête porte son jeton.
+- Règles des agents (`LocalPolicyEngine`) :
+  - ils proposent, lisent et commentent ;
+  - ils modifient une carte tant qu'elle n'est ni terminée ni rejetée ;
+  - ils ne sortent jamais une carte de « Proposé », et ne déplacent jamais une carte vers « Proposé » ou « Rejeté » ;
+  - une carte proposée par un agent cite obligatoirement le passage exact du transcript (vérifié caractère par caractère).
 
 ## 6. Observabilité
 

@@ -26,7 +26,7 @@ moyen d'entrer sur la stack locale. Après l'inscription, il faut se connecter u
 |---|---|
 | Console | http://localhost:4080 |
 | API (+ `/docs`, `/api-docs/openapi.json`) | http://localhost:4100 |
-| MCP Kanban | http://localhost:4101 |
+| MCP Kanban (`/mcp`, `/.well-known/oauth-protected-resource`) | http://localhost:4101 |
 | FerrisKey API / console | http://localhost:4110 / http://localhost:4111 |
 | Iggy TCP / HTTP | localhost:4190 / http://localhost:4191 |
 | Postgres | localhost:5442 |

@@ -73,21 +73,19 @@ Pistes possibles, à évaluer par l'agent FerrisKey :
 - Le claim `act` du jeton émis contient le client agent.
 - La durée maximale est respectée.
 
-## Besoin 3 : audience des access tokens
+## Besoin 3 : audience des access tokens — résolu sur `main`, pas encore publié
 
-**Constat.** Un access token de la console porte `aud = ["<realm>-realm", "account"]`, observé sur l'instance locale. Aucun moyen déclaratif ne permet d'y ajouter l'audience de l'API (`capitainerie-api`). Une API ne peut donc pas exiger d'être l'audience du token qu'elle reçoit.
+Les resource indicators (RFC 8707) existent sur `main` : la console demande `resource=http://localhost:4100` au login, et le token porte `aud = ["http://localhost:4100"]`. Avec la propriété de la ressource (#1611, `PUT /realms/{realm}/resource-owners`), `capitainerie-api` devient partie au token et peut l'échanger. Vérifié contre l'image `ghcr.io/ferriskey/ferriskey-api:sha-ab8a2b8`.
 
-**Contournement actuel côté Capitainerie.** L'API vérifie `azp` contre une liste de clients autorisés (`AUTH_ACCEPTED_CLIENTS`). Ça empêche de rejouer un token émis pour un autre client du realm, mais un token de la console reste valable pour toute API du realm qui ferait la même chose.
-
-**Attendu.** Un mapper d'audience par client (ou par client scope), exposé dans l'API admin et dans le provider Terraform. Exemple : le client `capitainerie-console` émet des tokens avec `aud` contenant `capitainerie-api`.
-
-**Critère d'acceptation.** Un token de la console, obtenu après configuration du mapper, contient `capitainerie-api` dans `aud`.
+**Reste à faire côté FerrisKey :**
+1. Publier une release qui contient `resource-owners` : la 0.9.0 ne l'a pas, ce qui oblige Capitainerie à figer un build de `main`.
+2. Le password grant ignore `resource` (seuls le code d'autorisation et le refresh l'appliquent). Les tests automatisés ne peuvent donc pas obtenir un token avec audience sans passer par un navigateur.
 
 ## Besoin 4 : outillage de provisioning
 
 Constatés en écrivant `deploy/ferriskey/terraform` et `scripts/bootstrap-ferriskey.sh` :
 
-1. Le provider Terraform `ferriskey/ferriskey` 0.1.0 n'a pas de ressource `ferriskey_token_exchange_policy`. L'API admin `POST /clients/{id}/token-exchange-policies` existe, mais il faut l'appeler à la main.
+1. Le provider Terraform `ferriskey/ferriskey` 0.1.0 ne déclare ni les policies d'échange, ni `allowed_resources`, ni les propriétaires de ressources, ni `token_exchange_enabled` d'un client. Tout passe par l'API admin dans `scripts/bootstrap-ferriskey.sh`.
 2. `ferriskey_client.secret` contient le masque `***` au lieu du secret. `autharie` contourne en lisant `/clients/{id}/client-secret`.
 3. Il n'y a pas d'API admin pour définir le mot de passe d'un utilisateur. Un environnement local ne peut avoir d'utilisateur qu'en activant l'auto-inscription.
 4. Après « Create Account », la page d'inscription renvoie vers le `redirect_uri` **sans** `code` : le flux OIDC ne se termine pas, et l'utilisateur doit se reconnecter. Un client qui ne s'y attend pas boucle.
