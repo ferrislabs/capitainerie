@@ -1,0 +1,56 @@
+{{- if .Values.worker.enabled }}
+{{- $ctx := dict "root" . "component" "worker" }}
+{{- $name := include "capitainerie.componentName" $ctx }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/worker/configmap.yaml") . | sha256sum }}
+        {{- with .Values.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "capitainerie.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      {{- include "capitainerie.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "capitainerie.topologySpread" $ctx | nindent 6 }}
+      {{- include "capitainerie.scheduling" .Values.worker | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "capitainerie.image" (dict "root" . "component" "worker" "values" .Values.worker) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          env:
+            {{- include "capitainerie.secretEnv" (dict "root" . "keys" .Values.worker.secretEnv) | nindent 12 }}
+            {{- with .Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,63 @@
+image:
+  prefix: ghcr.io/ferrislabs/capitainerie
+
+secrets:
+  existingSecret: capitainerie
+
+config:
+  otlpEndpoint: http://otel-collector.observability:4317
+  iggy:
+    address: iggy.capitainerie-data:8090
+
+api:
+  allowedOrigins:
+    - https://capitainerie.example.com
+  audience: https://capitainerie.example.com
+  image:
+    tag: sha-0000000
+
+mcpKanban:
+  publicUrl: https://capitainerie.example.com
+
+worker:
+  llm:
+    baseUrl: https://llm.example.com/v1
+    model: qwen2.5:32b-instruct
+
+console:
+  config:
+    apiUrl: https://capitainerie.example.com
+    oidcIssuerUrl: https://auth.example.com/realms/acme
+    oidcClientId: capitainerie-console
+    oidcResource: https://capitainerie.example.com
+
+gateway:
+  enabled: true
+  parentRefs:
+    - name: shared-gateway
+      namespace: gateway-system
+      sectionName: https
+  hostnames:
+    - capitainerie.example.com
+
+networkPolicy:
+  enabled: true
+  external:
+    postgres:
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: databases
+    iggy:
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: capitainerie-data
+    ferriskey:
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ferriskey
+      ports: [443, 3333]
+    llm:
+      ports: [443]

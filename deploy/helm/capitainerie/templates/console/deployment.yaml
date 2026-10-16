@@ -1,0 +1,90 @@
+{{- if .Values.console.enabled }}
+{{- $ctx := dict "root" . "component" "console" }}
+{{- $name := include "capitainerie.componentName" $ctx }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.console.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/console/configmap.yaml") . | sha256sum }}
+        {{- with .Values.console.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "capitainerie.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.console.terminationGracePeriodSeconds }}
+      {{- include "capitainerie.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "capitainerie.topologySpread" $ctx | nindent 6 }}
+      {{- include "capitainerie.scheduling" .Values.console | nindent 6 }}
+      containers:
+        - name: console
+          image: {{ include "capitainerie.image" (dict "root" . "component" "console" "values" .Values.console) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          {{- with .Values.console.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /config.json
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /config.json
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/nginx
+      volumes:
+        - name: html
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+{{- end }}

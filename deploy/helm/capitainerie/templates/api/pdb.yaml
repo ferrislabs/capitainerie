@@ -1,0 +1,14 @@
+{{- if and .Values.api.enabled .Values.api.podDisruptionBudget.enabled }}
+{{- $ctx := dict "root" . "component" "api" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "capitainerie.componentName" $ctx }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
+{{- end }}

@@ -1,0 +1,207 @@
+name: images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".sqlx/**"
+      - "apps/**"
+      - "libs/**"
+      - "migrations/**"
+      - "deploy/helm/**"
+      - ".github/workflows/images.yaml"
+  workflow_dispatch:
+    inputs:
+      push:
+        type: boolean
+        default: false
+        description: "Whether to push the images"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/ferrislabs/capitainerie
+
+jobs:
+  should-push:
+    runs-on: ubuntu-24.04
+    outputs:
+      push: ${{ steps.check.outputs.push || 'false' }}
+    steps:
+      - id: check
+        if: >-
+          inputs.push || startsWith(github.ref, 'refs/tags/v') ||
+          github.ref_name == github.event.repository.default_branch
+        run: echo "push=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [should-push]
+    name: build (${{ matrix.target }}, ${{ matrix.platform.arch }})
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker, mcp-kanban, migrations, console]
+        platform:
+          - { name: linux/amd64, arch: amd64, runner: ubuntu-24.04 }
+          - { name: linux/arm64, arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.target }}
+
+      - if: needs.should-push.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platform.name }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.platform.arch }},mode=max
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.target }},push-by-digest=true,name-canonical=true,push=${{ needs.should-push.outputs.push }}
+
+      - if: needs.should-push.outputs.push == 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - if: needs.should-push.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.target }}-${{ matrix.platform.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  push-manifest:
+    if: needs.should-push.outputs.push == 'true'
+    needs: [should-push, build]
+    name: manifest (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker, mcp-kanban, migrations, console]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.target }}-*
+          merge-multiple: true
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.target }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: push manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.target }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+  chart:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [push-manifest]
+    name: helm chart
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: lint
+        run: helm lint deploy/helm/capitainerie -f deploy/helm/capitainerie/values-example.yaml
+
+      - name: log-in to ghcr
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: read chart version
+        id: chart
+        run: |
+          version=$(yq -r .version deploy/helm/capitainerie/Chart.yaml)
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "could not read .version from Chart.yaml" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: check if already published
+        id: check
+        env:
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: |
+          if helm show chart "oci://ghcr.io/ferrislabs/charts/capitainerie" --version "$VERSION" >/dev/null 2>&1; then
+            echo "capitainerie ${VERSION} is already published, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: package chart
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          app_version="${GITHUB_REF_NAME#v}"
+          helm package deploy/helm/capitainerie --app-version "$app_version" -d /tmp/chart
+
+      - name: push chart
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: helm push "/tmp/chart/capitainerie-${VERSION}.tgz" oci://ghcr.io/ferrislabs/charts

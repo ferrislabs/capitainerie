@@ -1,0 +1,76 @@
+{{- if .Values.mcpKanban.enabled }}
+{{- $ctx := dict "root" . "component" "mcp-kanban" }}
+{{- $name := include "capitainerie.componentName" $ctx }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.mcpKanban.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/mcp-kanban/configmap.yaml") . | sha256sum }}
+        {{- with .Values.mcpKanban.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "capitainerie.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.mcpKanban.terminationGracePeriodSeconds }}
+      {{- include "capitainerie.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "capitainerie.topologySpread" $ctx | nindent 6 }}
+      {{- include "capitainerie.scheduling" .Values.mcpKanban | nindent 6 }}
+      containers:
+        - name: mcp-kanban
+          image: {{ include "capitainerie.image" (dict "root" . "component" "mcp-kanban" "values" .Values.mcpKanban) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcpKanban.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          env:
+            {{- include "capitainerie.secretEnv" (dict "root" . "keys" .Values.mcpKanban.secretEnv) | nindent 12 }}
+            {{- with .Values.mcpKanban.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.mcpKanban.resources | nindent 12 }}
+{{- end }}

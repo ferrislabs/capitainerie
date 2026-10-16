@@ -1,0 +1,289 @@
+# -- Default values for the capitainerie chart. Safe for dev. Postgres, Iggy,
+# FerrisKey and the LLM endpoint are external: this chart only points at them.
+# Secret values are never created by the chart, see secrets.existingSecret.
+
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  # -- Image pull secrets shared by every pod.
+  imagePullSecrets: []
+  # -- Labels added to every resource.
+  labels: {}
+
+image:
+  # -- Registry and organisation prefix. The repository of a component is
+  # <prefix>-<component> unless <component>.image.repository is set.
+  prefix: ghcr.io/ferrislabs/capitainerie
+  pullPolicy: IfNotPresent
+
+secrets:
+  # -- Name of a Secret created out of band (External Secrets, OpenBao, sealed
+  # secret). The chart only references it. The key of each entry is the name
+  # of the environment variable. Keys read by each component are listed in
+  # <component>.secretEnv.
+  existingSecret: capitainerie
+  # -- Variables read from the Secret with `optional: true` (the application has a default).
+  optionalKeys:
+    - LLM_API_KEY
+
+config:
+  # -- Value of LOG_FILTER (tracing EnvFilter).
+  logFilter: info
+  # -- Value of LOG_JSON.
+  logJson: true
+  # -- Value of OTLP_ENDPOINT. Empty disables the OTLP export.
+  otlpEndpoint: ""
+  # -- Value of DATABASE_MAX_CONNECTIONS per pod.
+  databaseMaxConnections: 10
+  # -- Value of MCP_AUDIENCE (audience of the delegated agent tokens).
+  mcpAudience: capitainerie-mcp
+  # -- Client ids of the agents a run acts through (PIPELINE_AGENTS on api and worker, MCP_ACCEPTED_AGENTS on mcp-kanban).
+  pipelineAgents:
+    - capitainerie-agent-writer
+  iggy:
+    # -- host:port of the Iggy TCP endpoint (IGGY_ADDRESS).
+    address: iggy:8090
+    stream: capitainerie
+    partitions: 3
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+topologySpread:
+  # -- Spread replicas across nodes (ScheduleAnyway, so a single node still schedules).
+  enabled: true
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    # -- Overrides <image.prefix>-api.
+    repository: ""
+    # -- Defaults to .Chart.AppVersion.
+    tag: ""
+  # -- Value of SERVER_PORT.
+  port: 4100
+  # -- Origins allowed by CORS (ALLOWED_ORIGINS). Follows the console host.
+  allowedOrigins:
+    - http://localhost:4080
+  # -- Client ids whose tokens are accepted (AUTH_ACCEPTED_CLIENTS, the `azp`).
+  acceptedClients:
+    - capitainerie-console
+  # -- Required audience (AUTH_AUDIENCE), the API resource indicator the console requests at login.
+  audience: ""
+  secretEnv:
+    - DATABASE_URL
+    - DELEGATION_KEY
+    - EXCHANGE_CLIENT_ID
+    - EXCHANGE_CLIENT_SECRET
+    - AGENT_CREDENTIALS
+    - IGGY_USERNAME
+    - IGGY_PASSWORD
+  # -- Extra environment variables (list of EnvVar).
+  extraEnv: []
+  podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 4100
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+mcpKanban:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  # -- Value of MCP_PORT.
+  port: 4101
+  # -- Public URL of the MCP server (MCP_PUBLIC_URL), advertised in the protected resource metadata.
+  publicUrl: http://localhost:4101
+  secretEnv:
+    - DATABASE_URL
+  extraEnv: []
+  podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 4101
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+  # -- Value of MCP_URL. Empty uses the in-cluster mcp-kanban Service.
+  mcpUrl: ""
+  llm:
+    # -- OpenAI-compatible endpoint (LLM_BASE_URL).
+    baseUrl: http://ollama:11434/v1
+    model: qwen2.5:7b-instruct
+    timeoutSecs: 300
+    # -- Micro-units per million input tokens (0 for a local model).
+    priceInputPerMtokMicros: 0
+    priceOutputPerMtokMicros: 0
+  # -- Runs executed at once per pod (WORKER_CONCURRENCY).
+  concurrency: 2
+  secretEnv:
+    - DATABASE_URL
+    - DELEGATION_KEY
+    - EXCHANGE_CLIENT_ID
+    - EXCHANGE_CLIENT_SECRET
+    - AGENT_CREDENTIALS
+    - IGGY_USERNAME
+    - IGGY_PASSWORD
+    - LLM_API_KEY
+  extraEnv: []
+  podAnnotations: {}
+  # -- Must exceed the time a run takes to stop. Interrupted runs resume at the first unfinished step.
+  terminationGracePeriodSeconds: 90
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+console:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  # -- Runtime configuration rendered into config.json by the entrypoint.
+  config:
+    # -- API_URL, public URL of the api.
+    apiUrl: http://localhost:4100
+    # -- OIDC_ISSUER_URL, FerrisKey realm issuer.
+    oidcIssuerUrl: ""
+    # -- OIDC_CLIENT_ID, public client of the console.
+    oidcClientId: capitainerie-console
+    # -- OIDC_RESOURCE, resource indicator requested at login (the api audience).
+    oidcResource: ""
+    # -- TRACES_URL, OTLP/HTTP traces endpoint reachable from the browser. Empty disables.
+    tracesUrl: ""
+  extraEnv: []
+  podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 8080
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+migrations:
+  # -- Runs `sqlx migrate run` as an ArgoCD PreSync hook before the new pods.
+  enabled: true
+  image:
+    repository: ""
+    tag: ""
+  secretEnv:
+    - DATABASE_URL
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+gateway:
+  # -- Creates the Gateway API HTTPRoutes.
+  enabled: false
+  # -- parentRefs of the shared Gateway (required when enabled).
+  parentRefs: []
+  # -- Hostnames shared by the routes. One host per environment, path-routed.
+  hostnames: []
+  api:
+    # -- Overrides gateway.hostnames.
+    hostnames: []
+    pathPrefixes:
+      - /api
+  mcp:
+    hostnames: []
+    pathPrefixes:
+      - /mcp
+      - /.well-known/oauth-protected-resource
+  console:
+    hostnames: []
+    pathPrefixes:
+      - /
+
+networkPolicy:
+  # -- Creates a NetworkPolicy per component (ingress and egress restricted).
+  enabled: false
+  # -- Peers allowed to reach api, mcp-kanban and console (the Gateway data plane).
+  gatewayFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: envoy-gateway-system
+  # -- Peers for DNS.
+  dnsTo:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+  # -- External dependencies. `to` is a list of NetworkPolicyPeer; empty means any
+  # destination on the listed ports. Narrow it with the namespace or CIDR of the dependency.
+  external:
+    postgres:
+      to: []
+      ports: [5432]
+    iggy:
+      to: []
+      ports: [8090]
+    ferriskey:
+      to: []
+      ports: [443]
+    llm:
+      to: []
+      ports: [443, 11434]
+    otlp:
+      to: []
+      ports: [4317, 4318]

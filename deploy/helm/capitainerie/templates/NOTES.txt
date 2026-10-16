@@ -1,0 +1,16 @@
+Capitainerie {{ .Chart.AppVersion }} deployed as {{ include "capitainerie.fullname" . }} in {{ .Release.Namespace }}.
+
+Secret required (created out of band, never by this chart): {{ .Values.secrets.existingSecret }}
+  api:     {{ join ", " .Values.api.secretEnv }}
+  worker:  {{ join ", " .Values.worker.secretEnv }}
+  mcp:     {{ join ", " .Values.mcpKanban.secretEnv }}
+
+{{- if .Values.migrations.enabled }}
+
+Migrations run as an ArgoCD PreSync hook. Under plain `helm install` they are
+a regular Job with the same name: run them before the first start.
+{{- end }}
+{{- if .Values.gateway.enabled }}
+
+HTTPRoutes attach to the Gateway listed in gateway.parentRefs.
+{{- end }}

@@ -1,0 +1,14 @@
+{{- if .Values.console.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.componentName" (dict "root" . "component" "console") }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "console") | nindent 4 }}
+data:
+  API_URL: {{ .Values.console.config.apiUrl | quote }}
+  OIDC_ISSUER_URL: {{ .Values.console.config.oidcIssuerUrl | quote }}
+  OIDC_CLIENT_ID: {{ .Values.console.config.oidcClientId | quote }}
+  OIDC_RESOURCE: {{ .Values.console.config.oidcResource | quote }}
+  TRACES_URL: {{ .Values.console.config.tracesUrl | quote }}
+{{- end }}

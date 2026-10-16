@@ -1,0 +1,27 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.componentName" (dict "root" . "component" "api") }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "api") | nindent 4 }}
+data:
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: {{ .Values.api.port | quote }}
+  ALLOWED_ORIGINS: {{ join "," .Values.api.allowedOrigins | quote }}
+  AUTH_ACCEPTED_CLIENTS: {{ join "," .Values.api.acceptedClients | quote }}
+  {{- with .Values.api.audience }}
+  AUTH_AUDIENCE: {{ . | quote }}
+  {{- end }}
+  MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
+  PIPELINE_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
+  DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
+  IGGY_ADDRESS: {{ .Values.config.iggy.address | quote }}
+  IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
+  IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}
+  LOG_FILTER: {{ .Values.config.logFilter | quote }}
+  LOG_JSON: {{ .Values.config.logJson | quote }}
+  {{- with .Values.config.otlpEndpoint }}
+  OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+{{- end }}

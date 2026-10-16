@@ -1,0 +1,18 @@
+{{- if .Values.mcpKanban.enabled }}
+{{- $ctx := dict "root" . "component" "mcp-kanban" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capitainerie.componentName" $ctx }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  type: {{ .Values.mcpKanban.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.mcpKanban.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "capitainerie.selectorLabels" $ctx | nindent 4 }}
+{{- end }}

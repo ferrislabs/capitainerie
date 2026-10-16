@@ -1,0 +1,27 @@
+{{- if .Values.worker.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.componentName" (dict "root" . "component" "worker") }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "worker") | nindent 4 }}
+data:
+  DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
+  IGGY_ADDRESS: {{ .Values.config.iggy.address | quote }}
+  IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
+  IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}
+  LLM_BASE_URL: {{ .Values.worker.llm.baseUrl | quote }}
+  LLM_MODEL: {{ .Values.worker.llm.model | quote }}
+  LLM_TIMEOUT_SECS: {{ .Values.worker.llm.timeoutSecs | quote }}
+  LLM_PRICE_INPUT_PER_MTOK_MICROS: {{ .Values.worker.llm.priceInputPerMtokMicros | quote }}
+  LLM_PRICE_OUTPUT_PER_MTOK_MICROS: {{ .Values.worker.llm.priceOutputPerMtokMicros | quote }}
+  MCP_URL: {{ include "capitainerie.mcpUrl" . | quote }}
+  MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
+  PIPELINE_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
+  WORKER_CONCURRENCY: {{ .Values.worker.concurrency | quote }}
+  LOG_FILTER: {{ .Values.config.logFilter | quote }}
+  LOG_JSON: {{ .Values.config.logJson | quote }}
+  {{- with .Values.config.otlpEndpoint }}
+  OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+{{- end }}

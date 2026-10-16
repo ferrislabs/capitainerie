@@ -1,0 +1,16 @@
+.git
+.github
+.env
+**/.env
+target
+**/target
+**/node_modules
+**/dist
+**/.tanstack
+deploy
+docs
+scripts
+prompt.md
+docker-compose.yml
+*.md
+!migrations/**

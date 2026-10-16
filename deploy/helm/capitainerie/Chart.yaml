@@ -1,0 +1,10 @@
+apiVersion: v2
+name: capitainerie
+description: Capitainerie - meeting transcripts to Kanban cards through durable agent runs (api, worker, mcp-kanban, console).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/ferrislabs/capitainerie
+sources:
+  - https://github.com/ferrislabs/capitainerie

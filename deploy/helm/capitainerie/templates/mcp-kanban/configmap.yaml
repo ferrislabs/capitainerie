@@ -1,0 +1,20 @@
+{{- if .Values.mcpKanban.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.componentName" (dict "root" . "component" "mcp-kanban") }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "mcp-kanban") | nindent 4 }}
+data:
+  MCP_HOST: "0.0.0.0"
+  MCP_PORT: {{ .Values.mcpKanban.port | quote }}
+  MCP_PUBLIC_URL: {{ .Values.mcpKanban.publicUrl | quote }}
+  MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
+  MCP_ACCEPTED_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
+  DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
+  LOG_FILTER: {{ .Values.config.logFilter | quote }}
+  LOG_JSON: {{ .Values.config.logJson | quote }}
+  {{- with .Values.config.otlpEndpoint }}
+  OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+{{- end }}
