@@ -1,0 +1,15 @@
+[package]
+name = "capitainerie-common"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true
