@@ -92,6 +92,37 @@ pub fn init(
     })
 }
 
+/// Resolves on SIGINT (Ctrl-C) or SIGTERM, the signal Kubernetes sends to
+/// stop a pod: both start the graceful shutdown.
+pub async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        match signal(SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {
+                    result = tokio::signal::ctrl_c() => {
+                        if let Err(error) = result {
+                            tracing::error!(%error, "could not listen for SIGINT");
+                        }
+                    }
+                    _ = terminate.recv() => {}
+                }
+            }
+            Err(error) => {
+                tracing::error!(%error, "could not listen for SIGTERM, only SIGINT stops the process");
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+    tracing::info!("shutdown requested");
+}
+
 const TRACEPARENT: &str = "traceparent";
 
 /// W3C `traceparent` of the current span, to carry the trace across a process

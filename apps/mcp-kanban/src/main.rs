@@ -49,11 +49,7 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("binding {addr}"))?;
     tracing::info!(%addr, "mcp-kanban listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            if let Err(error) = tokio::signal::ctrl_c().await {
-                tracing::error!(%error, "could not listen for the shutdown signal");
-            }
-        })
+        .with_graceful_shutdown(capitainerie_telemetry::shutdown_signal())
         .await?;
     Ok(())
 }

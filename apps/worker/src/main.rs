@@ -111,9 +111,7 @@ async fn main() -> anyhow::Result<()> {
         }),
         orchestrator.run(stopped),
         async move {
-            if let Err(error) = tokio::signal::ctrl_c().await {
-                tracing::error!(%error, "could not listen for the shutdown signal");
-            }
+            capitainerie_telemetry::shutdown_signal().await;
             tracing::info!("worker stopping");
             let _ = stop.send(true);
         },
