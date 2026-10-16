@@ -25,6 +25,7 @@ libs/
     application/    CapitainerieUseCase : méthodes #[transactional], comme MestierUseCase (D1)
     infrastructure/ postgres (repositories, outbox)
   handlers/         AppState, ApiError, Response
+  handlers-identity/ GET /api/v1/me
   handlers-runs/    transcripts + runs + timeline
   handlers-cards/   kanban
   handlers-agents/  agents actifs, coûts
@@ -156,6 +157,13 @@ sequenceDiagram
 ```
 
 - Un realm FerrisKey par organisation. L'API accepte plusieurs issuers, connus via la table `organizations`.
+- Vérification d'un token (`libs/auth`, middleware `libs/handlers/src/auth.rs`), dans cet ordre :
+  1. lecture de `iss` sans vérification ;
+  2. l'issuer doit appartenir à une organisation, sinon 401 (aucune clé n'est jamais récupérée chez un issuer inconnu) ;
+  3. JWKS obtenu via la découverte OIDC, en cache par issuer, re-fetch au plus une fois par 30 s sur `kid` inconnu ;
+  4. signature RS256, `iss`, `exp` (30 s de tolérance), `typ = Bearer` ;
+  5. `azp` dans `AUTH_ACCEPTED_CLIENTS`, car FerrisKey n'émet pas d'audience API (`docs/ferriskey-needs.md`, besoin 3). Pour un token délégué, c'est le `client_id` de l'acteur courant (`act`) qui est vérifié.
+- La console utilise le flux Authorization Code + PKCE, avec `redirect_uri = /callback`. Cette route est hors du layout authentifié : elle traite le `code`, puis renvoie vers la page demandée au départ (`returnTo`, chemin local uniquement).
 - Chaque agent est un client FerrisKey confidentiel du realm de l'org. Une `token_exchange_policy` FerrisKey (`allow_delegation = true`, `target_audience = capitainerie-mcp`) autorise l'échange. Le support existe dans FerrisKey : `core/src/domain/authentication/token_exchange/services.rs`.
 - Le MCP Kanban est une ressource protégée : métadonnées RFC 9728, challenge `WWW-Authenticate`, comme `mestier/apps/mcp-gateway`.
 

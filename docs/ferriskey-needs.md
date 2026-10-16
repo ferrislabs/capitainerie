@@ -73,6 +73,25 @@ Pistes possibles, à évaluer par l'agent FerrisKey :
 - Le claim `act` du jeton émis contient le client agent.
 - La durée maximale est respectée.
 
+## Besoin 3 : audience des access tokens
+
+**Constat.** Un access token de la console porte `aud = ["<realm>-realm", "account"]`, observé sur l'instance locale. Aucun moyen déclaratif ne permet d'y ajouter l'audience de l'API (`capitainerie-api`). Une API ne peut donc pas exiger d'être l'audience du token qu'elle reçoit.
+
+**Contournement actuel côté Capitainerie.** L'API vérifie `azp` contre une liste de clients autorisés (`AUTH_ACCEPTED_CLIENTS`). Ça empêche de rejouer un token émis pour un autre client du realm, mais un token de la console reste valable pour toute API du realm qui ferait la même chose.
+
+**Attendu.** Un mapper d'audience par client (ou par client scope), exposé dans l'API admin et dans le provider Terraform. Exemple : le client `capitainerie-console` émet des tokens avec `aud` contenant `capitainerie-api`.
+
+**Critère d'acceptation.** Un token de la console, obtenu après configuration du mapper, contient `capitainerie-api` dans `aud`.
+
+## Besoin 4 : outillage de provisioning
+
+Constatés en écrivant `deploy/ferriskey/terraform` et `scripts/bootstrap-ferriskey.sh` :
+
+1. Le provider Terraform `ferriskey/ferriskey` 0.1.0 n'a pas de ressource `ferriskey_token_exchange_policy`. L'API admin `POST /clients/{id}/token-exchange-policies` existe, mais il faut l'appeler à la main.
+2. `ferriskey_client.secret` contient le masque `***` au lieu du secret. `autharie` contourne en lisant `/clients/{id}/client-secret`.
+3. Il n'y a pas d'API admin pour définir le mot de passe d'un utilisateur. Un environnement local ne peut avoir d'utilisateur qu'en activant l'auto-inscription.
+4. Après « Create Account », la page d'inscription renvoie vers le `redirect_uri` **sans** `code` : le flux OIDC ne se termine pas, et l'utilisateur doit se reconnecter. Un client qui ne s'y attend pas boucle.
+
 ## Hors périmètre
 
 - Provisioning des realms et des clients : l'API admin existante suffit pour le MVP Capitainerie.
