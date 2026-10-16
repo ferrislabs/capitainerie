@@ -1,5 +1,13 @@
 export namespace Schemas {
   // <Schemas>
+  export type AgentResponse = {
+    agent: string;
+    cost_micros: number;
+    input_tokens: number;
+    last_seen: string;
+    output_tokens: number;
+    runs: number;
+  };
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type CardId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
@@ -20,6 +28,17 @@ export namespace Schemas {
     version: number;
   };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type CostDimensionParam = "agent" | "user" | "model" | "day";
+  export type CostRowResponse = {
+    cost_micros: number;
+    input_tokens: number;
+    key: string;
+    latency_ms_p50?: (number | null) | undefined;
+    output_tokens: number;
+    runs: number;
+  };
+  export type CostTotals = { cost_micros: number; input_tokens: number; output_tokens: number };
+  export type CostsResponse = { rows: Array<CostRowResponse>; total: CostTotals };
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -88,6 +107,27 @@ export namespace Schemas {
 export namespace Endpoints {
   // <Endpoints>
 
+  export type get_ListAgents = {
+    method: "GET";
+    path: "/api/v1/agents";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Array<Schemas.AgentResponse>; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type get_GetCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ by: "agent" | "user" | "model" | "day"; from: string; to: string }>;
+    };
+    responses: {
+      200: Schemas.CostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListCards = {
     method: "GET";
     path: "/api/v1/cards";
@@ -181,6 +221,8 @@ export namespace Endpoints {
 // <EndpointByMethod>
 export type EndpointByMethod = {
   get: {
+    "/api/v1/agents": Endpoints.get_ListAgents;
+    "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/me": Endpoints.get_GetMe;
     "/api/v1/runs": Endpoints.get_ListRuns;

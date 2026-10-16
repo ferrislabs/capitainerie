@@ -8,11 +8,13 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+capitainerie-analytics.workspace = true
 capitainerie-args.workspace = true
 capitainerie-auth.workspace = true
 capitainerie-bus-iggy.workspace = true
 capitainerie-core.workspace = true
 capitainerie-handlers.workspace = true
+capitainerie-handlers-analytics.workspace = true
 capitainerie-handlers-cards.workspace = true
 capitainerie-handlers-identity.workspace = true
 capitainerie-handlers-realtime.workspace = true

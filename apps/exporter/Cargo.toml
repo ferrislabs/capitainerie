@@ -1,0 +1,26 @@
+[package]
+name = "capitainerie-exporter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+capitainerie-analytics.workspace = true
+capitainerie-args.workspace = true
+capitainerie-bus-iggy.workspace = true
+capitainerie-events.workspace = true
+capitainerie-telemetry.workspace = true
+chrono.workspace = true
+clap.workspace = true
+dotenvy.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

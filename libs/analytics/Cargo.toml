@@ -1,0 +1,25 @@
+[package]
+name = "capitainerie-analytics"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+capitainerie-events.workspace = true
+chrono.workspace = true
+clap.workspace = true
+datafusion = { workspace = true, features = ["sql"] }
+parquet.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

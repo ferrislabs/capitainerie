@@ -2,6 +2,7 @@ mod openapi;
 mod router;
 
 use anyhow::Context;
+use capitainerie_analytics::{AnalyticsArgs, DataFusionAnalytics, Dataset};
 use capitainerie_args::{
     AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, ServerArgs,
 };
@@ -33,6 +34,8 @@ struct Args {
     delegation: DelegationArgs,
     #[command(flatten)]
     iggy: IggyArgs,
+    #[command(flatten)]
+    analytics: AnalyticsArgs,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -70,10 +73,17 @@ async fn main() -> anyhow::Result<()> {
         verifier: verifier(args.auth),
         delegation,
     };
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        capitainerie_telemetry::shutdown_signal().await;
+        let _ = stop.send(true);
+    });
     let hub = Hub::new(REALTIME_BACKLOG);
-    consumer::spawn(args.iggy, hub.clone());
+    let realtime_consumer =
+        consumer::spawn_until(args.iggy, hub.clone(), stopped_signal(stopped.clone()));
     let realtime = Gateway::new(state.clone(), hub);
-    let app = router::router(state, realtime, &args.server.allowed_origins)?;
+    let analytics = DataFusionAnalytics::new(Dataset::parse(&args.analytics.uri)?);
+    let app = router::router(state, realtime, analytics, &args.server.allowed_origins)?;
 
     let addr = format!("{}:{}", args.server.host, args.server.port);
     let listener = TcpListener::bind(&addr)
@@ -81,9 +91,18 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("binding {addr}"))?;
     tracing::info!(%addr, "api listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(capitainerie_telemetry::shutdown_signal())
+        .with_graceful_shutdown(stopped_signal(stopped))
         .await?;
+    if let Err(error) = realtime_consumer.await {
+        tracing::error!(%error, "the realtime consumer did not stop cleanly");
+    }
     Ok(())
+}
+
+/// One shutdown signal shared by the HTTP server and the realtime consumer, so
+/// the consumer deletes its Iggy groups before the process exits.
+async fn stopped_signal(mut stopped: tokio::sync::watch::Receiver<bool>) {
+    let _ = stopped.wait_for(|stop| *stop).await;
 }
 
 fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {

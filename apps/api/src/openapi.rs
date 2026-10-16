@@ -1,4 +1,9 @@
 use capitainerie_handlers::{errors::ApiErrorResponse, health};
+use capitainerie_handlers_analytics::{
+    self as analytics,
+    agents::AgentResponse,
+    costs::{CostDimensionParam, CostRowResponse, CostTotals, CostsResponse},
+};
 use capitainerie_handlers_cards::{
     self as cards,
     list_cards::CardListResponse,
@@ -37,6 +42,8 @@ use utoipa::{
         runs::timeline::handler,
         cards::list_cards::handler,
         cards::move_card::handler,
+        analytics::costs::handler,
+        analytics::agents::handler,
     ),
     components(schemas(
         ApiErrorResponse,
@@ -58,6 +65,11 @@ use utoipa::{
         ColumnDto,
         ProvenanceResponse,
         MoveCardRequest,
+        CostsResponse,
+        CostRowResponse,
+        CostTotals,
+        CostDimensionParam,
+        AgentResponse,
     )),
     modifiers(&BearerAuth),
     tags(
@@ -65,6 +77,7 @@ use utoipa::{
         (name = identity::TAG, description = "The authenticated caller"),
         (name = runs::TAG, description = "Transcripts and the runs processing them"),
         (name = cards::TAG, description = "The Kanban board and its human validation"),
+        (name = analytics::TAG, description = "Costs and activity of the agents"),
     )
 )]
 pub struct ApiDoc;
@@ -116,5 +129,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn analytics_endpoints_document_their_query_parameters() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let costs = &spec["paths"]["/api/v1/analytics/costs"]["get"];
+        let names: Vec<_> = costs["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["in"] == "query")
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["by", "from", "to"]);
+        assert!(spec["paths"]["/api/v1/agents"]["get"].is_object());
     }
 }

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
+use capitainerie_analytics::Analytics;
 use capitainerie_handlers::{AppState, auth::authenticate, health};
 use capitainerie_handlers_realtime::Gateway;
 use tower_http::{
@@ -12,9 +13,10 @@ use utoipa_scalar::{Scalar, Servable};
 
 use crate::openapi::ApiDoc;
 
-pub fn router(
+pub fn router<A: Analytics + 'static>(
     state: AppState,
     realtime: Gateway<AppState>,
+    analytics: A,
     allowed_origins: &[String],
 ) -> anyhow::Result<Router> {
     let origins = allowed_origins
@@ -29,6 +31,7 @@ pub fn router(
         .merge(capitainerie_handlers_identity::router())
         .merge(capitainerie_handlers_runs::router())
         .merge(capitainerie_handlers_cards::router())
+        .merge(capitainerie_handlers_analytics::router(analytics))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
 
     Ok(Router::new()
