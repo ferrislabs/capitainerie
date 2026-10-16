@@ -1,0 +1,10 @@
+{
+  "name": "09_pricing",
+  "kind": "pricing update (observed real run)",
+  "transcript": "Sophie : On a validé la nouvelle grille tarifaire hier.\nKarim : Je mets à jour la page de prix sur le site avant vendredi.\nSophie : Parfait. Il faut aussi prévenir les clients existants par email.\nLina : Je rédige l'email aux clients et je l'envoie lundi.\nKarim : Dernier point, le bug de facturation en double est toujours ouvert.\nSophie : Lina, tu peux ouvrir un ticket prioritaire pour l'équipe paiement ?\nLina : Oui, je l'ouvre aujourd'hui.",
+  "expected": [
+    {"must_match": ["page", "prix"], "owner": "Karim", "due": "vendredi", "quote_must_contain": "page de prix"},
+    {"must_match": ["email", "clients"], "owner": "Lina", "due": "lundi", "quote_must_contain": "email"},
+    {"must_match": ["ticket"], "owner": "Lina", "due": "aujourd", "quote_must_contain": "ticket"}
+  ]
+}

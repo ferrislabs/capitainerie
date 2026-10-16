@@ -1,0 +1,9 @@
+{
+  "name": "06_double_volunteer",
+  "kind": "two volunteers for the same task",
+  "transcript": "Anaïs : Quelqu'un peut préparer les slides pour la présentation de mardi ?\nBruno : Je peux le faire.\nChloé : Moi aussi, je veux bien m'en charger.\nAnaïs : Bruno, tu as plus de temps cette semaine, je te laisse les slides.\nBruno : D'accord, je les prépare pour lundi soir.\nChloé : Alors je relirai le tout lundi soir.\nAnaïs : Parfait.",
+  "expected": [
+    {"must_match": ["slides"], "owner": "Bruno", "due": "lundi", "quote_must_contain": "prépare"},
+    {"must_match": ["relire"], "owner": "Chloé", "due": "lundi", "quote_must_contain": "relirai"}
+  ]
+}

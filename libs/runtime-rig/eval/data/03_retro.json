@@ -1,0 +1,9 @@
+{
+  "name": "03_retro",
+  "kind": "retro",
+  "transcript": "Nadia : Pour la rétro, ce qui a bien marché : les revues de code rapides.\nTom : Ce qui a moins bien marché, les déploiements du vendredi soir, c'est stressant.\nNadia : Je propose qu'on arrête de déployer le vendredi. Tom, tu peux mettre la règle dans le guide d'équipe ?\nTom : D'accord, je l'ajoute au guide d'ici la fin de la semaine.\nLéa : Autre point, on a perdu du temps avec les tickets mal décrits.\nNadia : Léa, tu prépares un modèle de ticket pour la prochaine rétro ?\nLéa : Oui, je prépare un modèle et je le présente à la prochaine rétro.\nTom : Super.",
+  "expected": [
+    {"must_match": ["guide"], "owner": "Tom", "due": "semaine", "quote_must_contain": "guide"},
+    {"must_match": ["modèle", "ticket"], "owner": "Léa", "due": "rétro", "quote_must_contain": "modèle"}
+  ]
+}

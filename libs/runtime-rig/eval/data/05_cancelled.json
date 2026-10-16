@@ -1,0 +1,8 @@
+{
+  "name": "05_cancelled",
+  "kind": "action stated then cancelled",
+  "transcript": "Éric : Il faudrait réserver la grande salle pour la démo de jeudi.\nSonia : Je m'en occupe, je la réserve aujourd'hui.\nÉric : Attends, finalement la démo se fera en visio, donc pas besoin de salle.\nSonia : Ok, j'annule alors, je ne réserve rien.\nÉric : Par contre, il faut envoyer le lien de la visio aux participants.\nSonia : Je l'envoie demain matin.\nÉric : Merci.",
+  "expected": [
+    {"must_match": ["lien", "visio"], "owner": "Sonia", "due": "demain", "quote_must_contain": "envo"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "02_client_call",
+  "kind": "client call",
+  "transcript": "Marc : Merci d'avoir pris le temps, Mme Roche. Vous aviez des questions sur l'export des factures ?\nMme Roche : Oui, nos comptables ont besoin du format CSV avec la TVA détaillée par ligne.\nMarc : Je vérifie avec l'équipe technique si c'est possible et je vous réponds d'ici jeudi.\nMme Roche : Très bien. Et pour la formation de nos équipes ?\nMarc : Je vous envoie trois créneaux dans la semaine.\nMme Roche : Parfait. De mon côté, je vous transmets la liste des utilisateurs à créer avant mercredi.\nMarc : Merci, ça nous aidera beaucoup.",
+  "expected": [
+    {"must_match": ["csv"], "owner": "Marc", "due": "jeudi", "quote_must_contain": "vérifie"},
+    {"must_match": ["créneaux"], "owner": "Marc", "due": "semaine", "quote_must_contain": "créneaux"},
+    {"must_match": ["liste", "utilisateurs"], "owner": "Roche", "due": "mercredi", "quote_must_contain": "liste des utilisateurs"}
+  ]
+}

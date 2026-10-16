@@ -1,0 +1,6 @@
+{
+  "name": "04_no_action",
+  "kind": "no action",
+  "transcript": "Paul : Petit point d'information sur le trimestre.\nClara : Le chiffre d'affaires est en hausse de 8 % par rapport au trimestre précédent.\nPaul : C'est bien. Et le support ?\nClara : Le délai moyen de réponse est passé sous les deux heures.\nPaul : Très bonne nouvelle. Rien de particulier à signaler côté sécurité ?\nClara : Non, aucun incident ce trimestre.\nPaul : Parfait, on se retrouve le mois prochain pour le prochain point.",
+  "expected": []
+}

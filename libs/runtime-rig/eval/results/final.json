@@ -1,0 +1,337 @@
+{
+  "model": "qwen2.5:7b-instruct",
+  "timestamp": 1792185142,
+  "median_quote_len": 58,
+  "mean_latency_s": 23.72888888888889,
+  "results": [
+    {
+      "name": "01_standup",
+      "latency_ms": 21442,
+      "expected": 3,
+      "extracted": 2,
+      "matched": 2,
+      "correct": 2,
+      "duplicates": 0,
+      "owner_ok": 2,
+      "due_ok": 2,
+      "quote_ok": 2,
+      "anchorable": 2,
+      "prefixed": 0,
+      "quote_lengths": [
+        56,
+        75
+      ],
+      "actions": [
+        {
+          "title": "Livrer les index manquants en préproduction",
+          "description": "",
+          "quote": "Je les pousse en préproduction demain en fin de matinée.",
+          "owner": "Hugo",
+          "due": "demain en fin de matinée"
+        },
+        {
+          "title": "Relire la documentation d'installation",
+          "description": "",
+          "quote": "je dois relire la documentation d'installation, je m'y mets cet après-midi.",
+          "owner": "Julie",
+          "due": "cet après-midi"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "02_client_call",
+      "latency_ms": 19564,
+      "expected": 3,
+      "extracted": 1,
+      "matched": 1,
+      "correct": 1,
+      "duplicates": 0,
+      "owner_ok": 1,
+      "due_ok": 1,
+      "quote_ok": 1,
+      "anchorable": 1,
+      "prefixed": 0,
+      "quote_lengths": [
+        66
+      ],
+      "actions": [
+        {
+          "title": "Transmettre la liste des utilisateurs à créer",
+          "description": "",
+          "quote": "je vous transmets la liste des utilisateurs à créer avant mercredi",
+          "owner": "Mme Roche",
+          "due": "mercredi"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "03_retro",
+      "latency_ms": 25077,
+      "expected": 2,
+      "extracted": 2,
+      "matched": 2,
+      "correct": 2,
+      "duplicates": 0,
+      "owner_ok": 2,
+      "due_ok": 1,
+      "quote_ok": 2,
+      "anchorable": 2,
+      "prefixed": 0,
+      "quote_lengths": [
+        48,
+        62
+      ],
+      "actions": [
+        {
+          "title": "Ajouter une règle de non-déploiement le vendredi soir dans le guide d'équipe",
+          "description": "",
+          "quote": "Tu peux mettre la règle dans le guide d'équipe ?",
+          "owner": "Tom",
+          "due": "la fin de la semaine"
+        },
+        {
+          "title": "Préparer un modèle de ticket pour les prochaines rétropectives",
+          "description": "",
+          "quote": "Léa, tu prépares un modèle de ticket pour la prochaine rétro ?",
+          "owner": "Léa",
+          "due": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "04_no_action",
+      "latency_ms": 8406,
+      "expected": 0,
+      "extracted": 0,
+      "matched": 0,
+      "correct": 0,
+      "duplicates": 0,
+      "owner_ok": 0,
+      "due_ok": 0,
+      "quote_ok": 0,
+      "anchorable": 0,
+      "prefixed": 0,
+      "quote_lengths": [],
+      "actions": [],
+      "error": null
+    },
+    {
+      "name": "05_cancelled",
+      "latency_ms": 17487,
+      "expected": 1,
+      "extracted": 2,
+      "matched": 1,
+      "correct": 1,
+      "duplicates": 0,
+      "owner_ok": 1,
+      "due_ok": 1,
+      "quote_ok": 1,
+      "anchorable": 2,
+      "prefixed": 0,
+      "quote_lengths": [
+        59,
+        25
+      ],
+      "actions": [
+        {
+          "title": "Réserver la grande salle pour la démo",
+          "description": "",
+          "quote": "Il faudrait réserver la grande salle pour la démo de jeudi.",
+          "owner": null,
+          "due": "jeudi"
+        },
+        {
+          "title": "Envoyer le lien de la visio aux participants",
+          "description": "",
+          "quote": "Je l'envoie demain matin.",
+          "owner": "Sonia",
+          "due": "demain matin"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "06_double_volunteer",
+      "latency_ms": 17761,
+      "expected": 2,
+      "extracted": 2,
+      "matched": 1,
+      "correct": 2,
+      "duplicates": 1,
+      "owner_ok": 1,
+      "due_ok": 1,
+      "quote_ok": 0,
+      "anchorable": 2,
+      "prefixed": 0,
+      "quote_lengths": [
+        17,
+        30
+      ],
+      "actions": [
+        {
+          "title": "Préparer les slides pour la présentation",
+          "description": "",
+          "quote": "Je peux le faire.",
+          "owner": "Bruno",
+          "due": "lundi soir"
+        },
+        {
+          "title": "Relire les slides préparés par Bruno",
+          "description": "",
+          "quote": "je relirai le tout lundi soir.",
+          "owner": "Chloé",
+          "due": "lundi soir"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "07_long_smalltalk",
+      "latency_ms": 41862,
+      "expected": 4,
+      "extracted": 4,
+      "matched": 4,
+      "correct": 4,
+      "duplicates": 0,
+      "owner_ok": 4,
+      "due_ok": 4,
+      "quote_ok": 4,
+      "anchorable": 4,
+      "prefixed": 0,
+      "quote_lengths": [
+        65,
+        39,
+        50,
+        38
+      ],
+      "actions": [
+        {
+          "title": "Inscrire le stand pour le salon de mars",
+          "description": "",
+          "quote": "Je m'occupe de l'inscription du stand, je la fais d'ici mercredi.",
+          "owner": "Fanny",
+          "due": "mercredi"
+        },
+        {
+          "title": "Commander de nouveaux roll-ups",
+          "description": "",
+          "quote": "Je commande de nouveaux roll-ups jeudi.",
+          "owner": "Samir",
+          "due": "jeudi"
+        },
+        {
+          "title": "Valider le visuel avec la direction",
+          "description": "",
+          "quote": "Le visuel, je le valide ce soir avec la direction.",
+          "owner": "Olivier",
+          "due": "ce soir"
+        },
+        {
+          "title": "Réserver les hôtels pour le salon de mars",
+          "description": "",
+          "quote": "Je prends ça, je les réserve vendredi.",
+          "owner": "Fanny",
+          "due": "vendredi"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "08_implicit_on",
+      "latency_ms": 30919,
+      "expected": 4,
+      "extracted": 4,
+      "matched": 4,
+      "correct": 4,
+      "duplicates": 0,
+      "owner_ok": 4,
+      "due_ok": 4,
+      "quote_ok": 4,
+      "anchorable": 4,
+      "prefixed": 0,
+      "quote_lengths": [
+        40,
+        72,
+        62,
+        62
+      ],
+      "actions": [
+        {
+          "title": "Regarder les requêtes lentes",
+          "description": "",
+          "quote": "Il faudrait regarder les requêtes lentes",
+          "owner": null,
+          "due": null
+        },
+        {
+          "title": "Prévenir le support pour une réponse prête",
+          "description": "",
+          "quote": "On devrait aussi prévenir le support pour qu'ils aient une réponse prête",
+          "owner": null,
+          "due": null
+        },
+        {
+          "title": "Ajouter une alerte sur le temps de réponse",
+          "description": "",
+          "quote": "Et on doit penser à ajouter une alerte sur le temps de réponse",
+          "owner": null,
+          "due": null
+        },
+        {
+          "title": "Demander les logs à l'hébergeur ce soir",
+          "description": "",
+          "quote": "moi je reviens vers l'hébergeur ce soir pour demander les logs",
+          "owner": "Damien",
+          "due": "ce soir"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "09_pricing",
+      "latency_ms": 31042,
+      "expected": 3,
+      "extracted": 3,
+      "matched": 3,
+      "correct": 3,
+      "duplicates": 0,
+      "owner_ok": 3,
+      "due_ok": 2,
+      "quote_ok": 3,
+      "anchorable": 3,
+      "prefixed": 0,
+      "quote_lengths": [
+        58,
+        51,
+        67
+      ],
+      "actions": [
+        {
+          "title": "Mettre à jour la page de prix sur le site",
+          "description": "",
+          "quote": "Je mets à jour la page de prix sur le site avant vendredi.",
+          "owner": "Karim",
+          "due": "vendredi"
+        },
+        {
+          "title": "Rédiger et envoyer l'email aux clients",
+          "description": "",
+          "quote": "Je rédige l'email aux clients et je l'envoie lundi.",
+          "owner": "Lina",
+          "due": "lundi"
+        },
+        {
+          "title": "Ouvrir un ticket prioritaire pour le bug de facturation en double",
+          "description": "",
+          "quote": "Lina, tu peux ouvrir un ticket prioritaire pour l'équipe paiement ?",
+          "owner": "Lina",
+          "due": null
+        }
+      ],
+      "error": null
+    }
+  ]
+}

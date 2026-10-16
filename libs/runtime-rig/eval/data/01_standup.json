@@ -1,0 +1,10 @@
+{
+  "name": "01_standup",
+  "kind": "stand-up",
+  "transcript": "Julie : Bonjour à tous, on fait le tour rapidement.\nHugo : Hier j'ai terminé la migration de la base de test. Il reste les index manquants.\nJulie : Hugo, tu les livres quand ?\nHugo : Je les pousse en préproduction demain en fin de matinée.\nJulie : Très bien. Moi, je dois relire la documentation d'installation, je m'y mets cet après-midi.\nAmina : De mon côté je suis bloquée sur les droits du dépôt, je demande l'accès à l'administrateur dès ce matin.\nJulie : Parfait, merci à tous.",
+  "expected": [
+    {"must_match": ["index", "préproduction"], "owner": "Hugo", "due": "demain", "quote_must_contain": "préproduction"},
+    {"must_match": ["documentation"], "owner": "Julie", "due": "après-midi", "quote_must_contain": "documentation"},
+    {"must_match": ["accès"], "owner": "Amina", "due": "matin", "quote_must_contain": "accès"}
+  ]
+}

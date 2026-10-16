@@ -1,0 +1,11 @@
+{
+  "name": "07_long_smalltalk",
+  "kind": "long with small talk",
+  "transcript": "Olivier : Salut tout le monde, vous avez passé un bon week-end ?\nFanny : Très bon, on est allés à la montagne, il y avait encore de la neige.\nOlivier : Jaloux. Moi j'ai passé le week-end à réparer mon vélo.\nSamir : Haha, classique. Bon, on commence ?\nOlivier : Oui. Premier sujet, le salon de mars. Les inscriptions ferment dans dix jours.\nFanny : Je m'occupe de l'inscription du stand, je la fais d'ici mercredi.\nOlivier : Super. Et pour le matériel, on a encore les anciens roll-ups ?\nSamir : Ils sont abîmés. Je commande de nouveaux roll-ups jeudi.\nOlivier : Le visuel, je le valide ce soir avec la direction.\nFanny : Au fait, quelqu'un a des nouvelles du traiteur de la dernière fois ?\nSamir : Aucune, mais c'était très bon.\nOlivier : Oui, vraiment. Sinon, il faudra aussi réserver les hôtels.\nFanny : Je prends ça, je les réserve vendredi.\nSamir : Bon, on s'arrête là ? J'ai un autre rendez-vous.\nOlivier : Oui, merci à tous.",
+  "expected": [
+    {"must_match": ["inscription", "stand"], "owner": "Fanny", "due": "mercredi", "quote_must_contain": "inscription du stand"},
+    {"must_match": ["roll-ups"], "owner": "Samir", "due": "jeudi", "quote_must_contain": "commande"},
+    {"must_match": ["visuel"], "owner": "Olivier", "due": "ce soir", "quote_must_contain": "valide"},
+    {"must_match": ["hôtels"], "owner": "Fanny", "due": "vendredi", "quote_must_contain": "réserve"}
+  ]
+}

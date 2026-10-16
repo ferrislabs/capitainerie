@@ -1,0 +1,11 @@
+{
+  "name": "08_implicit_on",
+  "kind": "implicit owner (on / il faudrait)",
+  "transcript": "Valérie : Le site est lent depuis la mise à jour de lundi.\nDamien : Oui, j'ai vu ça dans les métriques. Il faudrait regarder les requêtes lentes.\nValérie : On devrait aussi prévenir le support pour qu'ils aient une réponse prête.\nDamien : Et on doit penser à ajouter une alerte sur le temps de réponse.\nValérie : Bon, on verra qui s'en occupe en fin de réunion.\nDamien : Ok. En attendant, moi je reviens vers l'hébergeur ce soir pour demander les logs.",
+  "expected": [
+    {"must_match": ["requêtes"], "owner": null, "due": null, "quote_must_contain": "requêtes lentes"},
+    {"must_match": ["support"], "owner": null, "due": null, "quote_must_contain": "prévenir le support"},
+    {"must_match": ["alerte"], "owner": null, "due": null, "quote_must_contain": "alerte"},
+    {"must_match": ["hébergeur"], "owner": "Damien", "due": "soir", "quote_must_contain": "hébergeur"}
+  ]
+}
