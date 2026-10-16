@@ -54,7 +54,7 @@ services:
   ferriskey-api:
     image: ghcr.io/ferriskey/ferriskey-api:latest
     environment:
-      ALLOWED_ORIGINS: http://localhost:4000,http://localhost:4111
+      ALLOWED_ORIGINS: http://localhost:4080,http://localhost:4111
       WEBAPP_URL: http://localhost:4111
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432

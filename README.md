@@ -12,13 +12,18 @@ Plateforme open source d'orchestration d'agents IA, en Rust, pensée pour Kubern
 cp .env.example .env
 docker compose up -d
 sqlx migrate run --source migrations
+./scripts/bootstrap-ferriskey.sh          # realm, client console, organisation de démo
 cargo run -p capitainerie-api
 cd apps/console && cp .env.example .env && pnpm install && pnpm dev
 ```
 
+Ouvre http://localhost:4080, clique sur « Sign up » pour créer ton compte, puis connecte-toi.
+FerrisKey n'a pas d'API admin pour définir un mot de passe : l'auto-inscription est le seul
+moyen d'entrer sur la stack locale. Après l'inscription, il faut se connecter une fois.
+
 | Service | URL |
 |---|---|
-| Console | http://localhost:4000 |
+| Console | http://localhost:4080 |
 | API (+ `/docs`, `/api-docs/openapi.json`) | http://localhost:4100 |
 | MCP Kanban | http://localhost:4101 |
 | FerrisKey API / console | http://localhost:4110 / http://localhost:4111 |
