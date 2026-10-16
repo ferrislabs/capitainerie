@@ -1,0 +1,31 @@
+[package]
+name = "capitainerie-runtime-rig"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+clap.workspace = true
+http.workspace = true
+rig-agent.workspace = true
+rig-core.workspace = true
+rig-reqwest.workspace = true
+rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+clap.workspace = true
+axum.workspace = true
+tokio = { workspace = true, features = ["net", "time", "sync"] }
+uuid.workspace = true
+
+[lints]
+workspace = true
