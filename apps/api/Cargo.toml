@@ -13,6 +13,7 @@ capitainerie-auth.workspace = true
 capitainerie-core.workspace = true
 capitainerie-handlers.workspace = true
 capitainerie-handlers-identity.workspace = true
+capitainerie-handlers-runs.workspace = true
 capitainerie-telemetry.workspace = true
 clap.workspace = true
 dotenvy.workspace = true

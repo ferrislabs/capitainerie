@@ -1,0 +1,24 @@
+[package]
+name = "capitainerie-bus-iggy"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+capitainerie-events.workspace = true
+clap.workspace = true
+iggy.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

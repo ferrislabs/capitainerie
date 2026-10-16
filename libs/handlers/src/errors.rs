@@ -14,6 +14,9 @@ pub enum ApiError {
     #[error("unauthorized: {0}")]
     Unauthorized(String),
 
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
     #[error("not found")]
     NotFound,
 
@@ -41,6 +44,7 @@ impl ApiError {
     fn status(&self) -> StatusCode {
         match self {
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::BadRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
@@ -52,6 +56,7 @@ impl ApiError {
     fn code(&self) -> &'static str {
         match self {
             Self::Unauthorized(_) => "unauthorized",
+            Self::BadRequest(_) => "invalid",
             Self::NotFound => "not_found",
             Self::Conflict(_) => "conflict",
             Self::Forbidden(_) => "forbidden",
@@ -63,7 +68,7 @@ impl ApiError {
     fn public_message(&self) -> String {
         match self {
             Self::Unauthorized(_) => "unauthorized".to_owned(),
-            Self::Conflict(message) => message.clone(),
+            Self::BadRequest(message) | Self::Conflict(message) => message.clone(),
             Self::Forbidden(Some(reason)) => reason.clone(),
             Self::Unavailable(_) => "unavailable".to_owned(),
             other => other.to_string(),
@@ -74,6 +79,7 @@ impl ApiError {
 impl From<CoreError> for ApiError {
     fn from(error: CoreError) -> Self {
         match error {
+            CoreError::Invalid(message) => Self::BadRequest(message),
             CoreError::NotFound => Self::NotFound,
             CoreError::Conflict(message) => Self::Conflict(message),
             CoreError::Forbidden { reason } => Self::Forbidden(reason),
@@ -124,6 +130,10 @@ mod tests {
     #[test]
     fn core_errors_map_to_http_statuses() {
         let cases = [
+            (
+                CoreError::Invalid("empty".into()),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
             (CoreError::NotFound, StatusCode::NOT_FOUND),
             (CoreError::Conflict("dup".into()), StatusCode::CONFLICT),
             (CoreError::Forbidden { reason: None }, StatusCode::FORBIDDEN),

@@ -7,19 +7,21 @@ license.workspace = true
 
 [dependencies]
 capitainerie-common.workspace = true
+capitainerie-events.workspace = true
 capitainerie-macros.workspace = true
 chrono.workspace = true
 mockall = { workspace = true, optional = true }
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
 uuid.workspace = true
 
 [features]
 mock = ["dep:mockall"]
 
 [dev-dependencies]
-capitainerie-common.workspace = true
 mockall.workspace = true
 
 [lints]

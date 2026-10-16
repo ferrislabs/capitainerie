@@ -8,6 +8,9 @@ pub enum CoreError {
     #[error("resource not found")]
     NotFound,
 
+    #[error("invalid input: {0}")]
+    Invalid(String),
+
     #[error("conflict: {0}")]
     Conflict(String),
 
@@ -21,21 +24,35 @@ pub enum CoreError {
     Internal(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
-#[serde(transparent)]
-pub struct OrganizationId(pub Uuid);
+macro_rules! id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+        #[serde(transparent)]
+        pub struct $name(pub Uuid);
 
-impl OrganizationId {
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
+        impl $name {
+            pub fn new() -> Self {
+                Self(Uuid::now_v7())
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+    };
 }
 
-impl Default for OrganizationId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+id!(OrganizationId);
+id!(TranscriptId);
+id!(RunId);
 
 #[cfg(test)]
 mod tests {

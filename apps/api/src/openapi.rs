@@ -3,6 +3,12 @@ use capitainerie_handlers_identity::{
     self as identity,
     me::{MeOrganization, MeResponse},
 };
+use capitainerie_handlers_runs::{
+    self as runs,
+    list_runs::RunListResponse,
+    response::{RunResponse, RunStatusResponse},
+    submit_transcript::{SubmitTranscriptRequest, SubmitTranscriptResponse},
+};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -11,12 +17,29 @@ use utoipa::{
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Capitainerie API"),
-    paths(health::live, health::ready, identity::me::handler),
-    components(schemas(ApiErrorResponse, MeResponse, MeOrganization)),
+    paths(
+        health::live,
+        health::ready,
+        identity::me::handler,
+        runs::submit_transcript::handler,
+        runs::list_runs::handler,
+        runs::get_run::handler,
+    ),
+    components(schemas(
+        ApiErrorResponse,
+        MeResponse,
+        MeOrganization,
+        SubmitTranscriptRequest,
+        SubmitTranscriptResponse,
+        RunListResponse,
+        RunResponse,
+        RunStatusResponse,
+    )),
     modifiers(&BearerAuth),
     tags(
         (name = health::TAG, description = "Liveness and readiness probes"),
         (name = identity::TAG, description = "The authenticated caller"),
+        (name = runs::TAG, description = "Transcripts and the runs processing them"),
     )
 )]
 pub struct ApiDoc;
@@ -47,6 +70,25 @@ mod tests {
                     operation["operationId"].is_string(),
                     "{method} {path} lacks an operationId"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn path_parameters_appear_in_their_path() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (path, operations) in spec["paths"].as_object().unwrap() {
+            for (method, operation) in operations.as_object().unwrap() {
+                let Some(parameters) = operation["parameters"].as_array() else {
+                    continue;
+                };
+                for parameter in parameters.iter().filter(|p| p["in"] == "path") {
+                    let name = parameter["name"].as_str().unwrap();
+                    assert!(
+                        path.contains(&format!("{{{name}}}")),
+                        "{method} {path} declares path parameter {name} absent from the path"
+                    );
+                }
             }
         }
     }

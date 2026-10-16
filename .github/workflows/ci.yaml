@@ -54,9 +54,24 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U capitainerie -d capitainerie"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      iggy:
+        image: apache/iggy:0.9.0
+        env:
+          IGGY_ROOT_USERNAME: iggy
+          IGGY_ROOT_PASSWORD: iggy
+          IGGY_TCP_ADDRESS: 0.0.0.0:8090
+          IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+          IGGY_NODE_ADVERTISED_ADDRESS: localhost
+          IGGY_SHARDING_CPU_ALLOCATION: "1"
+        ports: ["8090:8090"]
+        options: >-
+          --security-opt seccomp=unconfined
+          --ulimit memlock=-1:-1
     env:
       DATABASE_URL: postgres://capitainerie:capitainerie@localhost:5432/capitainerie
       REQUIRE_DATABASE_URL: "1"
+      IGGY_ADDRESS: localhost:8090
+      REQUIRE_IGGY: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

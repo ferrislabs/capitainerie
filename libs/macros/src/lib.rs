@@ -44,6 +44,10 @@ pub fn repository(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Runs the method body in one transaction and binds `<name>_repository` for
 /// each listed domain. Commits on `Ok`, rolls back on `Err`.
 ///
+/// Two names are not repositories: `authz` binds `&self.authz`, and `emitter`
+/// binds the transaction's event emitter, whose events reach the outbox in the
+/// same transaction.
+///
 /// ```ignore
 /// #[transactional(organization)]
 /// pub async fn organization_by_issuer(&self, issuer: &str) -> Result<Organization, CoreError> {
@@ -61,6 +65,12 @@ pub fn transactional(args: TokenStream, input: TokenStream) -> TokenStream {
     } = parse_macro_input!(input as ItemFn);
 
     let bindings = domains.names.iter().map(|name| {
+        if name == "authz" {
+            return quote! { let authz = &self.authz; };
+        }
+        if name == "emitter" {
+            return quote! { let emitter = &__event_emitter; };
+        }
         let binding = Ident::new(&format!("{name}_repository"), name.span());
         let domain = Ident::new(&pascal_case(&name.to_string()), name.span());
         quote! {
@@ -77,10 +87,16 @@ pub fn transactional(args: TokenStream, input: TokenStream) -> TokenStream {
     quote! {
         #(#attrs)*
         #vis #sig {
-            ::capitainerie_core::infrastructure::postgres::with_tx(&self.pool, async |tx| {
-                #(#bindings)*
-                #(#statements)*
-            })
+            let __event_emitter =
+                ::capitainerie_core::infrastructure::event::TransactionalEventEmitter::new();
+            ::capitainerie_core::infrastructure::postgres::with_tx_emitting(
+                &self.pool,
+                &__event_emitter,
+                async |tx| {
+                    #(#bindings)*
+                    #(#statements)*
+                },
+            )
             .await
         }
     }

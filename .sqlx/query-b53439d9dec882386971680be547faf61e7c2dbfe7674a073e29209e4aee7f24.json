@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, t.title AS transcript_title\n            FROM runs r\n            JOIN transcripts t ON t.id = r.transcript_id\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "transcript_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "initiated_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "pipeline",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "failure",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "finished_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "transcript_title",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "b53439d9dec882386971680be547faf61e7c2dbfe7674a073e29209e4aee7f24"
+}

@@ -4,7 +4,10 @@ mod router;
 use anyhow::Context;
 use capitainerie_args::{AuthArgs, DatabaseArgs, LogArgs, ObservabilityArgs, ServerArgs};
 use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
-use capitainerie_core::{CapitainerieUseCase, infrastructure::postgres};
+use capitainerie_core::{
+    CapitainerieUseCase,
+    infrastructure::{authorization::LocalPolicyEngine, postgres},
+};
 use capitainerie_handlers::AppState;
 use clap::Parser;
 use tokio::net::TcpListener;
@@ -35,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to postgres")?;
     let state = AppState {
-        usecase: CapitainerieUseCase::new(pool),
+        usecase: CapitainerieUseCase::new(pool, LocalPolicyEngine),
         verifier: FerrisKeyVerifier::new(AcceptedClients::new(args.auth.accepted_clients)),
     };
     let app = router::router(state, &args.server.allowed_origins)?;

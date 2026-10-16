@@ -22,6 +22,7 @@ pub fn router(state: AppState, allowed_origins: &[String]) -> anyhow::Result<Rou
 
     let protected = Router::new()
         .merge(capitainerie_handlers_identity::router())
+        .merge(capitainerie_handlers_runs::router())
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
 
     Ok(Router::new()

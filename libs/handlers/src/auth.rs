@@ -6,7 +6,7 @@ use axum::{
 };
 use capitainerie_auth::{Identity, TokenVerifier, unverified_issuer};
 use capitainerie_common::CoreError;
-use capitainerie_core::Organization;
+use capitainerie_core::{Organization, domain::authorization::Subject};
 
 use crate::{ApiError, AppState};
 
@@ -15,6 +15,21 @@ use crate::{ApiError, AppState};
 pub struct Caller {
     pub identity: Identity,
     pub organization: Organization,
+}
+
+impl Caller {
+    /// The caller as the policy decision point sees it.
+    pub fn subject(&self) -> Subject {
+        Subject {
+            id: self.identity.subject.clone(),
+            organization_id: self.organization.id,
+            actor: self
+                .identity
+                .actor
+                .as_ref()
+                .and_then(|actor| actor.client_id.clone()),
+        }
+    }
 }
 
 /// The realm that issued the token must belong to an organization before its

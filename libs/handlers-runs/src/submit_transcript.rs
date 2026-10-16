@@ -1,0 +1,60 @@
+use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum_extra::routing::TypedPath;
+use capitainerie_common::{RunId, TranscriptId};
+use capitainerie_core::domain::run::service::SubmitTranscript;
+use capitainerie_handlers::{ApiError, AppState, Caller};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+#[derive(TypedPath)]
+#[typed_path("/api/v1/transcripts")]
+pub struct TranscriptsPath;
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SubmitTranscriptRequest {
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SubmitTranscriptResponse {
+    pub transcript_id: TranscriptId,
+    pub run_id: RunId,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/transcripts",
+    operation_id = "submitTranscript",
+    tag = super::TAG,
+    request_body = SubmitTranscriptRequest,
+    responses(
+        (status = 202, description = "Stored; a run is queued on it", body = SubmitTranscriptResponse),
+        (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 403, description = "Not allowed", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "Empty or oversized title or transcript", body = capitainerie_handlers::errors::ApiErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn handler(
+    _: TranscriptsPath,
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(request): Json<SubmitTranscriptRequest>,
+) -> Result<(StatusCode, Json<SubmitTranscriptResponse>), ApiError> {
+    let submitted = state
+        .usecase
+        .submit_transcript(SubmitTranscript {
+            subject: caller.subject(),
+            title: request.title,
+            body: request.body,
+        })
+        .await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(SubmitTranscriptResponse {
+            transcript_id: submitted.transcript_id,
+            run_id: submitted.run_id,
+        }),
+    ))
+}

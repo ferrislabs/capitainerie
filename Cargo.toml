@@ -5,10 +5,13 @@ members = [
     "apps/worker",
     "libs/args",
     "libs/auth",
+    "libs/bus-iggy",
     "libs/common",
+    "libs/events",
     "libs/core",
     "libs/handlers",
     "libs/handlers-identity",
+    "libs/handlers-runs",
     "libs/macros",
     "libs/telemetry",
 ]
@@ -23,10 +26,12 @@ license = "Apache-2.0"
 [workspace.dependencies]
 anyhow = "1.0.100"
 axum = { version = "0.8.9", features = ["macros"] }
+axum-extra = { version = "0.12.6", features = ["typed-routing"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.6.1", features = ["env", "derive"] }
 dotenvy = "0.15.7"
 mockall = "0.13.1"
+iggy = "0.11.0"
 jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["grpc-tonic"] }
@@ -37,7 +42,7 @@ reqwest = { version = "0.12.24", default-features = false, features = ["json", "
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 syn = { version = "2.0.110", features = ["full"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros", "migrate", "json"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "signal"] }
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
@@ -50,10 +55,13 @@ uuid = { version = "1.19.0", features = ["serde", "v4", "v7"] }
 
 capitainerie-args = { path = "libs/args" }
 capitainerie-auth = { path = "libs/auth" }
+capitainerie-bus-iggy = { path = "libs/bus-iggy" }
 capitainerie-common = { path = "libs/common" }
+capitainerie-events = { path = "libs/events" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
+capitainerie-handlers-runs = { path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
 capitainerie-telemetry = { path = "libs/telemetry" }
 
