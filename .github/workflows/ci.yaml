@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+  RUST_TOOLCHAIN: "1.97.1"
+  SQLX_CLI_VERSION: "0.8.6"
+
+jobs:
+  rust:
+    name: rust (${{ matrix.check }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [fmt, clippy, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.check != 'fmt'
+        with:
+          key: ${{ matrix.check }}
+      - if: matrix.check == 'fmt'
+        run: cargo fmt --all -- --check
+      - if: matrix.check == 'clippy'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - if: matrix.check == 'test'
+        run: cargo test --workspace --locked --lib --bins
+
+  integration:
+    name: rust (integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: capitainerie
+          POSTGRES_PASSWORD: capitainerie
+          POSTGRES_DB: capitainerie
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U capitainerie -d capitainerie"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://capitainerie:capitainerie@localhost:5432/capitainerie
+      REQUIRE_DATABASE_URL: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: integration
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --version ${{ env.SQLX_CLI_VERSION }} --no-default-features --features rustls,postgres --locked
+      - name: Run migrations up, down, up
+        run: |
+          sqlx migrate run --source migrations
+          while sqlx migrate revert --source migrations 2>&1 | grep -q Applied; do :; done
+          sqlx migrate run --source migrations
+      - name: Check .sqlx is current
+        env:
+          SQLX_OFFLINE: "false"
+        run: cargo sqlx prepare --workspace --check -- --all-targets
+      - name: Integration tests
+        run: cargo test --workspace --locked --tests -- --test-threads=1
+
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/console/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/console/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm test
+      - run: pnpm build
