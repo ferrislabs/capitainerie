@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+chrono.workspace = true
+clap.workspace = true
 jsonwebtoken.workspace = true
 reqwest.workspace = true
 serde.workspace = true

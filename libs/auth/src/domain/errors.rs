@@ -12,4 +12,6 @@ pub enum AuthError {
     KeyNotFound(String),
     #[error("issuer discovery failed: {0}")]
     Discovery(String),
+    #[error("invalid exchange configuration: {0}")]
+    Config(String),
 }
