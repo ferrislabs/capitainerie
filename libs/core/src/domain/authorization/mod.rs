@@ -1,16 +1,20 @@
 pub mod ports;
 
-use capitainerie_common::{CoreError, OrganizationId};
+use capitainerie_common::{CoreError, OrganizationId, RunId};
 use uuid::Uuid;
 
 use self::ports::Authorizer;
+use crate::domain::card::Column;
 
-/// AuthZEN-shaped: who, does what, on which resource.
+/// AuthZEN-shaped: who, does what, on which resource, in which run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessRequest {
     pub subject: Subject,
     pub action: Action,
     pub resource: Resource,
+    /// The run on whose behalf the request is made, so its timeline can show
+    /// the decision.
+    pub run_id: Option<RunId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +30,11 @@ pub struct Subject {
 pub enum Action {
     TranscriptCreate,
     RunRead,
+    CardCreate,
+    CardRead,
+    CardUpdate { column: Column },
+    CardComment,
+    CardMove { from: Column, to: Column },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +48,7 @@ pub struct Resource {
 pub enum ResourceKind {
     Transcript,
     Run,
+    Card,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +62,11 @@ impl Action {
         match self {
             Self::TranscriptCreate => "transcript.create",
             Self::RunRead => "run.read",
+            Self::CardCreate => "card.create",
+            Self::CardRead => "card.read",
+            Self::CardUpdate { .. } => "card.update",
+            Self::CardComment => "card.comment",
+            Self::CardMove { .. } => "card.move",
         }
     }
 }
@@ -61,7 +76,29 @@ impl ResourceKind {
         match self {
             Self::Transcript => "transcript",
             Self::Run => "run",
+            Self::Card => "card",
         }
+    }
+}
+
+impl AccessRequest {
+    pub fn new(subject: Subject, action: Action, kind: ResourceKind, id: Option<Uuid>) -> Self {
+        let organization_id = subject.organization_id;
+        Self {
+            subject,
+            action,
+            resource: Resource {
+                kind,
+                id,
+                organization_id,
+            },
+            run_id: None,
+        }
+    }
+
+    pub fn in_run(mut self, run_id: Option<RunId>) -> Self {
+        self.run_id = run_id;
+        self
     }
 }
 

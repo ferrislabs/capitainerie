@@ -11,7 +11,6 @@ use capitainerie_core::{
         run::{RunStatus, service::SubmitTranscript},
     },
     infrastructure::{
-        authorization::LocalPolicyEngine,
         event::{OutboxRelay, OutboxRelayConfig},
         postgres,
     },
@@ -63,7 +62,7 @@ fn member(organization_id: OrganizationId) -> Subject {
 }
 
 fn usecase(pool: &PgPool) -> CapitainerieUseCase {
-    CapitainerieUseCase::new(pool.clone(), LocalPolicyEngine)
+    CapitainerieUseCase::with_local_policies(pool.clone())
 }
 
 async fn outbox_kinds_for_run(pool: &PgPool, run_id: Uuid) -> Vec<String> {
@@ -239,4 +238,174 @@ async fn the_relay_publishes_committed_events_once_the_bus_accepts_them() {
     let event: RunQueued = ours.open().unwrap().unwrap();
     assert_eq!(event.transcript_id, submitted.transcript_id.0);
     assert_eq!(event.organization_id, organization_id.0);
+}
+
+mod cards {
+    use capitainerie_common::CoreError;
+    use capitainerie_core::domain::card::{
+        Column,
+        service::{CreateCard, MoveCard, ProvenanceInput, UpdateCard},
+    };
+
+    use super::*;
+
+    const BODY: &str = "Claire : Malik migre la CI vers ARM avant fin octobre.";
+
+    fn agent(organization_id: OrganizationId) -> Subject {
+        Subject {
+            actor: Some("capitainerie-agent-writer".into()),
+            ..member(organization_id)
+        }
+    }
+
+    async fn decisions(pool: &PgPool, organization_id: OrganizationId) -> Vec<(String, bool)> {
+        sqlx::query_as(
+            "SELECT action, allowed FROM authorization_decisions WHERE organization_id = $1 AND actor IS NOT NULL ORDER BY decided_at, id",
+        )
+        .bind(organization_id.0)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_agent_proposes_and_only_a_human_validates() {
+        let Some(pool) = pool().await else { return };
+        let organization_id = organization(&pool).await;
+        let usecase = usecase(&pool);
+        let submitted = usecase
+            .submit_transcript(SubmitTranscript {
+                subject: member(organization_id),
+                title: "Point".into(),
+                body: BODY.into(),
+            })
+            .await
+            .unwrap();
+
+        let card = usecase
+            .create_card(
+                agent(organization_id),
+                CreateCard {
+                    title: "Migrer la CI vers ARM".into(),
+                    description: "Avant fin octobre".into(),
+                    provenance: Some(ProvenanceInput {
+                        transcript_id: submitted.transcript_id,
+                        start: 9,
+                        end: 35,
+                        quote: "Malik migre la CI vers ARM".into(),
+                    }),
+                    run_id: Some(submitted.run_id),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(card.column, Column::Proposed);
+
+        let refused = usecase
+            .move_card(
+                agent(organization_id),
+                card.id,
+                MoveCard {
+                    to: Column::Todo,
+                    expected_version: card.version,
+                    run_id: Some(submitted.run_id),
+                },
+            )
+            .await;
+        assert!(matches!(refused, Err(CoreError::Forbidden { .. })));
+
+        let refined = usecase
+            .update_card(
+                agent(organization_id),
+                card.id,
+                UpdateCard {
+                    title: None,
+                    description: Some("Avant le 31 octobre, point mardi".into()),
+                    expected_version: card.version,
+                    run_id: Some(submitted.run_id),
+                },
+            )
+            .await
+            .unwrap();
+        let validated = usecase
+            .move_card(
+                member(organization_id),
+                card.id,
+                MoveCard {
+                    to: Column::Todo,
+                    expected_version: refined.version,
+                    run_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        let stale = usecase
+            .move_card(
+                member(organization_id),
+                card.id,
+                MoveCard {
+                    to: Column::Done,
+                    expected_version: refined.version,
+                    run_id: None,
+                },
+            )
+            .await;
+
+        assert_eq!(validated.column, Column::Todo);
+        assert_eq!(validated.version, 3);
+        assert!(matches!(stale, Err(CoreError::Conflict(_))));
+        assert_eq!(
+            decisions(&pool, organization_id).await,
+            [
+                ("card.create".to_owned(), true),
+                ("card.move".to_owned(), false),
+                ("card.update".to_owned(), true),
+            ]
+        );
+        let kinds: Vec<String> = sqlx::query_scalar(
+            "SELECT kind FROM outbox_events WHERE partition_key = $1 ORDER BY id",
+        )
+        .bind(card.id.0)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(kinds, ["card.proposed", "card.updated", "card.moved"]);
+    }
+
+    #[tokio::test]
+    async fn an_invented_quote_is_refused() {
+        let Some(pool) = pool().await else { return };
+        let organization_id = organization(&pool).await;
+        let usecase = usecase(&pool);
+        let submitted = usecase
+            .submit_transcript(SubmitTranscript {
+                subject: member(organization_id),
+                title: "Point".into(),
+                body: BODY.into(),
+            })
+            .await
+            .unwrap();
+
+        let error = usecase
+            .create_card(
+                agent(organization_id),
+                CreateCard {
+                    title: "Migrer la CI vers x86".into(),
+                    description: String::new(),
+                    provenance: Some(ProvenanceInput {
+                        transcript_id: submitted.transcript_id,
+                        start: 9,
+                        end: 35,
+                        quote: "Malik migre la CI vers x86".into(),
+                    }),
+                    run_id: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, CoreError::Invalid(_)));
+        let (cards,) = (usecase.list_cards(member(organization_id)).await.unwrap(),);
+        assert!(cards.is_empty());
+    }
 }

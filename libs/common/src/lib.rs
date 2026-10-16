@@ -53,6 +53,8 @@ macro_rules! id {
 id!(OrganizationId);
 id!(TranscriptId);
 id!(RunId);
+id!(CardId);
+id!(CardCommentId);
 
 #[cfg(test)]
 mod tests {

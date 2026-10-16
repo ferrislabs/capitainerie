@@ -4,10 +4,7 @@ mod router;
 use anyhow::Context;
 use capitainerie_args::{AuthArgs, DatabaseArgs, LogArgs, ObservabilityArgs, ServerArgs};
 use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
-use capitainerie_core::{
-    CapitainerieUseCase,
-    infrastructure::{authorization::LocalPolicyEngine, postgres},
-};
+use capitainerie_core::{CapitainerieUseCase, infrastructure::postgres};
 use capitainerie_handlers::AppState;
 use clap::Parser;
 use tokio::net::TcpListener;
@@ -38,8 +35,8 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to postgres")?;
     let state = AppState {
-        usecase: CapitainerieUseCase::new(pool, LocalPolicyEngine),
-        verifier: FerrisKeyVerifier::new(AcceptedClients::new(args.auth.accepted_clients)),
+        usecase: CapitainerieUseCase::with_local_policies(pool),
+        verifier: verifier(args.auth),
     };
     let app = router::router(state, &args.server.allowed_origins)?;
 
@@ -52,6 +49,17 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
+    let accepted = AcceptedClients::new(auth.accepted_clients);
+    match auth.audience {
+        Some(audience) => FerrisKeyVerifier::with_audience(accepted, audience),
+        None => {
+            tracing::warn!("AUTH_AUDIENCE is unset: tokens are accepted whatever their audience");
+            FerrisKeyVerifier::new(accepted)
+        }
+    }
 }
 
 async fn shutdown_signal() {

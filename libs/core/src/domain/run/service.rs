@@ -3,9 +3,7 @@ use chrono::Utc;
 
 use super::{Run, RunOverview, ports::RunRepository};
 use crate::domain::{
-    authorization::{
-        AccessRequest, Action, Resource, ResourceKind, Subject, ports::Authorizer, require,
-    },
+    authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     event::ports::EventEmitter,
     transcript::{Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository},
 };
@@ -48,15 +46,12 @@ where
         let organization_id = command.subject.organization_id;
         require(
             self.authorizer,
-            AccessRequest {
-                subject: command.subject.clone(),
-                action: Action::TranscriptCreate,
-                resource: Resource {
-                    kind: ResourceKind::Transcript,
-                    id: None,
-                    organization_id,
-                },
-            },
+            AccessRequest::new(
+                command.subject.clone(),
+                Action::TranscriptCreate,
+                ResourceKind::Transcript,
+                None,
+            ),
         )
         .await?;
 
@@ -106,18 +101,15 @@ where
     }
 
     async fn require_read(&self, subject: Subject, id: Option<RunId>) -> Result<(), CoreError> {
-        let organization_id = subject.organization_id;
         require(
             self.authorizer,
-            AccessRequest {
+            AccessRequest::new(
                 subject,
-                action: Action::RunRead,
-                resource: Resource {
-                    kind: ResourceKind::Run,
-                    id: id.map(|id| id.0),
-                    organization_id,
-                },
-            },
+                Action::RunRead,
+                ResourceKind::Run,
+                id.map(|id| id.0),
+            )
+            .in_run(id),
         )
         .await
     }

@@ -5,6 +5,8 @@
 use crate::infrastructure::postgres::SharedTx;
 
 pub mod domain {
+    pub struct Card;
+    pub struct CardComment;
     pub struct Organization;
     pub struct Run;
     pub struct Transcript;

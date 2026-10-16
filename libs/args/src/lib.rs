@@ -41,6 +41,11 @@ pub struct AuthArgs {
         default_value = "capitainerie-console"
     )]
     pub accepted_clients: Vec<String>,
+
+    /// Required `aud`: the API's resource indicator (RFC 8707), which the
+    /// console requests at login. Unset, the audience is not checked.
+    #[arg(long = "auth-audience", env = "AUTH_AUDIENCE")]
+    pub audience: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]

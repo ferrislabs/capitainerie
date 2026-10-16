@@ -1,23 +1,11 @@
 use anyhow::Context;
-use axum::{Router, http::StatusCode, routing::get};
-use capitainerie_args::{LogArgs, ObservabilityArgs};
+use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
+use capitainerie_core::{CapitainerieUseCase, infrastructure::postgres};
+use capitainerie_mcp_kanban::{config::Args, router};
 use clap::Parser;
 use tokio::net::TcpListener;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
-
-#[derive(Debug, Parser)]
-#[command(name = "capitainerie-mcp-kanban", version)]
-struct Args {
-    #[arg(long = "mcp-host", env = "MCP_HOST", default_value = "0.0.0.0")]
-    host: String,
-    #[arg(long = "mcp-port", env = "MCP_PORT", default_value_t = 4101)]
-    port: u16,
-    #[command(flatten)]
-    log: LogArgs,
-    #[command(flatten)]
-    observability: ObservabilityArgs,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,13 +14,17 @@ async fn main() -> anyhow::Result<()> {
     let _telemetry =
         capitainerie_telemetry::init("capitainerie-mcp-kanban", &args.log, &args.observability)?;
 
-    let app = Router::new()
-        .route("/health/live", get(|| async { StatusCode::NO_CONTENT }))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        );
+    let pool = postgres::connect(&args.database.url, args.database.max_connections)
+        .await
+        .context("connecting to postgres")?;
+    let usecase = CapitainerieUseCase::with_local_policies(pool);
+    let verifier =
+        FerrisKeyVerifier::with_audience(AcceptedClients::new(args.accepted_agents), args.audience);
+    let app = router(usecase, verifier, args.public_url).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+            .on_response(DefaultOnResponse::new().level(Level::INFO)),
+    );
 
     let addr = format!("{}:{}", args.host, args.port);
     let listener = TcpListener::bind(&addr)
@@ -41,7 +33,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%addr, "mcp-kanban listening");
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                tracing::error!(%error, "could not listen for the shutdown signal");
+            }
         })
         .await?;
     Ok(())

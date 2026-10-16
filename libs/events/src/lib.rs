@@ -1,6 +1,7 @@
 //! The event envelope every component exchanges through the bus, and the
 //! catalogue of event kinds. Depends on nothing in `capitainerie-core`.
 
+pub mod card;
 pub mod run;
 
 use chrono::{DateTime, Utc};
@@ -11,14 +12,16 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
     Runs,
+    Cards,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 1] = [Topic::Runs];
+    pub const ALL: [Topic; 2] = [Topic::Runs, Topic::Cards];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Runs => "runs",
+            Self::Cards => "cards",
         }
     }
 }

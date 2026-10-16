@@ -1,4 +1,10 @@
 use capitainerie_handlers::{errors::ApiErrorResponse, health};
+use capitainerie_handlers_cards::{
+    self as cards,
+    list_cards::CardListResponse,
+    move_card::MoveCardRequest,
+    response::{CardResponse, ColumnDto, ProvenanceResponse},
+};
 use capitainerie_handlers_identity::{
     self as identity,
     me::{MeOrganization, MeResponse},
@@ -24,6 +30,8 @@ use utoipa::{
         runs::submit_transcript::handler,
         runs::list_runs::handler,
         runs::get_run::handler,
+        cards::list_cards::handler,
+        cards::move_card::handler,
     ),
     components(schemas(
         ApiErrorResponse,
@@ -34,12 +42,18 @@ use utoipa::{
         RunListResponse,
         RunResponse,
         RunStatusResponse,
+        CardListResponse,
+        CardResponse,
+        ColumnDto,
+        ProvenanceResponse,
+        MoveCardRequest,
     )),
     modifiers(&BearerAuth),
     tags(
         (name = health::TAG, description = "Liveness and readiness probes"),
         (name = identity::TAG, description = "The authenticated caller"),
         (name = runs::TAG, description = "Transcripts and the runs processing them"),
+        (name = cards::TAG, description = "The Kanban board and its human validation"),
     )
 )]
 pub struct ApiDoc;

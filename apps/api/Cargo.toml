@@ -12,6 +12,7 @@ capitainerie-args.workspace = true
 capitainerie-auth.workspace = true
 capitainerie-core.workspace = true
 capitainerie-handlers.workspace = true
+capitainerie-handlers-cards.workspace = true
 capitainerie-handlers-identity.workspace = true
 capitainerie-handlers-runs.workspace = true
 capitainerie-telemetry.workspace = true

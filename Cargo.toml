@@ -10,6 +10,7 @@ members = [
     "libs/events",
     "libs/core",
     "libs/handlers",
+    "libs/handlers-cards",
     "libs/handlers-identity",
     "libs/handlers-runs",
     "libs/macros",
@@ -39,6 +40,7 @@ opentelemetry_sdk = "0.31.0"
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
+rmcp = { version = "=3.5.1", features = ["server", "macros", "transport-streamable-http-server"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 syn = { version = "2.0.110", features = ["full"] }
@@ -60,6 +62,7 @@ capitainerie-common = { path = "libs/common" }
 capitainerie-events = { path = "libs/events" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
+capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
 capitainerie-handlers-runs = { path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
