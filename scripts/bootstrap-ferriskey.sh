@@ -60,6 +60,16 @@ for agent in $(jq -r 'keys[]' <<<"${AGENT_CLIENTS}"); do
     ensure_policy "${agent_uuid}" "${MCP_CLIENT_ID}" false true
 done
 
+client_secret() {
+    admin GET "/clients/$1/client-secret" | jq -r '.data.client_secret // .client_secret'
+}
+API_SECRET="$(client_secret "${API_CLIENT_UUID}")"
+AGENT_CREDENTIALS=""
+for agent in $(jq -r 'keys[]' <<<"${AGENT_CLIENTS}"); do
+    secret="$(client_secret "$(jq -r --arg a "${agent}" '.[$a]' <<<"${AGENT_CLIENTS}")")"
+    AGENT_CREDENTIALS="${AGENT_CREDENTIALS}${AGENT_CREDENTIALS:+,}${agent}=${secret}"
+done
+
 echo "🏢 organization ${REALM} -> ${ISSUER}"
 docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
     psql -v ON_ERROR_STOP=1 -U capitainerie -d capitainerie \
@@ -77,6 +87,13 @@ cat <<SUMMARY
      VITE_OIDC_ISSUER_URL=${ISSUER}
      VITE_OIDC_CLIENT_ID=${CONSOLE_CLIENT_ID}
      VITE_OIDC_RESOURCE=${API_RESOURCE}
+
+   API and worker (.env) — secrets are printed, not written: they belong in
+   whatever holds your secrets, not in the working tree:
+     EXCHANGE_CLIENT_ID=capitainerie-api
+     EXCHANGE_CLIENT_SECRET=${API_SECRET}
+     AGENT_CREDENTIALS=${AGENT_CREDENTIALS}
+     DELEGATION_KEY=<openssl rand -base64 32, the same for the API and the worker>
 
    Create your account from the console's login page ("Register"): FerrisKey
    has no admin API to set a password, so self-registration is the way in.

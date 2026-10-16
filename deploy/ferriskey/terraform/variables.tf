@@ -64,3 +64,9 @@ variable "api_resource" {
   type        = string
   default     = "http://localhost:4100"
 }
+
+variable "session_lifetime" {
+  description = "Refresh token lifetime, which bounds the user session, in seconds. Local stack only."
+  type        = number
+  default     = 28800
+}

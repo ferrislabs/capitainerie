@@ -78,6 +78,15 @@ services:
     depends_on:
       - ferriskey-api
 
+  # Dev LLM (A8), OpenAI-compatible on /v1. CPU only under Docker Desktop:
+  # a native Ollama (Metal) is much faster, point LLM_BASE_URL at it instead.
+  ollama:
+    image: ollama/ollama:0.12.6
+    ports:
+      - "${OLLAMA_PORT:-4120}:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+
   jaeger:
     image: jaegertracing/jaeger:2.10.0
     ports:
@@ -87,3 +96,4 @@ services:
 volumes:
   pgdata:
   iggydata:
+  ollamadata:

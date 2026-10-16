@@ -34,7 +34,10 @@ resource "ferriskey_realm_settings" "organization" {
   realm = ferriskey_realm.organization.name
 
   access_token_lifetime  = var.access_token_lifetime
-  refresh_token_lifetime = 1800
+  # Bounds the user session (`sid`). Every token of the delegation chain is
+  # refused once that session ends, whatever its own `exp`: 8 hours lets a
+  # local run finish without logging in again (docs/ferriskey-needs.md, need 5).
+  refresh_token_lifetime = var.session_lifetime
 
   # FerrisKey has no admin API to set another user's password, so a local
   # stack is only reachable through self-registration. Off for anything shared.
