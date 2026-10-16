@@ -1,17 +1,6 @@
+import type { Fetcher } from '#/api/api.client'
 import { ApiRequestError } from '#/lib/api-error'
-import { getRuntimeConfig } from '#/lib/runtime-config'
 import { authStore } from '#/store/auth.store'
-
-export interface FetcherInput {
-	method: string
-	url: URL
-	urlSearchParams?: URLSearchParams
-	parameters?: {
-		body?: unknown
-		header?: Record<string, unknown>
-	}
-	overrides?: RequestInit
-}
 
 function isRawBody(body: unknown): body is BodyInit {
 	return (
@@ -39,7 +28,7 @@ async function toApiError(response: Response): Promise<ApiRequestError> {
 	return new ApiRequestError(response.status, code, message)
 }
 
-export async function fetcher(input: FetcherInput): Promise<Response> {
+export const fetcher: Fetcher['fetch'] = async (input) => {
 	const headers = new Headers()
 	const accessToken = authStore.state.accessToken
 
@@ -49,7 +38,10 @@ export async function fetcher(input: FetcherInput): Promise<Response> {
 
 	let body: BodyInit | undefined
 	const method = input.method.toUpperCase()
-	const bodyData = input.parameters?.body
+	const bodyData =
+		input.parameters && 'body' in input.parameters
+			? input.parameters.body
+			: undefined
 	if (
 		['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) &&
 		bodyData !== undefined
@@ -84,18 +76,4 @@ export async function fetcher(input: FetcherInput): Promise<Response> {
 	}
 
 	return response
-}
-
-export async function apiRequest<T>(
-	path: string,
-	init: { method?: string; body?: unknown } = {},
-): Promise<T> {
-	const url = new URL(path, getRuntimeConfig().apiUrl)
-	const response = await fetcher({
-		method: init.method ?? 'GET',
-		url,
-		parameters: { body: init.body },
-	})
-	if (response.status === 204) return undefined as T
-	return (await response.json()) as T
 }

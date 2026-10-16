@@ -6,7 +6,7 @@ Console d'orchestration d'agents IA. React 19, Vite, TanStack Start (mode SPA) e
 
 ```sh
 pnpm install     # installe les dépendances
-pnpm dev         # serveur de dev sur le port 4000
+pnpm dev         # serveur de dev sur le port 4080
 pnpm check       # Biome (lint + format)
 pnpm test        # Vitest
 pnpm build       # build de production (dist/client)

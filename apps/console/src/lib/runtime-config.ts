@@ -78,7 +78,7 @@ export function getOidcConfiguration(): OidcConfiguration | undefined {
 	return {
 		authority: config.issuerUrl,
 		client_id: config.clientId,
-		redirect_uri: `${window.location.origin}/`,
+		redirect_uri: `${window.location.origin}/callback`,
 		scope: 'openid profile email',
 	}
 }

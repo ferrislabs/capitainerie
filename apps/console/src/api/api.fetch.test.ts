@@ -27,7 +27,11 @@ describe('fetcher', () => {
 		setAuth({ accessToken: 'tok', isAuthenticated: true })
 		fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-		await fetcher({ method: 'get', url: new URL('http://api.test/runs') })
+		await fetcher({
+			method: 'get',
+			path: '/runs',
+			url: new URL('http://api.test/runs'),
+		})
 
 		const init = fetchMock.mock.calls[0][1] as RequestInit
 		expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok')
@@ -37,7 +41,11 @@ describe('fetcher', () => {
 	it('omits Authorization when signed out', async () => {
 		fetchMock.mockResolvedValue(jsonResponse(200, {}))
 
-		await fetcher({ method: 'get', url: new URL('http://api.test/runs') })
+		await fetcher({
+			method: 'get',
+			path: '/runs',
+			url: new URL('http://api.test/runs'),
+		})
 
 		const init = fetchMock.mock.calls[0][1] as RequestInit
 		expect(new Headers(init.headers).has('Authorization')).toBe(false)
@@ -50,6 +58,7 @@ describe('fetcher', () => {
 
 		const error = await fetcher({
 			method: 'get',
+			path: '/runs/1',
 			url: new URL('http://api.test/runs/1'),
 		}).catch((e: unknown) => e)
 
@@ -66,6 +75,7 @@ describe('fetcher', () => {
 
 		const error = await fetcher({
 			method: 'get',
+			path: '/x',
 			url: new URL('http://api.test/x'),
 		}).catch((e: unknown) => e)
 

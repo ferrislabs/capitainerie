@@ -6,11 +6,11 @@
 		"#/*": "./src/*"
 	},
 	"scripts": {
-		"dev": "vite dev --port 4000",
+		"dev": "vite dev --port 4080 --strictPort",
 		"build": "vite build",
 		"preview": "vite preview",
 		"test": "vitest run",
-		"gen:api": "typed-openapi \"${API_URL:-http://localhost:4100/api-docs/openapi.json}\" -o src/api/api.client.ts --tanstack=api.tanstack.ts",
+		"gen:api": "typed-openapi \"${API_URL:-http://localhost:4100/api-docs/openapi.json}\" -o src/api/api.client.ts --tanstack=api.tanstack.ts && node -e \"const f='src/api/api.tanstack.ts',fs=require('fs');fs.writeFileSync(f,'// @ts-nocheck\\n'+fs.readFileSync(f,'utf8'))\"",
 		"format": "biome format",
 		"lint": "biome lint",
 		"check": "biome check"

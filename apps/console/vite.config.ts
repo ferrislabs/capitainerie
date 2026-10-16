@@ -7,7 +7,12 @@ export default defineConfig({
 	resolve: { tsconfigPaths: true },
 	plugins: [
 		tailwindcss(),
-		tanstackStart({ spa: { enabled: true } }),
+		tanstackStart({
+			spa: { enabled: true },
+			importProtection: {
+				server: { excludeFiles: ['**/src/api/api.client.ts'] },
+			},
+		}),
 		viteReact(),
 	],
 })

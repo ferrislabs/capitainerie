@@ -2,6 +2,7 @@ import { Loader2, ShieldAlert } from 'lucide-react'
 import { useEffect } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { Button } from '#/components/ui/button'
+import { returnToState } from '#/lib/return-to'
 import { getOidcConfiguration } from '#/lib/runtime-config'
 
 interface Props {
@@ -38,7 +39,7 @@ export function AuthGate({ children }: Props) {
 		if (!isConfigured || !auth) return
 		if (auth.isLoading || auth.activeNavigator) return
 		if (!auth.isAuthenticated && !auth.error) {
-			void auth.signinRedirect()
+			void auth.signinRedirect({ state: returnToState(window.location) })
 		}
 	}, [auth, isConfigured])
 
@@ -61,7 +62,11 @@ export function AuthGate({ children }: Props) {
 				action={
 					<Button
 						onClick={() => {
-							void auth.removeUser().then(() => auth.signinRedirect())
+							void auth.removeUser().then(() =>
+								auth.signinRedirect({
+									state: returnToState(window.location),
+								}),
+							)
 						}}
 					>
 						Se reconnecter

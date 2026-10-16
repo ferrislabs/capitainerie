@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppAgentsRouteImport } from './routes/_app.agents'
 
+const CallbackRoute = CallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -42,11 +48,13 @@ const AppAgentsRoute = AppAgentsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/callback': typeof CallbackRoute
   '/agents': typeof AppAgentsRoute
   '/kanban': typeof AppKanbanRoute
   '/runs': typeof AppRunsRoute
 }
 export interface FileRoutesByTo {
+  '/callback': typeof CallbackRoute
   '/agents': typeof AppAgentsRoute
   '/kanban': typeof AppKanbanRoute
   '/runs': typeof AppRunsRoute
@@ -55,6 +63,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/callback': typeof CallbackRoute
   '/_app/agents': typeof AppAgentsRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/runs': typeof AppRunsRoute
@@ -62,12 +71,13 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agents' | '/kanban' | '/runs'
+  fullPaths: '/' | '/callback' | '/agents' | '/kanban' | '/runs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/agents' | '/kanban' | '/runs' | '/'
+  to: '/callback' | '/agents' | '/kanban' | '/runs' | '/'
   id:
     | '__root__'
     | '/_app'
+    | '/callback'
     | '/_app/agents'
     | '/_app/kanban'
     | '/_app/runs'
@@ -76,10 +86,18 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CallbackRoute: typeof CallbackRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/callback': {
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -136,6 +154,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CallbackRoute: CallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

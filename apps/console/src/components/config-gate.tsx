@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import type { User } from 'oidc-client-ts'
 import { useEffect, useState } from 'react'
 import { AuthProvider } from 'react-oidc-context'
+import { syncApiBaseUrl } from '#/api'
 import { AuthTokenSync } from '#/components/auth-token-sync'
 import { getUserManager } from '#/lib/oidc'
 import { loadRuntimeConfig } from '#/lib/runtime-config'
@@ -11,14 +12,17 @@ interface Props {
 }
 
 export function onSigninCallback(_user: User | undefined) {
-	window.history.replaceState({}, document.title, window.location.pathname)
+	window.history.replaceState({}, document.title, '/callback')
 }
 
 export function ConfigGate({ children }: Props) {
 	const [ready, setReady] = useState(false)
 
 	useEffect(() => {
-		void loadRuntimeConfig().finally(() => setReady(true))
+		void loadRuntimeConfig().finally(() => {
+			syncApiBaseUrl()
+			setReady(true)
+		})
 	}, [])
 
 	if (!ready) {
