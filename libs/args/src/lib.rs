@@ -12,7 +12,7 @@ pub struct ServerArgs {
         long = "allowed-origins",
         env = "ALLOWED_ORIGINS",
         value_delimiter = ',',
-        default_value = "http://localhost:4000"
+        default_value = "http://localhost:4080"
     )]
     pub allowed_origins: Vec<String>,
 }
@@ -28,6 +28,19 @@ pub struct DatabaseArgs {
         default_value_t = 10
     )]
     pub max_connections: u32,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AuthArgs {
+    /// Client ids whose tokens the API accepts (`azp`). FerrisKey tokens carry
+    /// no API audience, so the client is what scopes a token to this API.
+    #[arg(
+        long = "auth-accepted-clients",
+        env = "AUTH_ACCEPTED_CLIENTS",
+        value_delimiter = ',',
+        default_value = "capitainerie-console"
+    )]
+    pub accepted_clients: Vec<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -65,7 +78,7 @@ mod tests {
     fn defaults_apply_without_flags() {
         let cli = Cli::parse_from(["bin"]);
         assert_eq!(cli.server.port, 4100);
-        assert_eq!(cli.server.allowed_origins, vec!["http://localhost:4000"]);
+        assert_eq!(cli.server.allowed_origins, vec!["http://localhost:4080"]);
         assert_eq!(cli.log.filter, "info");
         assert!(cli.observability.otlp_endpoint.is_none());
     }

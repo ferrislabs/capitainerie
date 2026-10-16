@@ -4,9 +4,12 @@ members = [
     "apps/mcp-kanban",
     "apps/worker",
     "libs/args",
+    "libs/auth",
     "libs/common",
     "libs/core",
     "libs/handlers",
+    "libs/handlers-identity",
+    "libs/macros",
     "libs/telemetry",
 ]
 resolver = "3"
@@ -23,11 +26,17 @@ axum = { version = "0.8.9", features = ["macros"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.6.1", features = ["env", "derive"] }
 dotenvy = "0.15.7"
+mockall = "0.13.1"
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.1", features = ["grpc-tonic"] }
 opentelemetry_sdk = "0.31.0"
+proc-macro2 = "1.0.103"
+quote = "1.0.42"
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+syn = { version = "2.0.110", features = ["full"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "signal"] }
@@ -40,9 +49,12 @@ utoipa-scalar = { version = "0.3.0", features = ["axum"] }
 uuid = { version = "1.19.0", features = ["serde", "v4", "v7"] }
 
 capitainerie-args = { path = "libs/args" }
+capitainerie-auth = { path = "libs/auth" }
 capitainerie-common = { path = "libs/common" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
+capitainerie-handlers-identity = { path = "libs/handlers-identity" }
+capitainerie-macros = { path = "libs/macros" }
 capitainerie-telemetry = { path = "libs/telemetry" }
 
 [workspace.lints.rust]

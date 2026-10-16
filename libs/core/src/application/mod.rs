@@ -1,3 +1,5 @@
+mod organization;
+
 use capitainerie_common::CoreError;
 use sqlx::PgPool;
 

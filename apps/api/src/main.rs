@@ -2,7 +2,8 @@ mod openapi;
 mod router;
 
 use anyhow::Context;
-use capitainerie_args::{DatabaseArgs, LogArgs, ObservabilityArgs, ServerArgs};
+use capitainerie_args::{AuthArgs, DatabaseArgs, LogArgs, ObservabilityArgs, ServerArgs};
+use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
 use capitainerie_core::{CapitainerieUseCase, infrastructure::postgres};
 use capitainerie_handlers::AppState;
 use clap::Parser;
@@ -15,6 +16,8 @@ struct Args {
     server: ServerArgs,
     #[command(flatten)]
     database: DatabaseArgs,
+    #[command(flatten)]
+    auth: AuthArgs,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -33,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
         .context("connecting to postgres")?;
     let state = AppState {
         usecase: CapitainerieUseCase::new(pool),
+        verifier: FerrisKeyVerifier::new(AcceptedClients::new(args.auth.accepted_clients)),
     };
     let app = router::router(state, &args.server.allowed_origins)?;
 

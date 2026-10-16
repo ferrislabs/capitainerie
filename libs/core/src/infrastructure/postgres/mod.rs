@@ -1,5 +1,9 @@
+mod tx;
+
 use capitainerie_common::CoreError;
 use sqlx::{PgPool, postgres::PgPoolOptions};
+
+pub use tx::{SharedTx, with_tx};
 
 pub async fn connect(url: &str, max_connections: u32) -> Result<PgPool, CoreError> {
     PgPoolOptions::new()

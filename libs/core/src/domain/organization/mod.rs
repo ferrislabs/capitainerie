@@ -1,3 +1,6 @@
+pub mod ports;
+pub mod service;
+
 use capitainerie_common::OrganizationId;
 use chrono::{DateTime, Utc};
 use thiserror::Error;
