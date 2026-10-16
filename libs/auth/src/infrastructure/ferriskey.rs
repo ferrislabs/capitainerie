@@ -47,6 +47,7 @@ struct IssuerKeys {
 
 struct Inner {
     accepted: AcceptedClients,
+    audience: Option<String>,
     http: reqwest::Client,
     refresh_interval: Duration,
     cache: RwLock<HashMap<String, IssuerKeys>>,
@@ -59,10 +60,24 @@ pub struct FerrisKeyVerifier {
 
 impl FerrisKeyVerifier {
     pub fn new(accepted: AcceptedClients) -> Self {
-        Self::with_refresh_interval(accepted, DEFAULT_REFRESH_INTERVAL)
+        Self::build(accepted, None, DEFAULT_REFRESH_INTERVAL)
     }
 
     pub fn with_refresh_interval(accepted: AcceptedClients, refresh_interval: Duration) -> Self {
+        Self::build(accepted, None, refresh_interval)
+    }
+
+    /// Also requires `aud` to contain `audience`: the resource indicator the
+    /// console asks for, or the client id a token was exchanged for.
+    pub fn with_audience(accepted: AcceptedClients, audience: impl Into<String>) -> Self {
+        Self::build(accepted, Some(audience.into()), DEFAULT_REFRESH_INTERVAL)
+    }
+
+    fn build(
+        accepted: AcceptedClients,
+        audience: Option<String>,
+        refresh_interval: Duration,
+    ) -> Self {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .build()
@@ -70,6 +85,7 @@ impl FerrisKeyVerifier {
         Self {
             inner: Arc::new(Inner {
                 accepted,
+                audience,
                 http,
                 refresh_interval,
                 cache: RwLock::new(HashMap::new()),
@@ -188,8 +204,16 @@ impl TokenVerifier for FerrisKeyVerifier {
         validation.set_issuer(&[issuer]);
         validation.validate_exp = true;
         validation.leeway = EXPIRY_LEEWAY_SECS;
-        validation.validate_aud = false;
-        validation.set_required_spec_claims(&["exp", "iss", "sub"]);
+        match &self.inner.audience {
+            Some(audience) => {
+                validation.set_audience(&[audience]);
+                validation.set_required_spec_claims(&["exp", "iss", "sub", "aud"]);
+            }
+            None => {
+                validation.validate_aud = false;
+                validation.set_required_spec_claims(&["exp", "iss", "sub"]);
+            }
+        }
 
         let data = jsonwebtoken::decode::<Claims>(token, &key, &validation).map_err(|e| match e
             .kind()

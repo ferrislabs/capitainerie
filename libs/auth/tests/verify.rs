@@ -281,3 +281,21 @@ async fn unreachable_issuer_is_discovery_error() {
         .unwrap_err();
     assert!(matches!(err, AuthError::Discovery(_)), "{err:?}");
 }
+
+#[tokio::test]
+async fn a_required_audience_must_be_present() {
+    let server = start().await;
+    let accepted = || AcceptedClients::new(["capitainerie-web"]);
+    let mut addressed = claims(&server.issuer);
+    addressed["aud"] = json!(["http://api.test"]);
+    let addressed = sign(&addressed, KEY_A_PEM, "kid-a");
+    let elsewhere = sign(&claims(&server.issuer), KEY_A_PEM, "kid-a");
+
+    let verifier = FerrisKeyVerifier::with_audience(accepted(), "http://api.test");
+
+    assert!(verifier.verify(&addressed, &server.issuer).await.is_ok());
+    assert!(matches!(
+        verifier.verify(&elsewhere, &server.issuer).await,
+        Err(AuthError::InvalidToken(_))
+    ));
+}
