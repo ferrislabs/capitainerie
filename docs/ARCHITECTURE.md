@@ -178,9 +178,21 @@ sequenceDiagram
   - ils ne sortent jamais une carte de « Proposé », et ne déplacent jamais une carte vers « Proposé » ou « Rejeté » ;
   - une carte proposée par un agent cite obligatoirement le passage exact du transcript (vérifié caractère par caractère).
 
+## 5 bis. Exécution d'un run (`MeetingPipeline`, `apps/worker`)
+
+- Iggy réveille l'orchestrateur, Postgres décide : un run ne s'exécute qu'une fois réclamé en base (`FOR UPDATE SKIP LOCKED`, `heartbeat_at`). Un balayage toutes les 30 s rattrape les événements perdus et les runs abandonnés : un run `running` sans heartbeat depuis 15 min est repris par un autre worker.
+- Chaque étape est enregistrée dans `run_steps` et validée en base avant la suivante ; aucun appel au modèle ne se fait dans une transaction. Un run repris saute les étapes déjà réussies et réutilise la sortie stockée de l'extraction.
+- Extract : le modèle renvoie des actions typées et des citations ; `locate` les retrouve dans le transcript (espaces, casse et apostrophes tolérés), et la citation stockée est toujours le texte exact du transcript. Une action introuvable est écartée et comptée.
+- Deduplicate : marqué « ignoré » tant que LanceDB n'est pas branché.
+- Write : l'agent Rédacteur n'a qu'un outil, `propose_card(action_index, title, description)`. La provenance, le `run_id` et le jeton viennent du code, jamais du modèle, et une action ne donne qu'une carte.
+- Réessais : 3 tentatives avec backoff pour les erreurs transitoires (modèle ou FerrisKey injoignable) ; un refus ou une sortie invalide échoue tout de suite, avec la raison stockée sur le run.
+- Coût : tokens × prix par million (`LLM_PRICE_*`, 0 pour Ollama), par étape.
+- Timeline : `GET /api/v1/runs/{id}/timeline` (étapes, appels d'outils, décisions du PDP, totaux) ; page `/runs/$runId` dans la console, avec un lien vers la trace Jaeger.
+
 ## 6. Observabilité
 
 - `telemetry` exporte les **spans** en OTLP/gRPC quand `OTLP_ENDPOINT` est défini ; les logs restent sur stderr. Jaeger (A6) n'accepte que des traces. Métriques et logs OTLP arriveront avec un collecteur, si le besoin apparaît : les coûts viennent de DataFusion, pas de métriques OTel.
+- Une seule trace par run, de l'API au MCP en passant par le worker : le `traceparent` voyage dans l'enveloppe Iggy, puis dans l'en-tête HTTP des appels MCP (vérifié : 45 spans sur 3 services pour un run réel).
 - Spans selon les conventions GenAI : `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.tool.name`. Le `trace_id` voyage dans l'enveloppe Iggy, si bien qu'un run forme une seule trace de l'API au MCP.
 - La console lit :
   - **runs en cours, timeline, agents actifs** depuis Postgres (`runs`, `steps`, `pdp_decisions`), en direct via WebSocket ;
@@ -202,7 +214,7 @@ Ces choix ne sont couverts par aucun des repos de référence. Chacun propose de
 | # | Décision | Option 1 | Option 2 | Reco |
 |---|---|---|---|---|
 | A1 | Postgres → Iggy | **Outbox** : événement écrit dans la transaction, un relais publie dans Iggy | Publication directe dans Iggy après le commit | 1 : reprend la règle mestier « un événement existe si et seulement si sa transaction a commité ». Aucun événement n'est perdu si le process meurt entre le commit et la publication. |
-| A2 | Jeton délégué pour un run asynchrone (le jeton user expire en 5 min) | **Grant de délégation FerrisKey** : consentement créé au dépôt, échangé par l'agent autant de fois que nécessaire | Stocker un refresh token `offline_access` chiffré par run | 1, mais **manquant dans FerrisKey** : un jeton échangé ne vit jamais plus longtemps que son jeton d'origine (`exchanged_claims`). Voir `docs/ferriskey-needs.md` Besoin 2. En attendant (dev seulement) : durée de vie des access tokens du realm de démo relevée à 30 min, et échange au dépôt. |
+| A2 | Jeton délégué pour un run asynchrone | **En place (option chiffrée, choix du 2026-10-16)** : au dépôt, l'API échange le jeton de l'utilisateur contre un jeton adressé à l'agent, le chiffre en AES-256-GCM (`DELEGATION_KEY`, données associées `run_id/agent`) dans `run_delegations`, dans la même transaction que le run ; le worker le déchiffre, l'agent l'échange contre un jeton délégué pour le MCP ; la ligne est détruite à la fin du run. | — | Provisoire jusqu'au grant de délégation FerrisKey (`docs/ferriskey-needs.md`, besoin 2). Limite connue : chaque jeton reste borné par la session de l'utilisateur (besoin 5). |
 | A3 | Hébergement du MCP Kanban | **Binaire séparé** `apps/mcp-kanban` | Routes montées dans `apps/api` | 1 : audience distincte et surface réduite, comme `mestier/apps/mcp-server`. |
 | A4 | Embeddings pour LanceDB | **Même endpoint OpenAI-compatible** (`/v1/embeddings`) | Modèle local in-process (`fastembed`) | 1 : aucune nouvelle dépendance, un seul endpoint à opérer. |
 | A5 | Stockage Parquet | **S3-compatible** (RustFS en dev, comme les deux repos) | Volume local | 1 : déjà présent dans la stack Ferrislabs, et adapté à Kubernetes. |

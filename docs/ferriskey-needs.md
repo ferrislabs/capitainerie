@@ -90,6 +90,18 @@ Constatés en écrivant `deploy/ferriskey/terraform` et `scripts/bootstrap-ferri
 3. Il n'y a pas d'API admin pour définir le mot de passe d'un utilisateur. Un environnement local ne peut avoir d'utilisateur qu'en activant l'auto-inscription.
 4. Après « Create Account », la page d'inscription renvoie vers le `redirect_uri` **sans** `code` : le flux OIDC ne se termine pas, et l'utilisateur doit se reconnecter. Un client qui ne s'y attend pas boucle.
 
+## Besoin 5 : un refresh ne doit pas émettre de token qui survit à sa session
+
+**Constat** (2026-10-16, build `sha-ab8a2b8`). Session `95c9fdf1…` créée au login à 19:30:45, `expires_at` = 20:00:45 (durée = `refresh_token_lifetime` du realm). À 19:59:45, le refresh de la console renvoie un access token `exp` = 20:29:45, avec le même `sid`. Ce token passe une vérification JWT classique, mais `verify_token` (`validate_session_binding`) le refuse dès 20:00:45 : « The subject token is missing, invalid, expired or revoked ». L'utilisateur reste connecté dans la console, et ses agents ne peuvent plus agir pour lui.
+
+**Attendu.** Un des deux comportements, documenté :
+1. le refresh borne l'`exp` du nouveau token par l'expiration de la session ;
+2. ou le refresh prolonge la session (fenêtre glissante).
+
+Dans les deux cas, un token émis doit être échangeable pendant toute sa durée de vie. Le message d'erreur de l'échange gagnerait aussi à dire « session expirée ».
+
+**Contournement Capitainerie (local seulement).** `refresh_token_lifetime` = 8 h dans `deploy/ferriskey/terraform`.
+
 ## Hors périmètre
 
 - Provisioning des realms et des clients : l'API admin existante suffit pour le MVP Capitainerie.
