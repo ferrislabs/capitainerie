@@ -6,13 +6,17 @@ use capitainerie_args::{
     AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, ServerArgs,
 };
 use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
+use capitainerie_bus_iggy::IggyArgs;
 use capitainerie_core::{
     CapitainerieUseCase,
     infrastructure::{crypto::SecretCipher, postgres},
 };
 use capitainerie_handlers::{AppState, Delegation};
+use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
 use clap::Parser;
 use tokio::net::TcpListener;
+
+const REALTIME_BACKLOG: usize = 256;
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-api", version)]
@@ -27,6 +31,8 @@ struct Args {
     exchange: ExchangeArgs,
     #[command(flatten)]
     delegation: DelegationArgs,
+    #[command(flatten)]
+    iggy: IggyArgs,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -64,7 +70,10 @@ async fn main() -> anyhow::Result<()> {
         verifier: verifier(args.auth),
         delegation,
     };
-    let app = router::router(state, &args.server.allowed_origins)?;
+    let hub = Hub::new(REALTIME_BACKLOG);
+    consumer::spawn(args.iggy, hub.clone());
+    let realtime = Gateway::new(state.clone(), hub);
+    let app = router::router(state, realtime, &args.server.allowed_origins)?;
 
     let addr = format!("{}:{}", args.server.host, args.server.port);
     let listener = TcpListener::bind(&addr)
@@ -72,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("binding {addr}"))?;
     tracing::info!(%addr, "api listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(capitainerie_telemetry::shutdown_signal())
         .await?;
     Ok(())
 }
@@ -85,11 +94,5 @@ fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
             tracing::warn!("AUTH_AUDIENCE is unset: tokens are accepted whatever their audience");
             FerrisKeyVerifier::new(accepted)
         }
-    }
-}
-
-async fn shutdown_signal() {
-    if let Err(error) = tokio::signal::ctrl_c().await {
-        tracing::error!(%error, "could not listen for the shutdown signal");
     }
 }

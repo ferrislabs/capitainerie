@@ -9,6 +9,7 @@ import {
 	timelineRefetchInterval,
 	useRunTimeline,
 } from '#/domain/runs/hooks/use-run-timeline'
+import { SAFETY_REFETCH_MS } from '#/lib/realtime'
 import { clearAuth, setAuth } from '#/store/auth.store'
 
 function timeline(
@@ -43,6 +44,24 @@ describe('timelineRefetchInterval', () => {
 		expect(timelineRefetchInterval(timeline('failed'))).toBe(false)
 		expect(timelineRefetchInterval(timeline('cancelled'))).toBe(false)
 		expect(timelineRefetchInterval(undefined)).toBe(false)
+	})
+
+	it('slows down to the safety refetch while realtime is connected', () => {
+		expect(timelineRefetchInterval(timeline('running'), 'connected')).toBe(
+			SAFETY_REFETCH_MS,
+		)
+		expect(timelineRefetchInterval(timeline('succeeded'), 'connected')).toBe(
+			false,
+		)
+	})
+
+	it('keeps polling when realtime is degraded or offline', () => {
+		expect(timelineRefetchInterval(timeline('running'), 'degraded')).toBe(
+			TIMELINE_POLL_INTERVAL_MS,
+		)
+		expect(timelineRefetchInterval(timeline('queued'), 'offline')).toBe(
+			TIMELINE_POLL_INTERVAL_MS,
+		)
 	})
 })
 

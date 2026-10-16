@@ -1,6 +1,7 @@
 use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
 use capitainerie_handlers::{AppState, auth::authenticate, health};
+use capitainerie_handlers_realtime::Gateway;
 use tower_http::{
     cors::{AllowHeaders, AllowMethods, CorsLayer},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
@@ -11,7 +12,11 @@ use utoipa_scalar::{Scalar, Servable};
 
 use crate::openapi::ApiDoc;
 
-pub fn router(state: AppState, allowed_origins: &[String]) -> anyhow::Result<Router> {
+pub fn router(
+    state: AppState,
+    realtime: Gateway<AppState>,
+    allowed_origins: &[String],
+) -> anyhow::Result<Router> {
     let origins = allowed_origins
         .iter()
         .map(|origin| {
@@ -29,6 +34,7 @@ pub fn router(state: AppState, allowed_origins: &[String]) -> anyhow::Result<Rou
     Ok(Router::new()
         .merge(protected)
         .merge(health::router())
+        .merge(capitainerie_handlers_realtime::router(realtime))
         .route(
             "/api-docs/openapi.json",
             get(|| async { Json(ApiDoc::openapi()) }),

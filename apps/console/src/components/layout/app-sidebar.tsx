@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Anchor, Bot, KanbanSquare, LogOut, Play } from 'lucide-react'
 import { useAuth } from 'react-oidc-context'
+import { RealtimeIndicator } from '#/components/layout/realtime-indicator'
 import { Button } from '#/components/ui/button'
 import { UserBadgeFeature } from '#/domain/identity/feature/user-badge-feature'
 
@@ -36,6 +37,7 @@ export function AppSidebar() {
 			</nav>
 			<div className="mt-auto flex flex-col gap-3 border-t border-sidebar-border pt-4">
 				<UserBadgeFeature />
+				<RealtimeIndicator />
 				<Button
 					variant="outline"
 					size="sm"

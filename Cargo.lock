@@ -271,6 +271,7 @@ checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
  "axum-macros",
+ "base64 0.22.1",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -289,8 +290,10 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1 0.10.7",
  "sync_wrapper",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -532,10 +535,12 @@ dependencies = [
  "axum",
  "capitainerie-args",
  "capitainerie-auth",
+ "capitainerie-bus-iggy",
  "capitainerie-core",
  "capitainerie-handlers",
  "capitainerie-handlers-cards",
  "capitainerie-handlers-identity",
+ "capitainerie-handlers-realtime",
  "capitainerie-handlers-runs",
  "capitainerie-telemetry",
  "clap",
@@ -673,6 +678,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "capitainerie-handlers-realtime"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "capitainerie-auth",
+ "capitainerie-bus-iggy",
+ "capitainerie-events",
+ "capitainerie-handlers",
+ "chrono",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "capitainerie-handlers-runs"
 version = "0.1.0"
 dependencies = [
@@ -753,6 +778,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

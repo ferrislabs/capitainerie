@@ -12,6 +12,7 @@ members = [
     "libs/handlers",
     "libs/handlers-cards",
     "libs/handlers-identity",
+    "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/macros",
     "libs/runtime-rig",
@@ -54,6 +55,8 @@ serde_json = "1.0.149"
 syn = { version = "2.0.110", features = ["full"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros", "migrate", "json"] }
 thiserror = "2.0.18"
+futures-util = "0.3.34"
+tokio-tungstenite = "0.29.0"
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "signal"] }
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 tracing = "0.1.44"
@@ -72,7 +75,8 @@ capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
-capitainerie-handlers-runs = { path = "libs/handlers-runs" }
+capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
+capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
 capitainerie-runtime-rig = { path = "libs/runtime-rig" }
 capitainerie-telemetry = { path = "libs/telemetry" }

@@ -1,10 +1,13 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { AuthGate } from '#/components/auth-gate'
 import { AppSidebar } from '#/components/layout/app-sidebar'
+import { useRealtime } from '#/hooks/use-realtime'
 
 export const Route = createFileRoute('/_app')({ component: AppLayout })
 
 function AppLayout() {
+	useRealtime()
+
 	return (
 		<AuthGate>
 			<div className="flex min-h-screen">

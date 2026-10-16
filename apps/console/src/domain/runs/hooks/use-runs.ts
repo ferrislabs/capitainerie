@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { tanstackApi } from '#/api'
 import type { Schemas } from '#/api/api.client'
+import { useRealtimeState } from '#/hooks/use-realtime'
+import { type RealtimeState, SAFETY_REFETCH_MS } from '#/lib/realtime'
 
 export const RUNS_PAGE_SIZE = 20
 export const RUNS_POLL_INTERVAL_MS = 3000
@@ -12,14 +14,20 @@ export function hasActiveRun(items: ReadonlyArray<Schemas.RunResponse>) {
 	)
 }
 
+export function runsRefetchInterval(
+	data: Schemas.RunListResponse | undefined,
+	realtime: RealtimeState = 'offline',
+): number | false {
+	if (realtime === 'connected') return SAFETY_REFETCH_MS
+	return data && hasActiveRun(data.items) ? RUNS_POLL_INTERVAL_MS : false
+}
+
 export function useRuns() {
+	const realtime = useRealtimeState()
 	return useQuery({
 		...tanstackApi.get('/api/v1/runs', {
 			query: { limit: RUNS_PAGE_SIZE, offset: 0 },
 		}).queryOptions,
-		refetchInterval: (query) =>
-			query.state.data && hasActiveRun(query.state.data.items)
-				? RUNS_POLL_INTERVAL_MS
-				: false,
+		refetchInterval: (query) => runsRefetchInterval(query.state.data, realtime),
 	})
 }
