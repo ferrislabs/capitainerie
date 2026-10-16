@@ -52,3 +52,15 @@ variable "allow_password_grant" {
   type        = bool
   default     = true
 }
+
+variable "agents" {
+  description = "Agents of the meeting pipeline; each becomes the client capitainerie-agent-<name>."
+  type        = list(string)
+  default     = ["writer"]
+}
+
+variable "api_resource" {
+  description = "Resource indicator (RFC 8707) the console requests tokens for."
+  type        = string
+  default     = "http://localhost:4100"
+}

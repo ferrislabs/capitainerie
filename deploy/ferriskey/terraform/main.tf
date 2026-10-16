@@ -57,3 +57,42 @@ resource "ferriskey_client" "console" {
     for origin in var.console_origins : [origin, "${origin}/", "${origin}/callback"]
   ]))
 }
+
+# Owns the API resource (RFC 8707), so it is a party to console tokens and may
+# exchange them for a token addressed to an agent when a run is queued.
+resource "ferriskey_client" "api" {
+  realm       = ferriskey_realm.organization.name
+  client_id   = "capitainerie-api"
+  name        = "Capitainerie API"
+  client_type = "confidential"
+
+  public_client                = false
+  service_account_enabled      = false
+  direct_access_grants_enabled = false
+}
+
+# The Kanban MCP server: the audience of every delegated agent token.
+resource "ferriskey_client" "mcp" {
+  realm       = ferriskey_realm.organization.name
+  client_id   = "capitainerie-mcp"
+  name        = "Capitainerie Kanban MCP"
+  client_type = "confidential"
+
+  public_client                = false
+  service_account_enabled      = false
+  direct_access_grants_enabled = false
+}
+
+# One client per agent: its own identity, shown as `act` in delegated tokens.
+resource "ferriskey_client" "agent" {
+  for_each = toset(var.agents)
+
+  realm       = ferriskey_realm.organization.name
+  client_id   = "capitainerie-agent-${each.key}"
+  name        = "Capitainerie agent ${each.key}"
+  client_type = "confidential"
+
+  public_client                = false
+  service_account_enabled      = true
+  direct_access_grants_enabled = false
+}

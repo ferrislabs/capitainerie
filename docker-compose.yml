@@ -40,8 +40,10 @@ services:
     volumes:
       - iggydata:/iggy/local_data
 
+  # Pinned to a main build: resource ownership (RFC 8707) and token exchange
+  # policies are not in a FerrisKey release yet (0.9.0 lacks resource-owners).
   ferriskey-migrations:
-    image: ghcr.io/ferriskey/ferriskey-api:latest
+    image: ghcr.io/ferriskey/ferriskey-api:sha-ab8a2b8
     entrypoint: ["sqlx"]
     command: ["migrate", "run", "--source", "/usr/local/src/ferriskey/migrations"]
     environment:
@@ -52,7 +54,7 @@ services:
         condition: service_healthy
 
   ferriskey-api:
-    image: ghcr.io/ferriskey/ferriskey-api:latest
+    image: ghcr.io/ferriskey/ferriskey-api:sha-ab8a2b8
     environment:
       ALLOWED_ORIGINS: http://localhost:4080,http://localhost:4111
       WEBAPP_URL: http://localhost:4111
@@ -68,7 +70,7 @@ services:
         condition: service_completed_successfully
 
   ferriskey-webapp:
-    image: ghcr.io/ferriskey/ferriskey-webapp:latest
+    image: ghcr.io/ferriskey/ferriskey-webapp:sha-ab8a2b8
     environment:
       API_URL: http://localhost:4110
     ports:

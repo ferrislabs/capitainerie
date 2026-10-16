@@ -8,7 +8,7 @@ TF_DIR="${REPO_ROOT}/deploy/ferriskey/terraform"
 FERRISKEY_URL="${FERRISKEY_URL:-http://localhost:4110}"
 ORGANIZATION_NAME="${ORGANIZATION_NAME:-Capitainerie Demo}"
 
-for tool in terraform docker; do
+for tool in terraform docker curl jq; do
     command -v "${tool}" >/dev/null 2>&1 || { echo "❌ ${tool} is required" >&2; exit 1; }
 done
 
@@ -20,6 +20,45 @@ TF_VAR_ferriskey_url="${FERRISKEY_URL}" \
 ISSUER="$(terraform -chdir="${TF_DIR}" output -raw issuer)"
 REALM="$(terraform -chdir="${TF_DIR}" output -raw realm)"
 CONSOLE_CLIENT_ID="$(terraform -chdir="${TF_DIR}" output -raw console_client_id)"
+API_CLIENT_UUID="$(terraform -chdir="${TF_DIR}" output -raw api_client_uuid)"
+API_RESOURCE="$(terraform -chdir="${TF_DIR}" output -raw api_resource)"
+MCP_CLIENT_ID="$(terraform -chdir="${TF_DIR}" output -raw mcp_client_id)"
+AGENT_CLIENTS="$(terraform -chdir="${TF_DIR}" output -json agent_clients)"
+
+# What provider 0.1.0 cannot declare: token exchange, resource ownership and
+# exchange policies, through the admin API. Every call below converges.
+ADMIN_TOKEN="$(curl -fsS -X POST "${FERRISKEY_URL}/realms/master/protocol/openid-connect/token" \
+    -d grant_type=password -d client_id=admin-cli \
+    -d "username=${FERRISKEY_ADMIN_USER:-admin}" -d "password=${FERRISKEY_ADMIN_PASSWORD:-admin}" \
+    | jq -r .access_token)"
+admin() {
+    local method="$1" path="$2" body="${3:-}"
+    curl -fsS -X "${method}" "${FERRISKEY_URL}/realms/${REALM}${path}" \
+        -H "Authorization: Bearer ${ADMIN_TOKEN}" -H 'content-type: application/json' \
+        ${body:+-d "${body}"}
+}
+ensure_policy() {
+    local client_uuid="$1" target="$2" impersonation="$3" delegation="$4"
+    if admin GET "/clients/${client_uuid}/token-exchange-policies" \
+        | jq -e --arg t "${target}" '(if type == "array" then . else .data end)[] | select(.target_audience == $t)' >/dev/null; then
+        return
+    fi
+    admin POST "/clients/${client_uuid}/token-exchange-policies" \
+        "{\"target_audience\":\"${target}\",\"allow_impersonation\":${impersonation},\"allow_delegation\":${delegation}}" >/dev/null
+}
+
+echo "🔁 token exchange: ${API_RESOURCE} owned by capitainerie-api, api -> agents -> ${MCP_CLIENT_ID}"
+admin PUT /settings "{\"allowed_resources\":[\"${API_RESOURCE}\"]}" >/dev/null
+admin PUT /resource-owners "{\"owners\":[{\"uri\":\"${API_RESOURCE}\",\"client_id\":\"${API_CLIENT_UUID}\"}]}" >/dev/null
+admin PATCH "/clients/${API_CLIENT_UUID}" '{"token_exchange_enabled":true}' >/dev/null
+for agent in $(jq -r 'keys[]' <<<"${AGENT_CLIENTS}"); do
+    agent_uuid="$(jq -r --arg a "${agent}" '.[$a]' <<<"${AGENT_CLIENTS}")"
+    admin PATCH "/clients/${agent_uuid}" '{"token_exchange_enabled":true}' >/dev/null
+    # The API turns the user's token into one addressed to the agent...
+    ensure_policy "${API_CLIENT_UUID}" "${agent}" true false
+    # ...which the agent exchanges, as itself, for a delegated MCP token.
+    ensure_policy "${agent_uuid}" "${MCP_CLIENT_ID}" false true
+done
 
 echo "🏢 organization ${REALM} -> ${ISSUER}"
 docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
@@ -37,6 +76,7 @@ cat <<SUMMARY
    Console (apps/console/.env):
      VITE_OIDC_ISSUER_URL=${ISSUER}
      VITE_OIDC_CLIENT_ID=${CONSOLE_CLIENT_ID}
+     VITE_OIDC_RESOURCE=${API_RESOURCE}
 
    Create your account from the console's login page ("Register"): FerrisKey
    has no admin API to set a password, so self-registration is the way in.
