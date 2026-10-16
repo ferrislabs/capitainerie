@@ -1,0 +1,87 @@
+name: capitainerie
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: capitainerie
+      POSTGRES_PASSWORD: capitainerie
+      POSTGRES_DB: capitainerie
+    ports:
+      - "${POSTGRES_PORT:-5442}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capitainerie -d capitainerie"]
+      interval: 5s
+      retries: 10
+      timeout: 5s
+
+  iggy:
+    image: apache/iggy:0.9.0
+    environment:
+      IGGY_ROOT_USERNAME: iggy
+      IGGY_ROOT_PASSWORD: iggy
+      IGGY_TCP_ADDRESS: 0.0.0.0:8090
+      IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+      IGGY_NODE_ADVERTISED_ADDRESS: localhost
+      # Docker Desktop exposes no NUMA topology; the default allocation fails to pin shard memory.
+      IGGY_SHARDING_CPU_ALLOCATION: "1"
+    ports:
+      - "${IGGY_TCP_PORT:-4190}:8090"
+      - "${IGGY_HTTP_PORT:-4191}:3000"
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - iggydata:/iggy/local_data
+
+  ferriskey-migrations:
+    image: ghcr.io/ferriskey/ferriskey-api:latest
+    entrypoint: ["sqlx"]
+    command: ["migrate", "run", "--source", "/usr/local/src/ferriskey/migrations"]
+    environment:
+      DATABASE_URL: postgresql://capitainerie:capitainerie@postgres/ferriskey
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ferriskey-api:
+    image: ghcr.io/ferriskey/ferriskey-api:latest
+    environment:
+      ALLOWED_ORIGINS: http://localhost:4000,http://localhost:4111
+      WEBAPP_URL: http://localhost:4111
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ferriskey
+      DATABASE_USER: capitainerie
+      DATABASE_PASSWORD: capitainerie
+    ports:
+      - "${FERRISKEY_API_PORT:-4110}:3333"
+    depends_on:
+      ferriskey-migrations:
+        condition: service_completed_successfully
+
+  ferriskey-webapp:
+    image: ghcr.io/ferriskey/ferriskey-webapp:latest
+    environment:
+      API_URL: http://localhost:4110
+    ports:
+      - "${FERRISKEY_WEBAPP_PORT:-4111}:80"
+    depends_on:
+      - ferriskey-api
+
+  jaeger:
+    image: jaegertracing/jaeger:2.10.0
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "${OTLP_GRPC_PORT:-4327}:4317"
+
+volumes:
+  pgdata:
+  iggydata:
