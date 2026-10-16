@@ -41,7 +41,7 @@ Même chemin que le middleware HTTP : émetteur lu sans vérification, `organiza
 
 ## Côté serveur
 
-Une tâche par processus API (`consumer::spawn`) consomme les topics `runs` et `cards` d'Iggy avec un groupe `api-realtime-<uuid v7>` propre au processus, et diffuse sur un `tokio::sync::broadcast` borné (256). Un groupe neuf rejoue le topic depuis son début : les enveloppes dont `occurred_at` précède le démarrage du processus sont ignorées, donc seuls les événements postérieurs sont poussés. Un socket en retard reçoit `resync` au lieu d'être déconnecté.
+Une tâche par processus API (`consumer::spawn_until`) s'abonne aux topics `runs` et `cards` d'Iggy avec un groupe éphémère `api-realtime-<uuid v7>` (`IggyEventBus::subscribe_ephemeral`) qui démarre au dernier offset présent : l'historique n'est jamais relu. Les événements sont diffusés sur un `tokio::sync::broadcast` borné (256). Un socket en retard reçoit `resync` au lieu d'être déconnecté. À l'arrêt (SIGINT ou SIGTERM), la tâche ferme ses abonnements, ce qui supprime les groupes ; après un crash, `IggyEventBus::prune_groups(topic, "api-realtime", âge)` nettoie les groupes vides restés derrière.
 
 Si Iggy est injoignable au démarrage (ou le devient), l'API sert toujours le HTTP, la tâche réessaie (1 s à 30 s) et les sockets reçoivent `degraded` ; au retour du bus ils reçoivent `ready` puis `resync`.
 

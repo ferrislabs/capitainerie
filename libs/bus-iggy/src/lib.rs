@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::event::ports::EventBus;
@@ -40,6 +41,8 @@ pub enum BusError {
     Publish(String),
     #[error("iggy poll failed: {0}")]
     Poll(String),
+    #[error("iggy subscription failed: {0}")]
+    Subscribe(String),
     #[error("iggy message decoding failed: {0}")]
     Decode(String),
 }
@@ -55,6 +58,23 @@ pub struct IggyEventBus {
     client: Arc<IggyClient>,
     stream: Identifier,
     partitions: u32,
+    joined: Arc<Mutex<HashSet<(String, String)>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartFrom {
+    Earliest,
+    Latest,
+}
+
+pub struct Subscription {
+    client: Arc<IggyClient>,
+    stream: Identifier,
+    topic: Identifier,
+    group: Identifier,
+    consumer: Consumer,
+    partitions: u32,
+    ephemeral: bool,
 }
 
 impl IggyEventBus {
@@ -92,6 +112,159 @@ impl IggyEventBus {
             client: Arc::new(client),
             stream,
             partitions: args.partitions.max(1),
+            joined: Arc::default(),
+        })
+    }
+
+    async fn ensure_group(
+        &self,
+        topic: &Identifier,
+        group: &Identifier,
+        name: &str,
+    ) -> Result<bool, IggyError> {
+        let created = match self
+            .client
+            .create_consumer_group(&self.stream, topic, name)
+            .await
+        {
+            Ok(_) => true,
+            Err(IggyError::ConsumerGroupNameAlreadyExists(..)) => false,
+            Err(error) => return Err(error),
+        };
+        self.client
+            .join_consumer_group(&self.stream, topic, group)
+            .await?;
+        Ok(created)
+    }
+
+    fn joined_key(topic: Topic, group: &str) -> (String, String) {
+        (topic.as_str().to_owned(), group.to_owned())
+    }
+
+    fn forget(&self, key: &(String, String)) {
+        if let Ok(mut joined) = self.joined.lock() {
+            joined.remove(key);
+        }
+    }
+
+    pub async fn subscribe(
+        &self,
+        topic: Topic,
+        group: &str,
+        start: StartFrom,
+    ) -> Result<Subscription, BusError> {
+        self.open(topic, group, start, false).await
+    }
+
+    /// Fan-out subscription under a unique `<prefix>-<uuid v7>` group that only
+    /// sees messages published from now on. Call [`Subscription::close`] on
+    /// shutdown to delete the group; a crash leaves it behind, and
+    /// [`IggyEventBus::prune_groups`] removes such leftovers.
+    pub async fn subscribe_ephemeral(
+        &self,
+        topic: Topic,
+        prefix: &str,
+    ) -> Result<Subscription, BusError> {
+        let group = format!("{prefix}-{}", Uuid::now_v7());
+        self.open(topic, &group, StartFrom::Latest, true).await
+    }
+
+    /// Deletes the empty groups named `<prefix>-<uuid v7>` on `topic` whose
+    /// uuid is older than `older_than` (left behind by crashed processes).
+    /// Returns how many were deleted.
+    pub async fn prune_groups(
+        &self,
+        topic: Topic,
+        prefix: &str,
+        older_than: Duration,
+    ) -> Result<usize, BusError> {
+        let topic_id = identifier(topic.as_str()).map_err(BusError::Subscribe)?;
+        let groups = self
+            .client
+            .get_consumer_groups(&self.stream, &topic_id)
+            .await
+            .map_err(|e| BusError::Subscribe(e.to_string()))?;
+        let cutoff = SystemTime::now()
+            .checked_sub(older_than)
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .unwrap_or_default();
+        let mut deleted = 0;
+        for group in groups.iter().filter(|g| g.members_count == 0) {
+            let Some(suffix) = group
+                .name
+                .strip_prefix(prefix)
+                .and_then(|s| s.strip_prefix('-'))
+            else {
+                continue;
+            };
+            let Some(created) = Uuid::parse_str(suffix)
+                .ok()
+                .and_then(|u| u.get_timestamp())
+                .map(|t| {
+                    let (secs, nanos) = t.to_unix();
+                    Duration::new(secs, nanos)
+                })
+            else {
+                continue;
+            };
+            if created > cutoff {
+                continue;
+            }
+            let group_id = identifier(&group.name).map_err(BusError::Subscribe)?;
+            self.client
+                .delete_consumer_group(&self.stream, &topic_id, &group_id)
+                .await
+                .map_err(|e| BusError::Subscribe(e.to_string()))?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
+    async fn open(
+        &self,
+        topic: Topic,
+        group: &str,
+        start: StartFrom,
+        ephemeral: bool,
+    ) -> Result<Subscription, BusError> {
+        let fail = |e: String| BusError::Subscribe(e);
+        let topic_id = identifier(topic.as_str()).map_err(fail)?;
+        let group_id = identifier(group).map_err(fail)?;
+        let created = self
+            .ensure_group(&topic_id, &group_id, group)
+            .await
+            .map_err(|e| BusError::Subscribe(e.to_string()))?;
+        let consumer = Consumer::group(group_id.clone());
+        if created && start == StartFrom::Latest {
+            let details = self
+                .client
+                .get_topic(&self.stream, &topic_id)
+                .await
+                .map_err(|e| BusError::Subscribe(e.to_string()))?
+                .ok_or_else(|| {
+                    BusError::Subscribe(format!("topic {} not found", topic.as_str()))
+                })?;
+            for partition in details.partitions.iter().filter(|p| p.messages_count > 0) {
+                self.client
+                    .store_consumer_offset(
+                        &consumer,
+                        &self.stream,
+                        &topic_id,
+                        Some(partition.id),
+                        partition.current_offset,
+                    )
+                    .await
+                    .map_err(|e| BusError::Subscribe(e.to_string()))?;
+            }
+        }
+        Ok(Subscription {
+            client: Arc::clone(&self.client),
+            stream: self.stream.clone(),
+            topic: topic_id,
+            group: group_id,
+            consumer,
+            partitions: self.partitions,
+            ephemeral,
         })
     }
 
@@ -103,19 +276,16 @@ impl IggyEventBus {
     ) -> Result<Vec<EventEnvelope>, BusError> {
         let topic_id = identifier(topic.as_str()).map_err(BusError::Poll)?;
         let group_id = identifier(group).map_err(BusError::Poll)?;
-        tolerate_existing(
-            self.client
-                .create_consumer_group(&self.stream, &topic_id, group)
+        let key = Self::joined_key(topic, group);
+        let cached = self.joined.lock().is_ok_and(|j| j.contains(&key));
+        if !cached {
+            self.ensure_group(&topic_id, &group_id, group)
                 .await
-                .map(drop),
-        )
-        .map_err(|e| BusError::Poll(e.to_string()))?;
-        tolerate_existing(
-            self.client
-                .join_consumer_group(&self.stream, &topic_id, &group_id)
-                .await,
-        )
-        .map_err(|e| BusError::Poll(e.to_string()))?;
+                .map_err(|e| BusError::Poll(e.to_string()))?;
+            if let Ok(mut joined) = self.joined.lock() {
+                joined.insert(key.clone());
+            }
+        }
 
         let consumer = Consumer::group(group_id);
         let mut envelopes = Vec::new();
@@ -124,7 +294,7 @@ impl IggyEventBus {
             if remaining == 0 {
                 break;
             }
-            let polled = self
+            let polled = match self
                 .client
                 .poll_messages(
                     &self.stream,
@@ -136,12 +306,80 @@ impl IggyEventBus {
                     true,
                 )
                 .await
-                .map_err(|e| BusError::Poll(e.to_string()))?;
+            {
+                Ok(polled) => polled,
+                Err(error) => {
+                    self.forget(&key);
+                    return Err(BusError::Poll(error.to_string()));
+                }
+            };
             for message in &polled.messages {
                 envelopes.push(decode(message)?);
             }
         }
         Ok(envelopes)
+    }
+}
+
+impl Subscription {
+    /// Polls every partition in turn and commits each partition's offset once
+    /// its messages are decoded, so delivery is at-least-once. Undecodable
+    /// messages are logged and skipped.
+    pub async fn next_batch(&mut self, count: u32) -> Result<Vec<EventEnvelope>, BusError> {
+        let mut envelopes = Vec::new();
+        for _ in 0..self.partitions {
+            let remaining = count.saturating_sub(envelopes.len() as u32);
+            if remaining == 0 {
+                break;
+            }
+            let polled = self
+                .client
+                .poll_messages(
+                    &self.stream,
+                    &self.topic,
+                    None,
+                    &self.consumer,
+                    &PollingStrategy::next(),
+                    remaining,
+                    false,
+                )
+                .await
+                .map_err(|e| BusError::Poll(e.to_string()))?;
+            let Some(last) = polled.messages.last() else {
+                continue;
+            };
+            for message in &polled.messages {
+                match decode(message) {
+                    Ok(envelope) => envelopes.push(envelope),
+                    Err(error) => tracing::warn!(%error, "skipping an undecodable event"),
+                }
+            }
+            self.client
+                .store_consumer_offset(
+                    &self.consumer,
+                    &self.stream,
+                    &self.topic,
+                    Some(polled.partition_id),
+                    last.header.offset,
+                )
+                .await
+                .map_err(|e| BusError::Poll(e.to_string()))?;
+        }
+        Ok(envelopes)
+    }
+
+    /// Leaves the group, and deletes it when the subscription is ephemeral.
+    pub async fn close(self) -> Result<(), BusError> {
+        let result = if self.ephemeral {
+            self.client
+                .delete_consumer_group(&self.stream, &self.topic, &self.group)
+                .await
+        } else {
+            self.client
+                .leave_consumer_group(&self.stream, &self.topic, &self.group)
+                .await
+        };
+        result.map_err(|e| BusError::Subscribe(e.to_string()))
     }
 }
 
