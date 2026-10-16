@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use capitainerie_common::{CoreError, OrganizationId};
+use capitainerie_common::{CardId, CoreError, OrganizationId};
 use capitainerie_core::{
     AgentDelegation, CapitainerieUseCase, MeetingPipeline, PipelineConfig,
     domain::{
@@ -19,6 +19,10 @@ use capitainerie_core::{
         authorization::Subject,
         delegation::{DelegatedToken, ports::TokenExchanger},
         run::{service::SubmitTranscript, step::Pricing},
+        similarity::{
+            CardVector, Embedding, SimilarCard,
+            ports::{Embedder, VectorStore},
+        },
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
@@ -43,11 +47,50 @@ fn database_url() -> Option<String> {
 struct FakeRuntime {
     extractions: Arc<AtomicUsize>,
     writes: Arc<std::sync::Mutex<Vec<WriteRequest>>>,
+    two_actions: bool,
+}
+
+impl FakeRuntime {
+    fn with_two_located_actions() -> Self {
+        Self {
+            two_actions: true,
+            ..Self::default()
+        }
+    }
+}
+
+fn two_located() -> Vec<ExtractedAction> {
+    vec![
+        ExtractedAction {
+            title: "Migrer la CI vers ARM".into(),
+            description: "Avant fin octobre".into(),
+            quote: "migrer la CI vers les runners ARM".into(),
+            owner: None,
+            due: None,
+        },
+        ExtractedAction {
+            title: "Prendre en charge".into(),
+            description: String::new(),
+            quote: "je m’en charge".into(),
+            owner: Some("Malik".into()),
+            due: None,
+        },
+    ]
 }
 
 impl AgentRuntime for FakeRuntime {
     async fn extract(&self, _transcript: &str) -> Result<Extraction, CoreError> {
         self.extractions.fetch_add(1, Ordering::SeqCst);
+        if self.two_actions {
+            return Ok(Extraction {
+                actions: two_located(),
+                usage: Usage {
+                    model: "fake".into(),
+                    input_tokens: 1_000,
+                    output_tokens: 200,
+                },
+            });
+        }
         Ok(Extraction {
             actions: vec![
                 ExtractedAction {
@@ -75,25 +118,119 @@ impl AgentRuntime for FakeRuntime {
 
     async fn write(&self, request: WriteRequest) -> Result<WriteReport, CoreError> {
         let calls = request
-            .actions
+            .duplicates
             .iter()
-            .map(|action| ToolCall {
+            .map(|duplicate| ToolCall {
+                tool: "comment".into(),
+                succeeded: true,
+                latency_ms: 5,
+                summary: format!("comment on card {}", duplicate.card_id),
+            })
+            .chain(request.actions.iter().map(|action| ToolCall {
                 tool: "create_card".into(),
                 succeeded: true,
                 latency_ms: 5,
                 summary: action.action.title.clone(),
-            })
+            }))
             .collect();
+        let request_has_actions = !request.actions.is_empty();
         self.writes.lock().unwrap().push(request);
-        Ok(WriteReport {
-            tool_calls: calls,
-            usage: Usage {
+        let usage = if request_has_actions {
+            Usage {
                 model: "fake".into(),
                 input_tokens: 500,
                 output_tokens: 100,
-            },
+            }
+        } else {
+            Usage {
+                model: "fake".into(),
+                ..Usage::default()
+            }
+        };
+        Ok(WriteReport {
+            tool_calls: calls,
+            usage,
         })
     }
+}
+
+/// Embeds a text mentioning the CI as `[1]` and any other as `[0]`, 10 tokens each.
+#[derive(Clone, Default)]
+struct FakeEmbedder {
+    calls: Arc<AtomicUsize>,
+}
+
+impl Embedder for FakeEmbedder {
+    async fn embed(&self, texts: &[String]) -> Result<(Vec<Embedding>, Usage), CoreError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let embeddings = texts
+            .iter()
+            .map(|text| Embedding(vec![if text.contains("CI") { 1.0 } else { 0.0 }]))
+            .collect();
+        Ok((
+            embeddings,
+            Usage {
+                model: "fake-embedding".into(),
+                input_tokens: 10 * texts.len() as u64,
+                output_tokens: 0,
+            },
+        ))
+    }
+}
+
+/// Knows one card, found by whatever embeds as `[1]`.
+#[derive(Clone)]
+struct FakeVectors {
+    known: SimilarCard,
+    asked: Arc<std::sync::Mutex<Vec<OrganizationId>>>,
+}
+
+impl FakeVectors {
+    fn knowing(card_id: CardId, score: f32) -> Self {
+        Self {
+            known: SimilarCard {
+                card_id,
+                score,
+                text: "Migrer la CI".into(),
+            },
+            asked: Arc::default(),
+        }
+    }
+}
+
+impl VectorStore for FakeVectors {
+    async fn upsert(&self, _card: CardVector) -> Result<(), CoreError> {
+        Ok(())
+    }
+
+    async fn nearest(
+        &self,
+        organization_id: OrganizationId,
+        embedding: &Embedding,
+        _limit: usize,
+    ) -> Result<Vec<SimilarCard>, CoreError> {
+        self.asked.lock().unwrap().push(organization_id);
+        Ok(if embedding.0[0] > 0.5 {
+            vec![self.known.clone()]
+        } else {
+            Vec::new()
+        })
+    }
+}
+
+fn pipeline_for(
+    usecase: &CapitainerieUseCase,
+    runtime: &FakeRuntime,
+    vectors: &FakeVectors,
+) -> MeetingPipeline<FakeRuntime, FakeExchanger, FakeEmbedder, FakeVectors> {
+    MeetingPipeline::new(
+        usecase.clone(),
+        runtime.clone(),
+        FakeExchanger,
+        FakeEmbedder::default(),
+        vectors.clone(),
+        config(),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -151,6 +288,7 @@ fn config() -> PipelineConfig {
         },
         max_attempts: 1,
         stale_after: Duration::from_secs(600),
+        dedup_threshold: 0.86,
     }
 }
 
@@ -222,7 +360,8 @@ async fn a_run_goes_through_every_step_and_forgets_its_delegation() {
     );
 
     let runtime = FakeRuntime::default();
-    let pipeline = MeetingPipeline::new(usecase.clone(), runtime.clone(), FakeExchanger, config());
+    let vectors = FakeVectors::knowing(CardId::new(), 0.5);
+    let pipeline = pipeline_for(&usecase, &runtime, &vectors);
     pipeline.execute(submitted.run_id, None).await.unwrap();
 
     assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
@@ -230,7 +369,7 @@ async fn a_run_goes_through_every_step_and_forgets_its_delegation() {
         steps(&pool, submitted.run_id.0).await,
         [
             ("extract".to_owned(), "succeeded".to_owned(), 1_400),
-            ("deduplicate".to_owned(), "skipped".to_owned(), 0),
+            ("deduplicate".to_owned(), "succeeded".to_owned(), 10),
             ("write".to_owned(), "succeeded".to_owned(), 700),
         ]
     );
@@ -265,7 +404,7 @@ async fn an_abandoned_run_resumes_after_its_last_finished_step() {
         .unwrap()
         .unwrap();
     assert!(!claimed.resumed);
-    let pipeline = MeetingPipeline::new(usecase.clone(), first.clone(), FakeExchanger, config());
+    let pipeline = pipeline_for(&usecase, &first, &FakeVectors::knowing(CardId::new(), 0.5));
     let busy = pipeline.execute(submitted.run_id, None).await;
     assert!(busy.is_ok(), "a fresh heartbeat keeps others away");
     assert_eq!(first.extractions.load(Ordering::SeqCst), 0);
@@ -291,7 +430,7 @@ async fn an_abandoned_run_resumes_after_its_last_finished_step() {
         .unwrap();
 
     let second = FakeRuntime::default();
-    MeetingPipeline::new(usecase.clone(), second.clone(), FakeExchanger, config())
+    pipeline_for(&usecase, &second, &FakeVectors::knowing(CardId::new(), 0.5))
         .execute(submitted.run_id, None)
         .await
         .unwrap();
@@ -326,11 +465,10 @@ async fn without_a_delegation_the_run_fails_and_says_why() {
         .await
         .unwrap();
 
-    MeetingPipeline::new(
-        usecase.clone(),
-        FakeRuntime::default(),
-        FakeExchanger,
-        config(),
+    pipeline_for(
+        &usecase,
+        &FakeRuntime::default(),
+        &FakeVectors::knowing(CardId::new(), 0.5),
     )
     .execute(submitted.run_id, None)
     .await
@@ -343,4 +481,179 @@ async fn without_a_delegation_the_run_fails_and_says_why() {
         .await
         .unwrap();
     assert!(failure.contains("no delegation"), "{failure}");
+}
+
+async fn dedup_output(pool: &PgPool, run_id: Uuid) -> serde_json::Value {
+    sqlx::query_scalar("SELECT output FROM run_steps WHERE run_id = $1 AND kind = 'deduplicate'")
+        .bind(run_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_duplicate_is_commented_and_only_the_new_action_becomes_a_card() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let existing = CardId::new();
+    let runtime = FakeRuntime::with_two_located_actions();
+    let vectors = FakeVectors::knowing(existing, 0.93);
+
+    pipeline_for(&usecase, &runtime, &vectors)
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    let output = dedup_output(&pool, submitted.run_id.0).await;
+    assert_eq!(output["new"], serde_json::json!([1]));
+    assert_eq!(output["duplicates"][0]["action"], 0);
+    assert_eq!(output["duplicates"][0]["card_id"], existing.0.to_string());
+    assert_eq!(output["embedding_tokens"], 20);
+    assert!(
+        vectors
+            .asked
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|asked| *asked == organization_id)
+    );
+    let writes = runtime.writes.lock().unwrap().clone();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].actions.len(), 1);
+    assert_eq!(writes[0].actions[0].action.title, "Prendre en charge");
+    assert_eq!(writes[0].duplicates.len(), 1);
+    assert_eq!(writes[0].duplicates[0].card_id, existing);
+    assert_eq!(
+        writes[0].duplicates[0].action.action.title,
+        "Migrer la CI vers ARM"
+    );
+    let write_output: serde_json::Value =
+        sqlx::query_scalar("SELECT output FROM run_steps WHERE run_id = $1 AND kind = 'write'")
+            .bind(submitted.run_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let tools: Vec<_> = write_output["tool_calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|call| call["tool"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(tools, ["comment", "create_card"]);
+}
+
+#[tokio::test]
+async fn when_every_action_is_a_duplicate_the_run_only_comments_and_succeeds() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let runtime = FakeRuntime::default();
+    let vectors = FakeVectors::knowing(CardId::new(), 0.99);
+
+    pipeline_for(&usecase, &runtime, &vectors)
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    let writes = runtime.writes.lock().unwrap().clone();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0].actions.is_empty(),
+        "nothing is left for the model"
+    );
+    assert_eq!(writes[0].duplicates.len(), 1);
+    assert_eq!(
+        steps(&pool, submitted.run_id.0).await,
+        [
+            ("extract".to_owned(), "succeeded".to_owned(), 1_400),
+            ("deduplicate".to_owned(), "succeeded".to_owned(), 10),
+            ("write".to_owned(), "succeeded".to_owned(), 0),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_finished_deduplicate_step_is_reused_on_resume() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    usecase
+        .claim_run(submitted.run_id, Utc::now(), None)
+        .await
+        .unwrap()
+        .unwrap();
+    let existing = CardId::new();
+    let action = |title: &str, quote: &str, start: u32, end: u32| {
+        serde_json::json!({
+            "action": { "title": title, "description": "", "quote": quote, "owner": null, "due": null },
+            "start": start, "end": end
+        })
+    };
+    let steps_to_insert = [
+        (
+            0,
+            "extract",
+            serde_json::json!({ "actions": [
+                action("Migrer", "migrer la CI", 17, 29),
+                action("Autre", "je m’en charge", 70, 84)
+            ], "unlocated": [] }),
+        ),
+        (
+            1,
+            "deduplicate",
+            serde_json::json!({
+                "new": [1],
+                "duplicates": [{ "action": 0, "card_id": existing.0, "score": 0.9 }],
+                "embedding_tokens": 20
+            }),
+        ),
+    ];
+    for (seq, kind, output) in steps_to_insert {
+        sqlx::query(
+            "INSERT INTO run_steps (id, run_id, organization_id, seq, kind, status, attempt, output, started_at, finished_at)
+             VALUES ($1, $2, $3, $4, $5, 'succeeded', 1, $6, now(), now())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(submitted.run_id.0)
+        .bind(organization_id.0)
+        .bind(seq)
+        .bind(kind)
+        .bind(output)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    sqlx::query("UPDATE runs SET heartbeat_at = now() - interval '1 hour' WHERE id = $1")
+        .bind(submitted.run_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let runtime = FakeRuntime::default();
+    let embedder = FakeEmbedder::default();
+
+    MeetingPipeline::new(
+        usecase.clone(),
+        runtime.clone(),
+        FakeExchanger,
+        embedder.clone(),
+        FakeVectors::knowing(CardId::new(), 0.0),
+        config(),
+    )
+    .execute(submitted.run_id, None)
+    .await
+    .unwrap();
+
+    assert_eq!(embedder.calls.load(Ordering::SeqCst), 0, "no new embedding");
+    assert_eq!(runtime.extractions.load(Ordering::SeqCst), 0);
+    let writes = runtime.writes.lock().unwrap().clone();
+    assert_eq!(writes[0].actions[0].action.title, "Autre");
+    assert_eq!(writes[0].duplicates[0].card_id, existing);
+    assert_eq!(writes[0].duplicates[0].action.action.title, "Migrer");
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
 }

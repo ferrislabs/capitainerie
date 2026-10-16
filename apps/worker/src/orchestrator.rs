@@ -4,7 +4,11 @@ use capitainerie_bus_iggy::IggyEventBus;
 use capitainerie_common::{CoreError, RunId};
 use capitainerie_core::{
     MeetingPipeline,
-    domain::{agent::ports::AgentRuntime, delegation::ports::TokenExchanger},
+    domain::{
+        agent::ports::AgentRuntime,
+        delegation::ports::TokenExchanger,
+        similarity::ports::{Embedder, VectorStore},
+    },
 };
 use capitainerie_events::{Topic, run::RunQueued};
 use tokio::{
@@ -19,19 +23,21 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 /// Iggy wakes the orchestrator up; Postgres decides. A run is only executed
 /// once claimed in the database, so a lost or duplicated event costs at most
 /// one sweep interval, never a run.
-pub struct Orchestrator<R, X> {
-    pipeline: Arc<MeetingPipeline<R, X>>,
+pub struct Orchestrator<R, X, E, V> {
+    pipeline: Arc<MeetingPipeline<R, X, E, V>>,
     bus: IggyEventBus,
     slots: Arc<Semaphore>,
 }
 
-impl<R, X> Orchestrator<R, X>
+impl<R, X, E, V> Orchestrator<R, X, E, V>
 where
     R: AgentRuntime + 'static,
     X: TokenExchanger + 'static,
+    E: Embedder + 'static,
+    V: VectorStore + 'static,
 {
     pub fn new(
-        pipeline: Arc<MeetingPipeline<R, X>>,
+        pipeline: Arc<MeetingPipeline<R, X, E, V>>,
         bus: IggyEventBus,
         concurrency: usize,
     ) -> Self {

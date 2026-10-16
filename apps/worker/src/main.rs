@@ -1,3 +1,4 @@
+mod indexer;
 mod orchestrator;
 
 use std::{sync::Arc, time::Duration};
@@ -8,18 +9,19 @@ use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
     CapitainerieUseCase, MeetingPipeline, PipelineConfig,
-    domain::run::step::Pricing,
+    domain::{run::step::Pricing, similarity::DEFAULT_DEDUP_THRESHOLD},
     infrastructure::{
         crypto::SecretCipher,
         event::{OutboxRelay, OutboxRelayConfig},
         postgres,
     },
 };
-use capitainerie_runtime_rig::{LlmArgs, RigAgentRuntime};
+use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, OpenAiEmbedder, RigAgentRuntime};
+use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
 
-use crate::orchestrator::Orchestrator;
+use crate::{indexer::CardIndexer, orchestrator::Orchestrator};
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-worker", version)]
@@ -30,6 +32,22 @@ struct Args {
     iggy: IggyArgs,
     #[command(flatten)]
     llm: LlmArgs,
+    #[command(flatten)]
+    embedding: EmbeddingArgs,
+    /// Where the card vectors live: a local directory, or an object store url.
+    #[arg(
+        long = "lancedb-uri",
+        env = "LANCEDB_URI",
+        default_value = "./data/lancedb"
+    )]
+    lancedb_uri: String,
+    /// Cosine similarity from which an action is taken for an existing card.
+    #[arg(
+        long = "dedup-threshold",
+        env = "DEDUP_THRESHOLD",
+        default_value_t = DEFAULT_DEDUP_THRESHOLD
+    )]
+    dedup_threshold: f32,
     #[command(flatten)]
     exchange: ExchangeArgs,
     #[command(flatten)]
@@ -85,10 +103,22 @@ async fn main() -> anyhow::Result<()> {
         .first()
         .cloned()
         .context("PIPELINE_AGENTS names no writer agent")?;
+    let embedder = OpenAiEmbedder::new(&args.llm, &args.embedding)?;
+    let vectors = LanceVectorStore::open(&args.lancedb_uri, args.embedding.dimensions)
+        .await
+        .context("opening the vector store")?;
+    let indexer = CardIndexer::new(
+        usecase.clone(),
+        bus.clone(),
+        embedder.clone(),
+        vectors.clone(),
+    );
     let pipeline = MeetingPipeline::new(
         usecase,
         RigAgentRuntime::new(&args.llm)?,
         args.exchange.exchanger()?,
+        embedder,
+        vectors,
         PipelineConfig {
             writer_agent,
             pricing: Pricing {
@@ -97,19 +127,27 @@ async fn main() -> anyhow::Result<()> {
             },
             max_attempts: 3,
             stale_after: Duration::from_secs(15 * 60),
+            dedup_threshold: args.dedup_threshold,
         },
     );
     let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);
 
     let (stop, stopped) = watch::channel(false);
-    tracing::info!(stream = %args.iggy.stream, model = %args.llm.model, "worker started");
+    tracing::info!(
+        stream = %args.iggy.stream,
+        model = %args.llm.model,
+        embedding_model = %args.embedding.model,
+        lancedb = %args.lancedb_uri,
+        "worker started"
+    );
     let relay = OutboxRelay::new(pool, bus, OutboxRelayConfig::default());
     let mut relay_stop = stopped.clone();
-    let (relayed, orchestrated, ()) = tokio::join!(
+    let (relayed, orchestrated, (), ()) = tokio::join!(
         relay.run(async move {
             let _ = relay_stop.wait_for(|stop| *stop).await;
         }),
-        orchestrator.run(stopped),
+        orchestrator.run(stopped.clone()),
+        indexer.run(stopped),
         async move {
             capitainerie_telemetry::shutdown_signal().await;
             tracing::info!("worker stopping");

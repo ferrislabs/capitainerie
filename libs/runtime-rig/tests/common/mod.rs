@@ -25,6 +25,7 @@ pub const MODEL: &str = "fake-model";
 pub struct FakeLlm {
     responses: Arc<Mutex<VecDeque<Value>>>,
     pub requests: Arc<Mutex<Vec<Value>>>,
+    pub embedding_requests: Arc<Mutex<Vec<Value>>>,
 }
 
 impl FakeLlm {
@@ -32,6 +33,7 @@ impl FakeLlm {
         Self {
             responses: Arc::new(Mutex::new(responses.into())),
             requests: Arc::default(),
+            embedding_requests: Arc::default(),
         }
     }
 
@@ -47,6 +49,7 @@ impl FakeLlm {
     pub async fn serve(&self) -> String {
         let app = Router::new()
             .route("/v1/chat/completions", post(completions))
+            .route("/v1/embeddings", post(embeddings))
             .with_state(self.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -61,6 +64,21 @@ async fn completions(State(llm): State<FakeLlm>, Json(body): Json<Value>) -> Jso
     llm.requests.lock().unwrap().push(body);
     let next = llm.responses.lock().unwrap().pop_front();
     Json(next.unwrap_or_else(|| text_response("done", 0, 0)))
+}
+
+async fn embeddings(State(llm): State<FakeLlm>, Json(body): Json<Value>) -> Json<Value> {
+    let count = body["input"].as_array().map_or(0, Vec::len);
+    llm.embedding_requests.lock().unwrap().push(body);
+    let data: Vec<Value> = (0..count)
+        .rev()
+        .map(|index| json!({"object": "embedding", "index": index, "embedding": [index as f32, 1.0, 0.0, 0.5]}))
+        .collect();
+    Json(json!({
+        "object": "list",
+        "model": MODEL,
+        "data": data,
+        "usage": {"prompt_tokens": 7 * count, "total_tokens": 7 * count},
+    }))
 }
 
 fn envelope(message: Value, finish: &str, input: u64, output: u64) -> Value {
@@ -120,9 +138,18 @@ pub struct CreateCardInput {
     pub provenance: Option<Value>,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CommentInput {
+    pub card_id: String,
+    pub body: String,
+    pub run_id: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct FakeMcp {
     pub calls: Arc<Mutex<Vec<RecordedCall>>>,
+    pub comments: Arc<Mutex<Vec<RecordedCall>>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -160,6 +187,38 @@ impl FakeMcp {
             json!({"id": "card-1", "title": input.title}).to_string(),
         )]))
     }
+
+    #[tool(description = "Comment on a card.")]
+    async fn comment(
+        &self,
+        Parameters(input): Parameters<CommentInput>,
+        Extension(parts): Extension<Parts>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let header = |name: &str| {
+            parts
+                .headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned)
+        };
+        self.comments.lock().unwrap().push(RecordedCall {
+            arguments: json!({
+                "card_id": input.card_id,
+                "body": input.body,
+                "run_id": input.run_id,
+            }),
+            authorization: header("authorization"),
+            traceparent: header("traceparent"),
+        });
+        if input.body.contains("REFUSE") {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "forbidden: cannot comment",
+            )]));
+        }
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            json!({"id": "comment-1", "card_id": input.card_id, "body": input.body}).to_string(),
+        )]))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -173,6 +232,7 @@ impl FakeMcp {
     pub async fn serve() -> (Self, String) {
         let fake = Self {
             calls: Arc::default(),
+            comments: Arc::default(),
             tool_router: Self::tool_router(),
         };
         let handler = fake.clone();
@@ -196,6 +256,10 @@ impl FakeMcp {
 
     pub fn recorded(&self) -> Vec<RecordedCall> {
         self.calls.lock().unwrap().clone()
+    }
+
+    pub fn recorded_comments(&self) -> Vec<RecordedCall> {
+        self.comments.lock().unwrap().clone()
     }
 }
 

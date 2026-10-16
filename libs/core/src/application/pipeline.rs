@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use capitainerie_common::{CoreError, RunId, StepId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, StepId};
 use capitainerie_events::run::{RunFinished, RunStarted, StepFinished};
 use capitainerie_macros::transactional;
 use chrono::{DateTime, Utc};
@@ -10,7 +10,8 @@ use tracing::Instrument;
 use super::CapitainerieUseCase;
 use crate::{
     domain::{
-        agent::{LocatedAction, SecretToken, WriteRequest, ports::AgentRuntime},
+        agent::{DuplicateAction, LocatedAction, SecretToken, WriteRequest, ports::AgentRuntime},
+        card::{Card, ports::CardRepository},
         delegation::ports::{DelegationVault, TokenExchanger},
         event::ports::EventEmitter,
         organization::ports::OrganizationRepository,
@@ -19,6 +20,10 @@ use crate::{
             locate::locate,
             ports::{RunRepository, StepRepository},
             step::{Pricing, Step, StepStatus, WriteOutput},
+        },
+        similarity::{
+            DedupOutput, action_text, classify,
+            ports::{Embedder, VectorStore},
         },
         transcript::{Transcript, ports::TranscriptRepository},
     },
@@ -43,6 +48,8 @@ pub struct PipelineConfig {
     pub max_attempts: u32,
     /// A running run whose heartbeat is older is considered abandoned.
     pub stale_after: Duration,
+    /// Cosine similarity from which an action is the same task as a card.
+    pub dedup_threshold: f32,
 }
 
 impl CapitainerieUseCase {
@@ -165,6 +172,38 @@ impl CapitainerieUseCase {
         run_repository.pending(stale_before, limit).await
     }
 
+    /// Reads a card for the search index. This is the system indexing every
+    /// card of every organization, not a user acting: there is no subject to
+    /// authorize, so it deliberately skips the PDP. The organization still
+    /// scopes the read.
+    #[transactional(card)]
+    pub async fn card_for_index(
+        &self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> Result<Option<Card>, CoreError> {
+        let mut card_repository = card_repository;
+        card_repository.find(organization_id, id).await
+    }
+
+    /// Every card of an organization, for the search index; see `card_for_index`.
+    #[transactional(card)]
+    pub async fn cards_for_index(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<Card>, CoreError> {
+        let mut card_repository = card_repository;
+        card_repository.list(organization_id).await
+    }
+
+    pub async fn organizations_for_index(&self) -> Result<Vec<OrganizationId>, CoreError> {
+        sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM organizations")
+            .fetch_all(&self.pool)
+            .await
+            .map(|ids| ids.into_iter().map(OrganizationId).collect())
+            .map_err(|error| CoreError::Database(error.to_string()))
+    }
+
     #[transactional()]
     pub async fn delegation_for(
         &self,
@@ -179,10 +218,12 @@ impl CapitainerieUseCase {
 
 /// Extract → Deduplicate → Write, one step at a time, each committed before
 /// the next starts. Model calls never run inside a database transaction.
-pub struct MeetingPipeline<R, X> {
+pub struct MeetingPipeline<R, X, E, V> {
     usecase: CapitainerieUseCase,
     runtime: R,
     exchanger: X,
+    embedder: E,
+    vectors: V,
     config: PipelineConfig,
 }
 
@@ -193,17 +234,21 @@ struct ExtractOutput {
     unlocated: Vec<String>,
 }
 
-impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
+impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPipeline<R, X, E, V> {
     pub fn new(
         usecase: CapitainerieUseCase,
         runtime: R,
         exchanger: X,
+        embedder: E,
+        vectors: V,
         config: PipelineConfig,
     ) -> Self {
         Self {
             usecase,
             runtime,
             exchanger,
+            embedder,
+            vectors,
             config,
         }
     }
@@ -261,24 +306,29 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
     }
 
     async fn run_steps(&self, context: &RunContext) -> Result<(), CoreError> {
-        let mut actions: Option<Vec<LocatedAction>> = None;
+        let mut actions: Vec<LocatedAction> = Vec::new();
+        let mut dedup: Option<DedupOutput> = None;
         for (index, kind) in context.run.pipeline.iter().enumerate() {
             let seq = i32::try_from(index).unwrap_or(i32::MAX);
             if let Some(done) = context.steps.iter().find(|step| {
                 step.seq == seq
                     && matches!(step.status, StepStatus::Succeeded | StepStatus::Skipped)
             }) {
-                if *kind == StepKind::Extract {
-                    actions = Some(restore_actions(done)?);
+                match kind {
+                    StepKind::Extract => actions = restore_actions(done)?,
+                    StepKind::Deduplicate => dedup = restore_dedup(done),
+                    StepKind::Write => {}
                 }
                 continue;
             }
             match kind {
-                StepKind::Extract => actions = Some(self.extract(context, seq).await?),
-                StepKind::Deduplicate => self.skip_deduplicate(context, seq).await?,
+                StepKind::Extract => actions = self.extract(context, seq).await?,
+                StepKind::Deduplicate => {
+                    dedup = Some(self.deduplicate(context, seq, &actions).await?)
+                }
                 StepKind::Write => {
-                    let located = actions.clone().unwrap_or_default();
-                    self.write(context, seq, located).await?;
+                    let (new, duplicates) = split_actions(&actions, dedup.as_ref());
+                    self.write(context, seq, new, duplicates).await?;
                 }
             }
         }
@@ -414,30 +464,67 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
         }
     }
 
-    async fn skip_deduplicate(&self, context: &RunContext, seq: i32) -> Result<(), CoreError> {
+    #[tracing::instrument(name = "step deduplicate", skip_all, fields(seq, actions = actions.len()))]
+    async fn deduplicate(
+        &self,
+        context: &RunContext,
+        seq: i32,
+        actions: &[LocatedAction],
+    ) -> Result<DedupOutput, CoreError> {
         let step = self.new_step(context, seq, StepKind::Deduplicate, None, 1);
-        let output =
-            json!({ "reason": "deduplication against existing cards (LanceDB) is not wired yet" });
-        self.finish_step(
-            context,
-            step,
-            Instant::now(),
-            Ok((output, Default::default(), StepStatus::Skipped)),
-        )
-        .await
-        .map(|_| ())
+        if actions.is_empty() {
+            let output = json!({ "reason": "no action item in the transcript" });
+            self.finish_step(
+                context,
+                step,
+                Instant::now(),
+                Ok((output, Default::default(), StepStatus::Skipped)),
+            )
+            .await?;
+            return Ok(DedupOutput {
+                new: Vec::new(),
+                duplicates: Vec::new(),
+                embedding_tokens: 0,
+            });
+        }
+        self.usecase
+            .record_step(context.run.clone(), step.clone())
+            .await?;
+        let started = Instant::now();
+        let result = self
+            .with_retries(|_| {
+                find_duplicates(
+                    &self.embedder,
+                    &self.vectors,
+                    context.run.organization_id,
+                    actions,
+                    self.config.dedup_threshold,
+                )
+            })
+            .await
+            .and_then(|(output, usage)| {
+                serde_json::to_value(&output)
+                    .map(|value| (value, usage, StepStatus::Succeeded))
+                    .map_err(|error| CoreError::Internal(format!("encoding the dedup: {error}")))
+            });
+        let step = self.finish_step(context, step, started, result).await?;
+        match step.status {
+            StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
+            _ => Ok(restore_dedup(&step).unwrap_or_else(|| all_new(actions.len()))),
+        }
     }
 
-    #[tracing::instrument(name = "step write", skip_all, fields(seq, actions = actions.len()))]
+    #[tracing::instrument(name = "step write", skip_all, fields(seq, actions = actions.len(), duplicates = duplicates.len()))]
     async fn write(
         &self,
         context: &RunContext,
         seq: i32,
         actions: Vec<LocatedAction>,
+        duplicates: Vec<DuplicateAction>,
     ) -> Result<(), CoreError> {
         let writer = self.config.writer_agent.clone();
         let step = self.new_step(context, seq, StepKind::Write, Some(writer.clone()), 1);
-        if actions.is_empty() {
+        if actions.is_empty() && duplicates.is_empty() {
             let output = json!({ "reason": "no action item in the transcript" });
             self.finish_step(
                 context,
@@ -452,7 +539,9 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
-        let result = self.write_attempts(context, &writer, actions).await;
+        let result = self
+            .write_attempts(context, &writer, actions, duplicates)
+            .await;
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
@@ -465,6 +554,7 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
         context: &RunContext,
         writer: &str,
         actions: Vec<LocatedAction>,
+        duplicates: Vec<DuplicateAction>,
     ) -> Result<(serde_json::Value, crate::domain::agent::Usage, StepStatus), CoreError> {
         let delegation = self
             .usecase
@@ -491,13 +581,14 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
                         run_id: context.run.id,
                         transcript_id: context.transcript.id,
                         actions: actions.clone(),
+                        duplicates: duplicates.clone(),
                         mcp_token: SecretToken::new(mcp_token.token.expose()),
                         traceparent: capitainerie_telemetry::current_traceparent(),
                     })
                     .await
             })
             .await?;
-        let created = report
+        let succeeded = report
             .tool_calls
             .iter()
             .filter(|call| call.succeeded)
@@ -506,10 +597,11 @@ impl<R: AgentRuntime, X: TokenExchanger> MeetingPipeline<R, X> {
             tool_calls: report.tool_calls,
         })
         .map_err(|error| CoreError::Internal(format!("encoding the write report: {error}")))?;
-        if created == 0 {
+        if !write_succeeded(succeeded) {
             return Err(CoreError::Internal(format!(
-                "the writer created no card for {} action(s): {output}",
-                actions.len()
+                "the writer created no card and left no comment for {} new and {} repeated action(s): {output}",
+                actions.len(),
+                duplicates.len()
             )));
         }
         Ok((output, report.usage, StepStatus::Succeeded))
@@ -523,4 +615,220 @@ fn restore_actions(step: &Step) -> Result<Vec<LocatedAction>, CoreError> {
     serde_json::from_value::<ExtractOutput>(output.clone())
         .map(|output| output.actions)
         .map_err(|error| CoreError::Internal(format!("decoding a stored extraction: {error}")))
+}
+
+/// The write step has something to do whenever it is called (it is skipped
+/// otherwise), so it succeeded only if at least one tool call went through: a
+/// card created, or a comment left on the card an action repeated.
+fn write_succeeded(successful_tool_calls: usize) -> bool {
+    successful_tool_calls > 0
+}
+
+async fn find_duplicates<E: Embedder, V: VectorStore>(
+    embedder: &E,
+    vectors: &V,
+    organization_id: OrganizationId,
+    actions: &[LocatedAction],
+    threshold: f32,
+) -> Result<(DedupOutput, crate::domain::agent::Usage), CoreError> {
+    let texts: Vec<String> = actions.iter().map(action_text).collect();
+    let (embeddings, usage) = embedder.embed(&texts).await?;
+    if embeddings.len() != actions.len() {
+        return Err(CoreError::Internal(format!(
+            "the embedder returned {} vectors for {} texts",
+            embeddings.len(),
+            actions.len()
+        )));
+    }
+    let mut neighbours = Vec::with_capacity(embeddings.len());
+    for embedding in &embeddings {
+        neighbours.push(vectors.nearest(organization_id, embedding, 3).await?);
+    }
+    let output = classify(&neighbours, threshold, usage.input_tokens);
+    Ok((output, usage))
+}
+
+fn all_new(count: usize) -> DedupOutput {
+    DedupOutput {
+        new: (0..count).collect(),
+        duplicates: Vec::new(),
+        embedding_tokens: 0,
+    }
+}
+
+fn restore_dedup(step: &Step) -> Option<DedupOutput> {
+    step.output
+        .as_ref()
+        .and_then(|output| serde_json::from_value::<DedupOutput>(output.clone()).ok())
+}
+
+fn split_actions(
+    actions: &[LocatedAction],
+    dedup: Option<&DedupOutput>,
+) -> (Vec<LocatedAction>, Vec<DuplicateAction>) {
+    let Some(dedup) = dedup else {
+        return (actions.to_vec(), Vec::new());
+    };
+    let new = dedup
+        .new
+        .iter()
+        .filter_map(|&index| actions.get(index).cloned())
+        .collect();
+    let duplicates = dedup
+        .duplicates
+        .iter()
+        .filter_map(|found| {
+            actions.get(found.action).map(|action| DuplicateAction {
+                action: action.clone(),
+                card_id: found.card_id,
+                score: found.score,
+            })
+        })
+        .collect();
+    (new, duplicates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{
+        agent::{ExtractedAction, Usage},
+        similarity::{
+            DuplicateMatch, Embedding, SimilarCard,
+            ports::{MockEmbedder, MockVectorStore},
+        },
+    };
+
+    fn located(title: &str) -> LocatedAction {
+        LocatedAction {
+            action: ExtractedAction {
+                title: title.into(),
+                description: String::new(),
+                quote: "q".into(),
+                owner: None,
+                due: None,
+            },
+            start: 0,
+            end: 1,
+        }
+    }
+
+    #[test]
+    fn the_write_succeeds_on_one_card_or_one_comment_and_fails_on_none() {
+        assert!(write_succeeded(1));
+        assert!(write_succeeded(3));
+        assert!(!write_succeeded(0));
+    }
+
+    #[test]
+    fn actions_split_into_new_and_duplicates() {
+        let actions = [located("a"), located("b"), located("c")];
+        let card = CardId::new();
+        let dedup = DedupOutput {
+            new: vec![0, 2],
+            duplicates: vec![DuplicateMatch {
+                action: 1,
+                card_id: card,
+                score: 0.9,
+            }],
+            embedding_tokens: 0,
+        };
+        let (new, duplicates) = split_actions(&actions, Some(&dedup));
+        assert_eq!(new, [located("a"), located("c")]);
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].action, located("b"));
+        assert_eq!(duplicates[0].card_id, card);
+    }
+
+    #[test]
+    fn without_a_dedup_every_action_is_new() {
+        let (new, duplicates) = split_actions(&[located("a")], None);
+        assert_eq!(new.len(), 1);
+        assert!(duplicates.is_empty());
+    }
+
+    #[test]
+    fn a_skipped_dedup_output_restores_to_nothing() {
+        let skipped = serde_json::json!({ "reason": "no action item in the transcript" });
+        assert!(serde_json::from_value::<DedupOutput>(skipped).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_close_card_makes_a_duplicate_and_a_far_one_a_new_action() {
+        let close = SimilarCard {
+            card_id: CardId::new(),
+            score: 0.93,
+            text: String::new(),
+        };
+        let far = SimilarCard {
+            card_id: CardId::new(),
+            score: 0.4,
+            text: String::new(),
+        };
+        let mut embedder = MockEmbedder::new();
+        embedder.expect_embed().returning(|texts| {
+            let embeddings = texts
+                .iter()
+                .enumerate()
+                .map(|(index, _)| Embedding(vec![index as f32]))
+                .collect();
+            Box::pin(std::future::ready(Ok((
+                embeddings,
+                Usage {
+                    model: "emb".into(),
+                    input_tokens: 12,
+                    output_tokens: 0,
+                },
+            ))))
+        });
+        let mut vectors = MockVectorStore::new();
+        let (close_card, far_card) = (close.clone(), far.clone());
+        vectors
+            .expect_nearest()
+            .times(2)
+            .returning(move |_, embedding, limit| {
+                assert_eq!(limit, 3);
+                let found = if embedding.0[0] == 0.0 {
+                    vec![close_card.clone()]
+                } else {
+                    vec![far_card.clone()]
+                };
+                Box::pin(std::future::ready(Ok(found)))
+            });
+
+        let (output, usage) = find_duplicates(
+            &embedder,
+            &vectors,
+            OrganizationId::new(),
+            &[located("a"), located("b")],
+            0.86,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.new, [1]);
+        assert_eq!(output.duplicates[0].action, 0);
+        assert_eq!(output.duplicates[0].card_id, close.card_id);
+        assert_eq!(output.embedding_tokens, 12);
+        assert_eq!(usage.model, "emb");
+    }
+
+    #[tokio::test]
+    async fn a_wrong_number_of_vectors_is_an_error() {
+        let mut embedder = MockEmbedder::new();
+        embedder
+            .expect_embed()
+            .returning(|_| Box::pin(std::future::ready(Ok((Vec::new(), Usage::default())))));
+        let vectors = MockVectorStore::new();
+        let error = find_duplicates(
+            &embedder,
+            &vectors,
+            OrganizationId::new(),
+            &[located("a")],
+            0.86,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, CoreError::Internal(_)));
+    }
 }

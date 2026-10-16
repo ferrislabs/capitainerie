@@ -31,3 +31,22 @@ pub struct LlmArgs {
     )]
     pub mcp_url: String,
 }
+
+#[derive(Debug, Clone, clap::Args)]
+pub struct EmbeddingArgs {
+    #[arg(
+        id = "embedding_model",
+        long = "embedding-model",
+        env = "EMBEDDING_MODEL",
+        default_value = "bge-m3"
+    )]
+    pub model: String,
+
+    #[arg(
+        id = "embedding_dimensions",
+        long = "embedding-dimensions",
+        env = "EMBEDDING_DIMENSIONS",
+        default_value_t = 1024
+    )]
+    pub dimensions: usize,
+}

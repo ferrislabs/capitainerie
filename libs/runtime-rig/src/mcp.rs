@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use capitainerie_common::{CoreError, RunId, TranscriptId};
+use capitainerie_common::{CardId, CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{LocatedAction, SecretToken};
 use http::{HeaderName, HeaderValue};
 use rmcp::{
@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 use crate::usage::truncate_chars;
 
 pub(crate) const CREATE_CARD: &str = "create_card";
+pub(crate) const COMMENT: &str = "comment";
 pub(crate) const SUMMARY_MAX_CHARS: usize = 300;
 
 pub(crate) struct McpSession {
@@ -79,6 +80,14 @@ pub(crate) fn create_card_arguments(
     arguments
 }
 
+pub(crate) fn comment_arguments(card_id: CardId, run_id: RunId, body: &str) -> Map<String, Value> {
+    let mut arguments = Map::new();
+    arguments.insert("card_id".into(), json!(card_id.0.to_string()));
+    arguments.insert("body".into(), json!(body));
+    arguments.insert("run_id".into(), json!(run_id.0.to_string()));
+    arguments
+}
+
 pub(crate) struct CardOutcome {
     pub succeeded: bool,
     pub summary: String,
@@ -88,7 +97,15 @@ pub(crate) async fn call_create_card(
     peer: &Peer<RoleClient>,
     arguments: Map<String, Value>,
 ) -> CardOutcome {
-    let request = CallToolRequestParams::new(CREATE_CARD).with_arguments(arguments);
+    call_tool(peer, CREATE_CARD, arguments).await
+}
+
+pub(crate) async fn call_tool(
+    peer: &Peer<RoleClient>,
+    tool: &'static str,
+    arguments: Map<String, Value>,
+) -> CardOutcome {
+    let request = CallToolRequestParams::new(tool).with_arguments(arguments);
     match peer.call_tool(request).await {
         Ok(result) => match serde_json::to_value(&result) {
             Ok(value) => outcome_of(&value),
@@ -169,6 +186,17 @@ mod tests {
             })
         );
         assert_eq!(arguments.len(), 4);
+    }
+
+    #[test]
+    fn comment_arguments_name_the_card_and_the_run() {
+        let card = CardId(Uuid::from_u128(3));
+        let run = RunId(Uuid::from_u128(1));
+        let arguments = comment_arguments(card, run, "salut");
+        assert_eq!(arguments["card_id"], card.0.to_string());
+        assert_eq!(arguments["run_id"], run.0.to_string());
+        assert_eq!(arguments["body"], "salut");
+        assert_eq!(arguments.len(), 3);
     }
 
     #[test]

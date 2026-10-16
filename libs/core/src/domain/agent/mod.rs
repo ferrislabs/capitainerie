@@ -1,6 +1,6 @@
 pub mod ports;
 
-use capitainerie_common::{RunId, TranscriptId};
+use capitainerie_common::{CardId, RunId, TranscriptId};
 
 /// A bearer token that never shows up in `Debug` output or logs.
 #[derive(Clone, PartialEq, Eq)]
@@ -56,11 +56,23 @@ pub struct Extraction {
     pub usage: Usage,
 }
 
+/// An action the meeting mentioned again, found to be an existing card.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DuplicateAction {
+    pub action: LocatedAction,
+    pub card_id: CardId,
+    pub score: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct WriteRequest {
     pub run_id: RunId,
     pub transcript_id: TranscriptId,
+    /// Only the new actions: the writer turns these into cards.
     pub actions: Vec<LocatedAction>,
+    /// Actions that already are a card: the code comments on that card, the
+    /// model is not involved.
+    pub duplicates: Vec<DuplicateAction>,
     /// Delegated token addressed to the Kanban MCP (`sub` = user, `act` = agent).
     pub mcp_token: SecretToken,
     /// W3C `traceparent` to forward to the MCP server.

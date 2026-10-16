@@ -5,7 +5,9 @@ use std::{
 };
 
 use capitainerie_common::{CoreError, RunId, TranscriptId};
-use capitainerie_core::domain::agent::{LocatedAction, ToolCall, WriteReport, WriteRequest};
+use capitainerie_core::domain::agent::{
+    DuplicateAction, LocatedAction, ToolCall, WriteReport, WriteRequest,
+};
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
     DynModel,
@@ -17,8 +19,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tracing::{Instrument, field, info_span};
 
-use crate::mcp::{CREATE_CARD, McpSession, call_create_card, create_card_arguments};
-use crate::usage::usage_of;
+use crate::mcp::{
+    COMMENT, CREATE_CARD, McpSession, call_create_card, call_tool, comment_arguments,
+    create_card_arguments,
+};
+use crate::usage::{truncate_chars, usage_of};
 
 pub(crate) const AGENT_NAME: &str = "writer";
 const TOOL_NAME: &str = "propose_card";
@@ -231,13 +236,53 @@ pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
     listing
 }
 
+const QUOTE_MAX_CHARS: usize = 500;
+
+pub(crate) fn duplicate_comment(request: &WriteRequest, duplicate: &DuplicateAction) -> String {
+    format!(
+        "Mentionné à nouveau dans la réunion du transcript {} : “{}”",
+        request.transcript_id,
+        truncate_chars(&duplicate.action.action.quote, QUOTE_MAX_CHARS)
+    )
+}
+
+async fn comment_duplicates(peer: &Peer<RoleClient>, request: &WriteRequest) -> Vec<ToolCall> {
+    let mut calls = Vec::with_capacity(request.duplicates.len());
+    for duplicate in &request.duplicates {
+        let span = info_span!(
+            "execute_tool",
+            otel.name = format!("execute_tool {COMMENT}"),
+            gen_ai.operation.name = "execute_tool",
+            gen_ai.tool.name = COMMENT,
+        );
+        let arguments = comment_arguments(
+            duplicate.card_id,
+            request.run_id,
+            &duplicate_comment(request, duplicate),
+        );
+        let started = Instant::now();
+        let outcome = call_tool(peer, COMMENT, arguments).instrument(span).await;
+        calls.push(ToolCall {
+            tool: COMMENT.to_owned(),
+            succeeded: outcome.succeeded,
+            latency_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            summary: if outcome.succeeded {
+                format!("comment on card {}", duplicate.card_id)
+            } else {
+                outcome.summary
+            },
+        });
+    }
+    calls
+}
+
 pub(crate) async fn run(
     model: DynModel<Completion>,
     model_name: &str,
     mcp_url: &str,
     request: WriteRequest,
 ) -> Result<WriteReport, CoreError> {
-    if request.actions.is_empty() {
+    if request.actions.is_empty() && request.duplicates.is_empty() {
         return Ok(WriteReport {
             tool_calls: Vec::new(),
             usage: usage_of(model_name, &Default::default()),
@@ -254,6 +299,14 @@ pub(crate) async fn run(
         let session =
             McpSession::connect(mcp_url, &request.mcp_token, request.traceparent.as_deref())
                 .await?;
+        let mut comments = comment_duplicates(&session.peer(), &request).await;
+        if request.actions.is_empty() {
+            session.close().await;
+            return Ok(WriteReport {
+                tool_calls: comments,
+                usage: usage_of(model_name, &Default::default()),
+            });
+        }
         let max_turns = request.actions.len() + 3;
         let listing = actions_listing(&request.actions);
         let tool = ProposeCard::new(
@@ -282,8 +335,9 @@ pub(crate) async fn run(
                 )));
             }
         };
+        comments.extend(tool.recorded());
         Ok(WriteReport {
-            tool_calls: tool.recorded(),
+            tool_calls: comments,
             usage,
         })
     }

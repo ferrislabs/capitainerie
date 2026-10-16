@@ -1,0 +1,23 @@
+[package]
+name = "capitainerie-vector-lancedb"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+futures-util.workspace = true
+lancedb = { workspace = true, features = ["remote"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

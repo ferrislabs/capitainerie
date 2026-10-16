@@ -15,10 +15,16 @@ capitainerie-core.workspace = true
 capitainerie-events.workspace = true
 capitainerie-runtime-rig.workspace = true
 capitainerie-telemetry.workspace = true
+capitainerie-vector-lancedb.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+capitainerie-core = { workspace = true, features = ["mock"] }
 
 [lints]
 workspace = true
