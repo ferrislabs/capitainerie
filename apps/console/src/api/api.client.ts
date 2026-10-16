@@ -10,6 +10,24 @@ export namespace Schemas {
     subject: string;
     username?: (string | null) | undefined;
   };
+  export type RunId = string;
+  export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  export type TranscriptId = string;
+  export type RunResponse = {
+    created_at: string;
+    failure?: (string | null) | undefined;
+    finished_at?: (string | null) | undefined;
+    id: RunId;
+    initiated_by: string;
+    pipeline: Array<string>;
+    started_at?: (string | null) | undefined;
+    status: RunStatusResponse;
+    transcript_id: TranscriptId;
+    transcript_title: string;
+  };
+  export type RunListResponse = { items: Array<RunResponse>; total: number };
+  export type SubmitTranscriptRequest = { body: string; title: string };
+  export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
 
   // </Schemas>
 }
@@ -23,6 +41,38 @@ export namespace Endpoints {
     requestFormat: "json";
     parameters: never;
     responses: { 200: Schemas.MeResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type get_ListRuns = {
+    method: "GET";
+    path: "/api/v1/runs";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ limit: number; offset: number }>;
+    };
+    responses: { 200: Schemas.RunListResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type get_GetRun = {
+    method: "GET";
+    path: "/api/v1/runs/{run_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { run_id: string };
+    };
+    responses: { 200: Schemas.RunResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
+  };
+  export type post_SubmitTranscript = {
+    method: "POST";
+    path: "/api/v1/transcripts";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.SubmitTranscriptRequest;
+    };
+    responses: {
+      202: Schemas.SubmitTranscriptResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
   };
   export type get_GetLiveness = {
     method: "GET";
@@ -46,8 +96,13 @@ export namespace Endpoints {
 export type EndpointByMethod = {
   get: {
     "/api/v1/me": Endpoints.get_GetMe;
+    "/api/v1/runs": Endpoints.get_ListRuns;
+    "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
+  };
+  post: {
+    "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
   };
 };
 
@@ -55,6 +110,7 @@ export type EndpointByMethod = {
 
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
+export type PostEndpoints = EndpointByMethod["post"];
 // </EndpointByMethod.Shorthands>
 
 // <ApiClientTypes>
@@ -317,6 +373,37 @@ export class ApiClient {
     return this.request("get", path, ...params);
   }
   // </ApiClient.get>
+
+  // <ApiClient.post>
+  post<Path extends keyof PostEndpoints, TEndpoint extends PostEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  post<Path extends keyof PostEndpoints, TEndpoint extends PostEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  post<Path extends keyof PostEndpoints, _TEndpoint extends PostEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("post", path, ...params);
+  }
+  // </ApiClient.post>
 
   // <ApiClient.request>
   /**

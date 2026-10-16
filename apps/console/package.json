@@ -10,13 +10,14 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"test": "vitest run",
-		"gen:api": "typed-openapi \"${API_URL:-http://localhost:4100/api-docs/openapi.json}\" -o src/api/api.client.ts --tanstack=api.tanstack.ts && node -e \"const f='src/api/api.tanstack.ts',fs=require('fs');fs.writeFileSync(f,'// @ts-nocheck\\n'+fs.readFileSync(f,'utf8'))\"",
+		"gen:api": "typed-openapi \"${API_URL:-http://localhost:4100/api-docs/openapi.json}\" -o src/api/api.client.ts --tanstack=api.tanstack.ts",
 		"format": "biome format",
 		"lint": "biome lint",
 		"check": "biome check"
 	},
 	"dependencies": {
 		"@tailwindcss/vite": "4.2.4",
+		"@tanstack/react-form": "1.33.5",
 		"@tanstack/react-query": "5.99.2",
 		"@tanstack/react-router": "1.168.23",
 		"@tanstack/react-router-ssr-query": "1.166.11",
