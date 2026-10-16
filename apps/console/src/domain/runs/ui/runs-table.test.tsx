@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import type { ReactNode } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { RunsTable } from '#/domain/runs/ui/runs-table'
 
@@ -20,6 +21,23 @@ function run(
 		finished_at: null,
 	}
 }
+
+vi.mock('@tanstack/react-router', () => ({
+	Link: ({
+		to,
+		params,
+		children,
+		...rest
+	}: {
+		to: string
+		params: { runId: string }
+		children: ReactNode
+	}) => (
+		<a href={to.replace('$runId', params.runId)} {...rest}>
+			{children}
+		</a>
+	),
+}))
 
 describe('RunsTable', () => {
 	it('renders French status labels, titles and pipeline', () => {
@@ -46,6 +64,14 @@ describe('RunsTable', () => {
 		}
 		expect(screen.getByText('Réunion 3')).toBeTruthy()
 		expect(screen.getAllByText('résumé → actions')).toHaveLength(5)
+	})
+
+	it('links each title to the run detail page', () => {
+		render(<RunsTable runs={[run('7', 'queued')]} />)
+
+		expect(
+			screen.getByRole('link', { name: 'Réunion 7' }).getAttribute('href'),
+		).toBe('/runs/7')
 	})
 
 	it('renders the empty state without runs', () => {

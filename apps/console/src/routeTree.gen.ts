@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppAgentsRouteImport } from './routes/_app.agents'
+import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
@@ -45,6 +46,11 @@ const AppAgentsRoute = AppAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
+  id: '/runs_/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AppAgentsRoute
   '/kanban': typeof AppKanbanRoute
   '/runs': typeof AppRunsRoute
+  '/runs/$runId': typeof AppRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof AppKanbanRoute
   '/runs': typeof AppRunsRoute
   '/': typeof AppIndexRoute
+  '/runs/$runId': typeof AppRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +76,14 @@ export interface FileRoutesById {
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/runs': typeof AppRunsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/runs_/$runId': typeof AppRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/callback' | '/agents' | '/kanban' | '/runs'
+  fullPaths:
+    '/' | '/callback' | '/agents' | '/kanban' | '/runs' | '/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/callback' | '/agents' | '/kanban' | '/runs' | '/'
+  to: '/callback' | '/agents' | '/kanban' | '/runs' | '/' | '/runs/$runId'
   id:
     | '__root__'
     | '/_app'
@@ -82,6 +92,7 @@ export interface FileRouteTypes {
     | '/_app/kanban'
     | '/_app/runs'
     | '/_app/'
+    | '/_app/runs_/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -133,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgentsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/runs_/$runId': {
+      id: '/_app/runs_/$runId'
+      path: '/runs/$runId'
+      fullPath: '/runs/$runId'
+      preLoaderRoute: typeof AppRunsRunIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -141,6 +159,7 @@ interface AppRouteChildren {
   AppKanbanRoute: typeof AppKanbanRoute
   AppRunsRoute: typeof AppRunsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppRunsRunIdRoute: typeof AppRunsRunIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -148,6 +167,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppKanbanRoute: AppKanbanRoute,
   AppRunsRoute: AppRunsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppRunsRunIdRoute: AppRunsRunIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

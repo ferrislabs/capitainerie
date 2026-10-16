@@ -3,6 +3,7 @@ export interface RuntimeConfig {
 	issuerUrl: string | undefined
 	clientId: string | undefined
 	resource: string | undefined
+	tracesUrl: string
 }
 
 export interface OidcConfiguration {
@@ -18,13 +19,17 @@ interface RawConfig {
 	issuer_url?: string
 	client_id?: string
 	resource?: string
+	traces_url?: string
 }
+
+const DEFAULT_TRACES_URL = 'http://localhost:16686'
 
 let config: RuntimeConfig = {
 	apiUrl: '',
 	issuerUrl: undefined,
 	clientId: undefined,
 	resource: undefined,
+	tracesUrl: DEFAULT_TRACES_URL,
 }
 let loadingPromise: Promise<void> | null = null
 
@@ -44,6 +49,7 @@ async function readRuntimeConfig(): Promise<RuntimeConfig> {
 			issuerUrl: clean(import.meta.env.VITE_OIDC_ISSUER_URL),
 			clientId: clean(import.meta.env.VITE_OIDC_CLIENT_ID),
 			resource: clean(import.meta.env.VITE_OIDC_RESOURCE),
+			tracesUrl: clean(import.meta.env.VITE_TRACES_URL) ?? DEFAULT_TRACES_URL,
 		}
 	}
 
@@ -56,6 +62,7 @@ async function readRuntimeConfig(): Promise<RuntimeConfig> {
 				issuerUrl: clean(data.issuer_url),
 				clientId: clean(data.client_id),
 				resource: clean(data.resource),
+				tracesUrl: clean(data.traces_url) ?? DEFAULT_TRACES_URL,
 			}
 		}
 	} catch (err) {
@@ -66,6 +73,7 @@ async function readRuntimeConfig(): Promise<RuntimeConfig> {
 		issuerUrl: undefined,
 		clientId: undefined,
 		resource: undefined,
+		tracesUrl: DEFAULT_TRACES_URL,
 	}
 }
 

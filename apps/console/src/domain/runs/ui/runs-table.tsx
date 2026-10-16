@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Play } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { EmptyState } from '#/components/layout/empty-state'
@@ -10,25 +11,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '#/components/ui/table'
-
-type Status = Schemas.RunStatusResponse
-type BadgeVariant = 'muted' | 'default' | 'success' | 'destructive'
-
-const STATUS_LABELS: Record<Status, string> = {
-	queued: 'En attente',
-	running: 'En cours',
-	succeeded: 'Terminé',
-	failed: 'Échec',
-	cancelled: 'Annulé',
-}
-
-const STATUS_VARIANTS: Record<Status, BadgeVariant> = {
-	queued: 'muted',
-	running: 'default',
-	succeeded: 'success',
-	failed: 'destructive',
-	cancelled: 'muted',
-}
+import { STATUS_LABELS, STATUS_VARIANTS } from '#/domain/runs/status'
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {
 	dateStyle: 'short',
@@ -64,7 +47,13 @@ export function RunsTable({ runs }: Props) {
 				{runs.map((run) => (
 					<TableRow key={run.id}>
 						<TableCell className="font-medium">
-							{run.transcript_title}
+							<Link
+								to="/runs/$runId"
+								params={{ runId: run.id }}
+								className="hover:underline"
+							>
+								{run.transcript_title}
+							</Link>
 						</TableCell>
 						<TableCell>
 							<Badge variant={STATUS_VARIANTS[run.status]}>

@@ -20,6 +20,15 @@ export namespace Schemas {
     version: number;
   };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type DecisionResponse = {
+    action: string;
+    actor?: (string | null) | undefined;
+    allowed: boolean;
+    decided_at: string;
+    reason?: (string | null) | undefined;
+    resource_id?: (string | null) | undefined;
+    resource_kind: string;
+  };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
   export type MeResponse = {
@@ -40,10 +49,36 @@ export namespace Schemas {
     pipeline: Array<string>;
     started_at?: (string | null) | undefined;
     status: RunStatusResponse;
+    trace_id?: (string | null) | undefined;
     transcript_id: TranscriptId;
     transcript_title: string;
   };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
+  export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
+  export type ToolCallResponse = { latency_ms: number; succeeded: boolean; summary: string; tool: string };
+  export type StepResponse = {
+    agent?: (string | null) | undefined;
+    cost_micros: number;
+    detail?: (string | null) | undefined;
+    error?: (string | null) | undefined;
+    finished_at?: (string | null) | undefined;
+    input_tokens: number;
+    kind: string;
+    latency_ms?: (number | null) | undefined;
+    model?: (string | null) | undefined;
+    output_tokens: number;
+    seq: number;
+    started_at: string;
+    status: StepStatusResponse;
+    tool_calls: Array<ToolCallResponse>;
+  };
+  export type UsageTotals = { cost_micros: number; input_tokens: number; output_tokens: number };
+  export type RunTimelineResponse = {
+    decisions: Array<DecisionResponse>;
+    run: RunResponse;
+    steps: Array<StepResponse>;
+    totals: UsageTotals;
+  };
   export type SubmitTranscriptRequest = { body: string; title: string };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
 
@@ -102,6 +137,15 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
   };
+  export type get_GetRunTimeline = {
+    method: "GET";
+    path: "/api/v1/runs/{run_id}/timeline";
+    requestFormat: "json";
+    parameters: {
+      path: { run_id: string };
+    };
+    responses: { 200: Schemas.RunTimelineResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
+  };
   export type post_SubmitTranscript = {
     method: "POST";
     path: "/api/v1/transcripts";
@@ -141,6 +185,7 @@ export type EndpointByMethod = {
     "/api/v1/me": Endpoints.get_GetMe;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
+    "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
   };

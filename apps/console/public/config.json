@@ -2,5 +2,6 @@
 	"api_url": "${API_URL}",
 	"issuer_url": "${OIDC_ISSUER_URL}",
 	"client_id": "${OIDC_CLIENT_ID}",
-	"resource": "${OIDC_RESOURCE}"
+	"resource": "${OIDC_RESOURCE}",
+	"traces_url": "${TRACES_URL}"
 }
