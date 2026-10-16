@@ -1,6 +1,25 @@
 export namespace Schemas {
   // <Schemas>
   export type ApiErrorResponse = { code: string; message: string; status: number };
+  export type CardId = string;
+  export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
+  export type RunId = string;
+  export type TranscriptId = string;
+  export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
+  export type CardResponse = {
+    column: ColumnDto;
+    created_at: string;
+    created_by_agent?: (string | null) | undefined;
+    created_by_run?: (null | RunId) | undefined;
+    created_by_subject: string;
+    description: string;
+    id: CardId;
+    provenance?: (null | ProvenanceResponse) | undefined;
+    title: string;
+    updated_at: string;
+    version: number;
+  };
+  export type CardListResponse = { items: Array<CardResponse> };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
   export type MeResponse = {
@@ -10,9 +29,8 @@ export namespace Schemas {
     subject: string;
     username?: (string | null) | undefined;
   };
-  export type RunId = string;
+  export type MoveCardRequest = { expected_version: number; to: ColumnDto };
   export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-  export type TranscriptId = string;
   export type RunResponse = {
     created_at: string;
     failure?: (string | null) | undefined;
@@ -35,6 +53,30 @@ export namespace Schemas {
 export namespace Endpoints {
   // <Endpoints>
 
+  export type get_ListCards = {
+    method: "GET";
+    path: "/api/v1/cards";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type post_MoveCard = {
+    method: "POST";
+    path: "/api/v1/cards/{card_id}/move";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.MoveCardRequest;
+    };
+    responses: {
+      200: Schemas.CardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_GetMe = {
     method: "GET";
     path: "/api/v1/me";
@@ -95,6 +137,7 @@ export namespace Endpoints {
 // <EndpointByMethod>
 export type EndpointByMethod = {
   get: {
+    "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/me": Endpoints.get_GetMe;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
@@ -102,6 +145,7 @@ export type EndpointByMethod = {
     "/health/ready": Endpoints.get_GetReadiness;
   };
   post: {
+    "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
   };
 };

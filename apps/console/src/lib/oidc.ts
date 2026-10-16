@@ -22,6 +22,7 @@ export function createUserManager(): UserManager | null {
 		loadUserInfo: true,
 		userStore: new WebStorageStateStore({ store: window.localStorage }),
 		automaticSilentRenew: false,
+		extraQueryParams: cfg.resource ? { resource: cfg.resource } : undefined,
 	})
 }
 

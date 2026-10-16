@@ -2,6 +2,7 @@ export interface RuntimeConfig {
 	apiUrl: string
 	issuerUrl: string | undefined
 	clientId: string | undefined
+	resource: string | undefined
 }
 
 export interface OidcConfiguration {
@@ -9,18 +10,21 @@ export interface OidcConfiguration {
 	client_id: string
 	redirect_uri: string
 	scope: string
+	resource: string | undefined
 }
 
 interface RawConfig {
 	api_url?: string
 	issuer_url?: string
 	client_id?: string
+	resource?: string
 }
 
 let config: RuntimeConfig = {
 	apiUrl: '',
 	issuerUrl: undefined,
 	clientId: undefined,
+	resource: undefined,
 }
 let loadingPromise: Promise<void> | null = null
 
@@ -39,6 +43,7 @@ async function readRuntimeConfig(): Promise<RuntimeConfig> {
 			apiUrl: import.meta.env.VITE_API_URL ?? '',
 			issuerUrl: clean(import.meta.env.VITE_OIDC_ISSUER_URL),
 			clientId: clean(import.meta.env.VITE_OIDC_CLIENT_ID),
+			resource: clean(import.meta.env.VITE_OIDC_RESOURCE),
 		}
 	}
 
@@ -50,12 +55,18 @@ async function readRuntimeConfig(): Promise<RuntimeConfig> {
 				apiUrl: clean(data.api_url) ?? '',
 				issuerUrl: clean(data.issuer_url),
 				clientId: clean(data.client_id),
+				resource: clean(data.resource),
 			}
 		}
 	} catch (err) {
 		console.error('Failed to load /config.json', err)
 	}
-	return { apiUrl: '', issuerUrl: undefined, clientId: undefined }
+	return {
+		apiUrl: '',
+		issuerUrl: undefined,
+		clientId: undefined,
+		resource: undefined,
+	}
 }
 
 export function loadRuntimeConfig(): Promise<void> {
@@ -80,5 +91,6 @@ export function getOidcConfiguration(): OidcConfiguration | undefined {
 		client_id: config.clientId,
 		redirect_uri: `${window.location.origin}/callback`,
 		scope: 'openid profile email',
+		resource: config.resource,
 	}
 }
