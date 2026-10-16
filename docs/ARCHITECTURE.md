@@ -121,6 +121,10 @@ sequenceDiagram
   API-->>C: WebSocket : nouvelle carte, timeline
 ```
 
+Outbox (A1, en place) : `with_tx_emitting` écrit les événements émis dans `outbox_events` **dans la transaction métier**, puis `pg_notify('outbox_events')`, livré au commit seulement. Le relais (`OutboxRelay`, dans `apps/worker`) se réveille sur la notification, ou toutes les 2 s en secours. Il verrouille un lot (`FOR UPDATE SKIP LOCKED`), le publie dans Iggy puis marque `published_at`. Si le process meurt entre la publication et le marquage, le lot est republié : la livraison est *at least once*, et les consommateurs dédupliquent sur `EventEnvelope.id` (aussi utilisé comme id de message Iggy). Topologie Iggy : stream `capitainerie`, un topic par `Topic` (`runs`), 3 partitions, clé de partition = `run_id`, ce qui garde l'ordre des événements d'un même run.
+
+Autorisation (en place) : le port `Authorizer` est de forme AuthZEN (sujet, action, ressource, acteur). L'adapter actuel est `LocalPolicyEngine` (A9, option 2) : il refuse tout accès entre organisations et réserve `transcript.create` et `run.read` aux humains. Il est vérifié avant chaque écriture et chaque lecture dans les services de domaine.
+
 Durabilité : Postgres est la source de vérité de l'état du `Run`. Iggy transporte chaque transition. Au redémarrage, le worker relit les runs `Running` et reprend au premier step non terminé. Rejouer un run revient à relire son topic depuis l'offset 0 ; les steps sont idempotents par `(run_id, seq, attempt)`.
 
 Agents d'itération : ils consomment `CardEvent` (`CardApproved`, `CardRefineRequested`) et créent un `Run` dont le pipeline ne contient qu'un step. Le mécanisme est le même.

@@ -14,6 +14,7 @@ docker compose up -d
 sqlx migrate run --source migrations
 ./scripts/bootstrap-ferriskey.sh          # realm, client console, organisation de démo
 cargo run -p capitainerie-api
+cargo run -p capitainerie-worker          # relaie l'outbox vers Iggy
 cd apps/console && cp .env.example .env && pnpm install && pnpm dev
 ```
 
@@ -36,8 +37,15 @@ moyen d'entrer sur la stack locale. Après l'inscription, il faut se connecter u
 ```bash
 cargo fmt --all --check
 SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace                          # les tests DB sont sautés sans DATABASE_URL
-REQUIRE_DATABASE_URL=1 cargo test --workspace   # échoue si la base manque, comme en CI
+cargo test --workspace     # tests DB et Iggy sautés sans DATABASE_URL / IGGY_ADDRESS
+
+# comme en CI : base de test dédiée, jamais la base de dev (un worker qui tourne
+# publierait l'outbox sous le nez des tests)
+DATABASE_URL=postgres://capitainerie:capitainerie@localhost:5442/capitainerie_test \
+  sqlx migrate run --source migrations
+DATABASE_URL=postgres://capitainerie:capitainerie@localhost:5442/capitainerie_test \
+  IGGY_ADDRESS=localhost:4190 REQUIRE_DATABASE_URL=1 REQUIRE_IGGY=1 \
+  cargo test --workspace -- --test-threads=1
 ```
 
 Toute nouvelle requête `query!` demande une base vivante puis
