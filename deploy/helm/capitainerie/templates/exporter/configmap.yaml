@@ -1,0 +1,20 @@
+{{- if .Values.exporter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.componentName" (dict "root" . "component" "exporter") }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "exporter") | nindent 4 }}
+data:
+  IGGY_ADDRESS: {{ .Values.config.iggy.address | quote }}
+  IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
+  IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}
+  ANALYTICS_URI: {{ .Values.analytics.mountPath | quote }}
+  ANALYTICS_FLUSH_EVENTS: {{ .Values.exporter.flushEvents | quote }}
+  ANALYTICS_FLUSH_SECS: {{ .Values.exporter.flushSecs | quote }}
+  LOG_FILTER: {{ .Values.config.logFilter | quote }}
+  LOG_JSON: {{ .Values.config.logJson | quote }}
+  {{- with .Values.config.otlpEndpoint }}
+  OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+{{- end }}

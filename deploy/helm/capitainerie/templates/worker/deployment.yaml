@@ -10,10 +10,15 @@ metadata:
 spec:
   replicas: {{ .Values.worker.replicaCount }}
   strategy:
+    {{- if .Values.worker.vectorStore.persistence.enabled }}
+    # A ReadWriteOnce index cannot be mounted by two pods at once.
+    type: Recreate
+    {{- else }}
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+    {{- end }}
   selector:
     matchLabels:
       {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
@@ -51,6 +56,17 @@ spec:
             {{- with .Values.worker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          volumeMounts:
+            - name: vector-store
+              mountPath: {{ .Values.worker.vectorStore.uri | quote }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: vector-store
+          {{- if .Values.worker.vectorStore.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "capitainerie.vectorStoreClaim" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 {{- end }}

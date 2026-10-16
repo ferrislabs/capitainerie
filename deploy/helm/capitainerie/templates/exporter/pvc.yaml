@@ -1,0 +1,21 @@
+{{- if and .Values.exporter.enabled .Values.analytics.persistence.enabled (not .Values.analytics.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "capitainerie.analyticsClaim" . }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "analytics") | nindent 4 }}
+  {{- with .Values.analytics.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.analytics.persistence.accessModes | nindent 4 }}
+  {{- with .Values.analytics.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.analytics.persistence.size | quote }}
+{{- end }}

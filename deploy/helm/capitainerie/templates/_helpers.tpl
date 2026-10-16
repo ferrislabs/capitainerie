@@ -89,6 +89,14 @@ affinity:
 {{- end }}
 {{- end -}}
 
+{{- define "capitainerie.analyticsClaim" -}}
+{{- default (include "capitainerie.componentName" (dict "root" . "component" "analytics")) .Values.analytics.persistence.existingClaim -}}
+{{- end -}}
+
+{{- define "capitainerie.vectorStoreClaim" -}}
+{{- default (include "capitainerie.componentName" (dict "root" . "component" "vector-store")) .Values.worker.vectorStore.persistence.existingClaim -}}
+{{- end -}}
+
 {{- define "capitainerie.mcpUrl" -}}
 {{- if .Values.worker.mcpUrl -}}
 {{- .Values.worker.mcpUrl -}}

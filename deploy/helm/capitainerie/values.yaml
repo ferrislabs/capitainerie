@@ -157,6 +157,27 @@ worker:
     priceOutputPerMtokMicros: 0
   # -- Runs executed at once per pod (WORKER_CONCURRENCY).
   concurrency: 2
+  embedding:
+    # -- OpenAI-compatible embeddings model on the same endpoint (EMBEDDING_MODEL). Pull it
+    # next to the chat model.
+    model: bge-m3
+    dimensions: 1024
+  # -- Cosine similarity from which an action is a duplicate of an existing card
+  # (calibrated on French paraphrases with bge-m3).
+  dedupThreshold: 0.75
+  vectorStore:
+    # -- LANCEDB_URI. A local directory needs a single worker writing it: keep replicaCount
+    # at 1, or move to an object store.
+    uri: /var/lib/capitainerie/lancedb
+    persistence:
+      # -- When false the index lives in an emptyDir and is rebuilt from the cards at each
+      # start (the indexer backfills an empty table).
+      enabled: false
+      existingClaim: ""
+      size: 2Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
   secretEnv:
     - DATABASE_URL
     - DELEGATION_KEY
@@ -179,6 +200,49 @@ worker:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+exporter:
+  enabled: true
+  image:
+    repository: ""
+    tag: ""
+  # -- Parquet files are flushed after this many events (ANALYTICS_FLUSH_EVENTS)...
+  flushEvents: 500
+  # -- ...or after this many seconds (ANALYTICS_FLUSH_SECS), whichever comes first.
+  flushSecs: 30
+  secretEnv:
+    - IGGY_USERNAME
+    - IGGY_PASSWORD
+  extraEnv: []
+  podAnnotations: {}
+  # -- A SIGTERM flushes the buffered events before the exit.
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+analytics:
+  # -- Directory of the Parquet dataset (ANALYTICS_URI) inside the exporter and api pods.
+  # Only local directories are supported for now.
+  mountPath: /var/lib/capitainerie/analytics
+  persistence:
+    # -- Keeps the dataset on a PersistentVolumeClaim. When false the exporter writes to an
+    # emptyDir: the dataset is lost whenever the pod is rescheduled and the api never sees it.
+    enabled: false
+    # -- Uses this claim instead of creating one.
+    existingClaim: ""
+    size: 5Gi
+    storageClass: ""
+    # -- The api mounts the same claim read-only: use ReadWriteMany, or pin both pods to one node.
+    accessModes:
+      - ReadWriteMany
+    annotations: {}
 
 console:
   enabled: true

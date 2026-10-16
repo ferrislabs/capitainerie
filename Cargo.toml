@@ -1,8 +1,10 @@
 [workspace]
 members = [
     "apps/api",
+    "apps/exporter",
     "apps/mcp-kanban",
     "apps/worker",
+    "libs/analytics",
     "libs/args",
     "libs/auth",
     "libs/bus-iggy",
@@ -10,6 +12,7 @@ members = [
     "libs/events",
     "libs/core",
     "libs/handlers",
+    "libs/handlers-analytics",
     "libs/handlers-cards",
     "libs/handlers-identity",
     "libs/handlers-realtime",
@@ -17,6 +20,7 @@ members = [
     "libs/macros",
     "libs/runtime-rig",
     "libs/telemetry",
+    "libs/vector-lancedb",
 ]
 resolver = "3"
 
@@ -66,6 +70,15 @@ utoipa = { version = "5.4.0", features = ["chrono", "uuid"] }
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
 uuid = { version = "1.19.0", features = ["serde", "v4", "v7"] }
 
+# Arrow stack, shared by LanceDB and DataFusion: lancedb 0.40 pins arrow 58 and
+# datafusion 54. Bump all four together, never one alone.
+arrow-array = "58.3"
+arrow-schema = "58.3"
+datafusion = { version = "54.1", default-features = false, features = ["parquet"] }
+lancedb = { version = "0.40.0", default-features = false }
+parquet = { version = "58.4", default-features = false, features = ["arrow", "async", "zstd"] }
+
+capitainerie-analytics = { path = "libs/analytics" }
 capitainerie-args = { path = "libs/args" }
 capitainerie-auth = { path = "libs/auth" }
 capitainerie-bus-iggy = { path = "libs/bus-iggy" }
@@ -73,6 +86,7 @@ capitainerie-common = { path = "libs/common" }
 capitainerie-events = { path = "libs/events" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
+capitainerie-handlers-analytics = { path = "libs/handlers-analytics" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
@@ -80,6 +94,7 @@ capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
 capitainerie-runtime-rig = { path = "libs/runtime-rig" }
 capitainerie-telemetry = { path = "libs/telemetry" }
+capitainerie-vector-lancedb = { path = "libs/vector-lancedb" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

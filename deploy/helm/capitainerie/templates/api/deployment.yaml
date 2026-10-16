@@ -71,6 +71,19 @@ spec:
               path: /health/ready
               port: http
             periodSeconds: 5
+          {{- if .Values.analytics.persistence.enabled }}
+          volumeMounts:
+            - name: analytics
+              mountPath: {{ .Values.analytics.mountPath | quote }}
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- if .Values.analytics.persistence.enabled }}
+      volumes:
+        - name: analytics
+          persistentVolumeClaim:
+            claimName: {{ include "capitainerie.analyticsClaim" . }}
+            readOnly: true
+      {{- end }}
 {{- end }}

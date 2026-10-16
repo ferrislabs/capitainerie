@@ -19,6 +19,10 @@ data:
   MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
   PIPELINE_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
   WORKER_CONCURRENCY: {{ .Values.worker.concurrency | quote }}
+  EMBEDDING_MODEL: {{ .Values.worker.embedding.model | quote }}
+  EMBEDDING_DIMENSIONS: {{ .Values.worker.embedding.dimensions | quote }}
+  DEDUP_THRESHOLD: {{ .Values.worker.dedupThreshold | quote }}
+  LANCEDB_URI: {{ .Values.worker.vectorStore.uri | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

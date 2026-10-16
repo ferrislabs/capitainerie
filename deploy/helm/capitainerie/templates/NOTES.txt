@@ -3,8 +3,15 @@ Capitainerie {{ .Chart.AppVersion }} deployed as {{ include "capitainerie.fullna
 Secret required (created out of band, never by this chart): {{ .Values.secrets.existingSecret }}
   api:     {{ join ", " .Values.api.secretEnv }}
   worker:  {{ join ", " .Values.worker.secretEnv }}
+  exporter: {{ join ", " .Values.exporter.secretEnv }}
   mcp:     {{ join ", " .Values.mcpKanban.secretEnv }}
 
+{{- if and .Values.exporter.enabled (not .Values.analytics.persistence.enabled) }}
+
+WARNING: analytics.persistence.enabled is false. The exporter writes the Parquet
+dataset to an emptyDir: it is lost when the pod is rescheduled, and the api reads
+nothing. Enable analytics.persistence for anything but a trial.
+{{- end }}
 {{- if .Values.migrations.enabled }}
 
 Migrations run as an ArgoCD PreSync hook. Under plain `helm install` they are

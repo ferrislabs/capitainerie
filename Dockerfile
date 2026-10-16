@@ -3,6 +3,9 @@
 FROM lukemathwalker/cargo-chef:0.1.77-rust-1.97.1-bookworm AS chef
 WORKDIR /usr/local/src/capitainerie
 ENV SQLX_OFFLINE=true
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM chef AS planner
 COPY . .
@@ -18,6 +21,9 @@ RUN cargo build --release --locked -p capitainerie-api
 
 FROM cook AS build-worker
 RUN cargo build --release --locked -p capitainerie-worker
+
+FROM cook AS build-exporter
+RUN cargo build --release --locked -p capitainerie-exporter
 
 FROM cook AS build-mcp-kanban
 RUN cargo build --release --locked -p capitainerie-mcp-kanban
@@ -37,6 +43,10 @@ ENTRYPOINT ["/usr/local/bin/capitainerie-api"]
 FROM runtime AS worker
 COPY --from=build-worker /usr/local/src/capitainerie/target/release/capitainerie-worker /usr/local/bin/capitainerie-worker
 ENTRYPOINT ["/usr/local/bin/capitainerie-worker"]
+
+FROM runtime AS exporter
+COPY --from=build-exporter /usr/local/src/capitainerie/target/release/capitainerie-exporter /usr/local/bin/capitainerie-exporter
+ENTRYPOINT ["/usr/local/bin/capitainerie-exporter"]
 
 FROM runtime AS mcp-kanban
 COPY --from=build-mcp-kanban /usr/local/src/capitainerie/target/release/capitainerie-mcp-kanban /usr/local/bin/capitainerie-mcp-kanban

@@ -19,6 +19,7 @@ data:
   IGGY_ADDRESS: {{ .Values.config.iggy.address | quote }}
   IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
   IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}
+  ANALYTICS_URI: {{ .Values.analytics.mountPath | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

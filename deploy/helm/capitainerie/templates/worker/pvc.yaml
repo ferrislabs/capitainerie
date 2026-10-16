@@ -1,0 +1,17 @@
+{{- if and .Values.worker.enabled .Values.worker.vectorStore.persistence.enabled (not .Values.worker.vectorStore.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "capitainerie.vectorStoreClaim" . }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "vector-store") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.worker.vectorStore.persistence.accessModes | nindent 4 }}
+  {{- with .Values.worker.vectorStore.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.worker.vectorStore.persistence.size | quote }}
+{{- end }}
