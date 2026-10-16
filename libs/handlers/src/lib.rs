@@ -5,4 +5,4 @@ pub mod state;
 
 pub use auth::Caller;
 pub use errors::ApiError;
-pub use state::{AppState, CapitainerieTokenVerifier};
+pub use state::{AppState, CapitainerieTokenExchanger, CapitainerieTokenVerifier, Delegation};

@@ -14,6 +14,10 @@ use capitainerie_handlers_runs::{
     list_runs::RunListResponse,
     response::{RunResponse, RunStatusResponse},
     submit_transcript::{SubmitTranscriptRequest, SubmitTranscriptResponse},
+    timeline::{
+        DecisionResponse, RunTimelineResponse, StepResponse, StepStatusResponse, ToolCallResponse,
+        UsageTotals,
+    },
 };
 use utoipa::{
     Modify, OpenApi,
@@ -30,6 +34,7 @@ use utoipa::{
         runs::submit_transcript::handler,
         runs::list_runs::handler,
         runs::get_run::handler,
+        runs::timeline::handler,
         cards::list_cards::handler,
         cards::move_card::handler,
     ),
@@ -42,6 +47,12 @@ use utoipa::{
         RunListResponse,
         RunResponse,
         RunStatusResponse,
+        RunTimelineResponse,
+        StepResponse,
+        StepStatusResponse,
+        ToolCallResponse,
+        DecisionResponse,
+        UsageTotals,
         CardListResponse,
         CardResponse,
         ColumnDto,

@@ -2,10 +2,15 @@ mod openapi;
 mod router;
 
 use anyhow::Context;
-use capitainerie_args::{AuthArgs, DatabaseArgs, LogArgs, ObservabilityArgs, ServerArgs};
-use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
-use capitainerie_core::{CapitainerieUseCase, infrastructure::postgres};
-use capitainerie_handlers::AppState;
+use capitainerie_args::{
+    AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, ServerArgs,
+};
+use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
+use capitainerie_core::{
+    CapitainerieUseCase,
+    infrastructure::{crypto::SecretCipher, postgres},
+};
+use capitainerie_handlers::{AppState, Delegation};
 use clap::Parser;
 use tokio::net::TcpListener;
 
@@ -18,6 +23,10 @@ struct Args {
     database: DatabaseArgs,
     #[command(flatten)]
     auth: AuthArgs,
+    #[command(flatten)]
+    exchange: ExchangeArgs,
+    #[command(flatten)]
+    delegation: DelegationArgs,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -34,9 +43,26 @@ async fn main() -> anyhow::Result<()> {
     let pool = postgres::connect(&args.database.url, args.database.max_connections)
         .await
         .context("connecting to postgres")?;
+    let mut usecase = CapitainerieUseCase::with_local_policies(pool);
+    let delegation = match (&args.delegation.key, &args.exchange.client_id) {
+        (Some(key), Some(_)) => {
+            usecase = usecase.with_cipher(SecretCipher::from_base64(key)?);
+            Some(Delegation {
+                exchanger: args.exchange.exchanger()?,
+                agents: args.delegation.agents.clone(),
+            })
+        }
+        _ => {
+            tracing::warn!(
+                "DELEGATION_KEY or EXCHANGE_CLIENT_ID unset: runs are queued without delegation and cannot write cards"
+            );
+            None
+        }
+    };
     let state = AppState {
-        usecase: CapitainerieUseCase::with_local_policies(pool),
+        usecase,
         verifier: verifier(args.auth),
+        delegation,
     };
     let app = router::router(state, &args.server.allowed_origins)?;
 

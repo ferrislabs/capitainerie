@@ -28,8 +28,12 @@ impl TransactionalEventEmitter {
 
 impl EventEmitter for TransactionalEventEmitter {
     fn emit<E: DomainEvent>(&self, event: &E) -> Result<(), CoreError> {
-        let envelope = EventEnvelope::wrap(event, Utc::now(), None)
-            .map_err(|error| CoreError::Internal(format!("encoding {}: {error}", E::KIND)))?;
+        let envelope = EventEnvelope::wrap(
+            event,
+            Utc::now(),
+            capitainerie_telemetry::current_traceparent(),
+        )
+        .map_err(|error| CoreError::Internal(format!("encoding {}: {error}", E::KIND)))?;
         self.buffer
             .lock()
             .map(|mut buffer| buffer.push(envelope))

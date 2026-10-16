@@ -8,8 +8,12 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 capitainerie-args.workspace = true
+capitainerie-auth.workspace = true
 capitainerie-bus-iggy.workspace = true
+capitainerie-common.workspace = true
 capitainerie-core.workspace = true
+capitainerie-events.workspace = true
+capitainerie-runtime-rig.workspace = true
 capitainerie-telemetry.workspace = true
 clap.workspace = true
 dotenvy.workspace = true

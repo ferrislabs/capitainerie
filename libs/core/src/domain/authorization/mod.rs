@@ -1,6 +1,7 @@
 pub mod ports;
 
 use capitainerie_common::{CoreError, OrganizationId, RunId};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use self::ports::Authorizer;
@@ -100,6 +101,19 @@ impl AccessRequest {
         self.run_id = run_id;
         self
     }
+}
+
+/// A past decision of the policy decision point, as audited.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionRecord {
+    pub subject: String,
+    pub actor: Option<String>,
+    pub action: String,
+    pub resource_kind: String,
+    pub resource_id: Option<Uuid>,
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub decided_at: DateTime<Utc>,
 }
 
 /// Asks the policy decision point and turns a denial into `Forbidden`.

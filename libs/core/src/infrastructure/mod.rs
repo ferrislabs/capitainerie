@@ -1,5 +1,7 @@
 pub mod authorization;
 pub mod card;
+pub mod crypto;
+pub mod delegation;
 pub mod event;
 pub mod organization;
 pub mod postgres;

@@ -1,5 +1,7 @@
+pub mod locate;
 pub mod ports;
 pub mod service;
+pub mod step;
 
 use capitainerie_common::{CoreError, OrganizationId, RunId, TranscriptId};
 use capitainerie_events::run::RunQueued;
@@ -33,6 +35,8 @@ pub struct Run {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Trace id of the worker span that runs it, to open the trace backend.
+    pub trace_id: Option<String>,
 }
 
 /// A run as the console lists it.
@@ -64,6 +68,7 @@ impl Run {
             created_at: now,
             started_at: None,
             finished_at: None,
+            trace_id: None,
         };
         let event = RunQueued {
             run_id: run.id.0,

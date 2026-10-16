@@ -55,6 +55,7 @@ id!(TranscriptId);
 id!(RunId);
 id!(CardId);
 id!(CardCommentId);
+id!(StepId);
 
 #[cfg(test)]
 mod tests {

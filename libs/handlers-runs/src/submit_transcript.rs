@@ -1,7 +1,7 @@
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{RunId, TranscriptId};
-use capitainerie_core::domain::run::service::SubmitTranscript;
+use capitainerie_core::{AgentDelegation, domain::run::service::SubmitTranscript};
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -42,14 +42,28 @@ pub async fn handler(
     Extension(caller): Extension<Caller>,
     Json(request): Json<SubmitTranscriptRequest>,
 ) -> Result<(StatusCode, Json<SubmitTranscriptResponse>), ApiError> {
-    let submitted = state
-        .usecase
-        .submit_transcript(SubmitTranscript {
-            subject: caller.subject(),
-            title: request.title,
-            body: request.body,
-        })
-        .await?;
+    let command = SubmitTranscript {
+        subject: caller.subject(),
+        title: request.title,
+        body: request.body,
+    };
+    let submitted = match &state.delegation {
+        Some(delegation) => {
+            state
+                .usecase
+                .submit_transcript_delegated(
+                    command,
+                    AgentDelegation {
+                        exchanger: &delegation.exchanger,
+                        issuer: &caller.organization.issuer_url,
+                        user_token: &caller.token,
+                        agents: &delegation.agents,
+                    },
+                )
+                .await?
+        }
+        None => state.usecase.submit_transcript(command).await?,
+    };
     Ok((
         StatusCode::ACCEPTED,
         Json(SubmitTranscriptResponse {

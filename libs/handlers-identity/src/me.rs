@@ -25,6 +25,7 @@ impl From<Caller> for MeResponse {
         Caller {
             identity,
             organization,
+            ..
         }: Caller,
     ) -> Self {
         Self {

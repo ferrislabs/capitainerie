@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, t.title AS transcript_title\n            FROM runs r\n            JOIN transcripts t ON t.id = r.transcript_id\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title\n            FROM runs r\n            JOIN transcripts t ON t.id = r.transcript_id\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
   "describe": {
     "columns": [
       {
@@ -55,6 +55,11 @@
       },
       {
         "ordinal": 10,
+        "name": "trace_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
         "name": "transcript_title",
         "type_info": "Text"
       }
@@ -77,8 +82,9 @@
       false,
       true,
       true,
+      true,
       false
     ]
   },
-  "hash": "b53439d9dec882386971680be547faf61e7c2dbfe7674a073e29209e4aee7f24"
+  "hash": "994c0c4a91e2aca991966003ef9edbf7ed8619760eb64d37d2688c407fff832f"
 }

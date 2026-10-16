@@ -1,11 +1,25 @@
+mod orchestrator;
+
+use std::{sync::Arc, time::Duration};
+
 use anyhow::Context;
-use capitainerie_args::{DatabaseArgs, LogArgs, ObservabilityArgs};
+use capitainerie_args::{DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs};
+use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
-use capitainerie_core::infrastructure::{
-    event::{OutboxRelay, OutboxRelayConfig},
-    postgres,
+use capitainerie_core::{
+    CapitainerieUseCase, MeetingPipeline, PipelineConfig,
+    domain::run::step::Pricing,
+    infrastructure::{
+        crypto::SecretCipher,
+        event::{OutboxRelay, OutboxRelayConfig},
+        postgres,
+    },
 };
+use capitainerie_runtime_rig::{LlmArgs, RigAgentRuntime};
 use clap::Parser;
+use tokio::sync::watch;
+
+use crate::orchestrator::Orchestrator;
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-worker", version)]
@@ -14,6 +28,32 @@ struct Args {
     database: DatabaseArgs,
     #[command(flatten)]
     iggy: IggyArgs,
+    #[command(flatten)]
+    llm: LlmArgs,
+    #[command(flatten)]
+    exchange: ExchangeArgs,
+    #[command(flatten)]
+    delegation: DelegationArgs,
+    /// Price of the model, in micro-units per million input tokens (0 for a local model).
+    #[arg(
+        long = "llm-price-input",
+        env = "LLM_PRICE_INPUT_PER_MTOK_MICROS",
+        default_value_t = 0
+    )]
+    price_input: u64,
+    #[arg(
+        long = "llm-price-output",
+        env = "LLM_PRICE_OUTPUT_PER_MTOK_MICROS",
+        default_value_t = 0
+    )]
+    price_output: u64,
+    /// How many runs execute at once.
+    #[arg(
+        long = "worker-concurrency",
+        env = "WORKER_CONCURRENCY",
+        default_value_t = 2
+    )]
+    concurrency: usize,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -30,20 +70,56 @@ async fn main() -> anyhow::Result<()> {
     let pool = postgres::connect(&args.database.url, args.database.max_connections)
         .await
         .context("connecting to postgres")?;
+    let key =
+        args.delegation.key.as_deref().context(
+            "DELEGATION_KEY is required: the worker reads the delegations the API sealed",
+        )?;
+    let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
+        .with_cipher(SecretCipher::from_base64(key)?);
     let bus = IggyEventBus::connect(&args.iggy)
         .await
         .context("connecting to iggy")?;
+    let writer_agent = args
+        .delegation
+        .agents
+        .first()
+        .cloned()
+        .context("PIPELINE_AGENTS names no writer agent")?;
+    let pipeline = MeetingPipeline::new(
+        usecase,
+        RigAgentRuntime::new(&args.llm)?,
+        args.exchange.exchanger()?,
+        PipelineConfig {
+            writer_agent,
+            pricing: Pricing {
+                input_per_million_micros: args.price_input,
+                output_per_million_micros: args.price_output,
+            },
+            max_attempts: 3,
+            stale_after: Duration::from_secs(15 * 60),
+        },
+    );
+    let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);
 
-    tracing::info!(stream = %args.iggy.stream, "worker started, relaying the outbox");
-    OutboxRelay::new(pool, bus, OutboxRelayConfig::default())
-        .run(shutdown_signal())
-        .await?;
+    let (stop, stopped) = watch::channel(false);
+    tracing::info!(stream = %args.iggy.stream, model = %args.llm.model, "worker started");
+    let relay = OutboxRelay::new(pool, bus, OutboxRelayConfig::default());
+    let mut relay_stop = stopped.clone();
+    let (relayed, orchestrated, ()) = tokio::join!(
+        relay.run(async move {
+            let _ = relay_stop.wait_for(|stop| *stop).await;
+        }),
+        orchestrator.run(stopped),
+        async move {
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                tracing::error!(%error, "could not listen for the shutdown signal");
+            }
+            tracing::info!("worker stopping");
+            let _ = stop.send(true);
+        },
+    );
+    relayed?;
+    orchestrated?;
     tracing::info!("worker stopped");
     Ok(())
-}
-
-async fn shutdown_signal() {
-    if let Err(error) = tokio::signal::ctrl_c().await {
-        tracing::error!(%error, "could not listen for the shutdown signal");
-    }
 }

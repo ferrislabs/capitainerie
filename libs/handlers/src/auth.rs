@@ -6,7 +6,10 @@ use axum::{
 };
 use capitainerie_auth::{Identity, TokenVerifier, unverified_issuer};
 use capitainerie_common::CoreError;
-use capitainerie_core::{Organization, domain::authorization::Subject};
+use capitainerie_core::{
+    Organization,
+    domain::{agent::SecretToken, authorization::Subject},
+};
 
 use crate::{ApiError, AppState};
 
@@ -15,6 +18,8 @@ use crate::{ApiError, AppState};
 pub struct Caller {
     pub identity: Identity,
     pub organization: Organization,
+    /// The caller's own bearer token, to exchange for an agent's on their behalf.
+    pub token: SecretToken,
 }
 
 impl Caller {
@@ -57,6 +62,7 @@ pub async fn authenticate(
     request.extensions_mut().insert(Caller {
         identity,
         organization,
+        token: SecretToken::new(token),
     });
     Ok(next.run(request).await)
 }

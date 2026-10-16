@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO run_delegations (run_id, agent_client_id, nonce, ciphertext, expires_at)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (run_id, agent_client_id) DO UPDATE\n            SET nonce = EXCLUDED.nonce, ciphertext = EXCLUDED.ciphertext, expires_at = EXCLUDED.expires_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "50ed8e49c5c97f4c02a0134fea9d8cfcc6422143d21f987e2834a171c8bf1f62"
+}

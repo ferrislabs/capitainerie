@@ -13,7 +13,9 @@ capitainerie-core.workspace = true
 capitainerie-handlers.workspace = true
 chrono.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 utoipa.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true

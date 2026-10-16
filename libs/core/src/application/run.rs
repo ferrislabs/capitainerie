@@ -2,12 +2,19 @@ use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_macros::transactional;
 
 use super::CapitainerieUseCase;
-use crate::domain::{
-    authorization::Subject,
-    run::{
-        RunOverview,
-        service::{RunService, SubmitTranscript},
+use crate::{
+    domain::{
+        agent::SecretToken,
+        authorization::{DecisionRecord, Subject, ports::DecisionLogRepository},
+        delegation::ports::{DelegationVault, TokenExchanger},
+        run::{
+            RunOverview,
+            ports::StepRepository,
+            service::{RunService, SubmitTranscript},
+            step::Step,
+        },
     },
+    infrastructure::delegation::PgDelegationVault,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +23,64 @@ pub struct SubmittedTranscript {
     pub run_id: RunId,
 }
 
+/// Everything that happened in a run, for its timeline.
+#[derive(Debug, Clone)]
+pub struct RunTimeline {
+    pub run: RunOverview,
+    pub steps: Vec<Step>,
+    pub decisions: Vec<DecisionRecord>,
+}
+
+/// What the API needs to let an agent act for the submitting user later.
+pub struct AgentDelegation<'a, X> {
+    pub exchanger: &'a X,
+    pub issuer: &'a str,
+    pub user_token: &'a SecretToken,
+    pub agents: &'a [String],
+}
+
 impl CapitainerieUseCase {
+    /// Exchanges the user's token for each agent of the pipeline first, so an
+    /// identity provider outage refuses the submission instead of queueing a
+    /// run that could never write anything; then stores everything at once.
+    pub async fn submit_transcript_delegated<X: TokenExchanger>(
+        &self,
+        command: SubmitTranscript,
+        delegation: AgentDelegation<'_, X>,
+    ) -> Result<SubmittedTranscript, CoreError> {
+        let mut tokens = Vec::with_capacity(delegation.agents.len());
+        for agent in delegation.agents {
+            let token = delegation
+                .exchanger
+                .for_agent(delegation.issuer, delegation.user_token, agent)
+                .await?;
+            tokens.push((agent.clone(), token));
+        }
+        let cipher = self.cipher()?;
+        self.submit_and_store(command, tokens, cipher).await
+    }
+
+    #[transactional(transcript, run, emitter, authz)]
+    async fn submit_and_store(
+        &self,
+        command: SubmitTranscript,
+        tokens: Vec<(String, crate::domain::delegation::DelegatedToken)>,
+        cipher: &crate::infrastructure::crypto::SecretCipher,
+    ) -> Result<SubmittedTranscript, CoreError> {
+        let (transcript, run) =
+            RunService::new(transcript_repository, run_repository, emitter, authz)
+                .submit(command)
+                .await?;
+        let mut vault = PgDelegationVault::new(&tx, cipher);
+        for (agent, token) in &tokens {
+            vault.store(run.id, agent, token).await?;
+        }
+        Ok(SubmittedTranscript {
+            transcript_id: transcript.id,
+            run_id: run.id,
+        })
+    }
+
     #[transactional(transcript, run, emitter, authz)]
     pub async fn submit_transcript(
         &self,
@@ -49,5 +113,26 @@ impl CapitainerieUseCase {
         RunService::new(transcript_repository, run_repository, emitter, authz)
             .get(subject, id)
             .await
+    }
+
+    #[transactional(transcript, run, step, decision_log, emitter, authz)]
+    pub async fn run_timeline(
+        &self,
+        subject: Subject,
+        id: RunId,
+    ) -> Result<RunTimeline, CoreError> {
+        let organization_id = subject.organization_id;
+        let run = RunService::new(transcript_repository, run_repository, emitter, authz)
+            .get(subject, id)
+            .await?;
+        let mut step_repository = step_repository;
+        let mut decision_log_repository = decision_log_repository;
+        Ok(RunTimeline {
+            run,
+            steps: step_repository.list(id).await?,
+            decisions: decision_log_repository
+                .list_for_run(organization_id, id)
+                .await?,
+        })
     }
 }

@@ -1,0 +1,118 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, run_id, organization_id, seq, kind, agent, status, attempt, output, model,\n                   input_tokens, output_tokens, cost_micros, latency_ms, error, started_at, finished_at\n            FROM run_steps\n            WHERE run_id = $1\n            ORDER BY seq\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "run_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "seq",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "agent",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "attempt",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "output",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 9,
+        "name": "model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "input_tokens",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "output_tokens",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "cost_micros",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 13,
+        "name": "latency_ms",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 14,
+        "name": "error",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "finished_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "6b165de728c707b4f1e7125ab38c8802a31dcfd477c3a5bed95576988b6ee72b"
+}

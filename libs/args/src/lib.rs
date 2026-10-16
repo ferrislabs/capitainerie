@@ -49,6 +49,23 @@ pub struct AuthArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct DelegationArgs {
+    /// Base64 of 32 random bytes; seals the tokens agents act with between
+    /// submission and execution. `openssl rand -base64 32`.
+    #[arg(long = "delegation-key", env = "DELEGATION_KEY")]
+    pub key: Option<String>,
+
+    /// Client ids of the agents a run acts through.
+    #[arg(
+        long = "pipeline-agents",
+        env = "PIPELINE_AGENTS",
+        value_delimiter = ',',
+        default_value = "capitainerie-agent-writer"
+    )]
+    pub agents: Vec<String>,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct LogArgs {
     #[arg(long = "log-filter", env = "LOG_FILTER", default_value = "info")]
     pub filter: String,

@@ -1,8 +1,14 @@
 use capitainerie_args::{LogArgs, ObservabilityArgs};
-use opentelemetry::trace::TracerProvider;
+use std::collections::HashMap;
+
+use opentelemetry::{
+    propagation::TextMapPropagator,
+    trace::{TraceContextExt, TracerProvider},
+};
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{Resource, trace::SdkTracerProvider};
+use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator, trace::SdkTracerProvider};
 use thiserror::Error;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{
     EnvFilter, Layer, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -84,4 +90,52 @@ pub fn init(
     Ok(TelemetryGuard {
         tracer_provider: Some(provider),
     })
+}
+
+const TRACEPARENT: &str = "traceparent";
+
+/// W3C `traceparent` of the current span, to carry the trace across a process
+/// boundary (an event, an HTTP call). `None` when no trace is being recorded.
+pub fn current_traceparent() -> Option<String> {
+    let context = tracing::Span::current().context();
+    if !context.span().span_context().is_valid() {
+        return None;
+    }
+    let mut carrier = HashMap::new();
+    TraceContextPropagator::new().inject_context(&context, &mut carrier);
+    carrier.remove(TRACEPARENT)
+}
+
+/// Trace id of the current span, as shown by the trace backend.
+pub fn current_trace_id() -> Option<String> {
+    let context = tracing::Span::current().context();
+    let span_context = context.span().span_context().clone();
+    span_context
+        .is_valid()
+        .then(|| span_context.trace_id().to_string())
+}
+
+/// Makes `span` a child of the remote span `traceparent` points to.
+pub fn adopt_traceparent(span: &tracing::Span, traceparent: &str) {
+    let carrier = HashMap::from([(TRACEPARENT.to_owned(), traceparent.to_owned())]);
+    let parent = TraceContextPropagator::new().extract(&carrier);
+    if parent.span().span_context().is_valid() {
+        let _ = span.set_parent(parent);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_a_recorded_trace_there_is_nothing_to_propagate() {
+        assert_eq!(current_traceparent(), None);
+        assert_eq!(current_trace_id(), None);
+    }
+
+    #[test]
+    fn a_malformed_traceparent_is_ignored() {
+        adopt_traceparent(&tracing::Span::none(), "not-a-traceparent");
+    }
 }

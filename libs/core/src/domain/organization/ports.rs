@@ -1,4 +1,4 @@
-use capitainerie_common::CoreError;
+use capitainerie_common::{CoreError, OrganizationId};
 
 use super::Organization;
 
@@ -7,5 +7,10 @@ pub trait OrganizationRepository: Send {
     fn find_by_issuer(
         &mut self,
         issuer_url: &str,
+    ) -> impl Future<Output = Result<Option<Organization>, CoreError>> + Send;
+
+    fn find(
+        &mut self,
+        id: OrganizationId,
     ) -> impl Future<Output = Result<Option<Organization>, CoreError>> + Send;
 }

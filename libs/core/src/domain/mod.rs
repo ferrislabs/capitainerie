@@ -1,5 +1,7 @@
+pub mod agent;
 pub mod authorization;
 pub mod card;
+pub mod delegation;
 pub mod event;
 pub mod organization;
 pub mod run;

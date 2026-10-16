@@ -7,8 +7,10 @@ use crate::infrastructure::postgres::SharedTx;
 pub mod domain {
     pub struct Card;
     pub struct CardComment;
+    pub struct DecisionLog;
     pub struct Organization;
     pub struct Run;
+    pub struct Step;
     pub struct Transcript;
 }
 

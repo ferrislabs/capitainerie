@@ -1,9 +1,14 @@
 use capitainerie_common::{CoreError, OrganizationId, RunId};
 use capitainerie_macros::repository;
+use chrono::{DateTime, Utc};
 
-use super::model::RunOverviewRow;
+use super::model::{RunOverviewRow, StepRow};
 use crate::{
-    domain::run::{Run, RunOverview, ports::RunRepository},
+    domain::run::{
+        Run, RunOverview,
+        ports::{RunRepository, StepRepository},
+        step::Step,
+    },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
 
@@ -28,8 +33,8 @@ impl RunRepository for PgRunRepository<'_> {
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO runs (id, organization_id, transcript_id, initiated_by, status, pipeline, failure, created_at, started_at, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO runs (id, organization_id, transcript_id, initiated_by, status, pipeline, failure, created_at, started_at, finished_at, trace_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
             run.id.0,
             run.organization_id.0,
@@ -41,6 +46,7 @@ impl RunRepository for PgRunRepository<'_> {
             run.created_at,
             run.started_at,
             run.finished_at,
+            run.trace_id,
         )
         .execute(&mut ***tx)
         .await
@@ -59,7 +65,7 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, t.title AS transcript_title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
             FROM runs r
             JOIN transcripts t ON t.id = r.transcript_id
             WHERE r.organization_id = $1
@@ -98,7 +104,7 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, t.title AS transcript_title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
             FROM runs r
             JOIN transcripts t ON t.id = r.transcript_id
             WHERE r.organization_id = $1 AND r.id = $2
@@ -111,5 +117,161 @@ impl RunRepository for PgRunRepository<'_> {
         .map_err(map_sqlx_error)?
         .map(RunOverview::try_from)
         .transpose()
+    }
+
+    async fn lock(&mut self, id: RunId) -> Result<Option<Run>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            RunOverviewRow,
+            r#"
+            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
+            FROM runs r
+            JOIN transcripts t ON t.id = r.transcript_id
+            WHERE r.id = $1
+            FOR UPDATE OF r SKIP LOCKED
+            "#,
+            id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .map(|row| RunOverview::try_from(row).map(|overview| overview.run))
+        .transpose()
+    }
+
+    async fn save(
+        &mut self,
+        run: &Run,
+        heartbeat_at: Option<DateTime<Utc>>,
+    ) -> Result<(), CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            UPDATE runs
+            SET status = $2, failure = $3, started_at = $4, finished_at = $5, trace_id = $6,
+                heartbeat_at = COALESCE($7, heartbeat_at)
+            WHERE id = $1
+            "#,
+            run.id.0,
+            run.status.as_str(),
+            run.failure,
+            run.started_at,
+            run.finished_at,
+            run.trace_id,
+            heartbeat_at,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|_| ())
+        .map_err(map_sqlx_error)
+    }
+
+    async fn pending(
+        &mut self,
+        stale_before: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<RunId>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!(
+            r#"
+            SELECT id
+            FROM runs
+            WHERE status = 'queued'
+               OR (status = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < $1))
+            ORDER BY created_at
+            LIMIT $2
+            "#,
+            stale_before,
+            limit,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map(|ids| ids.into_iter().map(RunId).collect())
+        .map_err(map_sqlx_error)
+    }
+
+    async fn heartbeat_at(&mut self, id: RunId) -> Result<Option<DateTime<Utc>>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!("SELECT heartbeat_at FROM runs WHERE id = $1", id.0)
+            .fetch_optional(&mut ***tx)
+            .await
+            .map(Option::flatten)
+            .map_err(map_sqlx_error)
+    }
+}
+
+#[repository(domain = Step, backend = Postgres)]
+pub struct PgStepRepository<'tx> {
+    tx: SharedTx<'tx>,
+}
+
+impl<'tx> PgStepRepository<'tx> {
+    pub fn new(tx: &SharedTx<'tx>) -> Self {
+        Self { tx: tx.clone() }
+    }
+}
+
+impl StepRepository for PgStepRepository<'_> {
+    async fn list(&mut self, run_id: RunId) -> Result<Vec<Step>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            StepRow,
+            r#"
+            SELECT id, run_id, organization_id, seq, kind, agent, status, attempt, output, model,
+                   input_tokens, output_tokens, cost_micros, latency_ms, error, started_at, finished_at
+            FROM run_steps
+            WHERE run_id = $1
+            ORDER BY seq
+            "#,
+            run_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(Step::try_from)
+        .collect()
+    }
+
+    async fn save(&mut self, step: &Step) -> Result<(), CoreError> {
+        let input_tokens = i64::try_from(step.usage.input_tokens).unwrap_or(i64::MAX);
+        let output_tokens = i64::try_from(step.usage.output_tokens).unwrap_or(i64::MAX);
+        let model = (!step.usage.model.is_empty()).then_some(step.usage.model.as_str());
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            INSERT INTO run_steps (id, run_id, organization_id, seq, kind, agent, status, attempt, output, model,
+                                   input_tokens, output_tokens, cost_micros, latency_ms, error, started_at, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            ON CONFLICT (run_id, seq) DO UPDATE
+            SET id = EXCLUDED.id, agent = EXCLUDED.agent, status = EXCLUDED.status, attempt = EXCLUDED.attempt,
+                output = EXCLUDED.output, model = EXCLUDED.model, input_tokens = EXCLUDED.input_tokens,
+                output_tokens = EXCLUDED.output_tokens, cost_micros = EXCLUDED.cost_micros,
+                latency_ms = EXCLUDED.latency_ms, error = EXCLUDED.error, started_at = EXCLUDED.started_at,
+                finished_at = EXCLUDED.finished_at
+            "#,
+            step.id.0,
+            step.run_id.0,
+            step.organization_id.0,
+            step.seq,
+            step.kind.as_str(),
+            step.agent,
+            step.status.as_str(),
+            step.attempt,
+            step.output,
+            model,
+            input_tokens,
+            output_tokens,
+            step.cost_micros,
+            step.latency_ms,
+            step.error,
+            step.started_at,
+            step.finished_at,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|_| ())
+        .map_err(map_sqlx_error)
     }
 }

@@ -26,6 +26,8 @@ pub struct RunResponse {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Trace id of the run in the trace backend.
+    pub trace_id: Option<String>,
 }
 
 impl From<RunOverview> for RunResponse {
@@ -57,6 +59,7 @@ impl From<RunOverview> for RunResponse {
             created_at: run.created_at,
             started_at: run.started_at,
             finished_at: run.finished_at,
+            trace_id: run.trace_id,
         }
     }
 }

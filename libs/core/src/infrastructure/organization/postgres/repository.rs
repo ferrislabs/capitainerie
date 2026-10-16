@@ -1,4 +1,4 @@
-use capitainerie_common::CoreError;
+use capitainerie_common::{CoreError, OrganizationId};
 use capitainerie_macros::repository;
 
 use super::model::OrganizationRow;
@@ -33,6 +33,20 @@ impl OrganizationRepository for PgOrganizationRepository<'_> {
             WHERE issuer_url = $1
             "#,
             issuer_url,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .map(Organization::try_from)
+        .transpose()
+    }
+
+    async fn find(&mut self, id: OrganizationId) -> Result<Option<Organization>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            OrganizationRow,
+            "SELECT id, slug, name, issuer_url, created_at FROM organizations WHERE id = $1",
+            id.0,
         )
         .fetch_optional(&mut ***tx)
         .await

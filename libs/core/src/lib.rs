@@ -4,5 +4,8 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
-pub use application::CapitainerieUseCase;
+pub use application::{
+    AgentDelegation, CapitainerieUseCase, MeetingPipeline, PipelineConfig, RunContext, RunTimeline,
+    SubmittedTranscript,
+};
 pub use domain::organization::{Organization, OrganizationSlug};
