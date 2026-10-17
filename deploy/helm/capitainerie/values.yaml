@@ -165,6 +165,10 @@ worker:
   # -- Cosine similarity from which an action is a duplicate of an existing card
   # (calibrated on French paraphrases with bge-m3).
   dedupThreshold: 0.75
+  # -- Cosine similarity below which an action is a new card without asking the model
+  # (DEDUP_GRAY_FLOOR). From this score up to dedupThreshold the chat model judges the
+  # closest card. Must not exceed dedupThreshold.
+  dedupGrayFloor: 0.65
   vectorStore:
     # -- LANCEDB_URI. A local directory needs a single worker writing it: keep replicaCount
     # at 1, or move to an object store.

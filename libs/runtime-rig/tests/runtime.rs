@@ -8,7 +8,7 @@ use capitainerie_core::domain::{
         DuplicateAction, ExtractedAction, LocatedAction, SecretToken, WriteRequest,
         ports::AgentRuntime,
     },
-    similarity::{Embedding, ports::Embedder},
+    similarity::{Embedding, SimilarCard, ports::Embedder},
 };
 use capitainerie_runtime_rig::{EmbeddingArgs, OpenAiEmbedder, RigAgentRuntime};
 use common::{FakeLlm, FakeMcp, MODEL, args, text_response, tool_call_response};
@@ -44,6 +44,107 @@ fn write_request(actions: Vec<LocatedAction>) -> WriteRequest {
         mcp_token: SecretToken::new("secret-token"),
         traceparent: Some(TRACEPARENT.to_owned()),
     }
+}
+
+fn candidate(text: &str) -> SimilarCard {
+    SimilarCard {
+        card_id: CardId::new(),
+        score: 0.7,
+        text: text.into(),
+    }
+}
+
+#[tokio::test]
+async fn judge_duplicate_reads_a_yes_and_the_usage() {
+    let llm = FakeLlm::with(vec![tool_call_response(
+        "submit",
+        &json!({"same_task": true, "reason": "Même email aux clients."}),
+        80,
+        12,
+    )]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
+
+    let judgement = runtime
+        .judge_duplicate(
+            &located("Rédiger et envoyer l'email aux clients", "q", 0, 1),
+            &candidate("Envoyer un email aux clients\nPour l'offre"),
+        )
+        .await
+        .unwrap();
+
+    assert!(judgement.same_task);
+    assert_eq!(judgement.reason, "Même email aux clients.");
+    assert_eq!(judgement.usage.model, MODEL);
+    assert_eq!(judgement.usage.input_tokens, 80);
+    assert_eq!(judgement.usage.output_tokens, 12);
+    let request = &llm.requests.lock().unwrap()[0];
+    assert_eq!(request["temperature"], 0.0);
+    let body = request.to_string();
+    assert!(body.contains("Rédiger et envoyer l'email aux clients"));
+    assert!(body.contains("Envoyer un email aux clients"));
+    assert!(body.contains("same task"));
+}
+
+#[tokio::test]
+async fn judge_duplicate_reads_a_no() {
+    let llm = FakeLlm::with(vec![tool_call_response(
+        "submit",
+        &json!({"same_task": false, "reason": "Autre client."}),
+        10,
+        3,
+    )]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
+
+    let judgement = runtime
+        .judge_duplicate(
+            &located("Relancer Acme", "q", 0, 1),
+            &candidate("Relancer Globex"),
+        )
+        .await
+        .unwrap();
+
+    assert!(!judgement.same_task);
+}
+
+#[tokio::test]
+async fn judge_duplicate_retries_once_and_sums_the_usage() {
+    let llm = FakeLlm::with(vec![
+        text_response("oui", 50, 2),
+        tool_call_response("submit", &json!({"same_task": true, "reason": "r"}), 60, 8),
+        text_response("unused", 1, 1),
+    ]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
+
+    let judgement = runtime
+        .judge_duplicate(&located("A", "q", 0, 1), &candidate("A"))
+        .await
+        .unwrap();
+
+    assert!(judgement.same_task);
+    assert_eq!(judgement.usage.input_tokens, 110);
+    assert_eq!(llm.request_bodies().len(), 2);
+}
+
+#[tokio::test]
+async fn judge_duplicate_gives_up_after_one_retry() {
+    let llm = FakeLlm::with(vec![
+        text_response("a", 1, 1),
+        text_response("b", 1, 1),
+        text_response("c", 1, 1),
+    ]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
+
+    let error = runtime
+        .judge_duplicate(&located("A", "q", 0, 1), &candidate("A"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, CoreError::Invalid(_)), "{error:?}");
+    assert_eq!(llm.request_bodies().len(), 2);
 }
 
 #[tokio::test]

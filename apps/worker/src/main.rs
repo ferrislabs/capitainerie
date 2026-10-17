@@ -9,7 +9,10 @@ use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
     CapitainerieUseCase, MeetingPipeline, PipelineConfig,
-    domain::{run::step::Pricing, similarity::DEFAULT_DEDUP_THRESHOLD},
+    domain::{
+        run::step::Pricing,
+        similarity::{DEFAULT_DEDUP_GRAY_FLOOR, DEFAULT_DEDUP_THRESHOLD},
+    },
     infrastructure::{
         crypto::SecretCipher,
         event::{OutboxRelay, OutboxRelayConfig},
@@ -48,6 +51,12 @@ struct Args {
         default_value_t = DEFAULT_DEDUP_THRESHOLD
     )]
     dedup_threshold: f32,
+    #[arg(
+        long = "dedup-gray-floor",
+        env = "DEDUP_GRAY_FLOOR",
+        default_value_t = DEFAULT_DEDUP_GRAY_FLOOR
+    )]
+    dedup_gray_floor: f32,
     #[command(flatten)]
     exchange: ExchangeArgs,
     #[command(flatten)]
@@ -84,6 +93,13 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let _telemetry =
         capitainerie_telemetry::init("capitainerie-worker", &args.log, &args.observability)?;
+
+    anyhow::ensure!(
+        args.dedup_gray_floor <= args.dedup_threshold,
+        "DEDUP_GRAY_FLOOR ({}) must not exceed DEDUP_THRESHOLD ({})",
+        args.dedup_gray_floor,
+        args.dedup_threshold
+    );
 
     let pool = postgres::connect(&args.database.url, args.database.max_connections)
         .await
@@ -128,6 +144,7 @@ async fn main() -> anyhow::Result<()> {
             max_attempts: 3,
             stale_after: Duration::from_secs(15 * 60),
             dedup_threshold: args.dedup_threshold,
+            dedup_gray_floor: args.dedup_gray_floor,
         },
     );
     let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);

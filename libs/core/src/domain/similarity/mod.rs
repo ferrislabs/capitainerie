@@ -5,6 +5,7 @@ use capitainerie_common::{CardId, OrganizationId};
 use super::{agent::LocatedAction, card::Column};
 
 pub const DEFAULT_DEDUP_THRESHOLD: f32 = 0.75;
+pub const DEFAULT_DEDUP_GRAY_FLOOR: f32 = 0.65;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Embedding(pub Vec<f32>);
@@ -26,11 +27,33 @@ pub struct SimilarCard {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecidedBy {
+    #[default]
+    Similarity,
+    Judge,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateMatch {
     pub action: usize,
     pub card_id: CardId,
     pub score: f32,
+    #[serde(default)]
+    pub decided_by: DecidedBy,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct JudgedPair {
+    pub action: usize,
+    pub card_id: CardId,
+    pub score: f32,
+    pub same_task: bool,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// What the Deduplicate step decided for the extracted actions.
@@ -38,6 +61,8 @@ pub struct DuplicateMatch {
 pub struct DedupOutput {
     pub new: Vec<usize>,
     pub duplicates: Vec<DuplicateMatch>,
+    #[serde(default)]
+    pub judged: Vec<JudgedPair>,
     pub embedding_tokens: u64,
 }
 
@@ -53,29 +78,18 @@ pub fn action_text(located: &LocatedAction) -> String {
     format!("{}\n{}\n{}", action.title, action.description, action.quote)
 }
 
-/// An action is a duplicate of the closest existing card when that card scores
-/// at least `threshold`; otherwise it is new.
-pub fn classify(neighbours: &[Vec<SimilarCard>], threshold: f32, tokens: u64) -> DedupOutput {
-    let mut new = Vec::new();
-    let mut duplicates = Vec::new();
-    for (action, candidates) in neighbours.iter().enumerate() {
-        let best = candidates
-            .iter()
-            .filter(|candidate| candidate.score >= threshold)
-            .max_by(|a, b| a.score.total_cmp(&b.score));
-        match best {
-            Some(card) => duplicates.push(DuplicateMatch {
-                action,
-                card_id: card.card_id,
-                score: card.score,
-            }),
-            None => new.push(action),
-        }
-    }
-    DedupOutput {
-        new,
-        duplicates,
-        embedding_tokens: tokens,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Triage<'a> {
+    Duplicate(&'a SimilarCard),
+    Judge(&'a SimilarCard),
+    New,
+}
+
+pub fn triage(candidates: &[SimilarCard], threshold: f32, gray_floor: f32) -> Triage<'_> {
+    match candidates.iter().max_by(|a, b| a.score.total_cmp(&b.score)) {
+        Some(best) if best.score >= threshold => Triage::Duplicate(best),
+        Some(best) if best.score >= gray_floor => Triage::Judge(best),
+        _ => Triage::New,
     }
 }
 
@@ -93,35 +107,58 @@ mod tests {
     }
 
     #[test]
-    fn a_score_at_the_threshold_is_a_duplicate_and_below_is_new() {
-        let at = near(0.86);
-        let below = near(0.85);
-        let output = classify(&[vec![at.clone()], vec![below]], 0.86, 7);
-        assert_eq!(output.new, [1]);
+    fn a_score_at_the_threshold_is_a_duplicate() {
+        let at = near(0.75);
         assert_eq!(
-            output.duplicates,
-            [DuplicateMatch {
-                action: 0,
-                card_id: at.card_id,
-                score: 0.86
-            }]
+            triage(std::slice::from_ref(&at), 0.75, 0.65),
+            Triage::Duplicate(&at)
         );
-        assert_eq!(output.embedding_tokens, 7);
+    }
+
+    #[test]
+    fn a_score_between_the_floor_and_the_threshold_goes_to_the_judge() {
+        let inside = near(0.74);
+        let floor = near(0.65);
+        assert_eq!(
+            triage(std::slice::from_ref(&inside), 0.75, 0.65),
+            Triage::Judge(&inside)
+        );
+        assert_eq!(
+            triage(std::slice::from_ref(&floor), 0.75, 0.65),
+            Triage::Judge(&floor)
+        );
+    }
+
+    #[test]
+    fn a_score_below_the_floor_is_new() {
+        assert_eq!(triage(&[near(0.64)], 0.75, 0.65), Triage::New);
     }
 
     #[test]
     fn the_best_candidate_wins_whatever_the_order() {
-        let low = near(0.88);
+        let low = near(0.7);
         let high = near(0.95);
-        let output = classify(&[vec![low, high.clone()]], 0.86, 0);
-        assert_eq!(output.duplicates[0].card_id, high.card_id);
+        let candidates = [low, high.clone()];
+        assert_eq!(triage(&candidates, 0.75, 0.65), Triage::Duplicate(&high));
+        let candidates = [near(0.8), near(0.7)];
+        assert!(matches!(triage(&candidates, 0.9, 0.65), Triage::Judge(card) if card.score == 0.8));
     }
 
     #[test]
     fn no_candidate_means_new() {
-        let output = classify(&[vec![], vec![]], 0.86, 0);
-        assert_eq!(output.new, [0, 1]);
-        assert!(output.duplicates.is_empty());
+        assert_eq!(triage(&[], 0.75, 0.65), Triage::New);
+    }
+
+    #[test]
+    fn an_output_stored_before_the_judge_still_reads() {
+        let stored = serde_json::json!({
+            "new": [1],
+            "duplicates": [{ "action": 0, "card_id": CardId::new().0, "score": 0.9 }],
+            "embedding_tokens": 20
+        });
+        let output: DedupOutput = serde_json::from_value(stored).unwrap();
+        assert_eq!(output.duplicates[0].decided_by, DecidedBy::Similarity);
+        assert!(output.judged.is_empty());
     }
 
     #[test]

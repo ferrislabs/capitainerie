@@ -13,8 +13,8 @@ use capitainerie_core::{
     AgentDelegation, CapitainerieUseCase, MeetingPipeline, PipelineConfig,
     domain::{
         agent::{
-            ExtractedAction, Extraction, SecretToken, ToolCall, Usage, WriteReport, WriteRequest,
-            ports::AgentRuntime,
+            ExtractedAction, Extraction, Judgement, LocatedAction, SecretToken, ToolCall, Usage,
+            WriteReport, WriteRequest, ports::AgentRuntime,
         },
         authorization::Subject,
         delegation::{DelegatedToken, ports::TokenExchanger},
@@ -48,9 +48,18 @@ struct FakeRuntime {
     extractions: Arc<AtomicUsize>,
     writes: Arc<std::sync::Mutex<Vec<WriteRequest>>>,
     two_actions: bool,
+    judge: Option<bool>,
+    judged: Arc<AtomicUsize>,
 }
 
 impl FakeRuntime {
+    fn judging(same_task: bool) -> Self {
+        Self {
+            judge: Some(same_task),
+            ..Self::default()
+        }
+    }
+
     fn with_two_located_actions() -> Self {
         Self {
             two_actions: true,
@@ -114,6 +123,26 @@ impl AgentRuntime for FakeRuntime {
                 output_tokens: 200,
             },
         })
+    }
+
+    async fn judge_duplicate(
+        &self,
+        _action: &LocatedAction,
+        _candidate: &SimilarCard,
+    ) -> Result<Judgement, CoreError> {
+        self.judged.fetch_add(1, Ordering::SeqCst);
+        match self.judge {
+            Some(same_task) => Ok(Judgement {
+                same_task,
+                reason: "the judge said so".into(),
+                usage: Usage {
+                    model: "fake-chat".into(),
+                    input_tokens: 30,
+                    output_tokens: 5,
+                },
+            }),
+            None => Err(CoreError::Internal("the judge is down".into())),
+        }
     }
 
     async fn write(&self, request: WriteRequest) -> Result<WriteReport, CoreError> {
@@ -289,6 +318,7 @@ fn config() -> PipelineConfig {
         max_attempts: 1,
         stale_after: Duration::from_secs(600),
         dedup_threshold: 0.86,
+        dedup_gray_floor: 0.65,
     }
 }
 
@@ -609,7 +639,8 @@ async fn a_finished_deduplicate_step_is_reused_on_resume() {
             "deduplicate",
             serde_json::json!({
                 "new": [1],
-                "duplicates": [{ "action": 0, "card_id": existing.0, "score": 0.9 }],
+                "duplicates": [{ "action": 0, "card_id": existing.0, "score": 0.7, "decided_by": "judge" }],
+                "judged": [{ "action": 0, "card_id": existing.0, "score": 0.7, "same_task": true, "reason": "r" }],
                 "embedding_tokens": 20
             }),
         ),
@@ -656,4 +687,123 @@ async fn a_finished_deduplicate_step_is_reused_on_resume() {
     assert_eq!(writes[0].duplicates[0].card_id, existing);
     assert_eq!(writes[0].duplicates[0].action.action.title, "Migrer");
     assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+}
+
+async fn dedup_step(pool: &PgPool, run_id: Uuid) -> (Option<String>, i64, String) {
+    sqlx::query_as(
+        "SELECT agent, cost_micros, output->'judged'->0->>'reason' FROM run_steps WHERE run_id = $1 AND kind = 'deduplicate'",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_gray_zone_action_judged_the_same_task_becomes_a_comment_not_a_card() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let existing = CardId::new();
+    let runtime = FakeRuntime::judging(true);
+    let vectors = FakeVectors::knowing(existing, 0.7);
+
+    pipeline_for(&usecase, &runtime, &vectors)
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    assert_eq!(runtime.judged.load(Ordering::SeqCst), 1);
+    let output = dedup_output(&pool, submitted.run_id.0).await;
+    assert_eq!(output["new"], serde_json::json!([]));
+    assert_eq!(output["duplicates"][0]["card_id"], existing.0.to_string());
+    assert_eq!(output["duplicates"][0]["decided_by"], "judge");
+    assert_eq!(output["judged"][0]["same_task"], true);
+    assert_eq!(output["judged"][0]["reason"], "the judge said so");
+    assert_eq!(output["embedding_tokens"], 10);
+    let (agent, cost, _) = dedup_step(&pool, submitted.run_id.0).await;
+    assert_eq!(agent.as_deref(), Some("deduplicator"));
+    assert_eq!(cost, 50, "embedding and judge tokens are both billed");
+    let writes = runtime.writes.lock().unwrap().clone();
+    assert!(writes[0].actions.is_empty());
+    assert_eq!(writes[0].duplicates[0].card_id, existing);
+}
+
+#[tokio::test]
+async fn a_gray_zone_action_judged_different_is_a_new_card() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let runtime = FakeRuntime::judging(false);
+
+    pipeline_for(
+        &usecase,
+        &runtime,
+        &FakeVectors::knowing(CardId::new(), 0.7),
+    )
+    .execute(submitted.run_id, None)
+    .await
+    .unwrap();
+
+    let output = dedup_output(&pool, submitted.run_id.0).await;
+    assert_eq!(output["new"], serde_json::json!([0]));
+    assert_eq!(output["duplicates"], serde_json::json!([]));
+    assert_eq!(output["judged"][0]["same_task"], false);
+    let writes = runtime.writes.lock().unwrap().clone();
+    assert_eq!(writes[0].actions.len(), 1);
+    assert!(writes[0].duplicates.is_empty());
+}
+
+#[tokio::test]
+async fn a_failing_judge_keeps_the_action_new_and_the_run_succeeds() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let runtime = FakeRuntime::default();
+
+    pipeline_for(
+        &usecase,
+        &runtime,
+        &FakeVectors::knowing(CardId::new(), 0.7),
+    )
+    .execute(submitted.run_id, None)
+    .await
+    .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    let output = dedup_output(&pool, submitted.run_id.0).await;
+    assert_eq!(output["new"], serde_json::json!([0]));
+    assert_eq!(
+        output["judged"][0]["error"],
+        "internal error: the judge is down"
+    );
+    let (_, cost, _) = dedup_step(&pool, submitted.run_id.0).await;
+    assert_eq!(cost, 10);
+}
+
+#[tokio::test]
+async fn outside_the_gray_zone_the_judge_is_never_asked() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    for score in [0.9, 0.5] {
+        let submitted = submit(&usecase, organization_id).await;
+        let runtime = FakeRuntime::judging(true);
+
+        pipeline_for(
+            &usecase,
+            &runtime,
+            &FakeVectors::knowing(CardId::new(), score),
+        )
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+        assert_eq!(runtime.judged.load(Ordering::SeqCst), 0, "score {score}");
+        assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    }
 }

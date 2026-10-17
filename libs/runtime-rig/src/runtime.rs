@@ -2,12 +2,13 @@ use std::{sync::Arc, time::Duration};
 
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::agent::{
-    Extraction, WriteReport, WriteRequest, ports::AgentRuntime,
+    Extraction, Judgement, LocatedAction, WriteReport, WriteRequest, ports::AgentRuntime,
 };
+use capitainerie_core::domain::similarity::SimilarCard;
 use rig_core::providers::openai::{OpenAI, OpenAIConfig};
 use rig_reqwest::{ReqwestClient, reqwest};
 
-use crate::{args::LlmArgs, error::RuntimeError, extract, write};
+use crate::{args::LlmArgs, error::RuntimeError, extract, judge, write};
 
 #[derive(Clone)]
 pub struct RigAgentRuntime {
@@ -52,6 +53,20 @@ impl AgentRuntime for RigAgentRuntime {
             &self.model,
             &self.mcp_url,
             request,
+        )
+        .await
+    }
+
+    async fn judge_duplicate(
+        &self,
+        action: &LocatedAction,
+        candidate: &SimilarCard,
+    ) -> Result<Judgement, CoreError> {
+        judge::run(
+            self.client.chat(&*self.model).into(),
+            &self.model,
+            action,
+            candidate,
         )
         .await
     }

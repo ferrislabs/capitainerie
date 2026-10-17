@@ -22,6 +22,7 @@ data:
   EMBEDDING_MODEL: {{ .Values.worker.embedding.model | quote }}
   EMBEDDING_DIMENSIONS: {{ .Values.worker.embedding.dimensions | quote }}
   DEDUP_THRESHOLD: {{ .Values.worker.dedupThreshold | quote }}
+  DEDUP_GRAY_FLOOR: {{ .Values.worker.dedupGrayFloor | quote }}
   LANCEDB_URI: {{ .Values.worker.vectorStore.uri | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}

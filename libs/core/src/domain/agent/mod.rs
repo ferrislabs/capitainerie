@@ -50,6 +50,23 @@ pub struct Usage {
     pub output_tokens: u64,
 }
 
+impl Usage {
+    pub fn absorb(&mut self, other: &Usage) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+        if !other.model.is_empty() {
+            self.model.clone_from(&other.model);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Judgement {
+    pub same_task: bool,
+    pub reason: String,
+    pub usage: Usage,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Extraction {
     pub actions: Vec<ExtractedAction>,

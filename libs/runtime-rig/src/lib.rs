@@ -2,6 +2,7 @@ mod args;
 mod embeddings;
 mod error;
 mod extract;
+mod judge;
 mod mcp;
 mod post;
 mod runtime;

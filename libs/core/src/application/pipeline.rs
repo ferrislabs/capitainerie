@@ -22,8 +22,9 @@ use crate::{
             step::{Pricing, Step, StepStatus, WriteOutput},
         },
         similarity::{
-            DedupOutput, action_text, classify,
+            DecidedBy, DedupOutput, DuplicateMatch, JudgedPair, Triage, action_text,
             ports::{Embedder, VectorStore},
+            triage,
         },
         transcript::{Transcript, ports::TranscriptRepository},
     },
@@ -50,6 +51,7 @@ pub struct PipelineConfig {
     pub stale_after: Duration,
     /// Cosine similarity from which an action is the same task as a card.
     pub dedup_threshold: f32,
+    pub dedup_gray_floor: f32,
 }
 
 impl CapitainerieUseCase {
@@ -471,7 +473,13 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         seq: i32,
         actions: &[LocatedAction],
     ) -> Result<DedupOutput, CoreError> {
-        let step = self.new_step(context, seq, StepKind::Deduplicate, None, 1);
+        let step = self.new_step(
+            context,
+            seq,
+            StepKind::Deduplicate,
+            Some("deduplicator".into()),
+            1,
+        );
         if actions.is_empty() {
             let output = json!({ "reason": "no action item in the transcript" });
             self.finish_step(
@@ -481,11 +489,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                 Ok((output, Default::default(), StepStatus::Skipped)),
             )
             .await?;
-            return Ok(DedupOutput {
-                new: Vec::new(),
-                duplicates: Vec::new(),
-                embedding_tokens: 0,
-            });
+            return Ok(all_new(0));
         }
         self.usecase
             .record_step(context.run.clone(), step.clone())
@@ -494,11 +498,13 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let result = self
             .with_retries(|_| {
                 find_duplicates(
+                    &self.runtime,
                     &self.embedder,
                     &self.vectors,
                     context.run.organization_id,
                     actions,
                     self.config.dedup_threshold,
+                    self.config.dedup_gray_floor,
                 )
             })
             .await
@@ -624,15 +630,17 @@ fn write_succeeded(successful_tool_calls: usize) -> bool {
     successful_tool_calls > 0
 }
 
-async fn find_duplicates<E: Embedder, V: VectorStore>(
+async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
+    runtime: &R,
     embedder: &E,
     vectors: &V,
     organization_id: OrganizationId,
     actions: &[LocatedAction],
     threshold: f32,
+    gray_floor: f32,
 ) -> Result<(DedupOutput, crate::domain::agent::Usage), CoreError> {
     let texts: Vec<String> = actions.iter().map(action_text).collect();
-    let (embeddings, usage) = embedder.embed(&texts).await?;
+    let (embeddings, mut usage) = embedder.embed(&texts).await?;
     if embeddings.len() != actions.len() {
         return Err(CoreError::Internal(format!(
             "the embedder returned {} vectors for {} texts",
@@ -644,7 +652,56 @@ async fn find_duplicates<E: Embedder, V: VectorStore>(
     for embedding in &embeddings {
         neighbours.push(vectors.nearest(organization_id, embedding, 3).await?);
     }
-    let output = classify(&neighbours, threshold, usage.input_tokens);
+    let mut output = DedupOutput {
+        new: Vec::new(),
+        duplicates: Vec::new(),
+        judged: Vec::new(),
+        embedding_tokens: usage.input_tokens,
+    };
+    for (action, (located, candidates)) in actions.iter().zip(&neighbours).enumerate() {
+        match triage(candidates, threshold, gray_floor) {
+            Triage::Duplicate(card) => output.duplicates.push(DuplicateMatch {
+                action,
+                card_id: card.card_id,
+                score: card.score,
+                decided_by: DecidedBy::Similarity,
+            }),
+            Triage::New => output.new.push(action),
+            Triage::Judge(card) => {
+                let verdict = runtime.judge_duplicate(located, card).await;
+                let mut pair = JudgedPair {
+                    action,
+                    card_id: card.card_id,
+                    score: card.score,
+                    same_task: false,
+                    reason: String::new(),
+                    error: None,
+                };
+                match verdict {
+                    Ok(judgement) => {
+                        usage.absorb(&judgement.usage);
+                        pair.same_task = judgement.same_task;
+                        pair.reason = judgement.reason;
+                    }
+                    Err(error) => {
+                        tracing::warn!(action, %error, "the judge failed, the action stays new");
+                        pair.error = Some(error.to_string());
+                    }
+                }
+                if pair.same_task {
+                    output.duplicates.push(DuplicateMatch {
+                        action,
+                        card_id: card.card_id,
+                        score: card.score,
+                        decided_by: DecidedBy::Judge,
+                    });
+                } else {
+                    output.new.push(action);
+                }
+                output.judged.push(pair);
+            }
+        }
+    }
     Ok((output, usage))
 }
 
@@ -652,6 +709,7 @@ fn all_new(count: usize) -> DedupOutput {
     DedupOutput {
         new: (0..count).collect(),
         duplicates: Vec::new(),
+        judged: Vec::new(),
         embedding_tokens: 0,
     }
 }
@@ -692,7 +750,7 @@ fn split_actions(
 mod tests {
     use super::*;
     use crate::domain::{
-        agent::{ExtractedAction, Usage},
+        agent::{ExtractedAction, Judgement, Usage, ports::MockAgentRuntime},
         similarity::{
             DuplicateMatch, Embedding, SimilarCard,
             ports::{MockEmbedder, MockVectorStore},
@@ -730,7 +788,9 @@ mod tests {
                 action: 1,
                 card_id: card,
                 score: 0.9,
+                decided_by: DecidedBy::Similarity,
             }],
+            judged: Vec::new(),
             embedding_tokens: 0,
         };
         let (new, duplicates) = split_actions(&actions, Some(&dedup));
@@ -753,64 +813,190 @@ mod tests {
         assert!(serde_json::from_value::<DedupOutput>(skipped).is_err());
     }
 
-    #[tokio::test]
-    async fn a_close_card_makes_a_duplicate_and_a_far_one_a_new_action() {
-        let close = SimilarCard {
-            card_id: CardId::new(),
-            score: 0.93,
-            text: String::new(),
-        };
-        let far = SimilarCard {
-            card_id: CardId::new(),
-            score: 0.4,
-            text: String::new(),
-        };
+    fn embedder(tokens: u64) -> MockEmbedder {
         let mut embedder = MockEmbedder::new();
-        embedder.expect_embed().returning(|texts| {
-            let embeddings = texts
-                .iter()
-                .enumerate()
-                .map(|(index, _)| Embedding(vec![index as f32]))
-                .collect();
+        embedder.expect_embed().returning(move |texts| {
+            let embeddings = texts.iter().map(|_| Embedding(vec![1.0])).collect();
             Box::pin(std::future::ready(Ok((
                 embeddings,
                 Usage {
                     model: "emb".into(),
-                    input_tokens: 12,
+                    input_tokens: tokens,
                     output_tokens: 0,
                 },
             ))))
         });
-        let mut vectors = MockVectorStore::new();
-        let (close_card, far_card) = (close.clone(), far.clone());
-        vectors
-            .expect_nearest()
-            .times(2)
-            .returning(move |_, embedding, limit| {
-                assert_eq!(limit, 3);
-                let found = if embedding.0[0] == 0.0 {
-                    vec![close_card.clone()]
-                } else {
-                    vec![far_card.clone()]
-                };
-                Box::pin(std::future::ready(Ok(found)))
-            });
+        embedder
+    }
 
-        let (output, usage) = find_duplicates(
-            &embedder,
+    fn vectors_scoring(scores: Vec<f32>) -> (MockVectorStore, Vec<CardId>) {
+        let cards: Vec<SimilarCard> = scores
+            .into_iter()
+            .map(|score| SimilarCard {
+                card_id: CardId::new(),
+                score,
+                text: "card".into(),
+            })
+            .collect();
+        let ids = cards.iter().map(|card| card.card_id).collect();
+        let mut vectors = MockVectorStore::new();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        vectors.expect_nearest().returning(move |_, _, limit| {
+            assert_eq!(limit, 3);
+            let at = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(std::future::ready(Ok(vec![cards[at].clone()])))
+        });
+        (vectors, ids)
+    }
+
+    fn judgement(same_task: bool) -> Judgement {
+        Judgement {
+            same_task,
+            reason: "because".into(),
+            usage: Usage {
+                model: "chat".into(),
+                input_tokens: 100,
+                output_tokens: 5,
+            },
+        }
+    }
+
+    async fn dedup(
+        runtime: &MockAgentRuntime,
+        scores: Vec<f32>,
+    ) -> Result<(DedupOutput, Usage), CoreError> {
+        let actions: Vec<LocatedAction> =
+            (0..scores.len()).map(|i| located(&i.to_string())).collect();
+        let (vectors, _) = vectors_scoring(scores);
+        find_duplicates(
+            runtime,
+            &embedder(12),
             &vectors,
             OrganizationId::new(),
-            &[located("a"), located("b")],
-            0.86,
+            &actions,
+            0.75,
+            0.65,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn above_the_threshold_and_below_the_floor_the_judge_is_not_asked() {
+        let mut runtime = MockAgentRuntime::new();
+        runtime.expect_judge_duplicate().times(0);
+
+        let (output, usage) = dedup(&runtime, vec![0.75, 0.9, 0.64, 0.1]).await.unwrap();
+
+        assert_eq!(output.new, [2, 3]);
+        let decided: Vec<_> = output
+            .duplicates
+            .iter()
+            .map(|found| (found.action, found.decided_by))
+            .collect();
+        assert_eq!(
+            decided,
+            [(0, DecidedBy::Similarity), (1, DecidedBy::Similarity)]
+        );
+        assert!(output.judged.is_empty());
+        assert_eq!(output.embedding_tokens, 12);
+        assert_eq!(usage.model, "emb");
+    }
+
+    #[tokio::test]
+    async fn in_the_gray_zone_the_judge_decides_and_its_usage_is_added() {
+        let mut runtime = MockAgentRuntime::new();
+        let answers = std::sync::Mutex::new(vec![true, false]);
+        runtime
+            .expect_judge_duplicate()
+            .times(2)
+            .returning(move |_, _| {
+                let same = answers.lock().unwrap().remove(0);
+                Box::pin(std::future::ready(Ok(judgement(same))))
+            });
+
+        let (output, usage) = dedup(&runtime, vec![0.7, 0.65, 0.2]).await.unwrap();
+
+        assert_eq!(output.new, [1, 2]);
+        assert_eq!(output.duplicates.len(), 1);
+        assert_eq!(output.duplicates[0].action, 0);
+        assert_eq!(output.duplicates[0].decided_by, DecidedBy::Judge);
+        let verdicts: Vec<_> = output
+            .judged
+            .iter()
+            .map(|pair| (pair.action, pair.same_task, pair.reason.as_str()))
+            .collect();
+        assert_eq!(verdicts, [(0, true, "because"), (1, false, "because")]);
+        assert_eq!(output.embedding_tokens, 12);
+        assert_eq!(usage.input_tokens, 12 + 200);
+        assert_eq!(usage.output_tokens, 10);
+        assert_eq!(usage.model, "chat");
+    }
+
+    #[tokio::test]
+    async fn the_judge_is_given_the_best_candidate_only() {
+        let best = SimilarCard {
+            card_id: CardId::new(),
+            score: 0.7,
+            text: "best".into(),
+        };
+        let second = SimilarCard {
+            card_id: CardId::new(),
+            score: 0.68,
+            text: "second".into(),
+        };
+        let mut vectors = MockVectorStore::new();
+        let candidates = vec![second, best.clone()];
+        vectors
+            .expect_nearest()
+            .returning(move |_, _, _| Box::pin(std::future::ready(Ok(candidates.clone()))));
+        let mut runtime = MockAgentRuntime::new();
+        let expected = best.clone();
+        runtime
+            .expect_judge_duplicate()
+            .times(1)
+            .returning(move |_, candidate| {
+                assert_eq!(*candidate, expected);
+                Box::pin(std::future::ready(Ok(judgement(true))))
+            });
+
+        let (output, _) = find_duplicates(
+            &runtime,
+            &embedder(1),
+            &vectors,
+            OrganizationId::new(),
+            &[located("a")],
+            0.75,
+            0.65,
         )
         .await
         .unwrap();
 
-        assert_eq!(output.new, [1]);
-        assert_eq!(output.duplicates[0].action, 0);
-        assert_eq!(output.duplicates[0].card_id, close.card_id);
-        assert_eq!(output.embedding_tokens, 12);
+        assert_eq!(output.duplicates[0].card_id, best.card_id);
+    }
+
+    #[tokio::test]
+    async fn a_failing_judge_leaves_the_action_new_and_says_so() {
+        let mut runtime = MockAgentRuntime::new();
+        runtime.expect_judge_duplicate().times(1).returning(|_, _| {
+            Box::pin(std::future::ready(Err(CoreError::Internal(
+                "model down".into(),
+            ))))
+        });
+
+        let (output, usage) = dedup(&runtime, vec![0.7]).await.unwrap();
+
+        assert_eq!(output.new, [0]);
+        assert!(output.duplicates.is_empty());
+        assert!(!output.judged[0].same_task);
+        assert!(
+            output.judged[0]
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("model down")
+        );
         assert_eq!(usage.model, "emb");
+        assert_eq!(usage.input_tokens, 12);
     }
 
     #[tokio::test]
@@ -821,11 +1007,13 @@ mod tests {
             .returning(|_| Box::pin(std::future::ready(Ok((Vec::new(), Usage::default())))));
         let vectors = MockVectorStore::new();
         let error = find_duplicates(
+            &MockAgentRuntime::new(),
             &embedder,
             &vectors,
             OrganizationId::new(),
             &[located("a")],
-            0.86,
+            0.75,
+            0.65,
         )
         .await
         .unwrap_err();

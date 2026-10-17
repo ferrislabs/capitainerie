@@ -73,3 +73,5 @@ Incrémenter `version` dans `Chart.yaml` à chaque changement de template ou de 
 ## Dédoublonnage (worker)
 
 Le worker indexe les cartes dans LanceDB (`worker.vectorStore.uri`) avec le modèle d'embeddings `worker.embedding.model` (par défaut `bge-m3`, à télécharger sur l'endpoint LLM à côté du modèle de chat). Sans persistance, l'index vit dans un `emptyDir` et le worker le reconstruit à chaque démarrage à partir des cartes. Avec `worker.vectorStore.persistence.enabled=true`, le volume est en `ReadWriteOnce` et le déploiement passe en `Recreate` : un seul worker écrit l'index, donc `worker.replicaCount` reste à 1 tant que l'index n'est pas sur un stockage objet.
+
+Une action est un doublon d'une carte dès que leur similarité cosinus atteint `worker.dedupThreshold` (0,75) et une nouvelle carte sous `worker.dedupGrayFloor` (0,65, jamais au-dessus du seuil : le worker refuse de démarrer sinon) ; entre les deux, le modèle de chat juge si l'action et la carte la plus proche sont la même tâche (un appel par action concernée, un échec compte comme « pas un doublon »).

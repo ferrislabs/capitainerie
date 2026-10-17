@@ -1,6 +1,7 @@
 use capitainerie_common::CoreError;
 
-use super::{Extraction, WriteReport, WriteRequest};
+use super::{Extraction, Judgement, LocatedAction, WriteReport, WriteRequest};
+use crate::domain::similarity::SimilarCard;
 
 /// Runs the agents of the meeting pipeline. Implementations must not leak
 /// their framework types through this port.
@@ -18,4 +19,10 @@ pub trait AgentRuntime: Send + Sync {
         &self,
         request: WriteRequest,
     ) -> impl Future<Output = Result<WriteReport, CoreError>> + Send;
+
+    fn judge_duplicate(
+        &self,
+        action: &LocatedAction,
+        candidate: &SimilarCard,
+    ) -> impl Future<Output = Result<Judgement, CoreError>> + Send;
 }

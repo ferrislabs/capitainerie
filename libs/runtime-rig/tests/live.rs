@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
 use capitainerie_core::domain::{
-    agent::ports::AgentRuntime,
-    similarity::{DEFAULT_DEDUP_THRESHOLD, Embedding, ports::Embedder},
+    agent::{ExtractedAction, LocatedAction, ports::AgentRuntime},
+    similarity::{DEFAULT_DEDUP_THRESHOLD, Embedding, SimilarCard, ports::Embedder},
 };
 use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, OpenAiEmbedder, RigAgentRuntime};
 use clap::Parser;
@@ -137,4 +137,107 @@ async fn live_threshold_separates_paraphrases_from_related_tasks() {
         "the threshold would merge different tasks"
     );
     assert_eq!(missed, 0, "the threshold misses a paraphrase");
+}
+
+const JUDGE_PAIRS: [(&str, &str, &str, &str, bool); 8] = [
+    (
+        "Rédiger et envoyer l'email aux clients",
+        "",
+        "Envoyer un email aux clients",
+        "",
+        true,
+    ),
+    (
+        "Mettre à jour la page de prix sur le site",
+        "",
+        "Actualiser la grille tarifaire sur le site",
+        "",
+        true,
+    ),
+    (
+        "Relancer Acme",
+        "Avant vendredi",
+        "Relancer Globex",
+        "Avant vendredi",
+        false,
+    ),
+    (
+        "Ouvrir un ticket pour le bug de facturation",
+        "",
+        "Corriger le bug de facturation",
+        "",
+        false,
+    ),
+    (
+        "Préparer la démo de jeudi",
+        "Paul s'en occupe",
+        "Organiser la présentation de jeudi",
+        "Slides et données",
+        true,
+    ),
+    (
+        "Migrer la CI vers les runners ARM",
+        "",
+        "Migrer la base de données vers Postgres 17",
+        "",
+        false,
+    ),
+    (
+        "Envoyer le devis à Acme avant mardi",
+        "Marie",
+        "Envoyer le devis à Acme",
+        "",
+        true,
+    ),
+    (
+        "Écrire la documentation de l'API",
+        "",
+        "Relire la documentation de l'API",
+        "",
+        false,
+    ),
+];
+
+#[tokio::test]
+#[ignore = "needs qwen2.5:7b in a running Ollama; run with JUDGE_LIVE=1 and --ignored --nocapture"]
+async fn live_judge_separates_the_same_task_from_a_related_one() {
+    if std::env::var("JUDGE_LIVE").as_deref() != Ok("1") {
+        eprintln!("skipped: JUDGE_LIVE is not 1");
+        return;
+    }
+    let cli = Cli::parse_from(["live"]);
+    let runtime = RigAgentRuntime::new(&cli.llm).unwrap();
+    let mut wrong = 0;
+    for (title, description, card_title, card_description, expected) in JUDGE_PAIRS {
+        let action = LocatedAction {
+            action: ExtractedAction {
+                title: title.into(),
+                description: description.into(),
+                quote: title.into(),
+                owner: None,
+                due: None,
+            },
+            start: 0,
+            end: 1,
+        };
+        let card = SimilarCard {
+            card_id: capitainerie_common::CardId::new(),
+            score: 0.7,
+            text: format!("{card_title}\n{card_description}"),
+        };
+        let started = std::time::Instant::now();
+        let judgement = runtime.judge_duplicate(&action, &card).await.unwrap();
+        eprintln!(
+            "{title:?} vs {card_title:?}: same={} (expected {expected}) in {} ms, {}+{} tokens, reason: {}",
+            judgement.same_task,
+            started.elapsed().as_millis(),
+            judgement.usage.input_tokens,
+            judgement.usage.output_tokens,
+            judgement.reason
+        );
+        if judgement.same_task != expected {
+            wrong += 1;
+        }
+    }
+    assert_eq!(wrong, 0, "{wrong} wrong judgement(s)");
 }
