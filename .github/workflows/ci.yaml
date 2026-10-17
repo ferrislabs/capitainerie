@@ -29,6 +29,9 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
+      - if: matrix.check != 'fmt'
+        name: Install protoc (LanceDB build dependency)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         if: matrix.check != 'fmt'
         with:
@@ -77,6 +80,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Install protoc (LanceDB build dependency)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           key: integration

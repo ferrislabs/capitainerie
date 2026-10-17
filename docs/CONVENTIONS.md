@@ -1,7 +1,7 @@
 # Conventions Capitainerie
 
 Synthèse tirée des deux repos de référence : `../mestier` (ERP, le plus récent) et `../autharie` (control plane FerrisKey).
-Chaque règle cite sa source. Les points où les deux repos divergent sont regroupés en fin de document, section **À trancher**. Tant qu'un point n'est pas tranché, il reste ouvert.
+Chaque règle cite sa source. Les points où les deux repos divergent sont regroupés en fin de document, section **Décisions**.
 
 Légende des sources : **M** = mestier, **A** = autharie.
 
@@ -99,7 +99,7 @@ M : `async-trait` n'est jamais utilisé directement. A : il apparaît seulement 
 - Lignes DB : struct `*Row` privée côté infrastructure, convertie vers le domaine.
   - M : `TryFrom<XRow> for X` ou `From` (22 `TryFrom`, 28 `From` sous `infrastructure/`).
   - A : méthode inhérente `row.into_role()`.
-  - Le prompt demande `TryFrom` : on suit M (voir la divergence D7).
+  - On suit M avec `TryFrom` (D7).
 - UUID v7 pour les identifiants ordonnés (M `libs/common/src/lib.rs`, compteur monotone).
 
 ## 7. Base de données
@@ -124,13 +124,13 @@ M : `async-trait` n'est jamais utilisé directement. A : il apparaît seulement 
 - Authz :
   - M : port de forme AuthZEN (`libs/authz/src/domain/ports.rs:13`), moteur local `LocalPolicyEngine`, client `AuthzenPdp` dans `apps/mcp-gateway/src/pdp.rs:73`.
   - A : bits de permission (`AuthariePolicy::require`).
-  - Pour Capitainerie, le prompt impose le PDP AuthZEN de FerrisKey : on suit la forme M.
+  - Pour Capitainerie, Capitainerie vise le PDP AuthZEN de FerrisKey : on suit la forme M.
 - MCP : `rmcp` (`#[tool_router]`, `#[tool]`), transport streamable HTTP, challenge `WWW-Authenticate: Bearer` et `resource_metadata` RFC 9728 (M `apps/mcp-server/src/app.rs:53`, `apps/mcp-gateway/src/app.rs:107`).
 
 ## 9. Config et observabilité
 
 - clap 4 `derive` + `env`, dans un crate `args` ; `.env` chargé par `dotenvy` (M `libs/args/src/server.rs:82`, A `libs/autharie-api/src/args.rs:14`).
-- `tracing` + `tracing-subscriber` (env-filter, json). M exporte traces, métriques et logs en OTLP (`apps/api/src/logger.rs:19-90`), activé par `ACTIVE_OBSERVABILITY`. A n'a pas de SDK OpenTelemetry. **On suit M**, puisque le prompt exige OTel dès le premier jalon.
+- `tracing` + `tracing-subscriber` (env-filter, json). M exporte traces, métriques et logs en OTLP (`apps/api/src/logger.rs:19-90`), activé par `ACTIVE_OBSERVABILITY`. A n'a pas de SDK OpenTelemetry. **On suit M**, puisque OTel est requis dès le premier jalon.
 
 ## 10. Tests
 
@@ -146,7 +146,7 @@ M : `async-trait` n'est jamais utilisé directement. A : il apparaît seulement 
 
 - Pas de `rustfmt.toml`, `clippy.toml` ni `[workspace.lints]` dans les deux repos : rustfmt et clippy par défaut.
 - CI : `cargo fmt --all -- --check` et `cargo clippy --workspace --all-targets --locked -- -D warnings`.
-- `unwrap` / `expect` ne sont interdits nulle part (A en compte plus de 1 600 hors tests). Le prompt les interdit : voir D8.
+- `unwrap` / `expect` ne sont interdits nulle part (A en compte plus de 1 600 hors tests). Capitainerie les interdit : voir D8.
 
 ## 12. CI (GitHub Actions)
 
@@ -186,13 +186,13 @@ Les points de divergence front (routing, store, lint, dossiers, tests de composa
 
 - Les deux repos utilisent `type(scope): sujet (#PR)` (par exemple `feat(maintenance): ...`).
 - Capitainerie impose `<type>(<subject>): <verbe><message>`.
-- Claude n'apparaît jamais comme auteur, pas de ligne `Co-Authored-By`.
+- Aucun outil d'IA n'apparaît comme auteur ni co-auteur : pas de ligne `Co-Authored-By`.
 
 ---
 
-## À trancher
+## Décisions (divergences entre les repos)
 
-Chaque point indique ma recommandation et sa raison. Rien n'est appliqué tant que tu n'as pas répondu.
+Toutes validées le 2026-10-16 : la recommandation de la colonne de droite s'applique.
 
 | # | Sujet | mestier | autharie | Recommandation |
 |---|---|---|---|---|
@@ -202,7 +202,7 @@ Chaque point indique ma recommandation et sa raison. Rien n'est appliqué tant q
 | D4 | Tests DB | `#[ignore]`, lancés avec `-- --ignored` | Skip si `DATABASE_URL` est absent, échec si `REQUIRE_DATABASE_URL=1` (CI) ; `cargo nextest` | A : un test ignoré par erreur reste visible en CI. |
 | D5 | `anyhow` | Absent (`Box<dyn Error>`) | Absent | ✅ **Tranché** : `anyhow` dans les binaires, `thiserror` partout dans les libs. |
 | D6 | Préfixe des crates | Sans préfixe (`core`, `auth`), sauf `mestier-core` | `autharie-*` | Préfixe `capitainerie-*` sur les noms de package, chemins de dossier courts (`libs/core`). |
-| D7 | Row → domaine | `TryFrom` / `From` | `into_x()` | `TryFrom` (conforme au prompt). |
+| D7 | Row → domaine | `TryFrom` / `From` | `into_x()` | `TryFrom`. |
 | D8 | `unwrap` / `expect` | Non interdits | Non interdits | `[workspace.lints.clippy]` : `unwrap_used = "deny"`, `expect_used = "deny"`, avec `allow-unwrap-in-tests` dans `clippy.toml`. |
 | D9 | Routing front | TanStack Router basé sur les fichiers (`routes/`, notation à points), TanStack Start en mode SPA | TanStack Router basé sur le code (`router.tsx`) | M : routes typées générées, fichiers de route minces. |
 | D10 | État global front | `@tanstack/store` | `zustand` | M : une dépendance de moins, même famille que le reste. |

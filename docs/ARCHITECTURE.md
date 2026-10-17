@@ -1,6 +1,6 @@
 # Architecture Capitainerie
 
-Statut : **proposition**. D1 et D5 tranchés. Les manques côté FerrisKey sont dans `docs/ferriskey-needs.md`. Les choix marqués `D<n>` dépendent de `docs/CONVENTIONS.md` § À trancher. Les choix marqués `A<n>` sont listés en fin de document, avec deux options chacun.
+Statut : **MVP en place** (jalon 1 fonctionnel de bout en bout). Les conventions de code sont dans `docs/CONVENTIONS.md` (décisions `D<n>`), les choix d'architecture en fin de document (décisions `A<n>`), et les manques côté FerrisKey dans `docs/ferriskey-needs.md`.
 
 ## 1. Workspace
 
@@ -8,39 +8,37 @@ Aligné sur mestier (un crate `core` hexagonal). Les adapters lourds sont isolé
 
 ```
 apps/
-  api/              binaire axum : API REST de la console + OpenAPI + WebSocket temps réel
-  worker/           binaire : consomme les événements de run dans Iggy, pilote les agents
-  mcp-kanban/       binaire rmcp : serveur MCP Kanban, seul outil des agents
-  console/          React 19 + TanStack (même stack que mestier/webapp)
+  api/                 axum : API REST de la console, OpenAPI, WebSocket temps réel, lecture des coûts
+  worker/              relais outbox → Iggy, orchestrateur des runs, indexeur des cartes (LanceDB)
+  mcp-kanban/          rmcp : serveur MCP Kanban, seul outil des agents
+  exporter/            événements de run (Iggy) → Parquet
+  console/             React 19 + TanStack (même stack que mestier/webapp)
 libs/
-  args/             config clap partagée
-  common/           ids newtypes, CoreError, config
-  events/           enveloppe RunEvent / CardEvent, catalogue ; ne dépend pas de core
-  macros/           #[transactional], #[repository]
-  telemetry/        init OTel (traces, métriques, logs), attributs GenAI
-  auth/             vérif JWT FerrisKey multi-realm (JWKS par issuer), client token exchange RFC 8693
-  authz/            adapter Authorizer → PDP AuthZEN de FerrisKey
+  args/                config clap partagée
+  common/              ids newtypes, CoreError
+  events/              enveloppe d'événement et catalogue (runs, cartes) ; ne dépend pas de core
+  macros/              #[transactional], #[repository]
+  telemetry/           init OTel (spans), propagation traceparent, signal d'arrêt
+  auth/                vérification JWT FerrisKey multi-realm, token exchange RFC 8693
   core/
-    domain/         transcript, run, step, agent, card : entités, ports, services purs
-    application/    CapitainerieUseCase : méthodes #[transactional], comme MestierUseCase (D1)
-    infrastructure/ postgres (repositories, outbox)
-  handlers/         AppState, ApiError, Response
-  handlers-identity/ GET /api/v1/me
-  handlers-runs/    transcripts + runs + timeline
-  handlers-cards/   kanban
-  handlers-agents/  agents actifs, coûts
-  bus-iggy/         adapter EventBus
-  runtime-rig/      adapter AgentRuntime ; seul crate qui dépend de rig / rig-rmcp
-  llm/              adapter LlmEndpoint (OpenAI-compatible, reqwest)
-  vector-lancedb/   adapter VectorStore
-  analytics/        export Parquet + requêtes DataFusion
-migrations/
-deploy/             docker-compose de dev, config FerrisKey seed
+    domain/            organization, transcript, run (+ étapes), card, agent, similarity, authorization, event
+    application/       CapitainerieUseCase (méthodes #[transactional]) et MeetingPipeline
+    infrastructure/    postgres (repositories, outbox, relais), autorisation locale auditée, coffre de délégations
+  handlers/            AppState, ApiError, middleware d'authentification
+  handlers-identity/   GET /api/v1/me
+  handlers-runs/       transcripts, runs, timeline
+  handlers-cards/      Kanban et validation humaine
+  handlers-realtime/   WebSocket /api/v1/realtime
+  handlers-analytics/  coûts et agents
+  bus-iggy/            adapter EventBus (Iggy)
+  runtime-rig/         adapter AgentRuntime et Embedder ; seul crate qui dépend de Rig
+  vector-lancedb/      adapter VectorStore (LanceDB)
+  analytics/           écriture Parquet et requêtes DataFusion
+migrations/            sqlx, réversibles
+deploy/                Terraform FerrisKey, init Postgres, chart Helm
 ```
 
-Dépendances : `apps → handlers-* → core ← {bus-iggy, runtime-rig, llm, vector-lancedb, analytics, authz}`. Les ports vivent dans `core/domain`, les adapters les implémentent. Seuls les binaires connaissent les types concrets : alias de type, comme `MestierAuthorizer` dans mestier.
-
-Le squelette (étape 4) crée les crates `common`, `events`, `macros`, `telemetry`, `args`, `core`, `handlers` et les trois apps. Les crates d'adapters arrivent avec le jalon qui en a besoin, ce qui évite d'ajouter une dépendance sans usage.
+Dépendances : `apps → handlers-* → core ← {bus-iggy, runtime-rig, vector-lancedb, auth}`. Les ports vivent dans `core/domain` ; les adapters les implémentent ; seuls les binaires connaissent les types concrets (alias de type, comme `MestierAuthorizer` dans mestier). Le port `Analytics` vit dans `libs/analytics` : c'est un côté lecture qui n'écrit aucune donnée métier.
 
 ## 2. Domaine
 
@@ -199,17 +197,17 @@ sequenceDiagram
   - **coûts par run, agent et utilisateur** depuis `analytics` (DataFusion sur Parquet). Le coût = tokens × prix par modèle, défini en config.
 - Dev local : collecteur OTel + un backend de traces (A6).
 
-## 7. Dev local (étape 4)
+## 7. Dev local
 
-`docker-compose.yml` : `postgres:17`, `apache/iggy:0.9.0`, `ferriskey-api` (+ job de migrations), `ferriskey-webapp`, `jaeger`. Ports dans la plage 4000–4199 pour ne pas entrer en conflit avec mestier et FerrisKey en local (voir `README.md`).
+`docker-compose.yml` : `postgres:17`, `apache/iggy:0.9.0`, FerrisKey (API + migrations + console, figés sur un build de `main`), `ollama`, `jaeger`. Ports dans la plage 4000–4199 pour ne pas entrer en conflit avec mestier et FerrisKey en local (voir `README.md`).
 
-Pour le jalon 1 : `ollama`, et un script de seed FerrisKey qui crée le realm de démo, les clients `capitainerie-console`, `capitainerie-api`, `capitainerie-mcp`, un client par agent et la `token_exchange_policy`.
+`scripts/bootstrap-ferriskey.sh` (Terraform + API admin) crée le realm de démo, les clients `capitainerie-console`, `capitainerie-api`, `capitainerie-mcp`, un client par agent, la ressource API et les policies d'échange.
 
 Iggy 0.9 sous Docker Desktop : `IGGY_SHARDING_CPU_ALLOCATION=1`, sinon le serveur échoue à fixer la mémoire des shards sur un nœud NUMA.
 
-## 8. Décisions ouvertes
+## 8. Décisions d'architecture
 
-Ces choix ne sont couverts par aucun des repos de référence. Chacun propose deux options et une recommandation.
+Ces choix ne sont couverts par aucun des repos de référence. Chacun a été présenté avec deux options ; la recommandation a été retenue, sauf mention contraire dans la colonne de droite.
 
 | # | Décision | Option 1 | Option 2 | Reco |
 |---|---|---|---|---|
@@ -222,3 +220,7 @@ Ces choix ne sont couverts par aucun des repos de référence. Chacun propose de
 | A7 | Provisioning des clients agents | **Seed déclaratif** (script au démarrage du compose) | Provisioning par l'API admin FerrisKey à la création de l'org | 1 pour le MVP, 2 plus tard. |
 | A8 | LLM en dev | **Ollama** (API OpenAI-compatible) | vLLM en CPU | 1 : plus simple sur un poste de dev. |
 | A9 | PDP AuthZEN FerrisKey : le endpoint HTTP est seulement spécifié (`docs/design/authz/07-http-authzen.md`), et ni `main` ni `origin/main` ne l'exposent. | Attendre le endpoint FerrisKey | Adapter `Authorizer` local temporaire (comme `LocalPolicyEngine` de mestier) derrière le même port, puis bascule | 2. Besoin transmis dans `docs/ferriskey-needs.md` Besoin 1. |
+| A10 | Client MCP de l'agent Rédacteur | **Outils Rig maison** appelant le serveur avec le client `rmcp` 3.5.1 | `rig-rmcp` (tire `rmcp` 2.x) | 1 : une seule version de `rmcp` dans le workspace. |
+| A11 | Doublons dans la zone grise de similarité (0,65–0,75) | **Juge LLM** « même tâche ? », raison conservée | Seuil abaissé à 0,70 + embeddings symétriques | 1 : un doublon visible vaut mieux qu'une tâche perdue ; le juge tranche ce que le score ne sépare pas. |
+
+A5 en pratique : le jeu Parquet est sur un volume local (dev, et PVC dans le chart) ; une URI `s3://` est refusée explicitement tant que l'accès S3 n'est pas branché.

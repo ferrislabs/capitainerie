@@ -1,7 +1,7 @@
 # Besoins de Capitainerie côté FerrisKey
 
 Briefing autonome à donner à un agent qui travaille sur le repo `ferriskey`.
-Auteur du besoin : projet Capitainerie (`/opt/ferrislabs/capitainerie`), plateforme d'orchestration d'agents IA.
+Auteur du besoin : projet Capitainerie, plateforme d'orchestration d'agents IA.
 Constat établi le 2026-10-16 sur `ferriskey/ferriskey` `main` (a4848755) et `origin/main` (ab8a2b85). Les 7 commits d'écart sont des montées de version de dépendances et ne changent rien aux points ci-dessous.
 
 ## Contexte
