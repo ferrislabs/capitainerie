@@ -183,10 +183,10 @@ sequenceDiagram
 - Iggy réveille l'orchestrateur, Postgres décide : un run ne s'exécute qu'une fois réclamé en base (`FOR UPDATE SKIP LOCKED`, `heartbeat_at`). Un balayage toutes les 30 s rattrape les événements perdus et les runs abandonnés : un run `running` sans heartbeat depuis 15 min est repris par un autre worker.
 - Chaque étape est enregistrée dans `run_steps` et validée en base avant la suivante ; aucun appel au modèle ne se fait dans une transaction. Un run repris saute les étapes déjà réussies et réutilise la sortie stockée de l'extraction.
 - Extract : le modèle renvoie des actions typées et des citations ; `locate` les retrouve dans le transcript (espaces, casse et apostrophes tolérés), et la citation stockée est toujours le texte exact du transcript. Une action introuvable est écartée et comptée.
-- Deduplicate : marqué « ignoré » tant que LanceDB n'est pas branché.
+- Deduplicate (`deduplicator`) : chaque action est comparée aux cartes de l'organisation indexées dans LanceDB (embeddings `bge-m3` via le même endpoint, cartes rejetées exclues). Score ≥ 0,75 : doublon ; < 0,65 : nouvelle carte ; entre les deux, le modèle juge « même tâche ? » et sa raison est gardée dans la sortie de l'étape. Un doublon ne crée pas de carte : le code commente la carte existante (« Mentionné à nouveau… »). Le worker indexe chaque carte créée ou modifiée (consommateur `card-indexer` sur le topic `cards`). Limite connue : une reformulation lointaine (score < 0,65, par ex. « Mettre en ligne les nouveaux tarifs » / « Mettre à jour la page de prix », 0,61) n'est pas reconnue.
 - Write : l'agent Rédacteur n'a qu'un outil, `propose_card(action_index, title, description)`. La provenance, le `run_id` et le jeton viennent du code, jamais du modèle, et une action ne donne qu'une carte.
 - Réessais : 3 tentatives avec backoff pour les erreurs transitoires (modèle ou FerrisKey injoignable) ; un refus ou une sortie invalide échoue tout de suite, avec la raison stockée sur le run.
-- Coût : tokens × prix par million (`LLM_PRICE_*`, 0 pour Ollama), par étape.
+- Coût : tokens × prix par million (`LLM_PRICE_*`, 0 pour Ollama), par étape. L'exporteur (`apps/exporter`) écrit les événements de run en Parquet ; l'API les interroge avec DataFusion (`/api/v1/analytics/costs`, `/api/v1/agents`).
 - Timeline : `GET /api/v1/runs/{id}/timeline` (étapes, appels d'outils, décisions du PDP, totaux) ; page `/runs/$runId` dans la console, avec un lien vers la trace Jaeger.
 
 ## 6. Observabilité
