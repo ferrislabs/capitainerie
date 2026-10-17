@@ -1,9 +1,9 @@
 name: images
 
+# Images are published on release tags (and by hand) only, after review:
+# a push to main builds nothing here; ci.yaml covers it.
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
     paths:

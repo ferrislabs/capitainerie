@@ -6,7 +6,7 @@ Postgres, Iggy, FerrisKey et le endpoint LLM sont des dépendances externes : le
 
 ## Images
 
-`ghcr.io/ferrislabs/capitainerie-<composant>` pour `api`, `worker`, `exporter`, `mcp-kanban`, `migrations` et `console`. Le tag par défaut est `.Chart.AppVersion` (publié sur les tags `v*`). En déploiement continu, fixer `<composant>.image.tag` sur `sha-<commit>`, jamais `latest`.
+`ghcr.io/ferrislabs/capitainerie-<composant>` pour `api`, `worker`, `exporter`, `mcp-kanban`, `migrations` et `console`. Les images sont publiées sur les tags `v*`, ou à la main (`workflow_dispatch` de `images.yaml`) ; un push sur `main` n'en publie pas. Le tag par défaut est `.Chart.AppVersion`. Pour une image publiée à la main, fixer `<composant>.image.tag` sur son `sha-<commit>`, jamais `latest`.
 
 ## Secret à créer hors du chart
 
