@@ -6,7 +6,7 @@ use std::{
 
 use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{
-    DuplicateAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
+    DuplicateAction, ExtractedAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
 };
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
@@ -37,7 +37,7 @@ You are the writer of a meeting assistant. You receive a numbered list of action
 For each numbered action, call the propose_card tool exactly once with:
 - action_index: the number of the action in the list;
 - title: a clear title in French, imperative mood, at most 80 characters;
-- description: a description in French that keeps the owner and the deadline when they are given.
+- description: a short, clean description in French. Do not mention or repeat the owner, the deadline or any label such as \"owner:\" or \"due:\": they are added automatically.
 Do not invent actions and do not call propose_card twice for the same action.
 If propose_card returns an error, read it and fix your call.
 When every action has been handled, answer \"done\".";
@@ -48,7 +48,7 @@ pub(crate) struct ProposeCardArgs {
     action_index: u32,
     #[schemars(description = "Clear French title, imperative mood, at most 80 characters.")]
     title: String,
-    #[schemars(description = "French description that keeps the owner and the deadline.")]
+    #[schemars(description = "Clean French description. Never repeat the owner or the deadline.")]
     description: String,
 }
 
@@ -141,7 +141,7 @@ impl ProposeCard {
             self.shared.transcript_id,
             located,
             &args.title,
-            &args.description,
+            &card_description(&args.description, &located.action),
         );
         let started = Instant::now();
         let outcome = call_create_card(&self.shared.peer, arguments).await;
@@ -221,6 +221,72 @@ pub(crate) fn out_of_range_message(index: u32, count: usize) -> String {
     )
 }
 
+const METADATA_MARKERS: [&str; 8] = [
+    "_owner:",
+    "owner:",
+    "_due:",
+    "due:",
+    "responsable :",
+    "responsable:",
+    "échéance :",
+    "échéance:",
+];
+
+fn starts_with_ci(text: &str, marker: &str) -> bool {
+    let mut chars = text.chars().flat_map(char::to_lowercase);
+    marker
+        .chars()
+        .all(|expected| chars.next() == Some(expected))
+}
+
+fn strip_metadata_line(line: &str) -> &str {
+    let mut previous_is_word = false;
+    for (index, character) in line.char_indices() {
+        if !previous_is_word
+            && METADATA_MARKERS
+                .iter()
+                .any(|marker| starts_with_ci(&line[index..], marker))
+        {
+            return line[..index]
+                .trim_end_matches(|c: char| c.is_whitespace() || c == '|' || c == '_');
+        }
+        previous_is_word = character.is_alphanumeric();
+    }
+    line
+}
+
+pub(crate) fn strip_metadata(description: &str) -> String {
+    description
+        .lines()
+        .map(strip_metadata_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_owned()
+}
+
+pub(crate) fn card_description(description: &str, action: &ExtractedAction) -> String {
+    let mut text = strip_metadata(description);
+    let footer = [
+        action
+            .owner
+            .as_deref()
+            .map(|owner| format!("Responsable : {owner}")),
+        action.due.as_deref().map(|due| format!("Échéance : {due}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n");
+    if !footer.is_empty() {
+        if !text.is_empty() {
+            text.push_str("\n\n");
+        }
+        text.push_str(&footer);
+    }
+    text
+}
+
 pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
     let mut listing = String::from("Actions to turn into cards:\n");
     for (index, located) in actions.iter().enumerate() {
@@ -229,12 +295,6 @@ pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
             "{index}. title: {} | description: {}",
             action.title, action.description
         ));
-        if let Some(owner) = &action.owner {
-            listing.push_str(&format!(" | owner: {owner}"));
-        }
-        if let Some(due) = &action.due {
-            listing.push_str(&format!(" | due: {due}"));
-        }
         listing.push('\n');
     }
     listing
@@ -298,7 +358,7 @@ fn tool_definition() -> Value {
                 },
                 "description": {
                     "type": "string",
-                    "description": "French description that keeps the owner and the deadline.",
+                    "description": "Clean French description. Never repeat the owner or the deadline.",
                 },
             },
             "required": ["action_index", "title", "description"],
@@ -454,8 +514,6 @@ pub(crate) async fn run(
 
 #[cfg(test)]
 mod tests {
-    use capitainerie_core::domain::agent::ExtractedAction;
-
     use super::*;
 
     fn located(title: &str, owner: Option<&str>, due: Option<&str>) -> LocatedAction {
@@ -473,13 +531,66 @@ mod tests {
     }
 
     #[test]
-    fn listing_numbers_actions_and_keeps_owner_and_due() {
+    fn listing_numbers_actions_without_owner_and_due() {
         let listing = actions_listing(&[
             located("A", Some("Marie"), Some("vendredi")),
             located("B", None, None),
         ]);
-        assert!(listing.contains("0. title: A | description: ctx | owner: Marie | due: vendredi"));
+        assert!(listing.contains("0. title: A | description: ctx\n"));
+        assert!(!listing.contains("Marie"));
         assert!(listing.contains("1. title: B | description: ctx\n"));
+    }
+
+    #[test]
+    fn the_footer_carries_only_the_known_lines() {
+        let both = located("A", Some("Lina"), Some("lundi")).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &both),
+            "Envoyer l'email.\n\nResponsable : Lina\nÉchéance : lundi"
+        );
+        let owner = located("A", Some("Lina"), None).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &owner),
+            "Envoyer l'email.\n\nResponsable : Lina"
+        );
+        let due = located("A", None, Some("lundi")).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &due),
+            "Envoyer l'email.\n\nÉchéance : lundi"
+        );
+        let none = located("A", None, None).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &none),
+            "Envoyer l'email."
+        );
+    }
+
+    #[test]
+    fn metadata_fragments_are_stripped_from_the_model_description() {
+        for (input, expected) in [
+            (
+                "Rédiger l'email._owner: Lina _due: lundi",
+                "Rédiger l'email.",
+            ),
+            ("Rédiger l'email | Owner: Sophie", "Rédiger l'email"),
+            ("Rédiger l'email. owner: Sophie", "Rédiger l'email."),
+            ("Rédiger l'email. Due: lundi", "Rédiger l'email."),
+            (
+                "Rédiger l'email.\nResponsable : Lina\nÉchéance : lundi",
+                "Rédiger l'email.",
+            ),
+            (
+                "Premier point.\nSecond | due: demain\nTroisième",
+                "Premier point.\nSecond\nTroisième",
+            ),
+            (
+                "Prévoir le budget overdue: oui",
+                "Prévoir le budget overdue: oui",
+            ),
+            ("Relancer le fournisseur", "Relancer le fournisseur"),
+        ] {
+            assert_eq!(strip_metadata(input), expected, "{input}");
+        }
     }
 
     #[test]

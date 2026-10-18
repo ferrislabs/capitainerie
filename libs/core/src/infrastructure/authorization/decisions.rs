@@ -2,7 +2,7 @@ use capitainerie_common::{CoreError, OrganizationId, RunId};
 use capitainerie_macros::repository;
 
 use crate::{
-    domain::authorization::{DecisionRecord, ports::DecisionLogRepository},
+    domain::authorization::{DecisionRecord, READ_ACTIONS, ports::DecisionLogRepository},
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
 
@@ -30,10 +30,12 @@ impl DecisionLogRepository for PgDecisionLogRepository<'_> {
             SELECT subject, actor, action, resource_kind, resource_id, allowed, reason, decided_at
             FROM authorization_decisions
             WHERE organization_id = $1 AND run_id = $2
+              AND NOT (action = ANY($3))
             ORDER BY decided_at, id
             "#,
             organization_id.0,
             run_id.0,
+            &READ_ACTIONS.map(str::to_owned)[..],
         )
         .fetch_all(&mut ***tx)
         .await

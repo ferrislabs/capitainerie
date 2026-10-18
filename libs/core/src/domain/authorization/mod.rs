@@ -65,7 +65,13 @@ pub enum Decision {
     Deny { reason: String },
 }
 
+pub const READ_ACTIONS: [&str; 3] = ["run.read", "card.read", "provider.read"];
+
 impl Action {
+    pub fn is_read(self) -> bool {
+        READ_ACTIONS.contains(&self.as_str())
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TranscriptCreate => "transcript.create",

@@ -265,7 +265,10 @@ async fn write_creates_the_card_with_provenance_bearer_and_traceparent() {
     assert_eq!(call.authorization.as_deref(), Some("Bearer secret-token"));
     assert_eq!(call.traceparent.as_deref(), Some(TRACEPARENT));
     assert_eq!(call.arguments["title"], "Envoyer le devis");
-    assert_eq!(call.arguments["description"], "Pour Marie");
+    assert_eq!(
+        call.arguments["description"],
+        "Pour Marie\n\nResponsable : Marie"
+    );
     assert_eq!(call.arguments["run_id"], Uuid::from_u128(11).to_string());
     assert_eq!(
         call.arguments["provenance"],
