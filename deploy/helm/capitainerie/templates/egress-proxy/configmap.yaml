@@ -1,0 +1,17 @@
+{{- if .Values.executor.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capitainerie.egressProxyName" . }}
+  labels:
+    {{- include "capitainerie.labels" (dict "root" . "component" "egress-proxy") | nindent 4 }}
+data:
+  EGRESS_PROXY_HOST: "0.0.0.0"
+  EGRESS_PROXY_PORT: {{ .Values.egressProxy.port | quote }}
+  DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
+  LOG_FILTER: {{ .Values.config.logFilter | quote }}
+  LOG_JSON: {{ .Values.config.logJson | quote }}
+  {{- with .Values.config.otlpEndpoint }}
+  OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+{{- end }}

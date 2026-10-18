@@ -16,6 +16,7 @@ on:
       - "apps/**"
       - "libs/**"
       - "migrations/**"
+      - "deploy/executor/**"
       - "deploy/helm/**"
       - ".github/workflows/images.yaml"
   workflow_dispatch:
@@ -58,10 +59,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [api, worker, exporter, mcp-kanban, migrations, console]
+        target: [api, worker, exporter, mcp-kanban, egress-proxy, migrations, console]
         platform:
           - { name: linux/amd64, arch: amd64, runner: ubuntu-24.04 }
           - { name: linux/arm64, arch: arm64, runner: ubuntu-24.04-arm }
+        include:
+          - target: executor
+            context: deploy/executor
+            file: deploy/executor/Dockerfile
+            platform: { name: linux/amd64, arch: amd64, runner: ubuntu-24.04 }
+          - target: executor
+            context: deploy/executor
+            file: deploy/executor/Dockerfile
+            platform: { name: linux/arm64, arch: arm64, runner: ubuntu-24.04-arm }
     steps:
       - uses: actions/checkout@v5
 
@@ -82,7 +92,8 @@ jobs:
       - id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context || '.' }}
+          file: ${{ matrix.file || 'Dockerfile' }}
           target: ${{ matrix.target }}
           platforms: ${{ matrix.platform.name }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -115,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [api, worker, exporter, mcp-kanban, migrations, console]
+        target: [api, worker, exporter, mcp-kanban, egress-proxy, executor, migrations, console]
     steps:
       - uses: docker/setup-buildx-action@v3
 

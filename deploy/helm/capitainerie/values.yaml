@@ -206,6 +206,59 @@ worker:
   tolerations: []
   affinity: {}
 
+executor:
+  # -- Runs Claude Code on validated cards, one Job per execution, in its own namespace.
+  # Creates the tasks namespace, its NetworkPolicy, the worker RBAC and the egress proxy.
+  enabled: false
+  # -- Namespace of the task Jobs (created by the chart).
+  namespace: capitainerie-tasks
+  image:
+    # -- Overrides <image.prefix>-executor.
+    repository: ""
+    # -- Defaults to .Chart.AppVersion.
+    tag: ""
+  # -- Value of EXECUTOR_MAX_TURNS (--max-turns of Claude Code).
+  maxTurns: 50
+  # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).
+  deadlineSeconds: 1800
+  # -- Where the task pods resolve names (DNS egress).
+  dnsTo:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+
+egressProxy:
+  # -- Deployed with executor.enabled. The only network exit of the task pods.
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  # -- Value of EGRESS_PROXY_PORT.
+  port: 4130
+  secretEnv:
+    - DATABASE_URL
+    - SECRETS_KEY
+    - GITHUB_APP_ID
+    - GITHUB_APP_PRIVATE_KEY
+  extraEnv: []
+  podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 4130
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
 exporter:
   enabled: true
   image:
@@ -356,3 +409,11 @@ networkPolicy:
     otlp:
       to: []
       ports: [4317, 4318]
+    # -- Kubernetes API, reached by the worker when executor.enabled.
+    kubeApi:
+      to: []
+      ports: [443, 6443]
+    # -- api.anthropic.com and github.com, reached by the egress proxy.
+    upstream:
+      to: []
+      ports: [443]

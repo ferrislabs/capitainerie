@@ -1,0 +1,18 @@
+{{- if .Values.executor.enabled }}
+{{- $ctx := dict "root" . "component" "egress-proxy" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "capitainerie.egressProxyName" . }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  type: {{ .Values.egressProxy.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.egressProxy.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "capitainerie.selectorLabels" $ctx | nindent 4 }}
+{{- end }}

@@ -73,6 +73,12 @@ Sous Docker Desktop, Ollama tourne sur CPU : comptez une à deux minutes par ét
 | Ollama (OpenAI-compatible `/v1`) | http://localhost:4120 |
 | Jaeger (UI / OTLP gRPC) | http://localhost:16686 / localhost:4327 |
 
+### Exécutant (optionnel)
+
+L'Exécutant lance Claude Code dans un Job Kubernetes. Prérequis : [kind](https://kind.sigs.k8s.io) et `kubectl`. `./scripts/kind-up.sh` crée le cluster `capitainerie`, le namespace `capitainerie-tasks`, construit l'image `capitainerie-executor:dev` et la charge dans kind, puis affiche le contexte kubeconfig à utiliser (`kind-capitainerie`).
+
+Limite connue : le CNI par défaut de kind n'applique pas les `NetworkPolicy`. L'isolation réseau des conteneurs n'est donc pas vérifiée en local ; elle l'est seulement sur un cluster dont le CNI les applique (Cilium, Calico).
+
 ## Vérifier
 
 ```bash

@@ -8,6 +8,16 @@ license.workspace = true
 [dependencies]
 capitainerie-common.workspace = true
 capitainerie-core.workspace = true
+futures-util = { workspace = true, features = ["io"] }
+k8s-openapi.workspace = true
+kube.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
 
 [lints]
 workspace = true

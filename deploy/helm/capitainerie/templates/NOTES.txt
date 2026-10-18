@@ -5,6 +5,9 @@ Secret required (created out of band, never by this chart): {{ .Values.secrets.e
   worker:  {{ join ", " .Values.worker.secretEnv }}
   exporter: {{ join ", " .Values.exporter.secretEnv }}
   mcp:     {{ join ", " .Values.mcpKanban.secretEnv }}
+{{- if .Values.executor.enabled }}
+  egress-proxy: {{ join ", " .Values.egressProxy.secretEnv }}
+{{- end }}
 
 {{- if and .Values.exporter.enabled (not .Values.analytics.persistence.enabled) }}
 
