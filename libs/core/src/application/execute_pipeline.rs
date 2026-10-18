@@ -5,7 +5,7 @@ use aws_lc_rs::{
     rand::{SecureRandom, SystemRandom},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use capitainerie_common::{CardId, CoreError, RunId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_events::run::RunStarted;
 use capitainerie_macros::transactional;
 use chrono::{DateTime, Utc};
@@ -186,6 +186,7 @@ enum Finish {
 
 struct Prepared {
     spec: TaskSpec,
+    organization_id: OrganizationId,
     installation_id: i64,
     card: Card,
     redactor: Redactor,
@@ -518,6 +519,14 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
             .card_for_index(organization_id, context.card_id)
             .await?
             .ok_or_else(|| CoreError::Invalid("la carte n'existe plus".into()))?;
+        if self
+            .usecase
+            .github_app_summary_for(organization_id)
+            .await?
+            .is_none()
+        {
+            return Err(CoreError::Invalid("application GitHub absente".into()));
+        }
         let installation = self
             .usecase
             .github_installation_for(organization_id)
@@ -540,6 +549,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         };
         Ok(Prepared {
             spec,
+            organization_id,
             installation_id: installation.installation_id,
             card,
             redactor: Redactor::new(&token),
@@ -739,6 +749,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
     ) -> Result<(), CoreError> {
         let head = retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
             host.branch_head(
+                prepared.organization_id,
                 prepared.installation_id,
                 &prepared.spec.repository,
                 &prepared.spec.branch,
@@ -774,6 +785,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         let pull_request =
             retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
                 host.open_draft_pr(
+                    prepared.organization_id,
                     prepared.installation_id,
                     DraftPullRequest {
                         repository: prepared.spec.repository.clone(),

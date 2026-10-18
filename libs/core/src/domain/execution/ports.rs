@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use tokio::sync::mpsc;
 
 use super::{
-    DraftPullRequest, GithubInstallation, PullRequestUrl, RepositoryRef, TaskGrant, TaskLine,
-    TaskOutcome, TaskSpec,
+    DraftPullRequest, GithubAppCredentials, GithubAppSummary, GithubInstallation, PullRequestUrl,
+    RepositoryRef, TaskGrant, TaskLine, TaskOutcome, TaskSpec,
 };
 
 /// Runs one execution in a disposable container. Implementations must not
@@ -35,6 +35,7 @@ pub trait TaskRunner: Send + Sync {
 pub trait CodeHost: Send + Sync {
     fn repositories(
         &self,
+        organization_id: OrganizationId,
         installation_id: i64,
     ) -> impl Future<Output = Result<Vec<RepositoryRef>, CoreError>> + Send;
 
@@ -42,6 +43,7 @@ pub trait CodeHost: Send + Sync {
     /// not exist.
     fn branch_head(
         &self,
+        organization_id: OrganizationId,
         installation_id: i64,
         repository: &RepositoryRef,
         branch: &str,
@@ -49,6 +51,7 @@ pub trait CodeHost: Send + Sync {
 
     fn open_draft_pr(
         &self,
+        organization_id: OrganizationId,
         installation_id: i64,
         pull_request: DraftPullRequest,
     ) -> impl Future<Output = Result<PullRequestUrl, CoreError>> + Send;
@@ -93,4 +96,27 @@ pub trait GithubInstallationRepository: Send {
         &mut self,
         organization_id: OrganizationId,
     ) -> impl Future<Output = Result<(), CoreError>> + Send;
+}
+
+#[cfg_attr(any(test, feature = "mock"), mockall::automock)]
+pub trait GithubAppRepository: Send {
+    fn get(
+        &mut self,
+        organization_id: OrganizationId,
+    ) -> impl Future<Output = Result<Option<GithubAppCredentials>, CoreError>> + Send;
+
+    fn summary(
+        &mut self,
+        organization_id: OrganizationId,
+    ) -> impl Future<Output = Result<Option<GithubAppSummary>, CoreError>> + Send;
+
+    fn insert(
+        &mut self,
+        app: &GithubAppCredentials,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    fn delete(
+        &mut self,
+        organization_id: OrganizationId,
+    ) -> impl Future<Output = Result<bool, CoreError>> + Send;
 }

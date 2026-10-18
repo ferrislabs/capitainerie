@@ -19,10 +19,11 @@ use capitainerie_core::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
+        execution::GithubAppCredentials,
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
-use capitainerie_github::{GithubApp, GithubClient};
+use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Caller, Delegation};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
@@ -151,7 +152,8 @@ async fn fixture_as(github: Github, actor: Option<&str>) -> Option<Fixture> {
         created_at: Utc::now(),
     };
     let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
-        .with_cipher(SecretCipher::new(&[1u8; 32]).unwrap());
+        .with_cipher(SecretCipher::new(&[1u8; 32]).unwrap())
+        .with_secrets_cipher(SecretCipher::new(&[2u8; 32]).unwrap());
     let state = AppState {
         usecase: usecase.clone(),
         verifier: FerrisKeyVerifier::new(AcceptedClients::new(["capitainerie-console"])),
@@ -168,19 +170,48 @@ async fn fixture_as(github: Github, actor: Option<&str>) -> Option<Fixture> {
         }),
     };
     let github_calls = Arc::new(AtomicUsize::new(0));
-    let github = match github {
-        Github::Absent => None,
-        Github::Fake => {
-            let mut app = GithubApp::new(1, SecretToken::new(PEM));
-            app.api_base = fake_github(Arc::clone(&github_calls)).await;
-            Some(Arc::new(GithubClient::new(app).unwrap()))
-        }
-        Github::Unreachable => {
-            let mut app = GithubApp::new(1, SecretToken::new(PEM));
-            app.api_base = "http://127.0.0.1:1".into();
-            Some(Arc::new(GithubClient::new(app).unwrap()))
-        }
+    let base = match github {
+        Github::Absent => "http://127.0.0.1:1".to_owned(),
+        Github::Fake => fake_github(Arc::clone(&github_calls)).await,
+        Github::Unreachable => "http://127.0.0.1:1".to_owned(),
     };
+    if github != Github::Absent {
+        usecase
+            .save_github_app(
+                Subject {
+                    id: "user-1".into(),
+                    organization_id: organization.id,
+                    actor: None,
+                    is_admin: true,
+                },
+                GithubAppCredentials {
+                    organization_id: organization.id,
+                    app_id: fresh_installation(),
+                    slug: "capitainerie-test".into(),
+                    client_id: "Iv1.test".into(),
+                    client_secret: SecretToken::new("oauth-secret"),
+                    private_key_pem: SecretToken::new(PEM),
+                    webhook_secret: SecretToken::new("hook"),
+                    html_url: "https://github.com/apps/capitainerie-test".into(),
+                    owner_login: "acme".into(),
+                    owner_type: "Organization".into(),
+                    created_by: "user-1".into(),
+                    created_at: Utc::now(),
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let github = Arc::new(
+        GithubApps::new(
+            usecase.clone(),
+            GithubBases {
+                api_base: base.clone(),
+                web_base: base,
+            },
+        )
+        .unwrap(),
+    );
     let caller = Caller {
         identity: Identity {
             subject: "user-1".into(),

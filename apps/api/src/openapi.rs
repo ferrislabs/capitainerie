@@ -16,8 +16,9 @@ use capitainerie_handlers_identity::{
     me::{MeOrganization, MeResponse},
 };
 use capitainerie_handlers_integrations::{
-    self as integrations, ConnectGithubRequest, GithubIntegrationResponse, InstallUrlResponse,
-    RepositoryListResponse, RepositoryResponse,
+    self as integrations, ConnectGithubRequest, CreateGithubAppRequest, CreateManifestRequest,
+    GithubAppResponse, GithubInstallationResponse, GithubIntegrationResponse, InstallUrlResponse,
+    ManifestOwner, ManifestResponse, RepositoryListResponse, RepositoryResponse,
 };
 use capitainerie_handlers_providers::{
     self as providers,
@@ -71,6 +72,9 @@ use utoipa::{
         integrations::disconnect::handler,
         integrations::install_url::handler,
         integrations::callback::handler,
+        integrations::create_manifest::handler,
+        integrations::create_app::handler,
+        integrations::delete_app::handler,
         integrations::list_repositories::handler,
     ),
     components(schemas(
@@ -114,6 +118,12 @@ use utoipa::{
         ModelAssignmentsDto,
         ModelAssignmentsResponse,
         GithubIntegrationResponse,
+        GithubAppResponse,
+        GithubInstallationResponse,
+        CreateManifestRequest,
+        ManifestOwner,
+        ManifestResponse,
+        CreateGithubAppRequest,
         InstallUrlResponse,
         ConnectGithubRequest,
         RepositoryListResponse,
@@ -127,7 +137,7 @@ use utoipa::{
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
-        (name = integrations::TAG, description = "The GitHub App installation that lets Claude Code work on a repository"),
+        (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository"),
     )
 )]
 pub struct ApiDoc;
@@ -224,6 +234,15 @@ mod tests {
         assert!(paths["/api/v1/integrations/github/repositories"]["get"].is_object());
         let schemas = &spec["components"]["schemas"];
         assert!(schemas["ExecuteCardResponse"]["properties"]["run_id"].is_object());
-        assert!(schemas["GithubIntegrationResponse"]["properties"]["app_configured"].is_object());
+        assert!(schemas["GithubIntegrationResponse"]["properties"]["app"].is_object());
+        assert!(schemas["GithubIntegrationResponse"]["properties"]["installation"].is_object());
+        assert!(paths["/api/v1/integrations/github/app/manifest"]["post"].is_object());
+        assert!(paths["/api/v1/integrations/github/app"]["post"].is_object());
+        assert!(paths["/api/v1/integrations/github/app"]["delete"].is_object());
+        assert!(schemas["ManifestResponse"]["properties"]["action_url"].is_object());
+        let app = &schemas["GithubAppResponse"]["properties"];
+        for secret in ["client_secret", "pem", "private_key", "webhook_secret"] {
+            assert!(app.get(secret).is_none(), "{secret}");
+        }
     }
 }

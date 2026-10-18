@@ -1,11 +1,10 @@
 use anyhow::Context;
 use capitainerie_core::{
     CapitainerieUseCase,
-    domain::agent::SecretToken,
     infrastructure::{crypto::SecretCipher, postgres},
 };
 use capitainerie_egress_proxy::{Live, Proxy, ProxyConfig, config::Args, router};
-use capitainerie_github::{GithubApp, GithubClient};
+use capitainerie_github::{GithubApps, GithubBases};
 use clap::Parser;
 use tokio::net::TcpListener;
 
@@ -30,19 +29,14 @@ async fn main() -> anyhow::Result<()> {
             "SECRETS_KEY is unset: the organizations' Anthropic keys cannot be read, every Anthropic call is refused"
         ),
     }
-    let github = match (args.github.app_id, &args.github.private_key) {
-        (Some(app_id), Some(pem)) => {
-            let mut app = GithubApp::new(app_id, SecretToken::new(pem.clone()));
-            app.api_base = args.github.api_base.clone();
-            Some(GithubClient::new(app).context("building the GitHub client")?)
-        }
-        _ => {
-            tracing::warn!(
-                "GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY is unset: every git request is refused"
-            );
-            None
-        }
-    };
+    let github = GithubApps::new(
+        usecase.clone(),
+        GithubBases {
+            api_base: args.github.api_base.clone(),
+            web_base: args.github.web_base.clone(),
+        },
+    )
+    .context("building the GitHub client")?;
 
     let proxy = Proxy::new(
         Live::new(usecase, github),

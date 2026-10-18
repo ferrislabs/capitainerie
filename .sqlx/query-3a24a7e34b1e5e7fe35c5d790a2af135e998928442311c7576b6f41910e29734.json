@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT app_id, slug, client_id, html_url, owner_login, owner_type,\n                   client_secret_nonce, client_secret_ciphertext,\n                   private_key_nonce, private_key_ciphertext,\n                   webhook_secret_nonce, webhook_secret_ciphertext,\n                   created_by, created_at\n            FROM github_apps\n            WHERE organization_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "app_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "client_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "html_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "owner_login",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "owner_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "client_secret_nonce",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 7,
+        "name": "client_secret_ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 8,
+        "name": "private_key_nonce",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 9,
+        "name": "private_key_ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 10,
+        "name": "webhook_secret_nonce",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 11,
+        "name": "webhook_secret_ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3a24a7e34b1e5e7fe35c5d790a2af135e998928442311c7576b6f41910e29734"
+}

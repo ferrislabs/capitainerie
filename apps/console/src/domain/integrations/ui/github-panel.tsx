@@ -2,16 +2,32 @@ import { Github } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
+import {
+	GithubAppForm,
+	type OwnerKind,
+} from '#/domain/integrations/ui/github-app-form'
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' })
+
+export interface CreateAppProps {
+	ownerKind: OwnerKind
+	login: string
+	isPending: boolean
+	errorMessage?: string
+	onOwnerKindChange: (kind: OwnerKind) => void
+	onLoginChange: (login: string) => void
+	onSubmit: () => void
+}
 
 interface Props {
 	status: Schemas.GithubIntegrationResponse
 	isAdmin: boolean
+	create: CreateAppProps
 	isConnecting: boolean
 	errorMessage?: string
 	onConnect: () => void
 	onDisconnect: () => void
+	onDeleteApp: () => void
 }
 
 function formatDate(iso: string | null | undefined): string | undefined {
@@ -20,46 +36,71 @@ function formatDate(iso: string | null | undefined): string | undefined {
 	return Number.isNaN(date.getTime()) ? undefined : dateFormat.format(date)
 }
 
+function AppLine({ app }: { app: Schemas.GithubAppResponse }) {
+	const createdAt = formatDate(app.created_at)
+	return (
+		<p className="text-[13px] text-muted-foreground">
+			Application GitHub{' '}
+			<a
+				href={app.html_url}
+				target="_blank"
+				rel="noreferrer"
+				className="font-mono text-foreground underline underline-offset-2"
+			>
+				{app.slug}
+			</a>
+			, propriétaire <span className="font-mono">{app.owner_login}</span>
+			{createdAt ? `, créée le ${createdAt}` : ''}.
+		</p>
+	)
+}
+
 export function GithubPanel({
 	status,
 	isAdmin,
+	create,
 	isConnecting,
 	errorMessage,
 	onConnect,
 	onDisconnect,
+	onDeleteApp,
 }: Props) {
-	if (!status.app_configured) {
-		return (
-			<div className="flex flex-col gap-2">
-				<p className="text-sm font-medium">
-					L’application GitHub n’est pas configurée sur ce serveur.
-				</p>
+	const app = status.app
+	const installation = status.installation
+
+	if (!app) {
+		if (!isAdmin) {
+			return (
 				<p className="text-[13px] text-muted-foreground">
-					L’exploitant doit renseigner les variables{' '}
-					<span className="font-mono text-xs">GITHUB_APP_*</span> de l’API, puis
-					la redémarrer. La procédure est décrite dans le README, section «
-					Exécutant ».
+					L’organisation n’a pas encore d’application GitHub. Seuls les
+					administrateurs de l’organisation peuvent la créer.
 				</p>
-			</div>
-		)
+			)
+		}
+		return <GithubAppForm {...create} />
 	}
 
-	if (!status.connected) {
+	if (!installation) {
 		return (
 			<div className="flex flex-col items-start gap-3">
+				<AppLine app={app} />
 				<p className="text-sm text-muted-foreground">
-					Connectez le compte GitHub qui héberge vos dépôts pour confier des
-					cartes à Claude Code.
+					Installez l’application sur les dépôts que Claude Code peut modifier.
 				</p>
 				{isAdmin ? (
-					<Button type="button" disabled={isConnecting} onClick={onConnect}>
-						<Github aria-hidden="true" />
-						{isConnecting ? 'Redirection…' : 'Connecter GitHub'}
-					</Button>
+					<div className="flex flex-wrap gap-2">
+						<Button type="button" disabled={isConnecting} onClick={onConnect}>
+							<Github aria-hidden="true" />
+							{isConnecting ? 'Redirection…' : 'Installer sur vos dépôts'}
+						</Button>
+						<Button type="button" variant="outline" onClick={onDeleteApp}>
+							Supprimer l’application
+						</Button>
+					</div>
 				) : (
 					<p className="text-[13px] text-muted-foreground">
 						GitHub n’est pas connecté. Seuls les administrateurs de
-						l’organisation peuvent le connecter.
+						l’organisation peuvent installer l’application.
 					</p>
 				)}
 				{errorMessage ? (
@@ -71,31 +112,35 @@ export function GithubPanel({
 		)
 	}
 
-	const connectedAt = formatDate(status.connected_at)
+	const connectedAt = formatDate(installation.connected_at)
 
 	return (
 		<div className="flex flex-col gap-4">
 			<dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
 				<div className="flex flex-col gap-0.5">
 					<dt className="text-xs text-muted-foreground">Compte GitHub</dt>
-					<dd className="font-mono text-sm">{status.account_login ?? '—'}</dd>
+					<dd className="font-mono text-sm">{installation.account_login}</dd>
 				</div>
 				<div className="flex flex-col gap-0.5">
 					<dt className="text-xs text-muted-foreground">Connecté par</dt>
-					<dd className="text-sm">{status.connected_by ?? '—'}</dd>
+					<dd className="text-sm">{installation.connected_by}</dd>
 				</div>
 				<div className="flex flex-col gap-0.5">
 					<dt className="text-xs text-muted-foreground">Connecté le</dt>
 					<dd className="text-sm figures">{connectedAt ?? '—'}</dd>
 				</div>
 			</dl>
+			<AppLine app={app} />
 			{errorMessage ? (
 				<InlineAlert tone="danger">{errorMessage}</InlineAlert>
 			) : null}
 			{isAdmin ? (
-				<div>
+				<div className="flex flex-wrap gap-2">
 					<Button type="button" variant="outline" onClick={onDisconnect}>
 						Déconnecter
+					</Button>
+					<Button type="button" variant="outline" onClick={onDeleteApp}>
+						Supprimer l’application
 					</Button>
 				</div>
 			) : null}

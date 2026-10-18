@@ -34,7 +34,7 @@ pub fn router<A: Analytics + 'static, C: ModelCatalog + 'static>(
     let protected = Router::new()
         .merge(capitainerie_handlers_identity::router())
         .merge(capitainerie_handlers_runs::router())
-        .merge(capitainerie_handlers_cards::router(github.client.clone()))
+        .merge(capitainerie_handlers_cards::router(github.apps.clone()))
         .merge(capitainerie_handlers_analytics::router(analytics))
         .merge(capitainerie_handlers_providers::router(
             state.usecase.clone(),

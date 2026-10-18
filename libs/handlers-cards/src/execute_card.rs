@@ -4,16 +4,15 @@ use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{CardId, CoreError, RunId};
 use capitainerie_core::domain::execution::ports::CodeHost;
-use capitainerie_github::GithubClient;
+use capitainerie_github::GithubApps;
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::response::CardResponse;
 
-/// `None` when the server has no GitHub App.
-#[derive(Clone, Default)]
-pub struct CodeHostHandle(pub Option<Arc<GithubClient>>);
+#[derive(Clone)]
+pub struct CodeHostHandle(pub Arc<GithubApps>);
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/api/v1/cards/{card_id}/executions")]
@@ -65,21 +64,25 @@ pub async fn handler(
         .usecase
         .check_card_executable(subject.clone(), card_id)
         .await?;
+    let organization_id = subject.organization_id;
     let not_connected = || CoreError::Conflict("github_not_connected".into());
-    let github = github.ok_or_else(not_connected)?;
+    if github.client(organization_id).await?.is_none() {
+        return Err(not_connected().into());
+    }
     let installation = state
         .usecase
         .github_installation(subject.clone())
         .await?
         .ok_or_else(not_connected)?;
-    let reachable = github.repositories(installation.installation_id).await?;
+    let reachable = github
+        .repositories(organization_id, installation.installation_id)
+        .await?;
     if !reachable.contains(&repository) {
         return Err(ApiError::Forbidden(Some("repository_not_allowed".into())));
     }
     let base_branch = github
-        .default_branch(installation.installation_id, &repository)
-        .await
-        .map_err(CoreError::from)?;
+        .default_branch(organization_id, installation.installation_id, &repository)
+        .await?;
     let started = state
         .usecase
         .execute_card(

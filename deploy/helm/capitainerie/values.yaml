@@ -43,12 +43,9 @@ config:
   pipelineAgents:
     - capitainerie-agent-writer
   github:
-    # -- URL name of the GitHub App (GITHUB_APP_SLUG): the install link is github.com/apps/<slug>/installations/new.
-    appSlug: ""
-    # -- GITHUB_APP_CLIENT_ID, the App's OAuth client id. Its secret goes in api.secretEnv (GITHUB_APP_CLIENT_SECRET).
-    clientId: ""
-    # -- GITHUB_OAUTH_BASE, for GitHub Enterprise. Empty keeps https://github.com.
-    oauthBase: ""
+    # -- GITHUB_WEB_BASE, for GitHub Enterprise: OAuth, App manifest and installation pages. Empty keeps https://github.com.
+    # Each organization creates its own GitHub App from the console; there is nothing else to configure here.
+    webBase: ""
     # -- GITHUB_API_BASE, for GitHub Enterprise. Empty keeps https://api.github.com.
     apiBase: ""
   iggy:
@@ -85,6 +82,9 @@ api:
   # -- Origins allowed by CORS (ALLOWED_ORIGINS). Follows the console host.
   allowedOrigins:
     - http://localhost:4080
+  # -- Value of CONSOLE_URL: the console as the browser reaches it. GitHub redirects the browser there once an organization
+  # created or installed its App; GitHub never calls Capitainerie. Follows the console host.
+  consoleUrl: http://localhost:4080
   # -- Client ids whose tokens are accepted (AUTH_ACCEPTED_CLIENTS, the `azp`).
   acceptedClients:
     - capitainerie-console
@@ -94,9 +94,6 @@ api:
     - DATABASE_URL
     - DELEGATION_KEY
     - SECRETS_KEY
-    - GITHUB_APP_ID
-    - GITHUB_APP_PRIVATE_KEY
-    - GITHUB_APP_CLIENT_SECRET
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS
@@ -253,8 +250,6 @@ egressProxy:
   databaseUrlSecretKey: DATABASE_URL
   secretEnv:
     - SECRETS_KEY
-    - GITHUB_APP_ID
-    - GITHUB_APP_PRIVATE_KEY
   extraEnv: []
   podAnnotations: {}
   service:

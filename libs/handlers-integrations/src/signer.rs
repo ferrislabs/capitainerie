@@ -7,7 +7,7 @@ use capitainerie_common::OrganizationId;
 use chrono::{DateTime, Duration, Utc};
 use thiserror::Error;
 
-const INFO: &[u8] = b"capitainerie github install state";
+const INFO: &[u8] = b"capitainerie github state";
 const VALIDITY_MINUTES: i64 = 10;
 
 #[derive(Debug, Error)]
@@ -15,8 +15,23 @@ const VALIDITY_MINUTES: i64 = 10;
 pub struct StateKeyError(&'static str);
 
 #[derive(Debug, Error)]
-#[error("the installation state is invalid or expired")]
+#[error("the state is invalid or expired")]
 pub struct InvalidState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatePurpose {
+    Install,
+    Manifest,
+}
+
+impl StatePurpose {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Manifest => "manifest",
+        }
+    }
+}
 
 /// Signs the `state` of the GitHub installation round trip, so the callback
 /// can trust which organization and which admin started it.
@@ -49,12 +64,17 @@ impl StateSigner {
 
     pub fn sign(
         &self,
+        purpose: StatePurpose,
         organization_id: OrganizationId,
         subject: &str,
         now: DateTime<Utc>,
     ) -> String {
         let expiry = (now + Duration::minutes(VALIDITY_MINUTES)).timestamp();
-        let payload = format!("{}|{subject}|{expiry}", organization_id.0);
+        let payload = format!(
+            "{}|{}|{subject}|{expiry}",
+            purpose.label(),
+            organization_id.0
+        );
         let tag = hmac::sign(&self.key, payload.as_bytes());
         format!(
             "{}.{}",
@@ -65,6 +85,7 @@ impl StateSigner {
 
     pub fn verify(
         &self,
+        purpose: StatePurpose,
         state: &str,
         organization_id: OrganizationId,
         subject: &str,
@@ -76,7 +97,11 @@ impl StateSigner {
         hmac::verify(&self.key, &payload, &tag).map_err(|_| InvalidState)?;
         let payload = String::from_utf8(payload).map_err(|_| InvalidState)?;
         let expiry: i64 = payload
-            .strip_prefix(&format!("{}|{subject}|", organization_id.0))
+            .strip_prefix(&format!(
+                "{}|{}|{subject}|",
+                purpose.label(),
+                organization_id.0
+            ))
             .and_then(|expiry| expiry.parse().ok())
             .ok_or(InvalidState)?;
         if now.timestamp() >= expiry {
@@ -90,6 +115,8 @@ impl StateSigner {
 mod tests {
     use super::*;
 
+    const INSTALL: StatePurpose = StatePurpose::Install;
+
     fn signer(byte: u8) -> StateSigner {
         StateSigner::new(&[byte; 32]).unwrap()
     }
@@ -97,10 +124,10 @@ mod tests {
     #[test]
     fn a_fresh_state_verifies_for_its_organization_and_subject() {
         let (organization, now) = (OrganizationId::new(), Utc::now());
-        let state = signer(1).sign(organization, "user-1", now);
+        let state = signer(1).sign(INSTALL, organization, "user-1", now);
         assert!(
             signer(1)
-                .verify(&state, organization, "user-1", now)
+                .verify(INSTALL, &state, organization, "user-1", now)
                 .is_ok()
         );
         assert!(!state.contains(['+', '/', '=']));
@@ -109,20 +136,20 @@ mod tests {
     #[test]
     fn another_organization_subject_or_key_is_refused() {
         let (organization, now) = (OrganizationId::new(), Utc::now());
-        let state = signer(1).sign(organization, "user-1", now);
+        let state = signer(1).sign(INSTALL, organization, "user-1", now);
         assert!(
             signer(1)
-                .verify(&state, OrganizationId::new(), "user-1", now)
+                .verify(INSTALL, &state, OrganizationId::new(), "user-1", now)
                 .is_err()
         );
         assert!(
             signer(1)
-                .verify(&state, organization, "user-2", now)
+                .verify(INSTALL, &state, organization, "user-2", now)
                 .is_err()
         );
         assert!(
             signer(2)
-                .verify(&state, organization, "user-1", now)
+                .verify(INSTALL, &state, organization, "user-1", now)
                 .is_err()
         );
     }
@@ -130,17 +157,17 @@ mod tests {
     #[test]
     fn a_state_expires_after_ten_minutes() {
         let (organization, now) = (OrganizationId::new(), Utc::now());
-        let state = signer(1).sign(organization, "user-1", now);
+        let state = signer(1).sign(INSTALL, organization, "user-1", now);
         let almost = now + Duration::minutes(10) - Duration::seconds(1);
         assert!(
             signer(1)
-                .verify(&state, organization, "user-1", almost)
+                .verify(INSTALL, &state, organization, "user-1", almost)
                 .is_ok()
         );
         let later = now + Duration::minutes(10);
         assert!(
             signer(1)
-                .verify(&state, organization, "user-1", later)
+                .verify(INSTALL, &state, organization, "user-1", later)
                 .is_err()
         );
     }
@@ -148,10 +175,10 @@ mod tests {
     #[test]
     fn a_tampered_or_malformed_state_is_refused() {
         let (organization, now) = (OrganizationId::new(), Utc::now());
-        let state = signer(1).sign(organization, "user-1", now);
+        let state = signer(1).sign(INSTALL, organization, "user-1", now);
         let (payload, tag) = state.split_once('.').unwrap();
         let forged = URL_SAFE_NO_PAD.encode(format!(
-            "{}|user-1|{}",
+            "install|{}|user-1|{}",
             organization.0,
             now.timestamp() + 99_999
         ));
@@ -163,8 +190,31 @@ mod tests {
             "!!.!!".to_owned(),
         ] {
             assert!(
-                signer(1).verify(&bad, organization, "user-1", now).is_err(),
+                signer(1)
+                    .verify(INSTALL, &bad, organization, "user-1", now)
+                    .is_err(),
                 "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_state_cannot_be_replayed_for_another_purpose() {
+        let (organization, now) = (OrganizationId::new(), Utc::now());
+        for (issued, other) in [
+            (StatePurpose::Install, StatePurpose::Manifest),
+            (StatePurpose::Manifest, StatePurpose::Install),
+        ] {
+            let state = signer(1).sign(issued, organization, "user-1", now);
+            assert!(
+                signer(1)
+                    .verify(issued, &state, organization, "user-1", now)
+                    .is_ok()
+            );
+            assert!(
+                signer(1)
+                    .verify(other, &state, organization, "user-1", now)
+                    .is_err()
             );
         }
     }

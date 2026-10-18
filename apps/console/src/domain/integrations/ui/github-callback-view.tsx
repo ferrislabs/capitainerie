@@ -4,14 +4,16 @@ import { Button } from '#/components/ui/button'
 
 interface Props {
 	errorMessage?: string
+	pendingLabel?: string
 }
 
-export function GithubCallbackView({ errorMessage }: Props) {
+export function GithubCallbackView({
+	errorMessage,
+	pendingLabel = 'Connexion à GitHub en cours…',
+}: Props) {
 	if (!errorMessage) {
 		return (
-			<output className="text-sm text-muted-foreground">
-				Connexion à GitHub en cours…
-			</output>
+			<output className="text-sm text-muted-foreground">{pendingLabel}</output>
 		)
 	}
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	ADMIN_ONLY_GITHUB,
 	connectErrorMessage,
+	createAppErrorMessage,
 	managementErrorMessage,
 	NOT_OWNER_MESSAGE,
 } from '#/domain/integrations/errors'
@@ -33,17 +34,47 @@ describe('connectErrorMessage', () => {
 	})
 })
 
+describe('createAppErrorMessage', () => {
+	it('maps the creation failures', () => {
+		expect(
+			createAppErrorMessage(new ApiRequestError(400, 'invalid_state', 'x')),
+		).toContain('a expiré')
+		expect(
+			createAppErrorMessage(
+				new ApiRequestError(409, 'conflict', 'github_app_exists'),
+			),
+		).toContain('déjà une application')
+		expect(
+			createAppErrorMessage(new ApiRequestError(422, 'invalid', 'x')),
+		).toContain('GitHub a refusé')
+		expect(
+			createAppErrorMessage(new ApiRequestError(403, 'forbidden', 'x')),
+		).toBe(ADMIN_ONLY_GITHUB)
+		expect(createAppErrorMessage(new Error('x'))).toContain('a échoué')
+		expect(createAppErrorMessage(undefined)).toBeUndefined()
+	})
+})
+
 describe('managementErrorMessage', () => {
-	it('maps 403 and unconfigured, otherwise the fallback', () => {
+	it('maps 403, the missing console URL and the missing App, otherwise the fallback', () => {
 		expect(
 			managementErrorMessage(new ApiRequestError(403, 'forbidden', 'x'), 'f'),
 		).toBe(ADMIN_ONLY_GITHUB)
 		expect(
 			managementErrorMessage(
-				new ApiRequestError(503, 'github_app_not_configured', 'x'),
+				new ApiRequestError(503, 'console_url_not_configured', 'x'),
 				'f',
 			),
-		).toContain('pas configurée')
+		).toContain('CONSOLE_URL')
+		expect(
+			managementErrorMessage(
+				new ApiRequestError(409, 'conflict', 'github_app_missing'),
+				'f',
+			),
+		).toContain('Créez d’abord')
+		expect(
+			managementErrorMessage(new ApiRequestError(422, 'invalid', 'x'), 'f'),
+		).toContain('login')
 		expect(managementErrorMessage(new Error('x'), 'f')).toBe('f')
 	})
 })

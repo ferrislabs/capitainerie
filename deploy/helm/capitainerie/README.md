@@ -31,12 +31,13 @@ Les clés listées dans `secrets.optionalKeys` sont marquées `optional`. La lis
 | Valeur | Rôle |
 |---|---|
 | `image.prefix`, `<composant>.image.{repository,tag}` | image des pods |
-| `api.allowedOrigins`, `api.acceptedClients`, `api.audience` | `ALLOWED_ORIGINS`, `AUTH_ACCEPTED_CLIENTS`, `AUTH_AUDIENCE` |
+| `api.allowedOrigins`, `api.acceptedClients`, `api.audience`, `api.consoleUrl` | `ALLOWED_ORIGINS`, `AUTH_ACCEPTED_CLIENTS`, `AUTH_AUDIENCE`, `CONSOLE_URL` (où GitHub redirige le navigateur après la création ou l'installation de l'App) |
+| `config.github.{apiBase,webBase}` | `GITHUB_API_BASE`, `GITHUB_WEB_BASE` (GitHub Enterprise seulement ; chaque organisation crée sa GitHub App depuis la console) |
 | `mcpKanban.publicUrl`, `config.mcpAudience`, `config.pipelineAgents` | `MCP_PUBLIC_URL`, `MCP_AUDIENCE`, `PIPELINE_AGENTS` / `MCP_ACCEPTED_AGENTS` |
 | `config.iggy.{address,stream,partitions}` | `IGGY_ADDRESS`, `IGGY_STREAM`, `IGGY_PARTITIONS` |
 | `worker.llm.{baseUrl,model,timeoutSecs}`, `worker.concurrency` | `LLM_*`, `WORKER_CONCURRENCY` |
 | `executor.{enabled,namespace,maxTurns,deadlineSeconds,concurrency}` | `EXECUTOR_NAMESPACE`, `EXECUTOR_MAX_TURNS`, `EXECUTOR_DEADLINE_SECS`, `EXECUTOR_CONCURRENCY` |
-| `egressProxy.databaseUrlSecretKey` | clé du Secret qui porte la `DATABASE_URL` du proxy ; viser une connexion du rôle `capitainerie_egress_proxy` (`deploy/postgres/egress-proxy-role.sql`, `SELECT` seul sur `task_grants`, `provider_credentials`, `github_installations`) |
+| `egressProxy.databaseUrlSecretKey` | clé du Secret qui porte la `DATABASE_URL` du proxy ; viser une connexion du rôle `capitainerie_egress_proxy` (`deploy/postgres/egress-proxy-role.sql`, `SELECT` seul sur `task_grants`, `provider_credentials`, `github_installations`, `github_apps`) |
 | `config.{logFilter,logJson,otlpEndpoint}` | `LOG_FILTER`, `LOG_JSON`, `OTLP_ENDPOINT` |
 | `exporter.{flushEvents,flushSecs}`, `analytics.*` | `ANALYTICS_FLUSH_EVENTS`, `ANALYTICS_FLUSH_SECS`, `ANALYTICS_URI`, volume du dataset Parquet |
 | `console.config.*` | `API_URL`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_RESOURCE`, `TRACES_URL` |

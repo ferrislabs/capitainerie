@@ -20,14 +20,14 @@ interface Props {
 export function ExecuteCardFlow({ card, onClose, onStarted }: Props) {
 	const open = card !== undefined
 	const integration = useGithubIntegration(open)
-	const repositories = useGithubRepositories(
-		open && integration.data?.connected !== false,
-	)
+	const notConnected =
+		integration.data !== undefined && !integration.data.installation
+	const repositories = useGithubRepositories(open && !notConnected)
 	const execute = useExecuteCard()
 	const [chosen, setChosen] = useState('')
 
 	function state(): RepositoriesState {
-		if (integration.data?.connected === false) return { kind: 'not_connected' }
+		if (notConnected) return { kind: 'not_connected' }
 		if (hasErrorKey(repositories.error, 'github_not_connected')) {
 			return { kind: 'not_connected' }
 		}

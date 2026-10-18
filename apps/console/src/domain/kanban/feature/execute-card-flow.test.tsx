@@ -28,7 +28,10 @@ const CARD: Schemas.CardResponse = {
 	updated_at: '2026-10-16T09:30:00Z',
 }
 
-const CONNECTED = { app_configured: true, connected: true }
+const CONNECTED = {
+	app: { slug: 'capi' },
+	installation: { account_login: 'acme' },
+}
 const REPOSITORIES = {
 	repositories: [{ full_name: 'acme/web', name: 'web', owner: 'acme' }],
 }
@@ -123,7 +126,7 @@ describe('ExecuteCardFlow', () => {
 	it('asks to connect GitHub when the organisation has no installation', async () => {
 		serve({
 			'GET /api/v1/integrations/github': () =>
-				json(200, { app_configured: true, connected: false }),
+				json(200, { app: null, installation: null }),
 		})
 		render(
 			<ExecuteCardFlow card={CARD} onClose={vi.fn()} onStarted={vi.fn()} />,

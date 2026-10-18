@@ -34,7 +34,7 @@ impl RepositoryRef {
 
 /// GitHub logins and repository names: ASCII letters, digits, `-`, `_`, `.`,
 /// and never `.` or `..` alone, so the value is safe in a URL path.
-fn valid_segment(segment: &str) -> bool {
+pub fn valid_segment(segment: &str) -> bool {
     !segment.is_empty()
         && segment.len() <= 100
         && segment != "."
@@ -159,6 +159,49 @@ pub struct GithubInstallation {
     pub account_login: String,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubAppCredentials {
+    pub organization_id: OrganizationId,
+    pub app_id: i64,
+    pub slug: String,
+    pub client_id: String,
+    pub client_secret: SecretToken,
+    pub private_key_pem: SecretToken,
+    pub webhook_secret: SecretToken,
+    pub html_url: String,
+    pub owner_login: String,
+    pub owner_type: String,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubAppSummary {
+    pub organization_id: OrganizationId,
+    pub app_id: i64,
+    pub slug: String,
+    pub html_url: String,
+    pub owner_login: String,
+    pub owner_type: String,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<&GithubAppCredentials> for GithubAppSummary {
+    fn from(app: &GithubAppCredentials) -> Self {
+        Self {
+            organization_id: app.organization_id,
+            app_id: app.app_id,
+            slug: app.slug.clone(),
+            html_url: app.html_url.clone(),
+            owner_login: app.owner_login.clone(),
+            owner_type: app.owner_type.clone(),
+            created_by: app.created_by.clone(),
+            created_at: app.created_at,
+        }
+    }
 }
 
 /// Everything the task runner needs to start one execution.

@@ -5,17 +5,16 @@ mod router;
 use anyhow::Context;
 use capitainerie_analytics::{AnalyticsArgs, DataFusionAnalytics, Dataset};
 use capitainerie_args::{
-    AuthArgs, DatabaseArgs, DelegationArgs, GithubAppArgs, LogArgs, ObservabilityArgs, SecretsArgs,
+    AuthArgs, DatabaseArgs, DelegationArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
     ServerArgs,
 };
 use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
 use capitainerie_bus_iggy::IggyArgs;
 use capitainerie_core::{
     CapitainerieUseCase,
-    domain::agent::SecretToken,
     infrastructure::{crypto::SecretCipher, postgres},
 };
-use capitainerie_github::{GithubApp, GithubClient};
+use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Delegation};
 use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
@@ -41,7 +40,9 @@ struct Args {
     #[command(flatten)]
     secrets: SecretsArgs,
     #[command(flatten)]
-    github: GithubAppArgs,
+    github: GithubArgs,
+    #[arg(id = "console_url", long = "console-url", env = "CONSOLE_URL")]
+    console_url: Option<String>,
     #[command(flatten)]
     iggy: IggyArgs,
     #[command(flatten)]
@@ -88,7 +89,12 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
-    let github = github_integration(&args.github, args.secrets.key.as_deref())?;
+    let github = github_integration(
+        &args.github,
+        args.console_url.clone(),
+        args.secrets.key.as_deref(),
+        usecase.clone(),
+    )?;
     let state = AppState {
         usecase,
         verifier: verifier(args.auth),
@@ -134,50 +140,33 @@ async fn stopped_signal(mut stopped: tokio::sync::watch::Receiver<bool>) {
 }
 
 fn github_integration(
-    args: &GithubAppArgs,
+    args: &GithubArgs,
+    console_url: Option<String>,
     secrets_key: Option<&str>,
+    usecase: CapitainerieUseCase,
 ) -> anyhow::Result<GithubIntegration> {
-    let any_set = args.app_id.is_some()
-        || args.private_key.is_some()
-        || args.client_id.is_some()
-        || args.client_secret.is_some();
-    let client = match (args.app_configured(), any_set) {
-        (true, _) => {
-            let (Some(app_id), Some(key), Some(client_id), Some(client_secret)) = (
-                args.app_id,
-                &args.private_key,
-                &args.client_id,
-                &args.client_secret,
-            ) else {
-                anyhow::bail!("the GitHub App settings are incomplete");
-            };
-            let mut app = GithubApp::new(app_id, SecretToken::new(key.as_str()));
-            app.api_base.clone_from(&args.api_base);
-            app.oauth_base.clone_from(&args.oauth_base);
-            app.client_id = Some(client_id.clone());
-            app.client_secret = Some(SecretToken::new(client_secret.as_str()));
-            Some(Arc::new(
-                GithubClient::new(app).context("building the GitHub client")?,
-            ))
-        }
-        (false, false) => {
-            tracing::warn!(
-                "the GitHub App settings are unset: GitHub cannot be connected and cards cannot be executed"
-            );
-            None
-        }
-        (false, true) => anyhow::bail!(
-            "GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET must be set together"
-        ),
-    };
+    let apps = GithubApps::new(
+        usecase,
+        GithubBases {
+            api_base: args.api_base.clone(),
+            web_base: args.web_base.clone(),
+        },
+    )
+    .context("building the GitHub client")?;
     let signer = secrets_key
         .map(StateSigner::from_base64)
         .transpose()
         .context("SECRETS_KEY is unusable")?;
+    if signer.is_none() {
+        tracing::warn!("SECRETS_KEY is unset: organizations cannot create their GitHub App");
+    }
+    if console_url.is_none() {
+        tracing::warn!("CONSOLE_URL is unset: organizations cannot create their GitHub App");
+    }
     Ok(GithubIntegration {
-        client,
-        slug: args.slug.clone(),
+        apps: Arc::new(apps),
         signer,
+        console_url,
     })
 }
 

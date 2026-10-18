@@ -34,6 +34,7 @@ data:
   EXECUTOR_DEADLINE_SECS: {{ .Values.executor.deadlineSeconds | quote }}
   EXECUTOR_CONCURRENCY: {{ .Values.executor.concurrency | quote }}
   {{- end }}
+  {{- include "capitainerie.githubBases" . | nindent 2 }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

@@ -120,27 +120,8 @@ pub struct ObservabilityArgs {
     pub otlp_endpoint: Option<String>,
 }
 
-#[derive(Clone, Args)]
-pub struct GithubAppArgs {
-    #[arg(id = "github_app_id", long = "github-app-id", env = "GITHUB_APP_ID")]
-    pub app_id: Option<u64>,
-
-    /// PEM of the App's private key (RS256).
-    #[arg(
-        id = "github_app_private_key",
-        long = "github-app-private-key",
-        env = "GITHUB_APP_PRIVATE_KEY"
-    )]
-    pub private_key: Option<String>,
-
-    /// The App's URL name, for `https://github.com/apps/<slug>/installations/new`.
-    #[arg(
-        id = "github_app_slug",
-        long = "github-app-slug",
-        env = "GITHUB_APP_SLUG"
-    )]
-    pub slug: Option<String>,
-
+#[derive(Debug, Clone, Args)]
+pub struct GithubArgs {
     #[arg(
         id = "github_api_base",
         long = "github-api-base",
@@ -149,51 +130,13 @@ pub struct GithubAppArgs {
     )]
     pub api_base: String,
 
-    /// OAuth client id of the App: proves the connecting admin can access the installation.
     #[arg(
-        id = "github_app_client_id",
-        long = "github-app-client-id",
-        env = "GITHUB_APP_CLIENT_ID"
-    )]
-    pub client_id: Option<String>,
-
-    #[arg(
-        id = "github_app_client_secret",
-        long = "github-app-client-secret",
-        env = "GITHUB_APP_CLIENT_SECRET"
-    )]
-    pub client_secret: Option<String>,
-
-    #[arg(
-        id = "github_oauth_base",
-        long = "github-oauth-base",
-        env = "GITHUB_OAUTH_BASE",
+        id = "github_web_base",
+        long = "github-web-base",
+        env = "GITHUB_WEB_BASE",
         default_value = "https://github.com"
     )]
-    pub oauth_base: String,
-}
-
-impl fmt::Debug for GithubAppArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GithubAppArgs")
-            .field("app_id", &self.app_id)
-            .field("private_key", &masked(&self.private_key))
-            .field("slug", &self.slug)
-            .field("api_base", &self.api_base)
-            .field("client_id", &self.client_id)
-            .field("client_secret", &masked(&self.client_secret))
-            .field("oauth_base", &self.oauth_base)
-            .finish()
-    }
-}
-
-impl GithubAppArgs {
-    pub fn app_configured(&self) -> bool {
-        self.app_id.is_some()
-            && self.private_key.is_some()
-            && self.client_id.is_some()
-            && self.client_secret.is_some()
-    }
+    pub web_base: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -306,17 +249,8 @@ mod tests {
 
     #[test]
     fn debug_output_never_shows_a_secret() {
-        let github = GithubAppArgs {
-            app_id: Some(1),
-            private_key: Some("pem-leak".into()),
-            slug: None,
-            api_base: "https://api.github.com".into(),
-            client_id: Some("Iv1.id".into()),
-            client_secret: Some("oauth-leak".into()),
-            oauth_base: "https://github.com".into(),
-        };
         let shown = format!(
-            "{github:?} {:?} {:?} {:?}",
+            "{:?} {:?} {:?}",
             DelegationArgs {
                 key: Some("delegation-leak".into()),
                 agents: vec![]
@@ -329,16 +263,22 @@ mod tests {
                 max_connections: 1
             },
         );
-        for leak in [
-            "pem-leak",
-            "oauth-leak",
-            "delegation-leak",
-            "secrets-leak",
-            "db-leak",
-        ] {
+        for leak in ["delegation-leak", "secrets-leak", "db-leak"] {
             assert!(!shown.contains(leak), "{leak} in {shown}");
         }
-        assert!(shown.contains("Iv1.id"));
+    }
+
+    #[derive(Parser)]
+    struct GithubCli {
+        #[command(flatten)]
+        github: GithubArgs,
+    }
+
+    #[test]
+    fn github_hosts_default_to_the_public_service() {
+        let github = GithubCli::parse_from(["bin"]).github;
+        assert_eq!(github.api_base, "https://api.github.com");
+        assert_eq!(github.web_base, "https://github.com");
     }
 
     #[derive(Parser)]

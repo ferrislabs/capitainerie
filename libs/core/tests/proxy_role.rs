@@ -78,6 +78,13 @@ async fn the_proxy_role_reads_what_the_proxy_reads_and_writes_nothing() {
             .unwrap()
             .is_none()
     );
+    assert!(
+        usecase
+            .github_app_for(organization)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let grant = TaskGrant {
         run_id: RunId::new(),
@@ -98,6 +105,7 @@ async fn the_proxy_role_reads_what_the_proxy_reads_and_writes_nothing() {
     for statement in [
         "INSERT INTO authorization_decisions (id, organization_id, subject, action, resource_kind, allowed) VALUES (gen_random_uuid(), gen_random_uuid(), 's', 'a', 'k', true)",
         "DELETE FROM github_installations",
+        "DELETE FROM github_apps",
         "SELECT count(*) FROM runs",
     ] {
         assert!(

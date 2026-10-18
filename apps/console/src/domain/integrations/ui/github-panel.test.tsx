@@ -4,21 +4,30 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { GithubPanel } from '#/domain/integrations/ui/github-panel'
 
-const UNCONFIGURED: Schemas.GithubIntegrationResponse = {
-	app_configured: false,
-	connected: false,
+const APP: Schemas.GithubAppResponse = {
+	slug: 'capitainerie-acme',
+	owner_login: 'acme',
+	owner_type: 'Organization',
+	html_url: 'https://github.com/apps/capitainerie-acme',
+	created_by: 'ada',
+	created_at: '2026-10-16T09:00:00Z',
 }
-const DISCONNECTED: Schemas.GithubIntegrationResponse = {
-	app_configured: true,
-	connected: false,
+const NO_APP: Schemas.GithubIntegrationResponse = {
+	app: null,
+	installation: null,
 }
-const CONNECTED: Schemas.GithubIntegrationResponse = {
-	app_configured: true,
-	connected: true,
-	account_login: 'acme',
-	connected_by: 'ada',
-	connected_at: '2026-10-17T14:05:00Z',
-	installation_id: 42,
+const APP_ONLY: Schemas.GithubIntegrationResponse = {
+	app: APP,
+	installation: null,
+}
+const INSTALLED: Schemas.GithubIntegrationResponse = {
+	app: APP,
+	installation: {
+		account_login: 'acme',
+		connected_by: 'ada',
+		connected_at: '2026-10-17T14:05:00Z',
+		installation_id: 42,
+	},
 }
 
 function setup(
@@ -26,51 +35,77 @@ function setup(
 	isAdmin: boolean,
 	overrides: Partial<Parameters<typeof GithubPanel>[0]> = {},
 ) {
-	const handlers = { onConnect: vi.fn(), onDisconnect: vi.fn() }
+	const handlers = {
+		onConnect: vi.fn(),
+		onDisconnect: vi.fn(),
+		onDeleteApp: vi.fn(),
+	}
+	const create = {
+		ownerKind: 'user' as const,
+		login: '',
+		isPending: false,
+		onOwnerKindChange: vi.fn(),
+		onLoginChange: vi.fn(),
+		onSubmit: vi.fn(),
+	}
 	render(
 		<GithubPanel
 			status={status}
 			isAdmin={isAdmin}
+			create={create}
 			isConnecting={false}
 			{...handlers}
 			{...overrides}
 		/>,
 	)
-	return handlers
+	return { ...handlers, create }
 }
 
-describe('GithubPanel', () => {
-	for (const isAdmin of [true, false]) {
-		const role = isAdmin ? 'admin' : 'member'
-
-		it(`explains the missing server configuration to a ${role}`, () => {
-			setup(UNCONFIGURED, isAdmin)
-
-			expect(screen.getByText(/pas configurée sur ce serveur/)).toBeTruthy()
-			expect(screen.getByText('GITHUB_APP_*').className).toContain('font-mono')
-			expect(screen.queryByRole('button')).toBeNull()
-		})
-	}
-
-	it('lets an admin connect GitHub', async () => {
-		const handlers = setup(DISCONNECTED, true)
+describe('GithubPanel without an App', () => {
+	it('lets an admin create the App', async () => {
+		const { create } = setup(NO_APP, true)
 
 		await userEvent.click(
-			screen.getByRole('button', { name: 'Connecter GitHub' }),
+			screen.getByRole('button', { name: 'Créer l’application GitHub' }),
 		)
 
-		expect(handlers.onConnect).toHaveBeenCalledOnce()
+		expect(create.onSubmit).toHaveBeenCalledOnce()
 	})
 
-	it('shows a member a read-only text when GitHub is not connected', () => {
-		setup(DISCONNECTED, false)
+	it('shows a member a read-only text', () => {
+		setup(NO_APP, false)
+
+		expect(screen.queryByRole('button')).toBeNull()
+		expect(screen.getByText(/pas encore d’application GitHub/)).toBeTruthy()
+		expect(screen.queryByText(/configurée sur ce serveur/)).toBeNull()
+	})
+})
+
+describe('GithubPanel with an App but no installation', () => {
+	it('links the App and lets an admin install it', async () => {
+		const handlers = setup(APP_ONLY, true)
+
+		const link = screen.getByRole('link', { name: 'capitainerie-acme' })
+		expect(link.getAttribute('href')).toBe(APP.html_url)
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Installer sur vos dépôts' }),
+		)
+		expect(handlers.onConnect).toHaveBeenCalledOnce()
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Supprimer l’application' }),
+		)
+		expect(handlers.onDeleteApp).toHaveBeenCalledOnce()
+	})
+
+	it('shows a member a read-only text', () => {
+		setup(APP_ONLY, false)
 
 		expect(screen.queryByRole('button')).toBeNull()
 		expect(screen.getByText(/Seuls les administrateurs/)).toBeTruthy()
 	})
 
-	it('shows the connection error and locks the button while redirecting', () => {
-		setup(DISCONNECTED, true, {
+	it('shows the install error and locks the button while redirecting', () => {
+		setup(APP_ONLY, true, {
 			isConnecting: true,
 			errorMessage: 'Impossible de démarrer la connexion à GitHub.',
 		})
@@ -86,21 +121,34 @@ describe('GithubPanel', () => {
 			'Impossible de démarrer la connexion à GitHub.',
 		)
 	})
+})
 
-	it('shows the account, who connected it and when, and lets an admin disconnect', async () => {
-		const handlers = setup(CONNECTED, true)
+describe('GithubPanel installed', () => {
+	it('shows the account, the App, and lets an admin disconnect or delete', async () => {
+		const handlers = setup(INSTALLED, true)
 
-		expect(screen.getByText('acme').className).toContain('font-mono')
+		expect(screen.getByText('acme', { selector: 'dd' }).className).toContain(
+			'font-mono',
+		)
 		expect(screen.getByText('ada')).toBeTruthy()
 		expect(screen.getByText('17 octobre 2026')).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'capitainerie-acme' })
+				.getAttribute('href'),
+		).toBe(APP.html_url)
 		await userEvent.click(screen.getByRole('button', { name: 'Déconnecter' }))
 		expect(handlers.onDisconnect).toHaveBeenCalledOnce()
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Supprimer l’application' }),
+		)
+		expect(handlers.onDeleteApp).toHaveBeenCalledOnce()
 	})
 
-	it('hides the disconnect action from a member', () => {
-		setup(CONNECTED, false)
+	it('hides every action from a member', () => {
+		setup(INSTALLED, false)
 
-		expect(screen.getByText('acme')).toBeTruthy()
+		expect(screen.getByText('acme', { selector: 'dd' })).toBeTruthy()
 		expect(screen.queryByRole('button')).toBeNull()
 	})
 })

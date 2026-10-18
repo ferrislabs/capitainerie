@@ -60,6 +60,7 @@ pub enum ResourceKind {
     Provider,
     ModelAssignments,
     GithubInstallation,
+    GithubApp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +103,7 @@ impl ResourceKind {
             Self::Provider => "provider",
             Self::ModelAssignments => "model_assignments",
             Self::GithubInstallation => "github_installation",
+            Self::GithubApp => "github_app",
         }
     }
 }

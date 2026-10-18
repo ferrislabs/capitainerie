@@ -15,8 +15,11 @@ pub enum IntegrationError {
     #[error(transparent)]
     Api(#[from] ApiError),
 
-    #[error("the GitHub App is not configured: {0}")]
-    NotConfigured(&'static str),
+    #[error("not configured: {message}")]
+    NotConfigured {
+        code: &'static str,
+        message: &'static str,
+    },
 
     #[error(transparent)]
     InvalidState(#[from] InvalidState),
@@ -44,10 +47,10 @@ impl IntoResponse for IntegrationError {
     fn into_response(self) -> Response {
         let (status, code, message) = match self {
             Self::Api(error) => return error.into_response(),
-            Self::NotConfigured(message) => (
+            Self::NotConfigured { code, message } => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                "github_app_not_configured",
-                format!("the GitHub App is not configured on this server: {message}"),
+                code,
+                format!("not configured on this server: {message}"),
             ),
             Self::InvalidState(error) => {
                 (StatusCode::BAD_REQUEST, "invalid_state", error.to_string())

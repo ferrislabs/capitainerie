@@ -63,9 +63,7 @@ describe('GithubCallbackPage', () => {
 	})
 
 	it('posts the callback once, even under strict mode, then goes back with a notice', async () => {
-		fetchMock.mockResolvedValue(
-			json(200, { app_configured: true, connected: true }),
-		)
+		fetchMock.mockResolvedValue(json(200, { app: null, installation: null }))
 		mount({ installationId: '42', code: 'abc', state: 'signed' })
 
 		await waitFor(() =>
@@ -106,6 +104,12 @@ describe('GithubCallbackPage', () => {
 			'conflict',
 			'installation_already_connected',
 			'Cette installation GitHub est déjà connectée à une autre organisation.',
+		],
+		[
+			409,
+			'conflict',
+			'github_app_missing',
+			'Créez d’abord l’application GitHub de l’organisation.',
 		],
 	])('maps %s %s to a French message', async (status, code, message, expected) => {
 		fetchMock.mockResolvedValue(json(status, { code, status, message }))

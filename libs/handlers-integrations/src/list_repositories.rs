@@ -20,7 +20,6 @@ pub struct RepositoriesPath;
         (status = 200, description = "The repositories the installation can see", body = RepositoryListResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 409, description = "github_not_connected: the organization has no installation", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 503, description = "The GitHub App is not configured", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -29,13 +28,17 @@ pub async fn handler(
     State(state): State<IntegrationsState>,
     Extension(caller): Extension<Caller>,
 ) -> Result<Json<RepositoryListResponse>, IntegrationError> {
-    let client = state.github.client()?;
+    let subject = caller.subject();
     let installation = state
         .usecase
-        .github_installation(caller.subject())
+        .github_installation(subject.clone())
         .await?
         .ok_or_else(|| CoreError::Conflict("github_not_connected".into()))?;
-    let repositories = client.repositories(installation.installation_id).await?;
+    let repositories = state
+        .github
+        .apps
+        .repositories(subject.organization_id, installation.installation_id)
+        .await?;
     Ok(Json(RepositoryListResponse {
         repositories: repositories.iter().map(Into::into).collect(),
     }))

@@ -1,38 +1,65 @@
-use capitainerie_core::domain::execution::{GithubInstallation, RepositoryRef};
+use capitainerie_core::domain::execution::{GithubAppSummary, GithubInstallation, RepositoryRef};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct GithubAppResponse {
+    pub slug: String,
+    pub owner_login: String,
+    /// `User` or `Organization`, as GitHub names the account the App belongs to.
+    pub owner_type: String,
+    /// The App's page on GitHub: where to delete it for good.
+    pub html_url: String,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<GithubAppSummary> for GithubAppResponse {
+    fn from(app: GithubAppSummary) -> Self {
+        Self {
+            slug: app.slug,
+            owner_login: app.owner_login,
+            owner_type: app.owner_type,
+            html_url: app.html_url,
+            created_by: app.created_by,
+            created_at: app.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GithubInstallationResponse {
+    pub account_login: String,
+    pub installation_id: i64,
+    pub connected_by: String,
+    pub connected_at: DateTime<Utc>,
+}
+
+impl From<GithubInstallation> for GithubInstallationResponse {
+    fn from(installation: GithubInstallation) -> Self {
+        Self {
+            account_login: installation.account_login,
+            installation_id: installation.installation_id,
+            connected_by: installation.created_by,
+            connected_at: installation.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct GithubIntegrationResponse {
-    pub connected: bool,
-    /// False when the server has no GitHub App: nothing can then be connected.
-    pub app_configured: bool,
-    pub account_login: Option<String>,
-    pub installation_id: Option<i64>,
-    pub connected_by: Option<String>,
-    pub connected_at: Option<DateTime<Utc>>,
+    /// The GitHub App the organization created; `null` until it does.
+    pub app: Option<GithubAppResponse>,
+    /// Where that App is installed; `null` until an admin installs it.
+    pub installation: Option<GithubInstallationResponse>,
 }
 
 impl GithubIntegrationResponse {
-    pub fn new(installation: Option<GithubInstallation>, app_configured: bool) -> Self {
-        match installation {
-            Some(installation) => Self {
-                connected: true,
-                app_configured,
-                account_login: Some(installation.account_login),
-                installation_id: Some(installation.installation_id),
-                connected_by: Some(installation.created_by),
-                connected_at: Some(installation.created_at),
-            },
-            None => Self {
-                connected: false,
-                app_configured,
-                account_login: None,
-                installation_id: None,
-                connected_by: None,
-                connected_at: None,
-            },
+    pub fn new(app: Option<GithubAppSummary>, installation: Option<GithubInstallation>) -> Self {
+        Self {
+            app: app.map(Into::into),
+            installation: installation.map(Into::into),
         }
     }
 }
@@ -48,6 +75,37 @@ pub struct ConnectGithubRequest {
     /// The OAuth `code` GitHub returns with the redirect; proves the admin can access the installation.
     pub code: String,
     /// The `state` of the install URL, returned untouched by GitHub.
+    pub state: String,
+}
+
+/// Who will own the App on GitHub.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ManifestOwner {
+    User,
+    Organization { login: String },
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateManifestRequest {
+    pub owner: ManifestOwner,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ManifestResponse {
+    /// Where the browser POSTs the `manifest` form field.
+    pub action_url: String,
+    /// The App manifest, a JSON document sent as the `manifest` form field.
+    pub manifest: String,
+    /// Signed, bound to the caller and the organization, valid 10 minutes.
+    pub state: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateGithubAppRequest {
+    /// The temporary `code` GitHub appends to the redirect URL.
+    pub code: String,
+    /// The `state` of the manifest, returned untouched by GitHub.
     pub state: String,
 }
 

@@ -16,18 +16,10 @@ data:
   MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
   PIPELINE_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
   DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
-  {{- with .Values.config.github.appSlug }}
-  GITHUB_APP_SLUG: {{ . | quote }}
+  {{- with .Values.api.consoleUrl }}
+  CONSOLE_URL: {{ . | quote }}
   {{- end }}
-  {{- with .Values.config.github.clientId }}
-  GITHUB_APP_CLIENT_ID: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.config.github.oauthBase }}
-  GITHUB_OAUTH_BASE: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.config.github.apiBase }}
-  GITHUB_API_BASE: {{ . | quote }}
-  {{- end }}
+  {{- include "capitainerie.githubBases" . | nindent 2 }}
   IGGY_ADDRESS: {{ .Values.config.iggy.address | quote }}
   IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
   IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}

@@ -14,8 +14,9 @@ use crate::{
         },
         event::ports::EventEmitter,
         execution::{
-            EXECUTOR_AGENT, ExecutableCard, GithubInstallation, RepositoryRef, TaskGrant,
-            ports::{GithubInstallationRepository, TaskGrantRepository},
+            EXECUTOR_AGENT, ExecutableCard, GithubAppCredentials, GithubAppSummary,
+            GithubInstallation, RepositoryRef, TaskGrant,
+            ports::{GithubAppRepository, GithubInstallationRepository, TaskGrantRepository},
         },
         provider::ports::ModelAssignmentRepository,
         run::{
@@ -23,7 +24,9 @@ use crate::{
             ports::{RunRepository, StepRepository},
         },
     },
-    infrastructure::card::postgres::PgCardRepository,
+    infrastructure::{
+        card::postgres::PgCardRepository, execution::postgres::PgGithubAppRepository,
+    },
 };
 
 pub(super) const COMMENT_ID_FIELD: &str = "comment_id";
@@ -307,6 +310,95 @@ impl CapitainerieUseCase {
     ) -> Result<Option<GithubInstallation>, CoreError> {
         let mut github_installation_repository = github_installation_repository;
         github_installation_repository.get(organization_id).await
+    }
+
+    #[transactional()]
+    pub async fn github_app(
+        &self,
+        subject: Subject,
+    ) -> Result<Option<GithubAppSummary>, CoreError> {
+        PgGithubAppRepository::new(&tx, self.secrets.as_deref())
+            .summary(subject.organization_id)
+            .await
+    }
+
+    #[transactional()]
+    pub async fn github_app_summary_for(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<GithubAppSummary>, CoreError> {
+        PgGithubAppRepository::new(&tx, self.secrets.as_deref())
+            .summary(organization_id)
+            .await
+    }
+
+    #[transactional(authz)]
+    pub async fn save_github_app(
+        &self,
+        subject: Subject,
+        credentials: GithubAppCredentials,
+    ) -> Result<GithubAppSummary, CoreError> {
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::GithubManage,
+                ResourceKind::GithubApp,
+                None,
+            ),
+        )
+        .await?;
+        let credentials = GithubAppCredentials {
+            organization_id: subject.organization_id,
+            created_by: subject.id,
+            created_at: Utc::now().trunc_subsecs(6),
+            ..credentials
+        };
+        PgGithubAppRepository::new(&tx, self.secrets.as_deref())
+            .insert(&credentials)
+            .await
+            .map_err(|error| match error {
+                CoreError::Conflict(_) => CoreError::Conflict("github_app_exists".into()),
+                other => other,
+            })?;
+        Ok(GithubAppSummary::from(&credentials))
+    }
+
+    #[transactional(github_installation, authz)]
+    pub async fn delete_github_app(&self, subject: Subject) -> Result<GithubAppSummary, CoreError> {
+        let mut github_installation_repository = github_installation_repository;
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::GithubManage,
+                ResourceKind::GithubApp,
+                None,
+            ),
+        )
+        .await?;
+        let mut github_app_repository = PgGithubAppRepository::new(&tx, self.secrets.as_deref());
+        let app = github_app_repository
+            .summary(subject.organization_id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        github_installation_repository
+            .delete(subject.organization_id)
+            .await?;
+        github_app_repository
+            .delete(subject.organization_id)
+            .await?;
+        Ok(app)
+    }
+
+    #[transactional()]
+    pub async fn github_app_for(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<GithubAppCredentials>, CoreError> {
+        PgGithubAppRepository::new(&tx, self.secrets.as_deref())
+            .get(organization_id)
+            .await
     }
 
     #[transactional(task_grant)]

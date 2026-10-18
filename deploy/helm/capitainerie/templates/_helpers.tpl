@@ -126,3 +126,13 @@ affinity:
     - protocol: TCP
       port: 53
 {{- end -}}
+
+{{/* GitHub hosts, set for GitHub Enterprise only; the App itself is created by each organization from the console. */}}
+{{- define "capitainerie.githubBases" -}}
+{{- with .Values.config.github.apiBase }}
+GITHUB_API_BASE: {{ . | quote }}
+{{- end }}
+{{- with .Values.config.github.webBase }}
+GITHUB_WEB_BASE: {{ . | quote }}
+{{- end }}
+{{- end }}

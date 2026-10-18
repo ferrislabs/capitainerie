@@ -1,5 +1,5 @@
 use capitainerie_args::{
-    DatabaseArgs, EgressProxyArgs, GithubAppArgs, LogArgs, ObservabilityArgs, SecretsArgs,
+    DatabaseArgs, EgressProxyArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
 };
 use clap::Parser;
 
@@ -9,7 +9,7 @@ pub struct Args {
     #[command(flatten)]
     pub proxy: EgressProxyArgs,
     #[command(flatten)]
-    pub github: GithubAppArgs,
+    pub github: GithubArgs,
     #[command(flatten)]
     pub secrets: SecretsArgs,
     #[command(flatten)]

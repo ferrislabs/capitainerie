@@ -9,7 +9,7 @@ use capitainerie_core::{
         provider::ProviderKind,
     },
 };
-use capitainerie_github::GithubClient;
+use capitainerie_github::GithubApps;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -41,11 +41,11 @@ pub trait Credentials: Send + Sync + 'static {
 
 pub struct Live {
     usecase: CapitainerieUseCase,
-    github: Option<GithubClient>,
+    github: GithubApps,
 }
 
 impl Live {
-    pub fn new(usecase: CapitainerieUseCase, github: Option<GithubClient>) -> Self {
+    pub fn new(usecase: CapitainerieUseCase, github: GithubApps) -> Self {
         Self { usecase, github }
     }
 }
@@ -75,7 +75,12 @@ impl Credentials for Live {
         organization_id: OrganizationId,
         repository: &RepositoryRef,
     ) -> Result<Option<SecretToken>, CredentialsError> {
-        let Some(github) = &self.github else {
+        let Some(github) = self
+            .github
+            .client(organization_id)
+            .await
+            .map_err(CredentialsError::from_display)?
+        else {
             return Ok(None);
         };
         let Some(installation) = self

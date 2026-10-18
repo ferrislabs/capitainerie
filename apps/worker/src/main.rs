@@ -6,15 +6,13 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use capitainerie_args::{
-    DatabaseArgs, DelegationArgs, ExecutorArgs, GithubAppArgs, LogArgs, ObservabilityArgs,
-    SecretsArgs,
+    DatabaseArgs, DelegationArgs, ExecutorArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
 };
 use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
     CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor, MeetingPipeline, PipelineConfig,
     domain::{
-        agent::SecretToken,
         provider::ModelAssignments,
         run::step::Pricing,
         similarity::{DEFAULT_DEDUP_GRAY_FLOOR, DEFAULT_DEDUP_THRESHOLD},
@@ -25,7 +23,7 @@ use capitainerie_core::{
         postgres,
     },
 };
-use capitainerie_github::{GithubApp, GithubClient};
+use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
 use capitainerie_runtime_rig::{
     EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, claude_prices,
@@ -96,7 +94,7 @@ struct Args {
     #[command(flatten)]
     executor: ExecutorArgs,
     #[command(flatten)]
-    github: GithubAppArgs,
+    github: GithubArgs,
     /// Base URL of the console, to link a card from its pull request.
     #[arg(long = "console-url", env = "CONSOLE_URL")]
     console_url: Option<String>,
@@ -179,9 +177,10 @@ async fn main() -> anyhow::Result<()> {
             default_models: default_models.clone(),
         },
     );
+    let executor = executor_from(&args, usecase.clone()).await;
     let execution = ExecutePipeline::new(
         usecase,
-        executor_from(&args).await,
+        executor,
         ExecuteConfig {
             max_attempts: 3,
             retry_base: Duration::from_secs(1),
@@ -230,8 +229,11 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn executor_from(args: &Args) -> Executor<KubeTaskRunner, GithubClient> {
-    match build_executor(args).await {
+async fn executor_from(
+    args: &Args,
+    usecase: CapitainerieUseCase,
+) -> Executor<KubeTaskRunner, GithubApps> {
+    match build_executor(args, usecase).await {
         Ok(executor) => executor,
         Err(reason) => {
             tracing::warn!(%reason, "card executions are disabled");
@@ -240,7 +242,10 @@ async fn executor_from(args: &Args) -> Executor<KubeTaskRunner, GithubClient> {
     }
 }
 
-async fn build_executor(args: &Args) -> Result<Executor<KubeTaskRunner, GithubClient>, String> {
+async fn build_executor(
+    args: &Args,
+    usecase: CapitainerieUseCase,
+) -> Result<Executor<KubeTaskRunner, GithubApps>, String> {
     let namespace = args
         .executor
         .namespace
@@ -249,20 +254,19 @@ async fn build_executor(args: &Args) -> Result<Executor<KubeTaskRunner, GithubCl
     let (Some(image), Some(proxy_url)) = (&args.executor.image, &args.executor.proxy_url) else {
         return Err("EXECUTOR_IMAGE et EXECUTOR_PROXY_URL sont requis pour les exécutions".into());
     };
-    let (Some(app_id), Some(private_key)) = (args.github.app_id, &args.github.private_key) else {
-        return Err(
-            "la GitHub App n'est pas configurée (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY)".into(),
-        );
-    };
     let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str());
     config.namespace = namespace.to_owned();
     let runner = KubeTaskRunner::try_default(config)
         .await
         .map_err(|error| format!("le cluster Kubernetes est inaccessible : {error}"))?;
-    let mut app = GithubApp::new(app_id, SecretToken::new(private_key.as_str()));
-    app.api_base = args.github.api_base.clone();
-    let host = GithubClient::new(app)
-        .map_err(|error| format!("le client GitHub est inutilisable : {error}"))?;
+    let host = GithubApps::new(
+        usecase,
+        GithubBases {
+            api_base: args.github.api_base.clone(),
+            web_base: args.github.web_base.clone(),
+        },
+    )
+    .map_err(|error| format!("le client GitHub est inutilisable : {error}"))?;
     Ok(Executor::Ready { runner, host })
 }
 

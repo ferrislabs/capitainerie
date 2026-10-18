@@ -17,8 +17,8 @@ use capitainerie_core::{
         },
         delegation::DelegatedToken,
         execution::{
-            DraftPullRequest, PullRequestUrl, TaskGrant, TaskLine, TaskMarker, TaskOutcome,
-            execution_branch,
+            DraftPullRequest, GithubAppCredentials, PullRequestUrl, TaskGrant, TaskLine,
+            TaskMarker, TaskOutcome, execution_branch,
             ports::{MockCodeHost, MockTaskRunner},
         },
         provider::ModelAssignments,
@@ -55,6 +55,30 @@ fn human(organization_id: OrganizationId) -> Subject {
     }
 }
 
+fn admin(organization_id: OrganizationId) -> Subject {
+    Subject {
+        is_admin: true,
+        ..human(organization_id)
+    }
+}
+
+fn app_of(organization_id: OrganizationId) -> GithubAppCredentials {
+    GithubAppCredentials {
+        organization_id,
+        app_id: fresh_installation(),
+        slug: "capitainerie-test".into(),
+        client_id: "Iv1.test".into(),
+        client_secret: SecretToken::new("oauth-secret"),
+        private_key_pem: SecretToken::new("pem"),
+        webhook_secret: SecretToken::new("hook"),
+        html_url: "https://github.com/apps/capitainerie-test".into(),
+        owner_login: "acme".into(),
+        owner_type: "Organization".into(),
+        created_by: "user-1".into(),
+        created_at: Utc::now(),
+    }
+}
+
 struct World {
     pool: PgPool,
     usecase: CapitainerieUseCase,
@@ -86,8 +110,13 @@ async fn world() -> Option<World> {
     .unwrap();
     let organization_id = OrganizationId(id);
     let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
-        .with_cipher(SecretCipher::new(&[7u8; 32]).unwrap());
+        .with_cipher(SecretCipher::new(&[7u8; 32]).unwrap())
+        .with_secrets_cipher(SecretCipher::new(&[9u8; 32]).unwrap());
     let installation_id = fresh_installation();
+    usecase
+        .save_github_app(admin(organization_id), app_of(organization_id))
+        .await
+        .unwrap();
     usecase
         .connect_github(
             Subject {
@@ -215,17 +244,18 @@ fn deleting(mut runner: MockTaskRunner) -> MockTaskRunner {
     runner
 }
 
-fn host(seen: &Seen, installation_id: i64) -> MockCodeHost {
+fn host(seen: &Seen, organization_id: OrganizationId, installation_id: i64) -> MockCodeHost {
     let mut host = MockCodeHost::new();
     let pull_requests = seen.pull_requests.clone();
     host.expect_open_draft_pr()
-        .returning(move |installation, pull_request| {
+        .returning(move |organization, installation, pull_request| {
+            assert_eq!(organization, organization_id);
             assert_eq!(installation, installation_id);
             pull_requests.lock().unwrap().push(pull_request);
             Box::pin(std::future::ready(Ok(PullRequestUrl(PR_URL.into()))))
         });
     host.expect_branch_head()
-        .returning(|_, repository, branch| {
+        .returning(|_, _, repository, branch| {
             assert_eq!(repository.to_string(), "acme/web");
             assert!(branch.starts_with("capitainerie/"));
             Box::pin(std::future::ready(Ok(Some(PUSHED_SHA.to_owned()))))
@@ -340,7 +370,11 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(&world, runner, host(&seen, world.installation_id));
+    let pipeline = pipeline(
+        &world,
+        runner,
+        host(&seen, world.organization_id, world.installation_id),
+    );
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -797,7 +831,11 @@ async fn text_the_agent_wrote_cannot_mention_anyone() {
         }
     }
     let runner = runner_ending(&seen, lines, TaskOutcome::Succeeded);
-    let pipeline = pipeline(&world, runner, host(&seen, world.installation_id));
+    let pipeline = pipeline(
+        &world,
+        runner,
+        host(&seen, world.organization_id, world.installation_id),
+    );
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -822,7 +860,7 @@ async fn a_branch_that_is_not_where_the_task_says_fails_the_run_before_any_pull_
         TaskOutcome::Succeeded,
     ));
     let mut host = MockCodeHost::new();
-    host.expect_branch_head().returning(|_, _, _| {
+    host.expect_branch_head().returning(|_, _, _, _| {
         Box::pin(std::future::ready(Ok(Some(
             "0000000000000000000000000000000000000000".to_owned(),
         ))))
@@ -849,7 +887,7 @@ async fn a_missing_branch_fails_the_run_too() {
     ));
     let mut host = MockCodeHost::new();
     host.expect_branch_head()
-        .returning(|_, _, _| Box::pin(std::future::ready(Ok(None))));
+        .returning(|_, _, _, _| Box::pin(std::future::ready(Ok(None))));
     let pipeline = pipeline(&world, runner, host);
 
     pipeline.execute(world.run_id, None).await.unwrap();
@@ -952,6 +990,24 @@ async fn a_disconnected_github_fails_the_run_before_any_job_starts() {
     let (status, failure) = run_row(&world.pool, world.run_id).await;
     assert_eq!(status, "failed");
     assert!(failure.unwrap().contains("GitHub"));
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn an_organization_without_a_github_app_fails_the_run_before_any_job_starts() {
+    let Some(world) = world().await else { return };
+    world
+        .usecase
+        .delete_github_app(admin(world.organization_id))
+        .await
+        .unwrap();
+    let pipeline = pipeline(&world, MockTaskRunner::new(), MockCodeHost::new());
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let (status, failure) = run_row(&world.pool, world.run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(failure.as_deref(), Some("application GitHub absente"));
     assert_closed(&world).await;
 }
 

@@ -9,6 +9,7 @@ data:
   EGRESS_PROXY_HOST: "0.0.0.0"
   EGRESS_PROXY_PORT: {{ .Values.egressProxy.port | quote }}
   DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
+  {{- include "capitainerie.githubBases" . | nindent 2 }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

@@ -22,6 +22,7 @@ import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.mo
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 import { Route as AppSettingsIntegrationsIndexRouteImport } from './routes/_app.settings.integrations.index'
 import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
+import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
 
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
@@ -89,6 +90,12 @@ const AppSettingsIntegrationsGithubCallbackRoute =
     path: '/integrations/github/callback',
     getParentRoute: () => AppSettingsRoute,
   } as any)
+const AppSettingsIntegrationsGithubAppCallbackRoute =
+  AppSettingsIntegrationsGithubAppCallbackRouteImport.update({
+    id: '/integrations/github/app-callback',
+    path: '/integrations/github/app-callback',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof AppSettingsProvidersRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
+  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRoutesByTo {
@@ -115,6 +123,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof AppSettingsProvidersRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/integrations': typeof AppSettingsIntegrationsIndexRoute
+  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRoutesById {
@@ -131,6 +140,7 @@ export interface FileRoutesById {
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
+  '/_app/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/_app/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRouteTypes {
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/'
     | '/settings/integrations/'
+    | '/settings/integrations/github/app-callback'
     | '/settings/integrations/github/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings'
     | '/settings/integrations'
+    | '/settings/integrations/github/app-callback'
     | '/settings/integrations/github/callback'
   id:
     | '__root__'
@@ -175,6 +187,7 @@ export interface FileRouteTypes {
     | '/_app/settings/providers'
     | '/_app/settings/'
     | '/_app/settings/integrations/'
+    | '/_app/settings/integrations/github/app-callback'
     | '/_app/settings/integrations/github/callback'
   fileRoutesById: FileRoutesById
 }
@@ -276,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIntegrationsGithubCallbackRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/integrations/github/app-callback': {
+      id: '/_app/settings/integrations/github/app-callback'
+      path: '/integrations/github/app-callback'
+      fullPath: '/settings/integrations/github/app-callback'
+      preLoaderRoute: typeof AppSettingsIntegrationsGithubAppCallbackRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
   }
 }
 
@@ -284,6 +304,7 @@ interface AppSettingsRouteChildren {
   AppSettingsProvidersRoute: typeof AppSettingsProvidersRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
   AppSettingsIntegrationsIndexRoute: typeof AppSettingsIntegrationsIndexRoute
+  AppSettingsIntegrationsGithubAppCallbackRoute: typeof AppSettingsIntegrationsGithubAppCallbackRoute
   AppSettingsIntegrationsGithubCallbackRoute: typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 
@@ -292,6 +313,8 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsProvidersRoute: AppSettingsProvidersRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
   AppSettingsIntegrationsIndexRoute: AppSettingsIntegrationsIndexRoute,
+  AppSettingsIntegrationsGithubAppCallbackRoute:
+    AppSettingsIntegrationsGithubAppCallbackRoute,
   AppSettingsIntegrationsGithubCallbackRoute:
     AppSettingsIntegrationsGithubCallbackRoute,
 }

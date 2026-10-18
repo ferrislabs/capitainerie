@@ -1,54 +1,45 @@
 use std::sync::Arc;
 
-use capitainerie_core::CapitainerieUseCase;
-use capitainerie_github::GithubClient;
+use capitainerie_github::GithubApps;
 
 use crate::{error::IntegrationError, signer::StateSigner};
 
-/// Each part is absent when its setting is: the status endpoint then says
-/// `app_configured: false` and the endpoints that need it answer 503.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct GithubIntegration {
-    pub client: Option<Arc<GithubClient>>,
-    pub slug: Option<String>,
+    pub apps: Arc<GithubApps>,
     pub signer: Option<StateSigner>,
+    pub console_url: Option<String>,
 }
 
 impl GithubIntegration {
-    pub fn app_configured(&self) -> bool {
-        self.client
-            .as_ref()
-            .is_some_and(|client| client.oauth_configured())
-            && self.slug.is_some()
-            && self.signer.is_some()
+    pub fn new(apps: Arc<GithubApps>) -> Self {
+        Self {
+            apps,
+            signer: None,
+            console_url: None,
+        }
     }
 
-    pub(crate) fn client(&self) -> Result<&GithubClient, IntegrationError> {
-        self.client
-            .as_deref()
-            .ok_or(IntegrationError::NotConfigured(
-                "GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET are unset",
-            ))
+    pub(crate) fn signer(&self) -> Result<&StateSigner, IntegrationError> {
+        self.signer.as_ref().ok_or(IntegrationError::NotConfigured {
+            code: "secrets_key_not_configured",
+            message: "SECRETS_KEY is unset",
+        })
     }
 
-    pub(crate) fn installer(
-        &self,
-    ) -> Result<(&GithubClient, &str, &StateSigner), IntegrationError> {
-        let client = self.client()?;
-        let slug = self
-            .slug
+    pub(crate) fn console_url(&self) -> Result<&str, IntegrationError> {
+        self.console_url
             .as_deref()
-            .ok_or(IntegrationError::NotConfigured("GITHUB_APP_SLUG is unset"))?;
-        let signer = self
-            .signer
-            .as_ref()
-            .ok_or(IntegrationError::NotConfigured("SECRETS_KEY is unset"))?;
-        Ok((client, slug, signer))
+            .map(|url| url.trim_end_matches('/'))
+            .ok_or(IntegrationError::NotConfigured {
+                code: "console_url_not_configured",
+                message: "CONSOLE_URL is unset",
+            })
     }
 }
 
 #[derive(Clone)]
 pub struct IntegrationsState {
-    pub usecase: CapitainerieUseCase,
+    pub usecase: capitainerie_core::CapitainerieUseCase,
     pub github: GithubIntegration,
 }

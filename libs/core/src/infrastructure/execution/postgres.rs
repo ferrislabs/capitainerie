@@ -3,11 +3,17 @@ use capitainerie_macros::repository;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    domain::execution::{
-        GithubInstallation, TaskGrant,
-        ports::{GithubInstallationRepository, TaskGrantRepository},
+    domain::{
+        agent::SecretToken,
+        execution::{
+            GithubAppCredentials, GithubAppSummary, GithubInstallation, TaskGrant,
+            ports::{GithubAppRepository, GithubInstallationRepository, TaskGrantRepository},
+        },
     },
-    infrastructure::postgres::{SharedTx, map_sqlx_error},
+    infrastructure::{
+        crypto::{Sealed, SecretCipher},
+        postgres::{SharedTx, map_sqlx_error},
+    },
 };
 
 #[repository(domain = TaskGrant, backend = Postgres)]
@@ -155,6 +161,199 @@ impl GithubInstallationRepository for PgGithubInstallationRepository<'_> {
         .execute(&mut ***tx)
         .await
         .map(|_| ())
+        .map_err(map_sqlx_error)
+    }
+}
+
+const MISSING_KEY: &str = "SECRETS_KEY is not configured";
+
+pub struct PgGithubAppRepository<'tx, 'c> {
+    tx: SharedTx<'tx>,
+    cipher: Option<&'c SecretCipher>,
+}
+
+impl<'tx, 'c> PgGithubAppRepository<'tx, 'c> {
+    pub fn new(tx: &SharedTx<'tx>, cipher: Option<&'c SecretCipher>) -> Self {
+        Self {
+            tx: tx.clone(),
+            cipher,
+        }
+    }
+
+    fn cipher(&self) -> Result<&'c SecretCipher, CoreError> {
+        self.cipher
+            .ok_or_else(|| CoreError::Internal(MISSING_KEY.into()))
+    }
+}
+
+fn binding(organization_id: OrganizationId, field: &str) -> Vec<u8> {
+    format!("{organization_id}/github_app/{field}").into_bytes()
+}
+
+fn open_secret(
+    cipher: &SecretCipher,
+    organization_id: OrganizationId,
+    field: &str,
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+) -> Result<SecretToken, CoreError> {
+    let plaintext = cipher.open(
+        &Sealed { nonce, ciphertext },
+        &binding(organization_id, field),
+    )?;
+    String::from_utf8(plaintext)
+        .map(SecretToken::new)
+        .map_err(|_| CoreError::Internal(format!("a stored GitHub App {field} is not text")))
+}
+
+impl GithubAppRepository for PgGithubAppRepository<'_, '_> {
+    async fn get(
+        &mut self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<GithubAppCredentials>, CoreError> {
+        let cipher = self.cipher;
+        let mut tx = self.tx.lock().await;
+        let row = sqlx::query!(
+            r#"
+            SELECT app_id, slug, client_id, html_url, owner_login, owner_type,
+                   client_secret_nonce, client_secret_ciphertext,
+                   private_key_nonce, private_key_ciphertext,
+                   webhook_secret_nonce, webhook_secret_ciphertext,
+                   created_by, created_at
+            FROM github_apps
+            WHERE organization_id = $1
+            "#,
+            organization_id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
+        row.map(|row| {
+            let cipher = cipher.ok_or_else(|| CoreError::Internal(MISSING_KEY.into()))?;
+            Ok(GithubAppCredentials {
+                organization_id,
+                app_id: row.app_id,
+                slug: row.slug,
+                client_id: row.client_id,
+                client_secret: open_secret(
+                    cipher,
+                    organization_id,
+                    "client_secret",
+                    row.client_secret_nonce,
+                    row.client_secret_ciphertext,
+                )?,
+                private_key_pem: open_secret(
+                    cipher,
+                    organization_id,
+                    "private_key",
+                    row.private_key_nonce,
+                    row.private_key_ciphertext,
+                )?,
+                webhook_secret: open_secret(
+                    cipher,
+                    organization_id,
+                    "webhook_secret",
+                    row.webhook_secret_nonce,
+                    row.webhook_secret_ciphertext,
+                )?,
+                html_url: row.html_url,
+                owner_login: row.owner_login,
+                owner_type: row.owner_type,
+                created_by: row.created_by,
+                created_at: row.created_at,
+            })
+        })
+        .transpose()
+    }
+
+    async fn summary(
+        &mut self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<GithubAppSummary>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            SELECT app_id, slug, html_url, owner_login, owner_type, created_by, created_at
+            FROM github_apps
+            WHERE organization_id = $1
+            "#,
+            organization_id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map(|row| {
+            row.map(|row| GithubAppSummary {
+                organization_id,
+                app_id: row.app_id,
+                slug: row.slug,
+                html_url: row.html_url,
+                owner_login: row.owner_login,
+                owner_type: row.owner_type,
+                created_by: row.created_by,
+                created_at: row.created_at,
+            })
+        })
+        .map_err(map_sqlx_error)
+    }
+
+    async fn insert(&mut self, app: &GithubAppCredentials) -> Result<(), CoreError> {
+        let cipher = self.cipher()?;
+        let id = app.organization_id;
+        let client_secret = cipher.seal(
+            app.client_secret.expose().as_bytes(),
+            &binding(id, "client_secret"),
+        )?;
+        let private_key = cipher.seal(
+            app.private_key_pem.expose().as_bytes(),
+            &binding(id, "private_key"),
+        )?;
+        let webhook_secret = cipher.seal(
+            app.webhook_secret.expose().as_bytes(),
+            &binding(id, "webhook_secret"),
+        )?;
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            INSERT INTO github_apps (
+                organization_id, app_id, slug, client_id, html_url, owner_login, owner_type,
+                client_secret_nonce, client_secret_ciphertext,
+                private_key_nonce, private_key_ciphertext,
+                webhook_secret_nonce, webhook_secret_ciphertext,
+                created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            "#,
+            id.0,
+            app.app_id,
+            app.slug,
+            app.client_id,
+            app.html_url,
+            app.owner_login,
+            app.owner_type,
+            client_secret.nonce,
+            client_secret.ciphertext,
+            private_key.nonce,
+            private_key.ciphertext,
+            webhook_secret.nonce,
+            webhook_secret.ciphertext,
+            app.created_by,
+            app.created_at,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|_| ())
+        .map_err(map_sqlx_error)
+    }
+
+    async fn delete(&mut self, organization_id: OrganizationId) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            "DELETE FROM github_apps WHERE organization_id = $1",
+            organization_id.0,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|done| done.rows_affected() > 0)
         .map_err(map_sqlx_error)
     }
 }

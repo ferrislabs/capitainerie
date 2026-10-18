@@ -7,14 +7,14 @@ use std::sync::Arc;
 
 use axum::{Extension, Router};
 use axum_extra::routing::RouterExt;
-use capitainerie_github::GithubClient;
+use capitainerie_github::GithubApps;
 use capitainerie_handlers::AppState;
 
 use crate::execute_card::CodeHostHandle;
 
 pub const TAG: &str = "cards";
 
-pub fn router(github: Option<Arc<GithubClient>>) -> Router<AppState> {
+pub fn router(github: Arc<GithubApps>) -> Router<AppState> {
     Router::new()
         .typed_get(list_cards::handler)
         .typed_post(move_card::handler)

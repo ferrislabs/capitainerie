@@ -77,10 +77,19 @@ Sous Docker Desktop, Ollama tourne sur CPU : comptez une à deux minutes par ét
 
 L'Exécutant lance Claude Code dans un Job Kubernetes. Prérequis : [kind](https://kind.sigs.k8s.io) et `kubectl`. `./scripts/kind-up.sh` crée le cluster `capitainerie`, le namespace `capitainerie-tasks`, construit l'image `capitainerie-executor:dev` et la charge dans kind, puis affiche le contexte kubeconfig à utiliser (`kind-capitainerie`).
 
+**GitHub App** : chaque organisation crée sa propre GitHub App depuis la console, sans variable d'environnement côté opérateur ni étape manuelle sur GitHub.
+
+1. Une clé `SECRETS_KEY` (elle scelle aussi les secrets de l'App) et `CONSOLE_URL=http://localhost:4080` sont définies pour l'API.
+2. Un admin ouvre Paramètres › Intégrations › GitHub, choisit « Compte personnel » ou « Organisation GitHub » (avec le login de l'organisation GitHub), puis clique sur « Créer l'application GitHub ». La console envoie à GitHub, par un formulaire POST du navigateur, le manifeste que l'API a préparé.
+3. Après la validation sur GitHub, le navigateur revient sur la console, qui échange le code temporaire contre l'identité de l'App ; son identifiant, sa clé privée, son secret OAuth et son secret de webhook sont stockés scellés par organisation.
+4. L'admin clique sur « Installer sur vos dépôts », choisit les dépôts sur GitHub, et revient connecté.
+
+En local, `CONSOLE_URL` n'a besoin d'être joignable que par le navigateur : GitHub redirige le navigateur, il n'appelle jamais Capitainerie (pas de tunnel ni de webhook). Pour GitHub Enterprise, `GITHUB_API_BASE` et `GITHUB_WEB_BASE` remplacent les hôtes publics. Supprimer l'App dans la console l'oublie côté Capitainerie, ainsi que son installation ; elle reste sur GitHub, où il faut aussi la supprimer (lien affiché).
+
 Isolation et moindre privilège :
 
 - **DNS** : le pod ne résout rien. Le worker résout l'hôte de `EXECUTOR_PROXY_URL` à la création du Job et l'inscrit dans `hostAliases` ; le pod a `dnsPolicy: None` avec `127.0.0.1` pour seul serveur, et la `NetworkPolicy` des tâches n'autorise plus le DNS. Cela ferme l'exfiltration par requêtes DNS. L'IP du Service du proxy doit rester stable : utiliser un Service `ClusterIP` (le défaut du chart). Les pods déjà lancés gardent l'IP résolue à leur création.
-- **Base du proxy** : le proxy ne fait que lire `task_grants`, `provider_credentials` et `github_installations`. `deploy/postgres/egress-proxy-role.sql` crée le rôle `capitainerie_egress_proxy` avec `SELECT` sur ces seules tables ; lui donner un mot de passe (`ALTER ROLE capitainerie_egress_proxy PASSWORD '…'`), puis, dans le chart, pointer `egressProxy.databaseUrlSecretKey` vers la clé du Secret qui contient sa `DATABASE_URL`. Une faille du proxy ne donne alors ni lecture des autres tables ni écriture.
+- **Base du proxy** : le proxy ne fait que lire `task_grants`, `provider_credentials`, `github_installations` et `github_apps`. `deploy/postgres/egress-proxy-role.sql` crée le rôle `capitainerie_egress_proxy` avec `SELECT` sur ces seules tables ; lui donner un mot de passe (`ALTER ROLE capitainerie_egress_proxy PASSWORD '…'`), puis, dans le chart, pointer `egressProxy.databaseUrlSecretKey` vers la clé du Secret qui contient sa `DATABASE_URL`. Une faille du proxy ne donne alors ni lecture des autres tables ni écriture.
 - **Révocation** : le proxy garde une grant valide 10 s en cache et refuse pendant 10 s un jeton inconnu ou révoqué. La révocation peut donc mettre jusqu'à 10 s à s'appliquer. Il sert au plus 16 requêtes simultanées par exécution (429 au-delà).
 - **Modèle et outils** : le proxy ne laisse passer que le modèle de l'exécution, des réponses plafonnées à 32 000 tokens, des outils côté client (ni `web_search`, `code_execution`, `computer`, ni `mcp_servers`) et une liste fermée d'en-têtes `anthropic-beta`.
 - **Usage** : les tokens et le coût viennent du flux `stream-json` de Claude Code, qui tourne dans le conteneur : ils sont indicatifs, pas une preuve de facturation.

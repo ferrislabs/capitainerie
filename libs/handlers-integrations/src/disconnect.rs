@@ -26,9 +26,8 @@ pub async fn handler(
     State(state): State<IntegrationsState>,
     Extension(caller): Extension<Caller>,
 ) -> Result<Json<GithubIntegrationResponse>, IntegrationError> {
-    state.usecase.disconnect_github(caller.subject()).await?;
-    Ok(Json(GithubIntegrationResponse::new(
-        None,
-        state.github.app_configured(),
-    )))
+    let subject = caller.subject();
+    state.usecase.disconnect_github(subject.clone()).await?;
+    let app = state.usecase.github_app(subject).await?;
+    Ok(Json(GithubIntegrationResponse::new(app, None)))
 }

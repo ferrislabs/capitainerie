@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT app_id, slug, html_url, owner_login, owner_type, created_by, created_at\n            FROM github_apps\n            WHERE organization_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "app_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "html_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "owner_login",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "owner_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd77c23f68bb0a00469ab69be39b3a883f13ce35d066d5efcd27736d0a234f07"
+}

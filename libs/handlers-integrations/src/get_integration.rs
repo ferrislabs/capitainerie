@@ -15,7 +15,7 @@ pub struct GithubPath;
     operation_id = "getGithubIntegration",
     tag = super::TAG,
     responses(
-        (status = 200, description = "Whether the organization's GitHub App installation is connected", body = GithubIntegrationResponse),
+        (status = 200, description = "The organization's GitHub App and where it is installed", body = GithubIntegrationResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -25,9 +25,8 @@ pub async fn handler(
     State(state): State<IntegrationsState>,
     Extension(caller): Extension<Caller>,
 ) -> Result<Json<GithubIntegrationResponse>, IntegrationError> {
-    let installation = state.usecase.github_installation(caller.subject()).await?;
-    Ok(Json(GithubIntegrationResponse::new(
-        installation,
-        state.github.app_configured(),
-    )))
+    let subject = caller.subject();
+    let app = state.usecase.github_app(subject.clone()).await?;
+    let installation = state.usecase.github_installation(subject).await?;
+    Ok(Json(GithubIntegrationResponse::new(app, installation)))
 }

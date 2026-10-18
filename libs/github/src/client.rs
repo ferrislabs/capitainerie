@@ -1,9 +1,8 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
-use capitainerie_common::CoreError;
 use capitainerie_core::domain::{
     agent::SecretToken,
-    execution::{DraftPullRequest, PullRequestUrl, RepositoryRef, ports::CodeHost},
+    execution::{DraftPullRequest, GithubAppCredentials, PullRequestUrl, RepositoryRef},
 };
 use chrono::{DateTime, Duration, Utc};
 use reqwest::{
@@ -16,32 +15,50 @@ use tokio::sync::Mutex;
 
 use crate::{GithubError, jwt};
 
-const DEFAULT_API_BASE: &str = "https://api.github.com";
-const DEFAULT_OAUTH_BASE: &str = "https://github.com";
-const API_VERSION: &str = "2022-11-28";
-const AGENT: &str = concat!("capitainerie/", env!("CARGO_PKG_VERSION"));
+pub(crate) const API_VERSION: &str = "2022-11-28";
+pub(crate) const AGENT: &str = concat!("capitainerie/", env!("CARGO_PKG_VERSION"));
 const REFRESH_MARGIN_MINUTES: i64 = 5;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubBases {
+    pub api_base: String,
+    pub web_base: String,
+}
+
+impl Default for GithubBases {
+    fn default() -> Self {
+        Self {
+            api_base: "https://api.github.com".to_owned(),
+            web_base: "https://github.com".to_owned(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct GithubApp {
     pub app_id: u64,
     pub private_key_pem: SecretToken,
     pub api_base: String,
-    pub oauth_base: String,
-    pub client_id: Option<String>,
-    pub client_secret: Option<SecretToken>,
+    pub web_base: String,
+    pub client_id: String,
+    pub client_secret: SecretToken,
 }
 
 impl GithubApp {
-    pub fn new(app_id: u64, private_key_pem: SecretToken) -> Self {
-        Self {
+    pub fn new(
+        credentials: &GithubAppCredentials,
+        bases: &GithubBases,
+    ) -> Result<Self, GithubError> {
+        let app_id = u64::try_from(credentials.app_id)
+            .map_err(|_| GithubError::InvalidApp("the App id is not a positive number".into()))?;
+        Ok(Self {
             app_id,
-            private_key_pem,
-            api_base: DEFAULT_API_BASE.to_owned(),
-            oauth_base: DEFAULT_OAUTH_BASE.to_owned(),
-            client_id: None,
-            client_secret: None,
-        }
+            private_key_pem: credentials.private_key_pem.clone(),
+            api_base: bases.api_base.clone(),
+            web_base: bases.web_base.clone(),
+            client_id: credentials.client_id.clone(),
+            client_secret: credentials.client_secret.clone(),
+        })
     }
 }
 
@@ -50,7 +67,7 @@ impl fmt::Debug for GithubApp {
         f.debug_struct("GithubApp")
             .field("app_id", &self.app_id)
             .field("api_base", &self.api_base)
-            .field("oauth_base", &self.oauth_base)
+            .field("web_base", &self.web_base)
             .field("client_id", &self.client_id)
             .finish_non_exhaustive()
     }
@@ -196,10 +213,11 @@ const PULL_REQUEST_EXISTS: &str = "A pull request already exists";
 
 type CacheKey = (i64, Option<RepositoryRef>);
 
+#[derive(Clone)]
 pub struct GithubClient {
     app: GithubApp,
     http: reqwest::Client,
-    cache: Mutex<HashMap<CacheKey, InstallationToken>>,
+    cache: Arc<Mutex<HashMap<CacheKey, InstallationToken>>>,
 }
 
 impl GithubClient {
@@ -215,7 +233,7 @@ impl GithubClient {
         Self {
             app,
             http,
-            cache: Mutex::new(HashMap::new()),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -230,7 +248,7 @@ impl GithubClient {
             .header(USER_AGENT, AGENT)
     }
 
-    async fn send(builder: RequestBuilder) -> Result<Response, GithubError> {
+    pub(crate) async fn send(builder: RequestBuilder) -> Result<Response, GithubError> {
         let response = builder.send().await.map_err(GithubError::transport)?;
         if response.status().is_success() {
             return Ok(response);
@@ -263,7 +281,9 @@ impl GithubClient {
         })
     }
 
-    async fn decode<T: for<'de> Deserialize<'de>>(response: Response) -> Result<T, GithubError> {
+    pub(crate) async fn decode<T: for<'de> Deserialize<'de>>(
+        response: Response,
+    ) -> Result<T, GithubError> {
         response
             .json()
             .await
@@ -422,7 +442,7 @@ impl GithubClient {
         }
     }
 
-    async fn branch_sha(
+    pub async fn branch_sha(
         &self,
         installation_id: i64,
         repository: &RepositoryRef,
@@ -448,20 +468,12 @@ impl GithubClient {
         }
     }
 
-    pub fn oauth_configured(&self) -> bool {
-        self.app.client_id.is_some() && self.app.client_secret.is_some()
-    }
-
     /// Exchanges the `code` GitHub appends to the setup redirect when the App
     /// asks for user authorization during installation.
     pub async fn exchange_user_code(&self, code: &str) -> Result<UserToken, GithubError> {
-        let (Some(client_id), Some(client_secret)) = (&self.app.client_id, &self.app.client_secret)
-        else {
-            return Err(GithubError::OAuthNotConfigured);
-        };
         let url = format!(
             "{}/login/oauth/access_token",
-            self.app.oauth_base.trim_end_matches('/')
+            self.app.web_base.trim_end_matches('/')
         );
         let response = Self::send(
             self.http
@@ -469,8 +481,8 @@ impl GithubClient {
                 .header(ACCEPT, "application/json")
                 .header(USER_AGENT, AGENT)
                 .json(&json!({
-                    "client_id": client_id,
-                    "client_secret": client_secret.expose(),
+                    "client_id": self.app.client_id,
+                    "client_secret": self.app.client_secret.expose(),
                     "code": code,
                 })),
         )
@@ -520,7 +532,7 @@ impl GithubClient {
         Ok(false)
     }
 
-    async fn list_repositories(
+    pub async fn list_repositories(
         &self,
         installation_id: i64,
     ) -> Result<Vec<RepositoryRef>, GithubError> {
@@ -558,7 +570,7 @@ impl GithubClient {
         Ok(repositories)
     }
 
-    async fn create_draft_pr(
+    pub async fn create_draft_pr(
         &self,
         installation_id: i64,
         pull_request: &DraftPullRequest,
@@ -674,29 +686,6 @@ pub(crate) fn next_link(header: &str) -> Option<&str> {
     })
 }
 
-impl CodeHost for GithubClient {
-    async fn repositories(&self, installation_id: i64) -> Result<Vec<RepositoryRef>, CoreError> {
-        Ok(self.list_repositories(installation_id).await?)
-    }
-
-    async fn branch_head(
-        &self,
-        installation_id: i64,
-        repository: &RepositoryRef,
-        branch: &str,
-    ) -> Result<Option<String>, CoreError> {
-        Ok(self.branch_sha(installation_id, repository, branch).await?)
-    }
-
-    async fn open_draft_pr(
-        &self,
-        installation_id: i64,
-        pull_request: DraftPullRequest,
-    ) -> Result<PullRequestUrl, CoreError> {
-        Ok(self.create_draft_pr(installation_id, &pull_request).await?)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex as StdMutex};
@@ -711,6 +700,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use capitainerie_common::CoreError;
 
     const PRIVATE: &str = include_str!("../tests/fixtures/test-only-app-key.pem");
 
@@ -926,12 +916,35 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         shared.lock().unwrap().base = base.clone();
         tokio::spawn(async move { axum::serve(listener, app).await });
-        let mut github = GithubApp::new(1, SecretToken::new(PRIVATE));
-        github.api_base.clone_from(&base);
-        github.oauth_base = base;
-        github.client_id = Some("Iv1.abc".into());
-        github.client_secret = Some(SecretToken::new("oauth-secret"));
-        GithubClient::new(github).unwrap()
+        GithubClient::new(app_for(&base)).unwrap()
+    }
+
+    fn credentials() -> GithubAppCredentials {
+        GithubAppCredentials {
+            organization_id: capitainerie_common::OrganizationId::new(),
+            app_id: 1,
+            slug: "capitainerie-acme".into(),
+            client_id: "Iv1.abc".into(),
+            client_secret: SecretToken::new("oauth-secret"),
+            private_key_pem: SecretToken::new(PRIVATE),
+            webhook_secret: SecretToken::new("hook"),
+            html_url: "https://github.com/apps/capitainerie-acme".into(),
+            owner_login: "acme".into(),
+            owner_type: "Organization".into(),
+            created_by: "admin".into(),
+            created_at: Utc::now(),
+        }
+    }
+
+    fn app_for(base: &str) -> GithubApp {
+        GithubApp::new(
+            &credentials(),
+            &GithubBases {
+                api_base: base.to_owned(),
+                web_base: base.to_owned(),
+            },
+        )
+        .unwrap()
     }
 
     fn repo_ref(value: &str) -> RepositoryRef {
@@ -953,10 +966,11 @@ mod tests {
             expires_at: Utc::now(),
         };
         assert!(!format!("{token:?}").contains("ghs_leak"));
-        let app = GithubApp::new(1, SecretToken::new("pem-leak"));
+        let mut leaky = credentials();
+        leaky.private_key_pem = SecretToken::new("pem-leak");
+        leaky.client_secret = SecretToken::new("oauth-leak");
+        let app = GithubApp::new(&leaky, &GithubBases::default()).unwrap();
         assert!(!format!("{app:?}").contains("pem-leak"));
-        let mut app = GithubApp::new(1, SecretToken::new("pem"));
-        app.client_secret = Some(SecretToken::new("oauth-leak"));
         assert!(!format!("{app:?}").contains("oauth-leak"));
         assert!(!format!("{:?}", UserToken(SecretToken::new("ghu_leak"))).contains("ghu_leak"));
     }
@@ -986,13 +1000,13 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn exchanging_without_oauth_settings_fails() {
-        let client = GithubClient::new(GithubApp::new(1, SecretToken::new(PRIVATE))).unwrap();
-        assert!(!client.oauth_configured());
+    #[test]
+    fn an_app_id_must_be_positive() {
+        let mut broken = credentials();
+        broken.app_id = -3;
         assert!(matches!(
-            client.exchange_user_code("c").await,
-            Err(GithubError::OAuthNotConfigured)
+            GithubApp::new(&broken, &GithubBases::default()),
+            Err(GithubError::InvalidApp(_))
         ));
     }
 
@@ -1099,7 +1113,7 @@ mod tests {
     async fn repositories_follow_pagination_with_an_unscoped_token() {
         let shared = Shared::default();
         let client = serve(Arc::clone(&shared)).await;
-        let repositories = client.repositories(5).await.unwrap();
+        let repositories = client.list_repositories(5).await.unwrap();
         let names: Vec<_> = repositories
             .iter()
             .map(|r| format!("{}/{}", r.owner(), r.name()))
@@ -1185,7 +1199,7 @@ mod tests {
 
         assert_eq!(
             client
-                .branch_head(5, &api, "capitainerie/run-1")
+                .branch_sha(5, &api, "capitainerie/run-1")
                 .await
                 .unwrap(),
             Some("abc123".to_owned())
@@ -1193,7 +1207,7 @@ mod tests {
         shared.lock().unwrap().branch_sha = None;
         assert_eq!(
             client
-                .branch_head(5, &api, "capitainerie/run-1")
+                .branch_sha(5, &api, "capitainerie/run-1")
                 .await
                 .unwrap(),
             None
@@ -1245,7 +1259,7 @@ mod tests {
     async fn draft_pull_request_is_created() {
         let shared = Shared::default();
         let client = serve(Arc::clone(&shared)).await;
-        let url = client.open_draft_pr(5, draft()).await.unwrap();
+        let url = client.create_draft_pr(5, &draft()).await.unwrap();
         assert_eq!(
             url,
             PullRequestUrl("https://github.com/acme/api/pull/9".into())
@@ -1272,7 +1286,7 @@ mod tests {
         }
         let client = serve(Arc::clone(&shared)).await;
 
-        let url = client.open_draft_pr(5, draft()).await.unwrap();
+        let url = client.create_draft_pr(5, &draft()).await.unwrap();
 
         assert_eq!(
             url,
@@ -1290,7 +1304,7 @@ mod tests {
         shared.lock().unwrap().pull_exists = true;
         let client = serve(Arc::clone(&shared)).await;
 
-        let error = client.open_draft_pr(5, draft()).await.unwrap_err();
+        let error = CoreError::from(client.create_draft_pr(5, &draft()).await.unwrap_err());
 
         assert!(matches!(error, CoreError::Invalid(_)));
     }
@@ -1307,7 +1321,7 @@ mod tests {
             (429, true),
         ] {
             shared.lock().unwrap().fail_pulls_with = Some(status);
-            let error = client.open_draft_pr(5, draft()).await.unwrap_err();
+            let error = CoreError::from(client.create_draft_pr(5, &draft()).await.unwrap_err());
             let text = error.to_string();
             assert!(!text.contains("ghs_secret"));
             if transient {
@@ -1321,10 +1335,8 @@ mod tests {
 
     #[tokio::test]
     async fn unreachable_host_is_transient() {
-        let mut app = GithubApp::new(1, SecretToken::new(PRIVATE));
-        app.api_base = "http://127.0.0.1:1".into();
-        let client = GithubClient::new(app).unwrap();
-        let error = client.repositories(5).await.unwrap_err();
+        let client = GithubClient::new(app_for("http://127.0.0.1:1")).unwrap();
+        let error = CoreError::from(client.list_repositories(5).await.unwrap_err());
         assert!(matches!(error, CoreError::Internal(_)));
     }
 }
