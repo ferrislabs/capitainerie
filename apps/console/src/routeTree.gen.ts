@@ -12,9 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppAgentsRouteImport } from './routes/_app.agents'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
+import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
+import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 
 const CallbackRoute = CallbackRouteImport.update({
@@ -29,6 +33,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRunsRoute = AppRunsRouteImport.update({
@@ -46,6 +55,21 @@ const AppAgentsRoute = AppAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsProvidersRoute = AppSettingsProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   id: '/runs_/$runId',
   path: '/runs/$runId',
@@ -58,7 +82,11 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AppAgentsRoute
   '/kanban': typeof AppKanbanRoute
   '/runs': typeof AppRunsRoute
+  '/settings': typeof AppSettingsRouteWithChildren
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/providers': typeof AppSettingsProvidersRoute
+  '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
@@ -67,6 +95,9 @@ export interface FileRoutesByTo {
   '/runs': typeof AppRunsRoute
   '/': typeof AppIndexRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/providers': typeof AppSettingsProvidersRoute
+  '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -75,15 +106,37 @@ export interface FileRoutesById {
   '/_app/agents': typeof AppAgentsRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/runs': typeof AppRunsRoute
+  '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/runs_/$runId': typeof AppRunsRunIdRoute
+  '/_app/settings/models': typeof AppSettingsModelsRoute
+  '/_app/settings/providers': typeof AppSettingsProvidersRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/callback' | '/agents' | '/kanban' | '/runs' | '/runs/$runId'
+    | '/'
+    | '/callback'
+    | '/agents'
+    | '/kanban'
+    | '/runs'
+    | '/settings'
+    | '/runs/$runId'
+    | '/settings/models'
+    | '/settings/providers'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/callback' | '/agents' | '/kanban' | '/runs' | '/' | '/runs/$runId'
+  to:
+    | '/callback'
+    | '/agents'
+    | '/kanban'
+    | '/runs'
+    | '/'
+    | '/runs/$runId'
+    | '/settings/models'
+    | '/settings/providers'
+    | '/settings'
   id:
     | '__root__'
     | '/_app'
@@ -91,8 +144,12 @@ export interface FileRouteTypes {
     | '/_app/agents'
     | '/_app/kanban'
     | '/_app/runs'
+    | '/_app/settings'
     | '/_app/'
     | '/_app/runs_/$runId'
+    | '/_app/settings/models'
+    | '/_app/settings/providers'
+    | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -123,6 +180,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/runs': {
       id: '/_app/runs'
       path: '/runs'
@@ -144,6 +208,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgentsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/providers': {
+      id: '/_app/settings/providers'
+      path: '/providers'
+      fullPath: '/settings/providers'
+      preLoaderRoute: typeof AppSettingsProvidersRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/models': {
+      id: '/_app/settings/models'
+      path: '/models'
+      fullPath: '/settings/models'
+      preLoaderRoute: typeof AppSettingsModelsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/runs_/$runId': {
       id: '/_app/runs_/$runId'
       path: '/runs/$runId'
@@ -154,10 +239,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppSettingsRouteChildren {
+  AppSettingsModelsRoute: typeof AppSettingsModelsRoute
+  AppSettingsProvidersRoute: typeof AppSettingsProvidersRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsModelsRoute: AppSettingsModelsRoute,
+  AppSettingsProvidersRoute: AppSettingsProvidersRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
   AppKanbanRoute: typeof AppKanbanRoute
   AppRunsRoute: typeof AppRunsRoute
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
 }
@@ -166,6 +268,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAgentsRoute: AppAgentsRoute,
   AppKanbanRoute: AppKanbanRoute,
   AppRunsRoute: AppRunsRoute,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
 }

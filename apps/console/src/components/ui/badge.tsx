@@ -4,17 +4,22 @@ import type * as React from 'react'
 import { cn } from '#/lib/utils'
 
 const badgeVariants = cva(
-	'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+	'inline-flex w-fit shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-sm px-1.5 py-px text-xs leading-5 font-medium whitespace-nowrap figures',
 	{
 		variants: {
 			variant: {
 				default: 'bg-primary text-primary-foreground',
 				secondary: 'bg-secondary text-secondary-foreground',
 				muted: 'bg-muted text-muted-foreground',
-				success:
-					'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300',
-				destructive:
-					'bg-destructive/15 text-destructive dark:bg-destructive/25',
+				outline: 'border border-border text-muted-foreground',
+				neutral: 'bg-signal-neutral-soft text-signal-neutral',
+				running: 'bg-signal-running-soft text-signal-running',
+				success: 'bg-signal-success-soft text-signal-success',
+				danger: 'bg-signal-danger-soft text-signal-danger',
+				destructive: 'bg-signal-danger-soft text-signal-danger',
+				attention: 'bg-signal-attention-soft text-signal-attention-ink',
+				signal:
+					'bg-signal-attention text-signal-attention-foreground font-semibold',
 			},
 		},
 		defaultVariants: {

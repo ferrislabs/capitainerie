@@ -27,9 +27,13 @@ export function ConfigGate({ children }: Props) {
 
 	if (!ready) {
 		return (
-			<div className="flex min-h-screen items-center justify-center">
-				<Loader2 className="size-6 animate-spin text-primary" />
-			</div>
+			<output className="flex min-h-dvh items-center justify-center bg-background">
+				<Loader2
+					aria-hidden="true"
+					className="size-5 animate-spin text-muted-foreground"
+				/>
+				<span className="sr-only">Chargement…</span>
+			</output>
 		)
 	}
 

@@ -1,5 +1,9 @@
 import { useForm, useStore } from '@tanstack/react-form'
-import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
+import { InlineAlert } from '#/components/layout/inline-alert'
+import { Page } from '#/components/layout/page'
+import { PageHeader } from '#/components/layout/page-header'
+import { SectionCard } from '#/components/layout/section-card'
+import { TableSkeleton } from '#/components/layout/table-skeleton'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
 import { useSubmitTranscript } from '#/domain/runs/hooks/use-submit-transcript'
 import {
@@ -51,14 +55,19 @@ export function RunsPage() {
 		form.handleSubmit().catch(() => undefined)
 	}
 
+	const runCount = runs.data?.items.length
+
 	return (
-		<section className="flex flex-col gap-6">
-			<h1 className="text-2xl font-semibold">Runs</h1>
-			<Card>
-				<CardHeader>
-					<CardTitle>Déposer un transcript</CardTitle>
-				</CardHeader>
-				<CardContent>
+		<Page>
+			<PageHeader
+				title="Runs"
+				description="Déposez le transcript d'une réunion : les agents en extraient les actions, les dédoublonnent et les proposent au Kanban."
+			/>
+			<div className="grid items-start gap-5 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
+				<SectionCard
+					title="Déposer un transcript"
+					description="Texte brut ou fichier .txt, 200 000 caractères au plus."
+				>
 					<SubmitTranscriptForm
 						title={values.title}
 						body={values.body}
@@ -74,17 +83,27 @@ export function RunsPage() {
 						onFileSelected={handleFile}
 						onSubmit={handleSubmit}
 					/>
-				</CardContent>
-			</Card>
-			{runs.isError ? (
-				<p role="alert" className="text-sm text-destructive">
-					Impossible de charger les runs.
-				</p>
-			) : runs.isPending ? (
-				<p className="text-sm text-muted-foreground">Chargement…</p>
-			) : (
-				<RunsTable runs={runs.data.items} />
-			)}
-		</section>
+				</SectionCard>
+				<SectionCard
+					title="Derniers runs"
+					description={
+						runCount === undefined
+							? 'Les 20 runs les plus récents.'
+							: `${runCount} run${runCount > 1 ? 's' : ''} parmi les plus récents.`
+					}
+					flush
+				>
+					{runs.isError ? (
+						<InlineAlert tone="danger" className="m-4">
+							Impossible de charger les runs.
+						</InlineAlert>
+					) : runs.isPending ? (
+						<TableSkeleton rows={6} columns={4} />
+					) : (
+						<RunsTable runs={runs.data.items} />
+					)}
+				</SectionCard>
+			</div>
+		</Page>
 	)
 }

@@ -1,7 +1,7 @@
 import type { Schemas } from '#/api/api.client'
+import type { StatusTone } from '#/components/layout/status-badge'
 
 export type RunStatus = Schemas.RunStatusResponse
-export type BadgeVariant = 'muted' | 'default' | 'success' | 'destructive'
 
 export const STATUS_LABELS: Record<RunStatus, string> = {
 	queued: 'En attente',
@@ -11,10 +11,10 @@ export const STATUS_LABELS: Record<RunStatus, string> = {
 	cancelled: 'Annulé',
 }
 
-export const STATUS_VARIANTS: Record<RunStatus, BadgeVariant> = {
-	queued: 'muted',
-	running: 'default',
+export const STATUS_TONES: Record<RunStatus, StatusTone> = {
+	queued: 'neutral',
+	running: 'running',
 	succeeded: 'success',
-	failed: 'destructive',
-	cancelled: 'muted',
+	failed: 'danger',
+	cancelled: 'neutral',
 }
