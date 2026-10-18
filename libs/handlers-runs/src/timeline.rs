@@ -5,7 +5,10 @@ use capitainerie_core::{
     RunTimeline,
     domain::{
         authorization::DecisionRecord,
-        run::step::{Step, StepStatus, WriteOutput},
+        run::{
+            StepKind,
+            step::{Step, StepStatus, WriteOutput},
+        },
     },
 };
 use capitainerie_handlers::{ApiError, AppState, Caller};
@@ -55,8 +58,23 @@ pub struct StepResponse {
     /// A one-line account of what the step did or why it was skipped.
     pub detail: Option<String>,
     pub tool_calls: Vec<ToolCallResponse>,
+    /// What an `execute` step produced; absent for the other steps.
+    pub execution: Option<ExecutionResponse>,
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, ToSchema)]
+pub struct ExecutionResponse {
+    pub summary: Option<String>,
+    pub branch: Option<String>,
+    pub sha: Option<String>,
+    pub pull_request: Option<String>,
+    #[serde(default)]
+    pub no_changes: bool,
+    #[serde(default)]
+    pub dropped_tool_calls: u64,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -128,6 +146,13 @@ impl From<Step> for StepResponse {
                     .collect()
             })
             .unwrap_or_default();
+        let execution = (step.kind == StepKind::Execute)
+            .then(|| {
+                step.output
+                    .as_ref()
+                    .and_then(|output| serde_json::from_value(output.clone()).ok())
+            })
+            .flatten();
         Self {
             seq: step.seq,
             kind: step.kind.as_str().to_owned(),
@@ -146,6 +171,7 @@ impl From<Step> for StepResponse {
             latency_ms: step.latency_ms,
             error: step.error,
             tool_calls,
+            execution,
             started_at: step.started_at,
             finished_at: step.finished_at,
         }
@@ -200,4 +226,37 @@ pub async fn handler(
 ) -> Result<Json<RunTimelineResponse>, ApiError> {
     let timeline = state.usecase.run_timeline(caller.subject(), run_id).await?;
     Ok(Json(timeline.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_execute_step_output_reads_as_an_execution() {
+        let output = serde_json::json!({
+            "tool_calls": [],
+            "dropped_tool_calls": 3,
+            "summary": "Ajout du CHANGELOG.",
+            "branch": "capitainerie/0a1b2c3d4e5f",
+            "sha": "abc123",
+            "pull_request": "https://github.com/acme/web/pull/7",
+            "no_changes": false,
+            "job_started": true,
+            "error": null
+        });
+
+        let execution: ExecutionResponse = serde_json::from_value(output).unwrap();
+
+        assert_eq!(
+            execution.branch.as_deref(),
+            Some("capitainerie/0a1b2c3d4e5f")
+        );
+        assert_eq!(
+            execution.pull_request.as_deref(),
+            Some("https://github.com/acme/web/pull/7")
+        );
+        assert_eq!(execution.dropped_tool_calls, 3);
+        assert!(!execution.no_changes);
+    }
 }
