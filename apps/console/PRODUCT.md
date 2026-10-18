@@ -33,7 +33,7 @@ Every agent write is decided by an authorization policy and audited; agents act 
 - Stack: React 19, TanStack Start (SPA) + Router + Query + Form, Tailwind v4 CSS-first, shadcn/ui new-york, lucide-react, Biome, Vitest.
 - UI language: French. Front conventions in docs/CONVENTIONS.md §14 (domain/<d>/{hooks,feature,ui}, presentational ui without hooks, kebab-case files).
 - License Apache-2.0. Qovery's console (GPL-3.0) is a reference for principles only: nothing copied.
-- Fournisseurs and Modèles endpoints are not live yet; their pages are placeholders until wave B.
+- Fournisseurs and Modèles pages are live (wave B): provider keys, connection test, model catalog, one model per agent role; admin-only edits, read-only for members.
 
 ## Brand Commitments
 
