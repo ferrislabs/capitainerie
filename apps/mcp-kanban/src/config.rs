@@ -37,6 +37,11 @@ pub struct Args {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_command_line_definition_is_valid() {
+        <super::Args as clap::CommandFactory>::command().debug_assert();
+    }
+
     use super::*;
 
     #[test]

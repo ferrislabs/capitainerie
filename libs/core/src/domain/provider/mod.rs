@@ -1,3 +1,6 @@
+pub mod ports;
+pub mod service;
+
 use capitainerie_common::{CoreError, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -9,6 +12,7 @@ use crate::domain::agent::SecretToken;
 pub enum ProviderKind {
     Anthropic,
     Mistral,
+    #[serde(rename = "openai_compatible")]
     OpenAiCompatible,
 }
 
@@ -51,6 +55,16 @@ pub struct ProviderCredential {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A configured provider as every member sees it: no secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderSummary {
+    pub kind: ProviderKind,
+    pub base_url: Option<String>,
+    pub preview: String,
+    pub created_by: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// What an adapter needs to call a provider on an organization's behalf.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderAccess {
@@ -65,6 +79,28 @@ pub struct ProviderAccess {
 pub struct ModelTarget {
     pub model: ModelRef,
     pub access: Option<ProviderAccess>,
+}
+
+impl From<&ProviderCredential> for ProviderSummary {
+    fn from(credential: &ProviderCredential) -> Self {
+        Self {
+            kind: credential.kind,
+            base_url: credential.base_url.clone(),
+            preview: credential.preview.clone(),
+            created_by: credential.created_by.clone(),
+            updated_at: credential.updated_at,
+        }
+    }
+}
+
+impl From<ProviderCredential> for ProviderAccess {
+    fn from(credential: ProviderCredential) -> Self {
+        Self {
+            kind: credential.kind,
+            secret: credential.secret,
+            base_url: credential.base_url,
+        }
+    }
 }
 
 impl ProviderKind {
@@ -157,6 +193,16 @@ mod tests {
             assert_eq!(ProviderKind::try_from(kind.as_str()).unwrap(), kind);
         }
         assert!(ProviderKind::try_from("openai").is_err());
+    }
+
+    #[test]
+    fn kinds_serialize_as_their_text_form() {
+        for kind in ProviderKind::ALL {
+            assert_eq!(
+                serde_json::to_value(kind).unwrap(),
+                serde_json::Value::String(kind.as_str().to_owned())
+            );
+        }
     }
 
     #[test]

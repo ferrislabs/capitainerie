@@ -26,3 +26,8 @@ output "agent_clients" {
 output "api_resource" {
   value = var.api_resource
 }
+
+output "admin_role_uuid" {
+  description = "capitainerie-admin; the bootstrap script grants it to ADMIN_USERNAME."
+  value       = ferriskey_role.admin.role_uuid
+}

@@ -339,6 +339,7 @@ mod tests {
             id: "user-1".into(),
             organization_id,
             actor: Some("capitainerie-agent-writer".into()),
+            is_admin: false,
         }
     }
 

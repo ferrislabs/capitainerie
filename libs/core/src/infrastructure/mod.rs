@@ -5,6 +5,7 @@ pub mod delegation;
 pub mod event;
 pub mod organization;
 pub mod postgres;
+pub mod provider;
 pub mod registry;
 pub mod run;
 pub mod transcript;

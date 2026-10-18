@@ -20,7 +20,7 @@ pub struct Sealed {
 impl SecretCipher {
     pub fn new(key: &[u8; 32]) -> Result<Self, CoreError> {
         let unbound = UnboundKey::new(&AES_256_GCM, key)
-            .map_err(|_| CoreError::Internal("the delegation key is unusable".into()))?;
+            .map_err(|_| CoreError::Internal("the encryption key is unusable".into()))?;
         Ok(Self {
             key: LessSafeKey::new(unbound),
             rng: SystemRandom::new(),
@@ -33,10 +33,10 @@ impl SecretCipher {
 
         let decoded = STANDARD
             .decode(encoded.trim())
-            .map_err(|_| CoreError::Internal("DELEGATION_KEY is not valid base64".into()))?;
+            .map_err(|_| CoreError::Internal("the encryption key is not valid base64".into()))?;
         let key: [u8; 32] = decoded.as_slice().try_into().map_err(|_| {
             CoreError::Internal(format!(
-                "DELEGATION_KEY must decode to 32 bytes, got {}",
+                "the encryption key must decode to 32 bytes, got {}",
                 decoded.len()
             ))
         })?;

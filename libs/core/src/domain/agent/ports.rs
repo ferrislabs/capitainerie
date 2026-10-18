@@ -1,7 +1,7 @@
 use capitainerie_common::CoreError;
 
 use super::{Extraction, Judgement, LocatedAction, WriteReport, WriteRequest};
-use crate::domain::similarity::SimilarCard;
+use crate::domain::{provider::ModelTarget, similarity::SimilarCard};
 
 /// Runs the agents of the meeting pipeline. Implementations must not leak
 /// their framework types through this port.
@@ -10,6 +10,7 @@ pub trait AgentRuntime: Send + Sync {
     /// The extractor: transcript in, typed action items out. No tools.
     fn extract(
         &self,
+        target: &ModelTarget,
         transcript: &str,
     ) -> impl Future<Output = Result<Extraction, CoreError>> + Send;
 
@@ -17,11 +18,13 @@ pub trait AgentRuntime: Send + Sync {
     /// Kanban MCP server only.
     fn write(
         &self,
+        target: &ModelTarget,
         request: WriteRequest,
     ) -> impl Future<Output = Result<WriteReport, CoreError>> + Send;
 
     fn judge_duplicate(
         &self,
+        target: &ModelTarget,
         action: &LocatedAction,
         candidate: &SimilarCard,
     ) -> impl Future<Output = Result<Judgement, CoreError>> + Send;

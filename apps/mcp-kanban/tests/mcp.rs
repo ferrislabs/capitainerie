@@ -160,6 +160,7 @@ impl Harness {
                     id: "7b0f0c1e-0000-4000-8000-000000000001".into(),
                     organization_id: OrganizationId(self.organization_id),
                     actor: None,
+                    is_admin: false,
                 },
                 title: "Weekly".into(),
                 body: body.into(),

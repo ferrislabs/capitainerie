@@ -13,6 +13,9 @@ use capitainerie_core::{
 
 use crate::{ApiError, AppState};
 
+/// The realm role FerrisKey gives the admins of an organization.
+pub const ADMIN_ROLE: &str = "capitainerie-admin";
+
 /// Who is calling, inserted as a request extension by [`authenticate`].
 #[derive(Debug, Clone)]
 pub struct Caller {
@@ -33,6 +36,7 @@ impl Caller {
                 .actor
                 .as_ref()
                 .and_then(|actor| actor.client_id.clone()),
+            is_admin: self.identity.roles.iter().any(|role| role == ADMIN_ROLE),
         }
     }
 }

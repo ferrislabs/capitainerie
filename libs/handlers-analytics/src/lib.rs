@@ -108,6 +108,7 @@ mod tests {
                 email: None,
                 display_name: None,
                 actor,
+                roles: Vec::new(),
             },
             organization: Organization {
                 id: OrganizationId::new(),

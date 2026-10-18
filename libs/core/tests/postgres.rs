@@ -58,6 +58,7 @@ fn member(organization_id: OrganizationId) -> Subject {
         id: "user-1".into(),
         organization_id,
         actor: None,
+        is_admin: false,
     }
 }
 
@@ -254,6 +255,7 @@ mod cards {
     fn agent(organization_id: OrganizationId) -> Subject {
         Subject {
             actor: Some("capitainerie-agent-writer".into()),
+            is_admin: false,
             ..member(organization_id)
         }
     }
