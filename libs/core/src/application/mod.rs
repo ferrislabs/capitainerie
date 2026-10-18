@@ -18,11 +18,7 @@ use crate::infrastructure::{
     postgres,
 };
 
-#[cfg(any(test, feature = "mock"))]
-pub use execute_pipeline::MockCardCommenter;
-pub use execute_pipeline::{
-    CardCommenter, ExecuteConfig, ExecutePipeline, ExecutionContext, Executor,
-};
+pub use execute_pipeline::{ExecuteConfig, ExecutePipeline, ExecutionContext, Executor};
 pub use execution::StartedExecution;
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};
 pub use provider::{ModelListing, ProviderFailure};

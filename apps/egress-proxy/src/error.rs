@@ -14,6 +14,8 @@ pub enum ProxyError {
     Forbidden { run_id: RunId, reason: &'static str },
     #[error("request body too large")]
     TooLarge { run_id: RunId },
+    #[error("too many requests in flight")]
+    TooManyRequests { run_id: RunId },
     #[error("credentials backend failed: {0}")]
     Credentials(#[from] CredentialsError),
     #[error("upstream unreachable: {0}")]
@@ -36,6 +38,9 @@ impl ProxyError {
             Self::TooLarge { run_id } => {
                 tracing::warn!(run_id = %run_id, %method, class, reason = "body too large", "request denied")
             }
+            Self::TooManyRequests { run_id } => {
+                tracing::warn!(run_id = %run_id, %method, class, reason = "too many requests in flight", "request denied")
+            }
             Self::Credentials(error) => tracing::error!(%method, class, %error, "lookup failed"),
             Self::Upstream(error) => tracing::error!(%method, class, %error, "upstream failed"),
         }
@@ -49,6 +54,9 @@ impl IntoResponse for ProxyError {
             Self::Forbidden { reason, .. } => (StatusCode::FORBIDDEN, reason).into_response(),
             Self::TooLarge { .. } => {
                 (StatusCode::PAYLOAD_TOO_LARGE, "request body too large").into_response()
+            }
+            Self::TooManyRequests { .. } => {
+                (StatusCode::TOO_MANY_REQUESTS, "too many requests in flight").into_response()
             }
             Self::Credentials(_) => {
                 (StatusCode::BAD_GATEWAY, "credentials unavailable").into_response()

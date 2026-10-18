@@ -1,8 +1,7 @@
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
 use capitainerie_common::{CoreError, RunId};
 use capitainerie_core::domain::execution::{TaskLine, TaskOutcome, TaskSpec, ports::TaskRunner};
-use futures_util::{AsyncBufReadExt, StreamExt};
 use k8s_openapi::api::{
     batch::v1::Job,
     core::v1::{Pod, Secret},
@@ -16,8 +15,8 @@ use tokio::sync::mpsc;
 use crate::{
     config::KubeRunnerConfig,
     error::RunnerError,
-    logs::parse_line,
-    manifest::{build_job, build_secret, job_name, run_selector},
+    logs::{Line, MAX_LINE_BYTES, parse_line, read_line},
+    manifest::{ProxyHost, build_job, build_secret, job_name, run_selector},
     status::{has_started, outcome},
 };
 
@@ -53,11 +52,32 @@ impl KubeTaskRunner {
         Api::namespaced(self.client.clone(), &self.config.namespace)
     }
 
+    async fn resolve_proxy(&self) -> Result<Option<ProxyHost>, RunnerError> {
+        let (host, port) = self
+            .config
+            .proxy_endpoint()
+            .ok_or_else(|| RunnerError::ProxyUrl(self.config.proxy_base_url.clone()))?;
+        if host.parse::<IpAddr>().is_ok() {
+            return Ok(None);
+        }
+        let ip = tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .map_err(|error| RunnerError::ProxyLookup(host.clone(), error))?
+            .next()
+            .ok_or_else(|| RunnerError::ProxyUnresolved(host.clone()))?
+            .ip();
+        Ok(Some(ProxyHost { name: host, ip }))
+    }
+
     async fn create_job(&self, spec: &TaskSpec) -> Result<Job, RunnerError> {
         let name = job_name(spec.run_id);
+        let proxy = self.resolve_proxy().await?;
         match self
             .jobs()
-            .create(&PostParams::default(), &build_job(&self.config, spec))
+            .create(
+                &PostParams::default(),
+                &build_job(&self.config, spec, proxy.as_ref()),
+            )
             .await
         {
             Ok(job) => Ok(job),
@@ -136,10 +156,18 @@ impl KubeTaskRunner {
             follow: true,
             ..Default::default()
         };
-        let mut stream = self.pods().log_stream(&pod_name, &params).await?.lines();
+        let stream = self.pods().log_stream(&pod_name, &params).await?;
+        let mut stream = std::pin::pin!(stream);
         let mut listening = true;
-        while let Some(line) = stream.next().await {
-            let Some(parsed) = parse_line(&line?) else {
+        while let Some(line) = read_line(&mut stream, MAX_LINE_BYTES).await? {
+            let text = match line {
+                Line::Text(text) => text,
+                Line::Oversize => {
+                    tracing::warn!(run_id = %run_id, "dropping a task log line over {MAX_LINE_BYTES} bytes");
+                    continue;
+                }
+            };
+            let Some(parsed) = parse_line(&text) else {
                 continue;
             };
             if listening && lines.send(parsed).await.is_err() {
@@ -153,6 +181,13 @@ impl KubeTaskRunner {
 impl TaskRunner for KubeTaskRunner {
     async fn start(&self, spec: &TaskSpec) -> Result<(), CoreError> {
         Ok(self.start_task(spec).await?)
+    }
+
+    async fn attach(&self, run_id: RunId) -> Result<bool, CoreError> {
+        match self.jobs().get_opt(&job_name(run_id)).await {
+            Ok(job) => Ok(job.is_some()),
+            Err(error) => Err(RunnerError::from(error).into()),
+        }
     }
 
     async fn follow(

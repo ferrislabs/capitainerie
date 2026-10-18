@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{CardId, CoreError, RunId};
-use capitainerie_core::{AgentDelegation, domain::execution::ports::CodeHost};
+use capitainerie_core::domain::execution::ports::CodeHost;
 use capitainerie_github::GithubClient;
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,10 @@ pub async fn handler(
 ) -> Result<(StatusCode, Json<ExecuteCardResponse>), ApiError> {
     let repository = request.repository.parse()?;
     let subject = caller.subject();
+    state
+        .usecase
+        .check_card_executable(subject.clone(), card_id)
+        .await?;
     let not_connected = || CoreError::Conflict("github_not_connected".into());
     let github = github.ok_or_else(not_connected)?;
     let installation = state
@@ -76,23 +80,14 @@ pub async fn handler(
         .default_branch(installation.installation_id, &repository)
         .await
         .map_err(CoreError::from)?;
-    let delegation = state.delegation.as_ref().ok_or_else(|| {
-        ApiError::Unavailable("executions need DELEGATION_KEY and the exchange client".into())
-    })?;
     let started = state
         .usecase
-        .execute_card_delegated(
+        .execute_card(
             subject,
             card_id,
             repository,
             base_branch,
             request.expected_version,
-            AgentDelegation {
-                exchanger: &delegation.exchanger,
-                issuer: &caller.organization.issuer_url,
-                user_token: &caller.token,
-                agents: &[],
-            },
         )
         .await?;
     Ok((

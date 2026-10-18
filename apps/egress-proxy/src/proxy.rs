@@ -9,12 +9,36 @@ use axum::{
     http::StatusCode,
     routing::{any, get},
 };
+use capitainerie_common::RunId;
 use capitainerie_core::domain::execution::TaskGrant;
 use chrono::Utc;
 
 use crate::{anthropic, auth, credentials::Credentials, error::ProxyError, git};
 
 const GRANT_CACHE_TTL: Duration = Duration::from_secs(10);
+const UNKNOWN_TOKEN_TTL: Duration = Duration::from_secs(10);
+const UNKNOWN_TOKENS_MAX: usize = 10_000;
+pub const MAX_IN_FLIGHT: usize = 16;
+
+type InFlight = Arc<Mutex<HashMap<RunId, usize>>>;
+
+/// One request being served for a grant; released when the response body ends.
+pub struct Permit {
+    in_flight: InFlight,
+    run_id: RunId,
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        let mut in_flight = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(count) = in_flight.get_mut(&self.run_id) {
+            *count -= 1;
+            if *count == 0 {
+                in_flight.remove(&self.run_id);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ProxyConfig {
@@ -27,6 +51,8 @@ pub struct Proxy<C> {
     pub(crate) http: reqwest::Client,
     pub(crate) config: ProxyConfig,
     cache: Mutex<HashMap<[u8; 32], (TaskGrant, Instant)>>,
+    unknown: Mutex<HashMap<[u8; 32], Instant>>,
+    in_flight: InFlight,
 }
 
 impl<C: Credentials> Proxy<C> {
@@ -47,7 +73,22 @@ impl<C: Credentials> Proxy<C> {
                 github_base: config.github_base.trim_end_matches('/').to_owned(),
             },
             cache: Mutex::new(HashMap::new()),
+            unknown: Mutex::new(HashMap::new()),
+            in_flight: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub(crate) fn acquire(&self, run_id: RunId) -> Result<Permit, ProxyError> {
+        let mut in_flight = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let count = in_flight.entry(run_id).or_insert(0);
+        if *count >= MAX_IN_FLIGHT {
+            return Err(ProxyError::TooManyRequests { run_id });
+        }
+        *count += 1;
+        Ok(Permit {
+            in_flight: Arc::clone(&self.in_flight),
+            run_id,
+        })
     }
 
     pub(crate) async fn authenticate(&self, token: &str) -> Result<TaskGrant, ProxyError> {
@@ -58,6 +99,11 @@ impl<C: Credentials> Proxy<C> {
         {
             return Ok(grant);
         }
+        if self.known_unusable(&hash) {
+            return Err(ProxyError::Unauthorized {
+                reason: "unknown token",
+            });
+        }
         match self.credentials.grant(hash).await? {
             Some(grant) if grant.is_usable(now) => {
                 self.remember(hash, &grant);
@@ -65,14 +111,34 @@ impl<C: Credentials> Proxy<C> {
             }
             Some(_) => {
                 self.forget(&hash);
+                self.reject(hash);
                 Err(ProxyError::Unauthorized {
                     reason: "grant revoked or expired",
                 })
             }
-            None => Err(ProxyError::Unauthorized {
-                reason: "unknown token",
-            }),
+            None => {
+                self.reject(hash);
+                Err(ProxyError::Unauthorized {
+                    reason: "unknown token",
+                })
+            }
         }
+    }
+
+    fn known_unusable(&self, hash: &[u8; 32]) -> bool {
+        let unknown = self.unknown.lock().unwrap_or_else(|e| e.into_inner());
+        unknown
+            .get(hash)
+            .is_some_and(|at| at.elapsed() < UNKNOWN_TOKEN_TTL)
+    }
+
+    fn reject(&self, hash: [u8; 32]) {
+        let mut unknown = self.unknown.lock().unwrap_or_else(|e| e.into_inner());
+        unknown.retain(|_, at| at.elapsed() < UNKNOWN_TOKEN_TTL);
+        if unknown.len() >= UNKNOWN_TOKENS_MAX {
+            unknown.clear();
+        }
+        unknown.insert(hash, Instant::now());
     }
 
     fn cached(&self, hash: &[u8; 32]) -> Option<TaskGrant> {

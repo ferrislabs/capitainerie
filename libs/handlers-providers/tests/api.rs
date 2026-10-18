@@ -243,6 +243,15 @@ async fn models_assignments_and_test_follow_the_providers() {
         .send()
         .await
         .unwrap();
+    let foreign_executor = client
+        .put(format!("{admin}/api/v1/model-assignments"))
+        .json(&json!({
+            "extractor": chat, "judge": chat, "writer": chat, "embeddings": embeddings,
+            "executor": "gpt-4o",
+        }))
+        .send()
+        .await
+        .unwrap();
     let member_put = client
         .put(format!("{member}/api/v1/model-assignments"))
         .json(
@@ -264,5 +273,6 @@ async fn models_assignments_and_test_follow_the_providers() {
     assert_eq!(member_test.status(), 403);
     assert_eq!(before["assignments"], Value::Null);
     assert_eq!(invalid.status(), 422);
+    assert_eq!(foreign_executor.status(), 422);
     assert_eq!(member_put.status(), 403);
 }

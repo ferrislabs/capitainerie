@@ -13,7 +13,7 @@ k8s-openapi.workspace = true
 kube.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "net"] }
 tracing.workspace = true
 
 [dev-dependencies]

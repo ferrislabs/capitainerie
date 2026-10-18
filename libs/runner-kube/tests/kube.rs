@@ -43,7 +43,7 @@ fn spec(deadline: Duration) -> TaskSpec {
 
 async fn runner(script: &str) -> (KubeTaskRunner, Client, String) {
     let client = Client::try_default().await.unwrap();
-    let mut config = KubeRunnerConfig::new("busybox:1.37", "http://proxy.invalid:4130");
+    let mut config = KubeRunnerConfig::new("busybox:1.37", "http://10.0.0.1:4130");
     config.namespace = std::env::var("KUBE_TEST_NAMESPACE").unwrap_or(config.namespace);
     config.command = Some(vec!["sh".into(), "-c".into(), script.into()]);
     let namespaces: Api<Namespace> = Api::all(client.clone());
@@ -76,8 +76,10 @@ async fn a_job_runs_streams_its_lines_and_is_deleted() {
     }
     let (runner, client, namespace) = runner(SCRIPT).await;
     let spec = spec(Duration::from_secs(120));
+    assert!(!runner.attach(spec.run_id).await.unwrap());
     runner.start(&spec).await.unwrap();
     runner.start(&spec).await.unwrap();
+    assert!(runner.attach(spec.run_id).await.unwrap());
 
     let secrets: Api<Secret> = Api::namespaced(client.clone(), &namespace);
     let secret = secrets.get(&job_name(spec.run_id)).await.unwrap();
@@ -99,6 +101,7 @@ async fn a_job_runs_streams_its_lines_and_is_deleted() {
     runner.delete(spec.run_id).await.unwrap();
     let jobs: Api<Job> = Api::namespaced(client, &namespace);
     assert!(gone(&jobs, &job_name(spec.run_id)).await);
+    assert!(!runner.attach(spec.run_id).await.unwrap());
 }
 
 #[tokio::test]

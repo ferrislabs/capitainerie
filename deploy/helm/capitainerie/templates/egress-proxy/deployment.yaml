@@ -51,7 +51,12 @@ spec:
             - configMapRef:
                 name: {{ $name }}
           env:
-            {{- include "capitainerie.secretEnv" (dict "root" . "keys" .Values.egressProxy.secretEnv) | nindent 12 }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret | quote }}
+                  key: {{ .Values.egressProxy.databaseUrlSecretKey | quote }}
+            {{- include "capitainerie.secretEnv" (dict "root" . "keys" (without .Values.egressProxy.secretEnv "DATABASE_URL")) | nindent 12 }}
             {{- with .Values.egressProxy.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

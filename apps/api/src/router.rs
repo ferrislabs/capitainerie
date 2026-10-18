@@ -1,9 +1,7 @@
 use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
 use capitainerie_analytics::Analytics;
-use capitainerie_core::{
-    application::CapitainerieAuthorizer, domain::provider::ports::ModelCatalog,
-};
+use capitainerie_core::domain::provider::ports::ModelCatalog;
 use capitainerie_handlers::{AppState, auth::authenticate, health};
 use capitainerie_handlers_integrations::GithubIntegration;
 use capitainerie_handlers_realtime::Gateway;
@@ -22,7 +20,6 @@ pub fn router<A: Analytics + 'static, C: ModelCatalog + 'static>(
     realtime: Gateway<AppState>,
     analytics: A,
     catalog: C,
-    authz: CapitainerieAuthorizer,
     github: GithubIntegration,
     allowed_origins: &[String],
 ) -> anyhow::Result<Router> {
@@ -45,7 +42,6 @@ pub fn router<A: Analytics + 'static, C: ModelCatalog + 'static>(
         ))
         .merge(capitainerie_handlers_integrations::router(
             state.usecase.clone(),
-            authz,
             github,
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));

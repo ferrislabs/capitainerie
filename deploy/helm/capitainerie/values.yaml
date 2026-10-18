@@ -39,8 +39,7 @@ config:
   # -- Value of MCP_AUDIENCE (audience of the delegated agent tokens).
   mcpAudience: capitainerie-mcp
   # -- Client ids of the agents a run acts through (PIPELINE_AGENTS on api and worker, MCP_ACCEPTED_AGENTS on mcp-kanban).
-  # With executor.enabled, mcp-kanban also accepts capitainerie-agent-executor (not added to PIPELINE_AGENTS):
-  # AGENT_CREDENTIALS must then include its client secret (capitainerie-agent-executor=<secret>).
+  # The executor that runs Claude Code on a card is not one of them: it holds no token and writes through the worker only.
   pipelineAgents:
     - capitainerie-agent-writer
   github:
@@ -237,14 +236,8 @@ executor:
   maxTurns: 50
   # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).
   deadlineSeconds: 1800
-  # -- Where the task pods resolve names (DNS egress).
-  dnsTo:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-      podSelector:
-        matchLabels:
-          k8s-app: kube-dns
+  # -- Value of EXECUTOR_CONCURRENCY: executions the worker follows at once, apart from WORKER_CONCURRENCY.
+  concurrency: 2
 
 egressProxy:
   # -- Deployed with executor.enabled. The only network exit of the task pods.
@@ -254,8 +247,11 @@ egressProxy:
     tag: ""
   # -- Value of EGRESS_PROXY_PORT.
   port: 4130
+  # -- Key of the Secret holding the proxy's own DATABASE_URL. Point it at a
+  # connection string for the capitainerie_egress_proxy role (deploy/postgres/egress-proxy-role.sql),
+  # which can only read the three tables the proxy needs. The default is the shared DATABASE_URL.
+  databaseUrlSecretKey: DATABASE_URL
   secretEnv:
-    - DATABASE_URL
     - SECRETS_KEY
     - GITHUB_APP_ID
     - GITHUB_APP_PRIVATE_KEY

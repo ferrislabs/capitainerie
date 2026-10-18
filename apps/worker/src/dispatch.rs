@@ -1,6 +1,6 @@
 use capitainerie_common::{CoreError, RunId};
 use capitainerie_core::{
-    CapitainerieUseCase, CardCommenter, ExecutePipeline, MeetingPipeline,
+    CapitainerieUseCase, ExecutePipeline, MeetingPipeline,
     domain::{
         agent::ports::AgentRuntime,
         delegation::ports::TokenExchanger,
@@ -14,6 +14,11 @@ pub trait RunPipelines: Send + Sync + 'static {
     fn usecase(&self) -> &CapitainerieUseCase;
 
     fn stale_before(&self) -> DateTime<Utc>;
+
+    /// Card executions are paced apart from the other runs.
+    fn is_execution(&self, run_id: RunId) -> impl Future<Output = Result<bool, CoreError>> + Send {
+        self.usecase().is_execution_run(run_id)
+    }
 
     fn execute(
         &self,
@@ -46,12 +51,10 @@ where
     }
 }
 
-impl<T, H, X, C> RunPipelines for ExecutePipeline<T, H, X, C>
+impl<T, H> RunPipelines for ExecutePipeline<T, H>
 where
     T: TaskRunner + 'static,
     H: CodeHost + 'static,
-    X: TokenExchanger + 'static,
-    C: CardCommenter + 'static,
 {
     fn usecase(&self) -> &CapitainerieUseCase {
         ExecutePipeline::usecase(self)

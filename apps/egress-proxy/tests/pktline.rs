@@ -7,7 +7,7 @@ use capitainerie_egress_proxy::pktline::{
 const ZERO: &str = "0000000000000000000000000000000000000000";
 const OLD: &str = "1111111111111111111111111111111111111111";
 const NEW: &str = "2222222222222222222222222222222222222222";
-const BRANCH: &str = "capitainerie/0a1b2c3d";
+const BRANCH: &str = "capitainerie/0a1b2c3d4e5f";
 
 fn pkt(payload: &[u8]) -> Vec<u8> {
     let mut out = format!("{:04x}", payload.len() + 4).into_bytes();

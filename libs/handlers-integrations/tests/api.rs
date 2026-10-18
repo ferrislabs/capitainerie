@@ -10,12 +10,8 @@ use axum::{
 use capitainerie_auth::Identity;
 use capitainerie_common::OrganizationId;
 use capitainerie_core::{
-    CapitainerieUseCase, Organization, OrganizationSlug,
-    domain::agent::SecretToken,
-    infrastructure::{
-        authorization::{AuditedAuthorizer, LocalPolicyEngine},
-        postgres,
-    },
+    CapitainerieUseCase, Organization, OrganizationSlug, domain::agent::SecretToken,
+    infrastructure::postgres,
 };
 use capitainerie_github::{GithubApp, GithubClient};
 use capitainerie_handlers::Caller;
@@ -130,7 +126,19 @@ async fn fake_github() -> String {
         )
         .route(
             "/app/installations/{id}",
-            get(|| async { Json(json!({"account": {"login": "acme"}})) }),
+            get(|| async { Json(json!({"account": {"login": "acme", "type": "Organization"}})) }),
+        )
+        .route(
+            "/user/memberships/orgs/{org}",
+            get(|request: Request| async move {
+                let token = request.headers()["authorization"].to_str().unwrap();
+                let role = if token.contains("notadmin") {
+                    "member"
+                } else {
+                    "admin"
+                };
+                Json(json!({"role": role, "state": "active"}))
+            }),
         )
         .route(
             "/app/installations/{id}/access_tokens",
@@ -171,9 +179,8 @@ async fn configured() -> GithubIntegration {
 
 async fn serve(pool: &PgPool, caller: Caller, github: GithubIntegration) -> String {
     let usecase = CapitainerieUseCase::with_local_policies(pool.clone());
-    let authz = AuditedAuthorizer::new(LocalPolicyEngine, pool.clone());
-    let app: Router = capitainerie_handlers_integrations::router::<()>(usecase, authz, github)
-        .layer(Extension(caller));
+    let app: Router =
+        capitainerie_handlers_integrations::router::<()>(usecase, github).layer(Extension(caller));
     spawn(app).await
 }
 
@@ -556,4 +563,58 @@ async fn an_installation_bound_to_another_organization_is_a_conflict() {
     );
     assert_eq!(stored(&pool, &second).await, 0);
     assert_eq!(stored(&pool, &first).await, 1);
+}
+
+#[tokio::test]
+async fn a_non_admin_is_refused_by_the_policy_before_the_state_is_even_read() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let member = serve(
+        &pool,
+        caller(&organization, "user-2", &[]),
+        configured().await,
+    )
+    .await;
+
+    let response = connect(
+        &reqwest::Client::new(),
+        &member,
+        "garbage",
+        fresh_installation(),
+    )
+    .await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(denied(&pool, &organization).await, 1);
+}
+
+#[tokio::test]
+async fn an_installation_of_an_organization_the_user_does_not_administer_is_refused() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let admin = serve(
+        &pool,
+        caller(&organization, "user-1", &[ADMIN]),
+        configured().await,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let installation_id = fresh_installation();
+    let state = signer().sign(organization.id, "user-1", Utc::now());
+
+    let response = connect_with(
+        &client,
+        &admin,
+        &state,
+        installation_id,
+        &format!("{installation_id},notadmin"),
+    )
+    .await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["code"],
+        "installation_not_owned"
+    );
+    assert_eq!(stored(&pool, &organization).await, 0);
 }

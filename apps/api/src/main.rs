@@ -13,11 +13,7 @@ use capitainerie_bus_iggy::IggyArgs;
 use capitainerie_core::{
     CapitainerieUseCase,
     domain::agent::SecretToken,
-    infrastructure::{
-        authorization::{AuditedAuthorizer, LocalPolicyEngine},
-        crypto::SecretCipher,
-        postgres,
-    },
+    infrastructure::{crypto::SecretCipher, postgres},
 };
 use capitainerie_github::{GithubApp, GithubClient};
 use capitainerie_handlers::{AppState, Delegation};
@@ -66,7 +62,6 @@ async fn main() -> anyhow::Result<()> {
     let pool = postgres::connect(&args.database.url, args.database.max_connections)
         .await
         .context("connecting to postgres")?;
-    let authz = AuditedAuthorizer::new(LocalPolicyEngine, pool.clone());
     let mut usecase = CapitainerieUseCase::with_local_policies(pool);
     match &args.secrets.key {
         Some(key) => {
@@ -114,7 +109,6 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
-        authz,
         github,
         &args.server.allowed_origins,
     )?;

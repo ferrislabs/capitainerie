@@ -2,15 +2,13 @@
 
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_core::{
-    AgentDelegation, CapitainerieUseCase,
+    CapitainerieUseCase,
     domain::{
-        agent::SecretToken,
         authorization::Subject,
         card::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
-        delegation::{DelegatedToken, ports::TokenExchanger},
         execution::{EXECUTOR_AGENT, ExecutorModel, TaskGrant},
         provider::ModelAssignments,
     },
@@ -27,34 +25,6 @@ fn database_url() -> Option<String> {
             panic!("DATABASE_URL is required when REQUIRE_DATABASE_URL=1")
         }
         Err(_) => None,
-    }
-}
-
-struct FakeExchanger;
-
-impl TokenExchanger for FakeExchanger {
-    async fn for_agent(
-        &self,
-        _issuer: &str,
-        user: &SecretToken,
-        agent: &str,
-    ) -> Result<DelegatedToken, CoreError> {
-        Ok(DelegatedToken {
-            token: SecretToken::new(format!("{}>{agent}", user.expose())),
-            expires_at: Utc::now() + chrono::Duration::minutes(30),
-        })
-    }
-
-    async fn for_mcp(
-        &self,
-        _issuer: &str,
-        agent_token: &SecretToken,
-        _agent: &str,
-    ) -> Result<DelegatedToken, CoreError> {
-        Ok(DelegatedToken {
-            token: SecretToken::new(format!("{}>mcp", agent_token.expose())),
-            expires_at: Utc::now() + chrono::Duration::minutes(30),
-        })
     }
 }
 
@@ -147,18 +117,12 @@ async fn execute(
     card: &Card,
 ) -> Result<capitainerie_core::StartedExecution, CoreError> {
     usecase
-        .execute_card_delegated(
+        .execute_card(
             subject,
             card.id,
             "acme/web".parse().unwrap(),
             "main".into(),
             card.version,
-            AgentDelegation {
-                exchanger: &FakeExchanger,
-                issuer: "http://idp.test",
-                user_token: &SecretToken::new("user"),
-                agents: &[],
-            },
         )
         .await
 }
@@ -217,15 +181,13 @@ async fn a_member_hands_a_validated_card_to_the_executor() {
     assert_eq!(base_branch, "main");
     assert_eq!(transcript, None);
 
-    let delegated: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM run_delegations WHERE run_id = $1 AND agent_client_id = $2",
-    )
-    .bind(started.run_id.0)
-    .bind(EXECUTOR_AGENT)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(delegated, 1);
+    let delegated: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM run_delegations WHERE run_id = $1")
+            .bind(started.run_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(delegated, 0, "the executor never holds the user's token");
 
     let kinds: Vec<String> =
         sqlx::query_scalar("SELECT kind FROM outbox_events WHERE partition_key = $1")
@@ -557,7 +519,8 @@ async fn a_task_grant_is_found_by_hash_and_revoked_with_its_run() {
         run_id: started.run_id,
         organization_id,
         repository: "acme/web".parse().unwrap(),
-        branch: "capitainerie/0a1b2c3d".into(),
+        branch: "capitainerie/0a1b2c3d4e5f".into(),
+        model: "claude-sonnet-5-5".into(),
         expires_at: Utc::now() + chrono::Duration::minutes(40),
         revoked_at: None,
     };
@@ -575,6 +538,7 @@ async fn a_task_grant_is_found_by_hash_and_revoked_with_its_run() {
 
     assert_eq!(found.repository, grant.repository);
     assert_eq!(found.branch, grant.branch);
+    assert_eq!(found.model, "claude-sonnet-5-5");
     assert!(found.is_usable(Utc::now()));
     assert_eq!(unknown, None);
     assert!(revoked.revoked_at.is_some());
@@ -609,6 +573,7 @@ async fn deleting_a_run_deletes_its_grants() {
                 organization_id,
                 repository: "acme/web".parse().unwrap(),
                 branch: "capitainerie/x".into(),
+                model: "claude-sonnet-5-5".into(),
                 expires_at: Utc::now() + chrono::Duration::minutes(1),
                 revoked_at: None,
             },
@@ -628,4 +593,161 @@ async fn deleting_a_run_deletes_its_grants() {
         .unwrap();
 
     assert_eq!(usecase.find_task_grant(hash).await.unwrap(), None);
+}
+
+async fn running_execute_step(
+    usecase: &CapitainerieUseCase,
+    started: &capitainerie_core::StartedExecution,
+) {
+    let context = usecase
+        .claim_execution(
+            started.run_id,
+            Utc::now() - chrono::Duration::hours(1),
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let step = capitainerie_core::domain::run::step::Step {
+        id: capitainerie_common::StepId::new(),
+        run_id: started.run_id,
+        organization_id: context.run.organization_id,
+        seq: 0,
+        kind: capitainerie_core::domain::run::StepKind::Execute,
+        agent: Some(EXECUTOR_AGENT.into()),
+        status: capitainerie_core::domain::run::step::StepStatus::Running,
+        attempt: 1,
+        output: None,
+        usage: Default::default(),
+        cost_micros: 0,
+        latency_ms: None,
+        error: None,
+        started_at: Utc::now(),
+        finished_at: None,
+    };
+    usecase.record_step(context.run, step).await.unwrap();
+}
+
+#[tokio::test]
+async fn the_executor_comments_once_as_the_human_acting_through_the_agent() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    connect(&usecase, organization_id).await;
+    let card = todo_card(&usecase, organization_id).await;
+    let started = execute(&usecase, human(organization_id, false), &card)
+        .await
+        .unwrap();
+    running_execute_step(&usecase, &started).await;
+
+    let first = usecase
+        .comment_card_as_executor(started.run_id, card.id, "Fait.".into())
+        .await
+        .unwrap();
+    let again = usecase
+        .comment_card_as_executor(started.run_id, card.id, "Fait deux fois.".into())
+        .await
+        .unwrap();
+
+    assert_eq!(first, again);
+    let comments: Vec<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT author_subject, author_actor, body FROM card_comments WHERE card_id = $1",
+    )
+    .bind(card.id.0)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        comments,
+        [(
+            "user-1".to_owned(),
+            Some(EXECUTOR_AGENT.to_owned()),
+            "Fait.".to_owned()
+        )]
+    );
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_decisions WHERE run_id = $1 AND action = 'card.comment' AND actor = $2 AND subject = 'user-1' AND allowed",
+    )
+    .bind(started.run_id.0)
+    .bind(EXECUTOR_AGENT)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audited, 1, "the second call decides nothing");
+    let stored: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT output FROM run_steps WHERE run_id = $1")
+            .bind(started.run_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored.unwrap()["comment_id"], first.0.to_string());
+}
+
+#[tokio::test]
+async fn the_executor_comment_is_refused_for_a_card_the_run_is_not_about() {
+    let Some((_, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    connect(&usecase, organization_id).await;
+    let card = todo_card(&usecase, organization_id).await;
+    let other = todo_card(&usecase, organization_id).await;
+    let started = execute(&usecase, human(organization_id, false), &card)
+        .await
+        .unwrap();
+    running_execute_step(&usecase, &started).await;
+
+    let error = usecase
+        .comment_card_as_executor(started.run_id, other.id, "x".into())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, CoreError::Invalid(_)));
+}
+
+#[tokio::test]
+async fn the_executability_check_reads_without_writing() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let todo = todo_card(&usecase, organization_id).await;
+    let proposed = usecase
+        .create_card(
+            human(organization_id, false),
+            CreateCard {
+                title: "Idée".into(),
+                description: String::new(),
+                provenance: None,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    usecase
+        .check_card_executable(human(organization_id, false), todo.id)
+        .await
+        .unwrap();
+    let not_executable = usecase
+        .check_card_executable(human(organization_id, false), proposed.id)
+        .await
+        .unwrap_err();
+    let by_agent = usecase
+        .check_card_executable(agent(organization_id), todo.id)
+        .await
+        .unwrap_err();
+    let unknown = usecase
+        .check_card_executable(human(organization_id, false), CardId::new())
+        .await
+        .unwrap_err();
+
+    assert_eq!(conflict(not_executable), "card_not_executable");
+    assert!(matches!(by_agent, CoreError::Forbidden { .. }));
+    assert!(matches!(unknown, CoreError::NotFound));
+    assert_eq!(run_count(&pool, todo.id).await, 0);
+    let column: String = sqlx::query_scalar("SELECT \"column\" FROM cards WHERE id = $1")
+        .bind(todo.id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(column, "todo");
 }

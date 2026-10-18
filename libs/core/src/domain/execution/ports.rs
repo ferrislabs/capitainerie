@@ -11,9 +11,13 @@ use super::{
 /// leak their client types through this port.
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
 pub trait TaskRunner: Send + Sync {
-    /// Starts the task. Starting a task that already exists for this run is
-    /// not an error: a resumed run attaches to it.
+    /// Starts the task of a new run. Starting a task that already exists for
+    /// this run is not an error.
     fn start(&self, spec: &TaskSpec) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    /// Whether the task of this run still exists: a resumed run follows it
+    /// instead of starting another.
+    fn attach(&self, run_id: RunId) -> impl Future<Output = Result<bool, CoreError>> + Send;
 
     /// Sends every output line to `lines` until the task ends, then returns
     /// how it ended.
@@ -33,6 +37,15 @@ pub trait CodeHost: Send + Sync {
         &self,
         installation_id: i64,
     ) -> impl Future<Output = Result<Vec<RepositoryRef>, CoreError>> + Send;
+
+    /// The commit `refs/heads/<branch>` points to, `None` if the branch does
+    /// not exist.
+    fn branch_head(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+        branch: &str,
+    ) -> impl Future<Output = Result<Option<String>, CoreError>> + Send;
 
     fn open_draft_pr(
         &self,

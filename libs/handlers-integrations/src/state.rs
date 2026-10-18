@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use capitainerie_core::{CapitainerieUseCase, application::CapitainerieAuthorizer};
+use capitainerie_core::CapitainerieUseCase;
 use capitainerie_github::GithubClient;
 
 use crate::{error::IntegrationError, signer::StateSigner};
@@ -50,6 +50,5 @@ impl GithubIntegration {
 #[derive(Clone)]
 pub struct IntegrationsState {
     pub usecase: CapitainerieUseCase,
-    pub authz: CapitainerieAuthorizer,
     pub github: GithubIntegration,
 }

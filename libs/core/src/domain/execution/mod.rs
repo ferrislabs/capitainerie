@@ -82,22 +82,40 @@ impl fmt::Display for RepositoryRef {
 
 /// The model Claude Code runs on: always an Anthropic model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct ExecutorModel(String);
 
 impl ExecutorModel {
     pub const DEFAULT: &'static str = "claude-sonnet-5-5";
+    const PREFIX: &'static str = "claude-";
 
     pub fn new(model: impl Into<String>) -> Result<Self, CoreError> {
         let model = model.into();
-        if model.trim().is_empty() {
-            return Err(CoreError::Invalid("executor model is empty".into()));
+        if !model.starts_with(Self::PREFIX) {
+            return Err(CoreError::Invalid(format!(
+                "the executor runs on an Anthropic model ({}…), got {model:?}",
+                Self::PREFIX
+            )));
         }
         Ok(Self(model))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<String> for ExecutorModel {
+    type Error = CoreError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl From<ExecutorModel> for String {
+    fn from(value: ExecutorModel) -> Self {
+        value.0
     }
 }
 
@@ -202,6 +220,8 @@ pub struct TaskGrant {
     pub organization_id: OrganizationId,
     pub repository: RepositoryRef,
     pub branch: String,
+    /// The only model the proxy lets the task ask Anthropic for.
+    pub model: String,
     pub expires_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
@@ -212,10 +232,11 @@ impl TaskGrant {
     }
 }
 
-/// The branch an execution pushes to: `capitainerie/<first 8 hex of the run id>`.
+/// The branch an execution pushes to: `capitainerie/<last 12 hex of the run id>`.
+/// The head of a UUIDv7 is a timestamp, so only the random tail tells runs apart.
 pub fn execution_branch(run_id: RunId) -> String {
     let simple = run_id.0.simple().to_string();
-    format!("capitainerie/{}", &simple[..8])
+    format!("capitainerie/{}", &simple[simple.len() - 12..])
 }
 
 #[cfg(test)]
@@ -246,9 +267,35 @@ mod tests {
     }
 
     #[test]
-    fn an_execution_branch_uses_the_run_id() {
-        let run_id = RunId(uuid::Uuid::parse_str("0a1b2c3d-0000-7000-8000-000000000000").unwrap());
-        assert_eq!(execution_branch(run_id), "capitainerie/0a1b2c3d");
+    fn an_execution_branch_uses_the_random_tail_of_the_run_id() {
+        let run_id = RunId(uuid::Uuid::parse_str("0a1b2c3d-0000-7000-8000-0123456789ab").unwrap());
+        assert_eq!(execution_branch(run_id), "capitainerie/0123456789ab");
+    }
+
+    #[test]
+    fn two_runs_created_back_to_back_get_different_branches() {
+        let first = execution_branch(RunId::new());
+        let second = execution_branch(RunId::new());
+        assert_ne!(first, second);
+        assert_eq!(first.len(), "capitainerie/".len() + 12);
+    }
+
+    #[test]
+    fn the_executor_model_must_be_an_anthropic_model() {
+        assert!(ExecutorModel::new("claude-opus-5").is_ok());
+        for refused in ["", "gpt-4o", "llama3", " claude-opus-5", "anthropic/claude"] {
+            assert!(
+                matches!(ExecutorModel::new(refused), Err(CoreError::Invalid(_))),
+                "{refused:?}"
+            );
+        }
+        assert!(serde_json::from_str::<ExecutorModel>("\"gpt-4o\"").is_err());
+        assert_eq!(
+            serde_json::from_str::<ExecutorModel>("\"claude-haiku-5-5\"")
+                .unwrap()
+                .as_str(),
+            "claude-haiku-5-5"
+        );
     }
 
     #[test]
@@ -258,7 +305,8 @@ mod tests {
             run_id: RunId::new(),
             organization_id: OrganizationId(uuid::Uuid::nil()),
             repository: "acme/web".parse().unwrap(),
-            branch: "capitainerie/0a1b2c3d".into(),
+            branch: "capitainerie/0a1b2c3d4e5f".into(),
+            model: "claude-sonnet-5-5".into(),
             expires_at: now + chrono::Duration::minutes(5),
             revoked_at: None,
         };

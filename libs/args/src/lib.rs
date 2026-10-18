@@ -1,4 +1,10 @@
+use std::fmt;
+
 use clap::Args;
+
+fn masked(value: &Option<String>) -> &'static str {
+    if value.is_some() { "***" } else { "unset" }
+}
 
 #[derive(Debug, Clone, Args)]
 pub struct ServerArgs {
@@ -17,7 +23,7 @@ pub struct ServerArgs {
     pub allowed_origins: Vec<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Clone, Args)]
 pub struct DatabaseArgs {
     #[arg(long = "database-url", env = "DATABASE_URL")]
     pub url: String,
@@ -28,6 +34,15 @@ pub struct DatabaseArgs {
         default_value_t = 10
     )]
     pub max_connections: u32,
+}
+
+impl fmt::Debug for DatabaseArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseArgs")
+            .field("url", &"***")
+            .field("max_connections", &self.max_connections)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -48,7 +63,7 @@ pub struct AuthArgs {
     pub audience: Option<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Clone, Args)]
 pub struct DelegationArgs {
     /// Base64 of 32 random bytes; seals the tokens agents act with between
     /// submission and execution. `openssl rand -base64 32`.
@@ -65,12 +80,29 @@ pub struct DelegationArgs {
     pub agents: Vec<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+impl fmt::Debug for DelegationArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DelegationArgs")
+            .field("key", &masked(&self.key))
+            .field("agents", &self.agents)
+            .finish()
+    }
+}
+
+#[derive(Clone, Args)]
 pub struct SecretsArgs {
     /// Base64 of 32 random bytes, distinct from `DELEGATION_KEY`; seals the
     /// providers' API keys at rest. `openssl rand -base64 32`.
     #[arg(id = "secrets_key", long = "secrets-key", env = "SECRETS_KEY")]
     pub key: Option<String>,
+}
+
+impl fmt::Debug for SecretsArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretsArgs")
+            .field("key", &masked(&self.key))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -88,7 +120,7 @@ pub struct ObservabilityArgs {
     pub otlp_endpoint: Option<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Clone, Args)]
 pub struct GithubAppArgs {
     #[arg(id = "github_app_id", long = "github-app-id", env = "GITHUB_APP_ID")]
     pub app_id: Option<u64>,
@@ -141,6 +173,20 @@ pub struct GithubAppArgs {
     pub oauth_base: String,
 }
 
+impl fmt::Debug for GithubAppArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GithubAppArgs")
+            .field("app_id", &self.app_id)
+            .field("private_key", &masked(&self.private_key))
+            .field("slug", &self.slug)
+            .field("api_base", &self.api_base)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &masked(&self.client_secret))
+            .field("oauth_base", &self.oauth_base)
+            .finish()
+    }
+}
+
 impl GithubAppArgs {
     pub fn app_configured(&self) -> bool {
         self.app_id.is_some()
@@ -186,6 +232,16 @@ pub struct ExecutorArgs {
         default_value_t = 1800
     )]
     pub deadline_secs: u64,
+
+    /// How many card executions the worker follows at once, apart from the
+    /// other runs: each one holds a Kubernetes Job and a log stream.
+    #[arg(
+        id = "executor_concurrency",
+        long = "executor-concurrency",
+        env = "EXECUTOR_CONCURRENCY",
+        default_value_t = 2
+    )]
+    pub concurrency: usize,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -246,6 +302,56 @@ mod tests {
         assert_eq!(cli.server.allowed_origins, vec!["http://localhost:4080"]);
         assert_eq!(cli.log.filter, "info");
         assert!(cli.observability.otlp_endpoint.is_none());
+    }
+
+    #[test]
+    fn debug_output_never_shows_a_secret() {
+        let github = GithubAppArgs {
+            app_id: Some(1),
+            private_key: Some("pem-leak".into()),
+            slug: None,
+            api_base: "https://api.github.com".into(),
+            client_id: Some("Iv1.id".into()),
+            client_secret: Some("oauth-leak".into()),
+            oauth_base: "https://github.com".into(),
+        };
+        let shown = format!(
+            "{github:?} {:?} {:?} {:?}",
+            DelegationArgs {
+                key: Some("delegation-leak".into()),
+                agents: vec![]
+            },
+            SecretsArgs {
+                key: Some("secrets-leak".into())
+            },
+            DatabaseArgs {
+                url: "postgres://u:db-leak@h/d".into(),
+                max_connections: 1
+            },
+        );
+        for leak in [
+            "pem-leak",
+            "oauth-leak",
+            "delegation-leak",
+            "secrets-leak",
+            "db-leak",
+        ] {
+            assert!(!shown.contains(leak), "{leak} in {shown}");
+        }
+        assert!(shown.contains("Iv1.id"));
+    }
+
+    #[derive(Parser)]
+    struct ExecutorCli {
+        #[command(flatten)]
+        executor: ExecutorArgs,
+    }
+
+    #[test]
+    fn executions_have_their_own_concurrency_defaulting_to_two() {
+        assert_eq!(ExecutorCli::parse_from(["bin"]).executor.concurrency, 2);
+        let cli = ExecutorCli::parse_from(["bin", "--executor-concurrency", "5"]);
+        assert_eq!(cli.executor.concurrency, 5);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, clap::Args)]
+#[derive(Clone, clap::Args)]
 pub struct LlmArgs {
     #[arg(
         long = "llm-base-url",
@@ -30,6 +30,18 @@ pub struct LlmArgs {
         default_value = "http://localhost:4101/mcp"
     )]
     pub mcp_url: String,
+}
+
+impl std::fmt::Debug for LlmArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LlmArgs")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"***")
+            .field("model", &self.model)
+            .field("timeout_secs", &self.timeout_secs)
+            .field("mcp_url", &self.mcp_url)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, clap::Args)]

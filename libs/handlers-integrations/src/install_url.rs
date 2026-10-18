@@ -1,6 +1,6 @@
 use axum::{Extension, Json, extract::State};
 use axum_extra::routing::TypedPath;
-use capitainerie_core::domain::authorization::{AccessRequest, Action, ResourceKind, require};
+use capitainerie_core::domain::authorization::{Action, ResourceKind};
 use capitainerie_handlers::Caller;
 use chrono::Utc;
 use serde::Deserialize;
@@ -30,16 +30,15 @@ pub async fn handler(
     Extension(caller): Extension<Caller>,
 ) -> Result<Json<InstallUrlResponse>, IntegrationError> {
     let subject = caller.subject();
-    require(
-        &state.authz,
-        AccessRequest::new(
+    state
+        .usecase
+        .authorize(
             subject.clone(),
             Action::GithubManage,
             ResourceKind::GithubInstallation,
             None,
-        ),
-    )
-    .await?;
+        )
+        .await?;
     let (_, slug, signer) = state.github.installer()?;
     let token = signer.sign(subject.organization_id, &subject.id, Utc::now());
     Ok(Json(InstallUrlResponse {

@@ -89,6 +89,7 @@ async fn run<C: Credentials>(
     })?;
     let grant = proxy.authenticate(&token).await?;
     let run_id = grant.run_id;
+    let permit = proxy.acquire(run_id)?;
     let repository = &grant.repository;
     if owner != repository.owner() || repo.strip_suffix(".git") != Some(repository.name()) {
         return Err(ProxyError::forbidden(
@@ -153,7 +154,7 @@ async fn run<C: Credentials>(
         .send()
         .await
         .map_err(|error| ProxyError::Upstream(error.without_url().to_string()))?;
-    Ok(forward::relay(upstream))
+    Ok(forward::relay(upstream, permit))
 }
 
 async fn installation_token<C: Credentials>(

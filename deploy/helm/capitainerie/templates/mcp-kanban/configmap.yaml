@@ -10,11 +10,7 @@ data:
   MCP_PORT: {{ .Values.mcpKanban.port | quote }}
   MCP_PUBLIC_URL: {{ .Values.mcpKanban.publicUrl | quote }}
   MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
-  {{- $accepted := .Values.config.pipelineAgents }}
-  {{- if .Values.executor.enabled }}
-  {{- $accepted = append $accepted "capitainerie-agent-executor" }}
-  {{- end }}
-  MCP_ACCEPTED_AGENTS: {{ join "," $accepted | quote }}
+  MCP_ACCEPTED_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
   DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}

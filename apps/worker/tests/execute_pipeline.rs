@@ -7,8 +7,7 @@ use std::{
 
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_core::{
-    AgentDelegation, CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor,
-    application::MockCardCommenter,
+    CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor,
     domain::{
         agent::SecretToken,
         authorization::Subject,
@@ -16,14 +15,17 @@ use capitainerie_core::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
-        delegation::{DelegatedToken, ports::TokenExchanger},
+        delegation::DelegatedToken,
         execution::{
             DraftPullRequest, PullRequestUrl, TaskGrant, TaskLine, TaskMarker, TaskOutcome,
             execution_branch,
             ports::{MockCodeHost, MockTaskRunner},
         },
         provider::ModelAssignments,
-        run::step::Pricing,
+        run::{
+            StepKind,
+            step::{Pricing, Step, StepStatus},
+        },
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
@@ -41,42 +43,6 @@ fn database_url() -> Option<String> {
             panic!("DATABASE_URL is required when REQUIRE_DATABASE_URL=1")
         }
         Err(_) => None,
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-struct FakeExchanger {
-    mcp_fails: bool,
-}
-
-impl TokenExchanger for FakeExchanger {
-    async fn for_agent(
-        &self,
-        _issuer: &str,
-        user: &SecretToken,
-        agent: &str,
-    ) -> Result<DelegatedToken, CoreError> {
-        Ok(DelegatedToken {
-            token: SecretToken::new(format!("{}>{agent}", user.expose())),
-            expires_at: Utc::now() + chrono::Duration::minutes(30),
-        })
-    }
-
-    async fn for_mcp(
-        &self,
-        _issuer: &str,
-        agent_token: &SecretToken,
-        _agent: &str,
-    ) -> Result<DelegatedToken, CoreError> {
-        if self.mcp_fails {
-            return Err(CoreError::Forbidden {
-                reason: Some("the session ended".into()),
-            });
-        }
-        Ok(DelegatedToken {
-            token: SecretToken::new(format!("{}>mcp", agent_token.expose())),
-            expires_at: Utc::now() + chrono::Duration::minutes(30),
-        })
     }
 }
 
@@ -158,18 +124,12 @@ async fn world() -> Option<World> {
         .await
         .unwrap();
     let started = usecase
-        .execute_card_delegated(
+        .execute_card(
             human(organization_id),
             todo.id,
             "acme/web".parse().unwrap(),
             "main".into(),
             todo.version,
-            AgentDelegation {
-                exchanger: &FakeExchanger::default(),
-                issuer: "http://idp.test",
-                user_token: &SecretToken::new("user"),
-                agents: &[],
-            },
         )
         .await
         .unwrap();
@@ -217,15 +177,14 @@ fn lines_of(sample: &str) -> Vec<TaskLine> {
         .collect()
 }
 
-type Comment = (CardId, RunId, String, String);
-
 #[derive(Clone, Default)]
 struct Seen {
     token: Arc<Mutex<Option<String>>>,
     starts: Arc<Mutex<u32>>,
     pull_requests: Arc<Mutex<Vec<DraftPullRequest>>>,
-    comments: Arc<Mutex<Vec<Comment>>>,
 }
+
+const PUSHED_SHA: &str = "3f9c2a7d1e5b48a6c0d7e9f1a2b3c4d5e6f70812";
 
 fn runner_ending(seen: &Seen, lines: Vec<TaskLine>, outcome: TaskOutcome) -> MockTaskRunner {
     let mut runner = MockTaskRunner::new();
@@ -248,6 +207,14 @@ fn runner_ending(seen: &Seen, lines: Vec<TaskLine>, outcome: TaskOutcome) -> Moc
     runner
 }
 
+fn deleting(mut runner: MockTaskRunner) -> MockTaskRunner {
+    runner
+        .expect_delete()
+        .times(1)
+        .returning(|_| Box::pin(std::future::ready(Ok(()))));
+    runner
+}
+
 fn host(seen: &Seen, installation_id: i64) -> MockCodeHost {
     let mut host = MockCodeHost::new();
     let pull_requests = seen.pull_requests.clone();
@@ -257,39 +224,21 @@ fn host(seen: &Seen, installation_id: i64) -> MockCodeHost {
             pull_requests.lock().unwrap().push(pull_request);
             Box::pin(std::future::ready(Ok(PullRequestUrl(PR_URL.into()))))
         });
+    host.expect_branch_head()
+        .returning(|_, repository, branch| {
+            assert_eq!(repository.to_string(), "acme/web");
+            assert!(branch.starts_with("capitainerie/"));
+            Box::pin(std::future::ready(Ok(Some(PUSHED_SHA.to_owned()))))
+        });
     host
 }
 
-fn commenter(seen: &Seen) -> MockCardCommenter {
-    let mut commenter = MockCardCommenter::new();
-    let comments = seen.comments.clone();
-    commenter
-        .expect_comment()
-        .returning(move |mcp_token, card_id, run_id, body| {
-            comments.lock().unwrap().push((
-                card_id,
-                run_id,
-                mcp_token.expose().to_owned(),
-                body.to_owned(),
-            ));
-            Box::pin(std::future::ready(Ok(())))
-        });
-    commenter
-}
+type Pipeline = ExecutePipeline<MockTaskRunner, MockCodeHost>;
 
-type Pipeline = ExecutePipeline<MockTaskRunner, MockCodeHost, FakeExchanger, MockCardCommenter>;
-
-fn pipeline(
-    world: &World,
-    runner: MockTaskRunner,
-    host: MockCodeHost,
-    commenter: MockCardCommenter,
-) -> Pipeline {
+fn pipeline(world: &World, runner: MockTaskRunner, host: MockCodeHost) -> Pipeline {
     ExecutePipeline::new(
         world.usecase.clone(),
         Executor::Ready { runner, host },
-        FakeExchanger::default(),
-        commenter,
         config(),
     )
 }
@@ -324,6 +273,16 @@ async fn step(pool: &PgPool, run_id: RunId) -> (String, String, i64, i64, serde_
     )
     .bind(run_id.0)
     .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn comments(pool: &PgPool, card_id: CardId) -> Vec<(String, Option<String>, String)> {
+    sqlx::query_as(
+        "SELECT author_subject, author_actor, body FROM card_comments WHERE card_id = $1 ORDER BY created_at",
+    )
+    .bind(card_id.0)
+    .fetch_all(pool)
     .await
     .unwrap()
 }
@@ -381,12 +340,7 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(
-        &world,
-        runner,
-        host(&seen, world.installation_id),
-        commenter(&seen),
-    );
+    let pipeline = pipeline(&world, runner, host(&seen, world.installation_id));
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -403,20 +357,35 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
         world.card.id.0
     )));
     assert!(pull_request.body.contains("22174 en entrée, 283 en sortie"));
-    let comments = seen.comments.lock().unwrap().clone();
-    assert_eq!(comments.len(), 1);
-    assert_eq!(comments[0].0, world.card.id);
-    assert_eq!(comments[0].1, world.run_id);
-    assert_eq!(comments[0].2, "user>capitainerie-agent-executor>mcp");
-    assert!(comments[0].3.contains(PR_URL));
-    assert!(comments[0].3.contains("I added CHANGELOG.md"));
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert_eq!(posted[0].0, "user-1");
+    assert_eq!(posted[0].1.as_deref(), Some("capitainerie-agent-executor"));
+    assert!(posted[0].2.contains(PR_URL));
+    assert!(posted[0].2.contains("I added CHANGELOG.md"));
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_decisions WHERE run_id = $1 AND action = 'card.comment' AND actor = 'capitainerie-agent-executor' AND allowed",
+    )
+    .bind(world.run_id.0)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(audited, 1);
 
     let (status, kind, cost, input_tokens, output) = step(&world.pool, world.run_id).await;
     assert_eq!((status.as_str(), kind.as_str()), ("succeeded", "execute"));
     assert_eq!(input_tokens, 22_174);
-    assert_eq!(cost, 22_174 + 566);
+    assert_eq!(cost, 9_467, "cache reads at 10 %, cache writes at 125 %");
     assert_eq!(output["pull_request"], PR_URL);
     assert_eq!(output["comment"], "posted");
+    assert!(output["comment_id"].is_string());
+    assert_eq!(output["job_started"], true);
+    let model: String = sqlx::query_scalar("SELECT model FROM task_grants WHERE run_id = $1")
+        .bind(world.run_id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(model, "claude-sonnet-5-5");
     assert_eq!(output["tool_calls"].as_array().unwrap().len(), 4);
 
     assert_closed(&world).await;
@@ -432,7 +401,7 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
     assert_eq!(hashed, 1, "only the hash of the token is stored");
     let stored = format!(
         "{output} {} {} {}",
-        pull_request.body, comments[0].3, pull_request.title
+        pull_request.body, posted[0].2, pull_request.title
     );
     assert!(!stored.contains(&token), "the task token reached storage");
     assert!(output.to_string().contains("***"));
@@ -446,15 +415,15 @@ async fn without_changes_no_pull_request_is_opened_and_the_card_says_so() {
     lines.pop();
     lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
     let runner = runner_ending(&seen, lines, TaskOutcome::Succeeded);
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
     assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
     assert!(seen.pull_requests.lock().unwrap().is_empty());
-    let comments = seen.comments.lock().unwrap().clone();
-    assert!(comments[0].3.starts_with("Aucun changement"));
-    assert!(comments[0].3.contains("I added CHANGELOG.md"));
+    let posted = comments(&world.pool, world.card.id).await;
+    assert!(posted[0].2.starts_with("Aucun changement"));
+    assert!(posted[0].2.contains("I added CHANGELOG.md"));
     let (status, _, _, _, output) = step(&world.pool, world.run_id).await;
     assert_eq!(status, "succeeded");
     assert_eq!(output["no_changes"], true);
@@ -465,8 +434,12 @@ async fn without_changes_no_pull_request_is_opened_and_the_card_says_so() {
 async fn a_task_past_its_deadline_fails_the_run_and_revokes_the_token() {
     let Some(world) = world().await else { return };
     let seen = Seen::default();
-    let runner = runner_ending(&seen, Vec::new(), TaskOutcome::DeadlineExceeded);
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    let runner = deleting(runner_ending(
+        &seen,
+        Vec::new(),
+        TaskOutcome::DeadlineExceeded,
+    ));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -475,8 +448,8 @@ async fn a_task_past_its_deadline_fails_the_run_and_revokes_the_token() {
     assert_eq!(failure.as_deref(), Some("durée maximale dépassée"));
     assert_eq!(step(&world.pool, world.run_id).await.0, "failed");
     assert!(
-        seen.comments.lock().unwrap()[0]
-            .3
+        comments(&world.pool, world.card.id).await[0]
+            .2
             .contains("durée maximale dépassée")
     );
     assert_closed(&world).await;
@@ -486,14 +459,14 @@ async fn a_task_past_its_deadline_fails_the_run_and_revokes_the_token() {
 async fn a_failed_task_fails_the_run_with_its_reason() {
     let Some(world) = world().await else { return };
     let seen = Seen::default();
-    let runner = runner_ending(
+    let runner = deleting(runner_ending(
         &seen,
         Vec::new(),
         TaskOutcome::Failed {
             reason: "OOMKilled".into(),
         },
-    );
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    ));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -515,7 +488,7 @@ async fn a_runner_that_keeps_failing_is_retried_then_fails_the_run_and_revokes()
             "the cluster is unreachable".into(),
         ))))
     });
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -529,7 +502,6 @@ async fn a_runner_that_keeps_failing_is_retried_then_fails_the_run_and_revokes()
 #[tokio::test]
 async fn a_transient_runner_error_is_retried_and_the_run_succeeds() {
     let Some(world) = world().await else { return };
-    let seen = Seen::default();
     let mut lines = lines_of(SAMPLE);
     lines.pop();
     lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
@@ -554,7 +526,7 @@ async fn a_transient_runner_error_is_retried_and_the_run_succeeds() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -562,53 +534,14 @@ async fn a_transient_runner_error_is_retried_and_the_run_succeeds() {
     assert_closed(&world).await;
 }
 
-#[tokio::test]
-async fn a_resumed_run_attaches_to_its_job_with_the_same_token() {
-    let Some(world) = world().await else { return };
-    let seen = Seen::default();
-    let previous = world
-        .usecase
-        .claim_execution(world.run_id, Utc::now() - chrono::Duration::hours(1), None)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(!previous.resumed);
-    let first_token = format!("first-attempt-{}", world.run_id);
-    let expires_at = Utc::now() + chrono::Duration::minutes(30);
-    world
-        .usecase
-        .issue_task_token(
-            world.run_id,
-            DelegatedToken {
-                token: SecretToken::new(first_token.as_str()),
-                expires_at,
-            },
-            TaskGrant {
-                run_id: world.run_id,
-                organization_id: world.organization_id,
-                repository: "acme/web".parse().unwrap(),
-                branch: execution_branch(world.run_id),
-                expires_at,
-                revoked_at: None,
-            },
-        )
-        .await
-        .unwrap();
-    sqlx::query("UPDATE runs SET heartbeat_at = now() - interval '2 hours' WHERE id = $1")
-        .bind(world.run_id.0)
-        .execute(&world.pool)
-        .await
-        .unwrap();
+fn no_changes_lines() -> Vec<TaskLine> {
     let mut lines = lines_of(SAMPLE);
     lines.pop();
     lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
-    let mut runner = MockTaskRunner::new();
-    let (token, starts) = (seen.token.clone(), seen.starts.clone());
-    runner.expect_start().times(1).returning(move |spec| {
-        *token.lock().unwrap() = Some(spec.task_token.expose().to_owned());
-        *starts.lock().unwrap() += 1;
-        Box::pin(std::future::ready(Ok(())))
-    });
+    lines
+}
+
+fn following(lines: Vec<TaskLine>, runner: &mut MockTaskRunner) {
     runner.expect_follow().times(1).returning(move |_, sender| {
         let lines = lines.clone();
         Box::pin(async move {
@@ -618,19 +551,221 @@ async fn a_resumed_run_attaches_to_its_job_with_the_same_token() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+}
+
+async fn crashed_attempt(world: &World, token: &str, output: Option<serde_json::Value>) {
+    let previous = world
+        .usecase
+        .claim_execution(world.run_id, Utc::now() - chrono::Duration::hours(1), None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!previous.resumed);
+    let expires_at = Utc::now() + chrono::Duration::minutes(30);
+    world
+        .usecase
+        .issue_task_token(
+            world.run_id,
+            DelegatedToken {
+                token: SecretToken::new(token),
+                expires_at,
+            },
+            TaskGrant {
+                run_id: world.run_id,
+                organization_id: world.organization_id,
+                repository: "acme/web".parse().unwrap(),
+                branch: execution_branch(world.run_id),
+                model: "claude-sonnet-5-5".into(),
+                expires_at,
+                revoked_at: None,
+            },
+        )
+        .await
+        .unwrap();
+    if let Some(output) = output {
+        let step = Step {
+            id: capitainerie_common::StepId::new(),
+            run_id: world.run_id,
+            organization_id: world.organization_id,
+            seq: 0,
+            kind: StepKind::Execute,
+            agent: Some("capitainerie-agent-executor".into()),
+            status: StepStatus::Running,
+            attempt: 1,
+            output: Some(output),
+            usage: Default::default(),
+            cost_micros: 0,
+            latency_ms: None,
+            error: None,
+            started_at: Utc::now(),
+            finished_at: None,
+        };
+        world.usecase.record_step(previous.run, step).await.unwrap();
+    }
+    stale_heartbeat(world).await;
+}
+
+async fn stale_heartbeat(world: &World) {
+    sqlx::query("UPDATE runs SET heartbeat_at = now() - interval '2 hours' WHERE id = $1")
+        .bind(world.run_id.0)
+        .execute(&world.pool)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_resumed_run_attaches_to_its_job_with_the_same_token() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let first_token = format!("first-attempt-{}", world.run_id);
+    crashed_attempt(&world, &first_token, None).await;
+    let mut runner = MockTaskRunner::new();
+    runner
+        .expect_attach()
+        .times(1)
+        .returning(|_| Box::pin(std::future::ready(Ok(true))));
+    following(no_changes_lines(), &mut runner);
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
-    assert_eq!(*seen.starts.lock().unwrap(), 1);
-    assert_eq!(
-        seen.token.lock().unwrap().as_deref(),
-        Some(first_token.as_str())
-    );
+    assert_eq!(*seen.starts.lock().unwrap(), 0, "no second Job");
     assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
     let (total, revoked) = grants(&world.pool, world.run_id).await;
     assert_eq!((total, revoked), (1, 1), "no second grant was issued");
     assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn a_resume_without_a_job_fails_and_starts_nothing() {
+    let Some(world) = world().await else { return };
+    crashed_attempt(&world, &format!("first-{}", world.run_id), None).await;
+    let mut runner = MockTaskRunner::new();
+    runner
+        .expect_attach()
+        .times(1)
+        .returning(|_| Box::pin(std::future::ready(Ok(false))));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let (status, failure) = run_row(&world.pool, world.run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(failure.as_deref(), Some("tâche introuvable à la reprise"));
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn a_run_that_crashed_before_its_job_started_may_start_it() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    crashed_attempt(
+        &world,
+        &format!("first-{}", world.run_id),
+        Some(serde_json::json!({"job_started": false})),
+    )
+    .await;
+    let mut runner = runner_ending(&seen, no_changes_lines(), TaskOutcome::Succeeded);
+    runner
+        .expect_attach()
+        .times(1)
+        .returning(|_| Box::pin(std::future::ready(Ok(false))));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    assert_eq!(*seen.starts.lock().unwrap(), 1);
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn a_pull_request_opened_before_a_crash_is_not_opened_again_after_two_resumes() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let first_token = format!("first-{}", world.run_id);
+    crashed_attempt(
+        &world,
+        &first_token,
+        Some(serde_json::json!({
+            "job_started": true,
+            "branch": execution_branch(world.run_id),
+            "sha": PUSHED_SHA,
+            "pull_request": PR_URL,
+        })),
+    )
+    .await;
+
+    let mut hanging = MockTaskRunner::new();
+    hanging
+        .expect_attach()
+        .returning(|_| Box::pin(std::future::ready(Ok(true))));
+    hanging
+        .expect_follow()
+        .returning(|_, _| Box::pin(std::future::pending()));
+    let interrupted = pipeline(&world, hanging, MockCodeHost::new());
+    let crash = tokio::time::timeout(
+        Duration::from_millis(600),
+        interrupted.execute(world.run_id, None),
+    )
+    .await;
+    assert!(crash.is_err(), "the first resume never ended");
+    let carried: serde_json::Value =
+        sqlx::query_scalar("SELECT output FROM run_steps WHERE run_id = $1")
+            .bind(world.run_id.0)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert_eq!(carried["pull_request"], PR_URL);
+    assert_eq!(carried["sha"], PUSHED_SHA);
+    stale_heartbeat(&world).await;
+
+    let mut runner = MockTaskRunner::new();
+    runner
+        .expect_attach()
+        .times(1)
+        .returning(|_| Box::pin(std::future::ready(Ok(true))));
+    following(lines_of(SAMPLE), &mut runner);
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    assert!(seen.pull_requests.lock().unwrap().is_empty());
+    let (_, _, _, _, output) = step(&world.pool, world.run_id).await;
+    assert_eq!(output["pull_request"], PR_URL);
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert!(posted[0].2.contains(PR_URL));
+}
+
+#[tokio::test]
+async fn a_comment_posted_before_a_crash_is_not_posted_again() {
+    let Some(world) = world().await else { return };
+    crashed_attempt(
+        &world,
+        &format!("first-{}", world.run_id),
+        Some(serde_json::json!({"job_started": true})),
+    )
+    .await;
+    let already = world
+        .usecase
+        .comment_card_as_executor(world.run_id, world.card.id, "déjà dit".into())
+        .await
+        .unwrap();
+    let mut runner = MockTaskRunner::new();
+    runner
+        .expect_attach()
+        .returning(|_| Box::pin(std::future::ready(Ok(true))));
+    following(no_changes_lines(), &mut runner);
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert_eq!(posted[0].2, "déjà dit");
+    let (_, _, _, _, output) = step(&world.pool, world.run_id).await;
+    assert_eq!(output["comment_id"], already.0.to_string());
 }
 
 #[tokio::test]
@@ -642,12 +777,7 @@ async fn a_run_alive_on_another_worker_is_left_alone() {
         .await
         .unwrap()
         .unwrap();
-    let pipeline = pipeline(
-        &world,
-        MockTaskRunner::new(),
-        MockCodeHost::new(),
-        MockCardCommenter::new(),
-    );
+    let pipeline = pipeline(&world, MockTaskRunner::new(), MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -655,35 +785,131 @@ async fn a_run_alive_on_another_worker_is_left_alone() {
 }
 
 #[tokio::test]
-async fn an_expired_session_does_not_change_the_outcome_of_the_run() {
+async fn text_the_agent_wrote_cannot_mention_anyone() {
     let Some(world) = world().await else { return };
     let seen = Seen::default();
     let mut lines = lines_of(SAMPLE);
-    lines.pop();
-    lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
+    for line in &mut lines {
+        if let TaskLine::Agent(value) = line
+            && value["type"] == "result"
+        {
+            value["result"] = serde_json::json!("Merci @octocat, cc @acme/security");
+        }
+    }
     let runner = runner_ending(&seen, lines, TaskOutcome::Succeeded);
+    let pipeline = pipeline(&world, runner, host(&seen, world.installation_id));
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let pull_requests = seen.pull_requests.lock().unwrap().clone();
+    let posted = comments(&world.pool, world.card.id).await;
+    for text in [&pull_requests[0].body, &posted[0].2] {
+        assert!(text.contains("@\u{200B}octocat"), "{text}");
+        assert!(
+            !text.contains("@octocat") && !text.contains("@acme"),
+            "{text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_branch_that_is_not_where_the_task_says_fails_the_run_before_any_pull_request() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = deleting(runner_ending(
+        &seen,
+        lines_of(SAMPLE),
+        TaskOutcome::Succeeded,
+    ));
+    let mut host = MockCodeHost::new();
+    host.expect_branch_head().returning(|_, _, _| {
+        Box::pin(std::future::ready(Ok(Some(
+            "0000000000000000000000000000000000000000".to_owned(),
+        ))))
+    });
+    let pipeline = pipeline(&world, runner, host);
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let (status, failure) = run_row(&world.pool, world.run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(failure.as_deref(), Some("branche absente ou différente"));
+    assert!(seen.pull_requests.lock().unwrap().is_empty());
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn a_missing_branch_fails_the_run_too() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = deleting(runner_ending(
+        &seen,
+        lines_of(SAMPLE),
+        TaskOutcome::Succeeded,
+    ));
+    let mut host = MockCodeHost::new();
+    host.expect_branch_head()
+        .returning(|_, _, _| Box::pin(std::future::ready(Ok(None))));
+    let pipeline = pipeline(&world, runner, host);
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let (_, failure) = run_row(&world.pool, world.run_id).await;
+    assert_eq!(failure.as_deref(), Some("branche absente ou différente"));
+}
+
+#[tokio::test]
+async fn an_agent_that_ran_out_of_turns_without_pushing_fails_the_run() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let mut lines = no_changes_lines();
+    for line in &mut lines {
+        if let TaskLine::Agent(value) = line
+            && value["type"] == "result"
+        {
+            value["subtype"] = serde_json::json!("error_max_turns");
+        }
+    }
+    let runner = deleting(runner_ending(&seen, lines, TaskOutcome::Succeeded));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let (status, failure) = run_row(&world.pool, world.run_id).await;
+    assert_eq!(status, "failed");
+    assert_eq!(
+        failure.as_deref(),
+        Some("arrêté : nombre maximal de tours atteint")
+    );
+    let posted = comments(&world.pool, world.card.id).await;
+    assert!(
+        posted[0]
+            .2
+            .contains("arrêté : nombre maximal de tours atteint")
+    );
+    assert!(!posted[0].2.starts_with("Aucun changement"));
+}
+
+#[tokio::test]
+async fn a_model_without_a_known_price_costs_what_claude_code_reported() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = runner_ending(&seen, no_changes_lines(), TaskOutcome::Succeeded);
+    let mut unpriced = config();
+    unpriced.prices.clear();
     let pipeline = ExecutePipeline::new(
         world.usecase.clone(),
         Executor::Ready {
             runner,
             host: MockCodeHost::new(),
         },
-        FakeExchanger { mcp_fails: true },
-        MockCardCommenter::new(),
-        config(),
+        unpriced,
     );
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
-    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
-    let (_, _, _, _, output) = step(&world.pool, world.run_id).await;
-    assert!(
-        output["comment"]
-            .as_str()
-            .unwrap()
-            .starts_with("not posted")
-    );
-    assert_closed(&world).await;
+    let (_, _, cost, _, _) = step(&world.pool, world.run_id).await;
+    assert_eq!(cost, 29_100);
 }
 
 #[tokio::test]
@@ -694,8 +920,6 @@ async fn a_disabled_executor_fails_the_run_at_once_with_a_clear_reason() {
         Executor::Disabled {
             reason: "les exécutions sont désactivées (EXECUTOR_NAMESPACE)".into(),
         },
-        FakeExchanger::default(),
-        MockCardCommenter::new(),
         config(),
     );
 
@@ -713,7 +937,6 @@ async fn a_disabled_executor_fails_the_run_at_once_with_a_clear_reason() {
 #[tokio::test]
 async fn a_disconnected_github_fails_the_run_before_any_job_starts() {
     let Some(world) = world().await else { return };
-    let seen = Seen::default();
     world
         .usecase
         .disconnect_github(Subject {
@@ -722,12 +945,7 @@ async fn a_disconnected_github_fails_the_run_before_any_job_starts() {
         })
         .await
         .unwrap();
-    let pipeline = pipeline(
-        &world,
-        MockTaskRunner::new(),
-        MockCodeHost::new(),
-        commenter(&seen),
-    );
+    let pipeline = pipeline(&world, MockTaskRunner::new(), MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 
@@ -740,10 +958,7 @@ async fn a_disconnected_github_fails_the_run_before_any_job_starts() {
 #[tokio::test]
 async fn the_timeline_is_saved_while_the_task_runs() {
     let Some(world) = world().await else { return };
-    let seen = Seen::default();
-    let mut lines = lines_of(SAMPLE);
-    lines.pop();
-    lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
+    let lines = no_changes_lines();
     let live = Arc::new(Mutex::new(None));
     let mut runner = MockTaskRunner::new();
     runner
@@ -774,7 +989,7 @@ async fn the_timeline_is_saved_while_the_task_runs() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(&world, runner, MockCodeHost::new(), commenter(&seen));
+    let pipeline = pipeline(&world, runner, MockCodeHost::new());
 
     pipeline.execute(world.run_id, None).await.unwrap();
 

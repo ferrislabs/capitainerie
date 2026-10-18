@@ -1,4 +1,3 @@
-mod commenter;
 mod dispatch;
 mod indexer;
 mod orchestrator;
@@ -35,9 +34,7 @@ use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
 
-use crate::{
-    commenter::McpCommenter, dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator,
-};
+use crate::{dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator};
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-worker", version)]
@@ -185,8 +182,6 @@ async fn main() -> anyhow::Result<()> {
     let execution = ExecutePipeline::new(
         usecase,
         executor_from(&args).await,
-        args.exchange.exchanger()?,
-        McpCommenter::new(args.llm.mcp_url.as_str()),
         ExecuteConfig {
             max_attempts: 3,
             retry_base: Duration::from_secs(1),
@@ -200,7 +195,12 @@ async fn main() -> anyhow::Result<()> {
         },
     );
     let pipeline = Dispatcher::new(meeting, execution);
-    let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);
+    let orchestrator = Orchestrator::new(
+        Arc::new(pipeline),
+        bus.clone(),
+        args.concurrency,
+        args.executor.concurrency,
+    );
 
     let (stop, stopped) = watch::channel(false);
     tracing::info!(

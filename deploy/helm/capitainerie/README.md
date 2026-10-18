@@ -22,6 +22,8 @@ Le chart ne crée aucune valeur secrète. Créer le Secret `secrets.existingSecr
 | `IGGY_USERNAME`, `IGGY_PASSWORD` | api, worker, exporter |
 | `LLM_API_KEY` (optionnelle) | worker |
 
+Le proxy d'identifiants de l'Exécutant ne résout aucun nom pour les pods de tâche : ils joignent le proxy par une entrée `hostAliases` (IP résolue par le worker) et la `NetworkPolicy` du namespace des tâches n'ouvre pas le DNS. Le Service du proxy doit donc rester un `ClusterIP` à IP stable.
+
 Les clés listées dans `secrets.optionalKeys` sont marquées `optional`. La liste lue par chaque composant se règle dans `<composant>.secretEnv`.
 
 ## Valeurs principales
@@ -33,6 +35,8 @@ Les clés listées dans `secrets.optionalKeys` sont marquées `optional`. La lis
 | `mcpKanban.publicUrl`, `config.mcpAudience`, `config.pipelineAgents` | `MCP_PUBLIC_URL`, `MCP_AUDIENCE`, `PIPELINE_AGENTS` / `MCP_ACCEPTED_AGENTS` |
 | `config.iggy.{address,stream,partitions}` | `IGGY_ADDRESS`, `IGGY_STREAM`, `IGGY_PARTITIONS` |
 | `worker.llm.{baseUrl,model,timeoutSecs}`, `worker.concurrency` | `LLM_*`, `WORKER_CONCURRENCY` |
+| `executor.{enabled,namespace,maxTurns,deadlineSeconds,concurrency}` | `EXECUTOR_NAMESPACE`, `EXECUTOR_MAX_TURNS`, `EXECUTOR_DEADLINE_SECS`, `EXECUTOR_CONCURRENCY` |
+| `egressProxy.databaseUrlSecretKey` | clé du Secret qui porte la `DATABASE_URL` du proxy ; viser une connexion du rôle `capitainerie_egress_proxy` (`deploy/postgres/egress-proxy-role.sql`, `SELECT` seul sur `task_grants`, `provider_credentials`, `github_installations`) |
 | `config.{logFilter,logJson,otlpEndpoint}` | `LOG_FILTER`, `LOG_JSON`, `OTLP_ENDPOINT` |
 | `exporter.{flushEvents,flushSecs}`, `analytics.*` | `ANALYTICS_FLUSH_EVENTS`, `ANALYTICS_FLUSH_SECS`, `ANALYTICS_URI`, volume du dataset Parquet |
 | `console.config.*` | `API_URL`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_RESOURCE`, `TRACES_URL` |

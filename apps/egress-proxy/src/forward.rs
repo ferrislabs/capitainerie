@@ -7,6 +7,8 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
+use crate::proxy::Permit;
+
 pub const MAX_BODY: u64 = 512 * 1024 * 1024;
 
 const HOP_BY_HOP: [HeaderName; 7] = [
@@ -54,7 +56,7 @@ pub fn capped(body: Body) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
     })
 }
 
-pub fn relay(upstream: reqwest::Response) -> Response {
+pub fn relay(upstream: reqwest::Response, permit: Permit) -> Response {
     let mut headers = HeaderMap::new();
     for (name, value) in upstream.headers() {
         if !hop_by_hop(name) {
@@ -62,7 +64,11 @@ pub fn relay(upstream: reqwest::Response) -> Response {
         }
     }
     let status = upstream.status();
-    let mut response = Response::new(Body::from_stream(upstream.bytes_stream()));
+    let held = upstream.bytes_stream().map(move |chunk| {
+        let _ = &permit;
+        chunk
+    });
+    let mut response = Response::new(Body::from_stream(held));
     *response.status_mut() = status;
     *response.headers_mut() = headers;
     response

@@ -21,17 +21,13 @@ use crate::{
     domain::{
         agent::{SecretToken, ToolCall, Usage},
         card::Card,
-        delegation::{
-            DelegatedToken,
-            ports::{DelegationVault, TokenExchanger},
-        },
+        delegation::{DelegatedToken, ports::DelegationVault},
         event::ports::EventEmitter,
         execution::{
             DraftPullRequest, EXECUTOR_AGENT, ExecutorModel, RepositoryRef, TaskGrant, TaskLine,
             TaskMarker, TaskOutcome, TaskSpec, execution_branch,
             ports::{CodeHost, TaskGrantRepository, TaskRunner},
         },
-        organization::ports::OrganizationRepository,
         provider::ModelAssignments,
         run::{
             Run, RunStatus, RunSubject, StepKind,
@@ -39,7 +35,7 @@ use crate::{
             step::{Pricing, Step, StepStatus},
         },
     },
-    infrastructure::delegation::{PgDelegationVault, is_expired},
+    infrastructure::delegation::PgDelegationVault,
 };
 
 const TASK_TOKEN_SLOT: &str = "capitainerie-task-token";
@@ -49,17 +45,8 @@ const FIELD_MAX_CHARS: usize = 8_000;
 const QUOTE_MAX_CHARS: usize = 2_000;
 const EXECUTE_SEQ: i32 = 0;
 const DEADLINE_REASON: &str = "durée maximale dépassée";
-
-#[cfg_attr(any(test, feature = "mock"), mockall::automock)]
-pub trait CardCommenter: Send + Sync {
-    fn comment(
-        &self,
-        mcp_token: &SecretToken,
-        card_id: CardId,
-        run_id: RunId,
-        body: &str,
-    ) -> impl Future<Output = Result<(), CoreError>> + Send;
-}
+const JOB_GONE_REASON: &str = "tâche introuvable à la reprise";
+const BRANCH_MISMATCH_REASON: &str = "branche absente ou différente";
 
 pub enum Executor<T, H> {
     Ready { runner: T, host: H },
@@ -85,13 +72,12 @@ pub struct ExecutionContext {
     pub card_id: CardId,
     pub repository: RepositoryRef,
     pub base_branch: String,
-    pub issuer_url: String,
     pub steps: Vec<Step>,
     pub resumed: bool,
 }
 
 impl CapitainerieUseCase {
-    #[transactional(run, step, organization, emitter)]
+    #[transactional(run, step, emitter)]
     pub async fn claim_execution(
         &self,
         id: RunId,
@@ -100,7 +86,6 @@ impl CapitainerieUseCase {
     ) -> Result<Option<ExecutionContext>, CoreError> {
         let mut run_repository = run_repository;
         let mut step_repository = step_repository;
-        let mut organization_repository = organization_repository;
         let Some(mut run) = run_repository.lock(id).await? else {
             return Ok(None);
         };
@@ -127,10 +112,6 @@ impl CapitainerieUseCase {
             run.trace_id = trace_id;
         }
         run_repository.save(&run, Some(now)).await?;
-        let organization = organization_repository
-            .find(run.organization_id)
-            .await?
-            .ok_or_else(|| CoreError::Internal(format!("run {id} has no organization")))?;
         let steps = step_repository.list(id).await?;
         emitter.emit(&RunStarted {
             run_id: id.0,
@@ -142,7 +123,6 @@ impl CapitainerieUseCase {
             card_id,
             repository,
             base_branch,
-            issuer_url: organization.issuer_url,
             steps,
             resumed,
         }))
@@ -192,11 +172,9 @@ fn new_task_token() -> Result<String, CoreError> {
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
-pub struct ExecutePipeline<T, H, X, C> {
+pub struct ExecutePipeline<T, H> {
     usecase: CapitainerieUseCase,
     executor: Executor<T, H>,
-    exchanger: X,
-    commenter: C,
     config: ExecuteConfig,
 }
 
@@ -213,6 +191,15 @@ struct Prepared {
     redactor: Redactor,
 }
 
+/// How a claimed execution ended; an infrastructure error is not an ending:
+/// the run stays claimed and a later sweep resumes it.
+struct Ended {
+    result: Result<(), String>,
+    job_started: bool,
+}
+
+/// What the Execute step reports besides the stream. A resumed run starts
+/// from what its previous attempt had recorded.
 #[derive(Default)]
 struct Extras {
     branch: Option<String>,
@@ -220,7 +207,28 @@ struct Extras {
     pull_request: Option<String>,
     no_changes: bool,
     comment: Option<String>,
+    comment_id: Option<String>,
+    job_started: bool,
     error: Option<String>,
+}
+
+impl Extras {
+    fn carried(output: Option<&serde_json::Value>) -> Self {
+        let text = |field: &str| {
+            output
+                .and_then(|output| output[field].as_str())
+                .map(str::to_owned)
+        };
+        Self {
+            branch: text("branch"),
+            sha: text("sha"),
+            pull_request: text("pull_request"),
+            comment: text("comment"),
+            comment_id: text("comment_id"),
+            job_started: output.is_some_and(|output| output["job_started"] == true),
+            ..Self::default()
+        }
+    }
 }
 
 struct Progress {
@@ -232,6 +240,7 @@ struct Progress {
 #[derive(serde::Serialize)]
 struct ExecuteOutput<'a> {
     tool_calls: &'a [ToolCall],
+    dropped_tool_calls: u64,
     summary: Option<&'a str>,
     stopped: Option<&'a str>,
     turns: Option<u64>,
@@ -240,13 +249,16 @@ struct ExecuteOutput<'a> {
     sha: Option<&'a str>,
     pull_request: Option<&'a str>,
     no_changes: bool,
+    job_started: bool,
     comment: Option<&'a str>,
+    comment_id: Option<&'a str>,
     error: Option<&'a str>,
 }
 
 fn output_of(digest: &Digest, extras: &Extras) -> Result<serde_json::Value, CoreError> {
     serde_json::to_value(ExecuteOutput {
         tool_calls: &digest.tool_calls,
+        dropped_tool_calls: digest.dropped_tool_calls,
         summary: digest.summary.as_deref(),
         stopped: digest.stopped.as_deref(),
         turns: digest.turns,
@@ -255,7 +267,9 @@ fn output_of(digest: &Digest, extras: &Extras) -> Result<serde_json::Value, Core
         sha: extras.sha.as_deref(),
         pull_request: extras.pull_request.as_deref(),
         no_changes: extras.no_changes,
+        job_started: extras.job_started,
         comment: extras.comment.as_deref(),
+        comment_id: extras.comment_id.as_deref(),
         error: extras.error.as_deref(),
     })
     .map_err(|error| CoreError::Internal(format!("encoding the execution report: {error}")))
@@ -268,19 +282,35 @@ fn reason_of(error: &CoreError) -> String {
     }
 }
 
-impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePipeline<T, H, X, C> {
+fn is_infrastructure(error: &CoreError) -> bool {
+    matches!(error, CoreError::Database(_) | CoreError::Internal(_))
+}
+
+/// Why a run that stopped without pushing anything is a failure rather than
+/// "no change".
+pub(super) fn stopped_reason(subtype: &str) -> String {
+    match subtype {
+        "error_max_turns" => "arrêté : nombre maximal de tours atteint".to_owned(),
+        "error_during_execution" => "arrêté : erreur pendant l'exécution".to_owned(),
+        "success" => "arrêté : l'agent a signalé une erreur".to_owned(),
+        other => format!("arrêté : {other}"),
+    }
+}
+
+/// Text the agent wrote must not notify anyone once GitHub renders it.
+pub(super) fn defang_mentions(text: &str) -> String {
+    text.replace('@', "@\u{200B}")
+}
+
+impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
     pub fn new(
         usecase: CapitainerieUseCase,
         executor: Executor<T, H>,
-        exchanger: X,
-        commenter: C,
         config: ExecuteConfig,
     ) -> Self {
         Self {
             usecase,
             executor,
-            exchanger,
-            commenter,
             config,
         }
     }
@@ -319,16 +349,31 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             return Ok(());
         };
         tracing::info!(%run_id, resumed = context.resumed, "execution claimed");
-        let outcome = match &self.executor {
-            Executor::Ready { runner, host } => self.run_execution(&context, runner, host).await,
-            Executor::Disabled { reason } => Err(CoreError::Invalid(reason.clone())),
+        let ended = match &self.executor {
+            Executor::Ready { runner, host } => {
+                match self.run_execution(&context, runner, host).await {
+                    Ok(ended) => ended,
+                    Err(error) => {
+                        tracing::warn!(%run_id, %error, "execution interrupted, a later sweep resumes it");
+                        return Err(error);
+                    }
+                }
+            }
+            Executor::Disabled { reason } => Ended {
+                result: Err(reason.clone()),
+                job_started: false,
+            },
         };
         self.revoke_grants(run_id).await;
-        let verdict = outcome.as_ref().map(|_| ()).map_err(reason_of);
+        if let (Err(_), true, Executor::Ready { runner, .. }) =
+            (&ended.result, ended.job_started, &self.executor)
+        {
+            self.delete_job(runner, run_id).await;
+        }
         self.usecase
-            .finish_run(context.run.clone(), verdict)
+            .finish_run(context.run.clone(), ended.result.clone())
             .await?;
-        match outcome {
+        match ended.result {
             Ok(()) => tracing::info!(%run_id, "execution succeeded"),
             Err(error) => tracing::warn!(%run_id, %error, "execution failed"),
         }
@@ -347,6 +392,16 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         }
     }
 
+    async fn delete_job(&self, runner: &T, run_id: RunId) {
+        let deleted = retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
+            runner.delete(run_id)
+        })
+        .await;
+        if let Err(error) = deleted {
+            tracing::warn!(%run_id, %error, "the job of a failed execution was not deleted, its TTL removes it");
+        }
+    }
+
     fn model_of(&self, run: &Run) -> ExecutorModel {
         run.models
             .as_ref()
@@ -355,13 +410,21 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             .clone()
     }
 
-    fn pricing_of(&self, model: &str) -> Pricing {
+    fn pricing_of(&self, model: &str) -> Option<Pricing> {
         self.config
             .prices
             .iter()
             .find(|(name, _)| name == model)
             .map(|(_, pricing)| *pricing)
-            .unwrap_or_default()
+    }
+
+    /// With a known price, the stream's token counts priced by their kind;
+    /// without, the cost Claude Code reports itself.
+    fn cost_of(&self, model: &str, digest: &Digest) -> i64 {
+        match self.pricing_of(model) {
+            Some(pricing) => pricing.cost_micros_cached(&digest.cached_usage()),
+            None => digest.reported_cost_micros(),
+        }
     }
 
     async fn run_execution(
@@ -369,23 +432,26 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         context: &ExecutionContext,
         runner: &T,
         host: &H,
-    ) -> Result<(), CoreError> {
+    ) -> Result<Ended, CoreError> {
         let previous = context.steps.iter().find(|step| step.seq == EXECUTE_SEQ);
         match previous {
             Some(done) if matches!(done.status, StepStatus::Succeeded | StepStatus::Skipped) => {
-                return Ok(());
+                return Ok(Ended {
+                    result: Ok(()),
+                    job_started: false,
+                });
             }
             Some(failed) if failed.status == StepStatus::Failed => {
-                return Err(CoreError::Internal(
-                    failed.error.clone().unwrap_or_default(),
-                ));
+                return Ok(Ended {
+                    result: Err(failed.error.clone().unwrap_or_default()),
+                    job_started: false,
+                });
             }
             _ => {}
         }
-        let prior_pull_request = previous
-            .and_then(|step| step.output.as_ref())
-            .and_then(|output| output["pull_request"].as_str())
-            .map(str::to_owned);
+        let previous_output = previous.and_then(|step| step.output.as_ref());
+        let never_started = previous_output.is_some_and(|output| output["job_started"] == false);
+        let mut extras = Extras::carried(previous_output);
         let model = self.model_of(&context.run);
         let mut step = new_step(
             &context.run,
@@ -395,6 +461,7 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             previous.map_or(1, |step| step.attempt + 1),
         );
         step.usage.model = model.as_str().to_owned();
+        step.output = Some(output_of(&Digest::default(), &extras)?);
         self.usecase
             .record_step(context.run.clone(), step.clone())
             .await?;
@@ -402,34 +469,29 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
 
         let prepared = match self.prepare(context, &model).await {
             Ok(prepared) => prepared,
+            Err(error) if is_infrastructure(&error) => return Err(error),
             Err(error) => {
                 let finished = Finished {
                     digest: Digest::default(),
-                    extras: Extras::default(),
+                    extras,
                     result: Err(error),
                     redactor: Redactor::new(""),
                 };
                 return self.conclude(context, step, started, finished).await;
             }
         };
+        extras.branch = Some(prepared.spec.branch.clone());
         let progress = Mutex::new(Progress {
             reader: StreamReader::new(prepared.redactor.clone()),
             step,
-            extras: Extras {
-                branch: Some(prepared.spec.branch.clone()),
-                ..Extras::default()
-            },
+            extras,
         });
         let result = self
-            .drive(
-                context,
-                runner,
-                host,
-                &prepared,
-                &progress,
-                prior_pull_request,
-            )
+            .drive(context, runner, host, &prepared, &progress, never_started)
             .await;
+        if let Err(error @ CoreError::Database(_)) = result {
+            return Err(error);
+        }
         let Progress {
             reader,
             step,
@@ -463,7 +525,7 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             .ok_or_else(|| {
                 CoreError::Invalid("GitHub n'est pas connecté pour cette organisation".into())
             })?;
-        let token = self.task_token(context).await?;
+        let token = self.task_token(context, model).await?;
         let branch = execution_branch(run_id);
         let spec = TaskSpec {
             run_id,
@@ -484,7 +546,11 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         })
     }
 
-    async fn task_token(&self, context: &ExecutionContext) -> Result<String, CoreError> {
+    async fn task_token(
+        &self,
+        context: &ExecutionContext,
+        model: &ExecutorModel,
+    ) -> Result<String, CoreError> {
         let run_id = context.run.id;
         if let Some(stored) = self.usecase.delegation_for(run_id, TASK_TOKEN_SLOT).await? {
             return Ok(stored.token.expose().to_owned());
@@ -505,12 +571,41 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
                     organization_id: context.run.organization_id,
                     repository: context.repository.clone(),
                     branch: execution_branch(run_id),
+                    model: model.as_str().to_owned(),
                     expires_at,
                     revoked_at: None,
                 },
             )
             .await?;
         Ok(token)
+    }
+
+    /// A resumed run follows the Job it left running and never starts a
+    /// second one; only a run that crashed before it ever started its Job may
+    /// start it.
+    async fn start_or_attach(
+        &self,
+        context: &ExecutionContext,
+        runner: &T,
+        prepared: &Prepared,
+        never_started: bool,
+    ) -> Result<(), CoreError> {
+        if context.resumed {
+            let found = retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
+                runner.attach(context.run.id)
+            })
+            .await?;
+            if found {
+                return Ok(());
+            }
+            if !never_started {
+                return Err(CoreError::Internal(JOB_GONE_REASON.into()));
+            }
+        }
+        retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
+            runner.start(&prepared.spec)
+        })
+        .await
     }
 
     async fn drive(
@@ -520,12 +615,15 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         host: &H,
         prepared: &Prepared,
         progress: &Mutex<Progress>,
-        prior_pull_request: Option<String>,
+        never_started: bool,
     ) -> Result<Finish, CoreError> {
-        retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
-            runner.start(&prepared.spec)
-        })
-        .await?;
+        self.start_or_attach(context, runner, prepared, never_started)
+            .await?;
+        {
+            let mut progress = progress.lock().await;
+            progress.extras.job_started = true;
+            self.save_progress(context, &mut progress, true).await;
+        }
         let outcome = retry_transient(
             self.config.max_attempts,
             self.config.retry_base,
@@ -544,25 +642,28 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             )),
             TaskOutcome::Succeeded => match progress.reader.marker().cloned() {
                 Some(TaskMarker::Pushed { sha }) => {
-                    progress.extras.sha = Some(sha);
-                    let digest = progress.reader.snapshot().clone();
-                    let pull_request = match prior_pull_request {
+                    progress.extras.sha = Some(sha.clone());
+                    let pull_request = match progress.extras.pull_request.clone() {
                         Some(url) => url,
                         None => {
+                            let digest = progress.reader.snapshot().clone();
+                            self.verify_branch(host, prepared, &sha).await?;
                             let url = self
                                 .open_pull_request(host, prepared, &digest, &progress.step)
                                 .await?;
                             progress.extras.pull_request = Some(url.clone());
-                            self.save_progress(context, &mut progress).await;
+                            self.persist_progress(context, &mut progress, true).await?;
                             url
                         }
                     };
-                    progress.extras.pull_request = Some(pull_request.clone());
                     Ok(Finish::Pushed { pull_request })
                 }
                 Some(TaskMarker::NoChanges) => {
                     progress.extras.no_changes = true;
-                    Ok(Finish::NoChanges)
+                    match progress.reader.snapshot().stopped.as_deref() {
+                        Some(subtype) => Err(CoreError::Internal(stopped_reason(subtype))),
+                        None => Ok(Finish::NoChanges),
+                    }
                 }
                 _ => Err(CoreError::Internal(
                     "l'exécution s'est terminée sans pousser de branche ni signaler l'absence de changement"
@@ -588,7 +689,10 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             tokio::select! {
                 result = &mut follow => break result?,
                 Some(line) = lines.recv() => progress.reader.accept(&line),
-                _ = tick.tick() => self.save_progress(context, progress).await,
+                _ = tick.tick() => {
+                    let refresh = progress.reader.take_dirty();
+                    self.save_progress(context, progress, refresh).await;
+                }
             }
         };
         while let Ok(line) = lines.try_recv() {
@@ -597,22 +701,53 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         Ok(outcome)
     }
 
-    async fn save_progress(&self, context: &ExecutionContext, progress: &mut Progress) {
-        if progress.reader.take_dirty() {
+    /// Writes the step and stamps the run's heartbeat; `refresh` rebuilds the
+    /// step's output from the stream first.
+    async fn persist_progress(
+        &self,
+        context: &ExecutionContext,
+        progress: &mut Progress,
+        refresh: bool,
+    ) -> Result<(), CoreError> {
+        if refresh {
             let digest = progress.reader.snapshot();
-            match output_of(digest, &progress.extras) {
-                Ok(output) => progress.step.output = Some(output),
-                Err(error) => tracing::warn!(%error, "the progress could not be encoded"),
-            }
+            progress.step.output = Some(output_of(digest, &progress.extras)?);
             progress.step.usage.input_tokens = digest.input_tokens;
             progress.step.usage.output_tokens = digest.output_tokens;
         }
-        if let Err(error) = self
-            .usecase
+        self.usecase
             .record_step(context.run.clone(), progress.step.clone())
             .await
-        {
+    }
+
+    async fn save_progress(
+        &self,
+        context: &ExecutionContext,
+        progress: &mut Progress,
+        refresh: bool,
+    ) {
+        if let Err(error) = self.persist_progress(context, progress, refresh).await {
             tracing::warn!(run_id = %context.run.id, %error, "saving the execution progress failed");
+        }
+    }
+
+    async fn verify_branch(
+        &self,
+        host: &H,
+        prepared: &Prepared,
+        sha: &str,
+    ) -> Result<(), CoreError> {
+        let head = retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
+            host.branch_head(
+                prepared.installation_id,
+                &prepared.spec.repository,
+                &prepared.spec.branch,
+            )
+        })
+        .await?;
+        match head {
+            Some(head) if head.eq_ignore_ascii_case(sha) => Ok(()),
+            _ => Err(CoreError::Invalid(BRANCH_MISMATCH_REASON.into())),
         }
     }
 
@@ -628,14 +763,14 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             input_tokens: digest.input_tokens,
             output_tokens: digest.output_tokens,
         };
-        let cost = self.pricing_of(&usage.model).cost_micros(&usage);
-        let body = prepared.redactor.apply(&pull_request_body(
+        let cost = self.cost_of(&usage.model, digest);
+        let body = defang_mentions(&prepared.redactor.apply(&pull_request_body(
             &prepared.card,
             self.config.console_url.as_deref(),
             digest,
             &usage,
             cost,
-        ));
+        )));
         let pull_request =
             retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
                 host.open_draft_pr(
@@ -666,19 +801,22 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
         mut step: Step,
         started: Instant,
         mut finished: Finished,
-    ) -> Result<(), CoreError> {
+    ) -> Result<Ended, CoreError> {
         let reason = finished.result.as_ref().err().map(reason_of);
         finished.extras.error = reason.clone();
         let body = comment_body(&finished.result, reason.as_deref(), &finished.digest);
-        let body = truncate_chars(&finished.redactor.apply(&body), COMMENT_MAX_CHARS);
-        finished.extras.comment = Some(self.comment(context, &body).await);
+        let body = defang_mentions(&truncate_chars(
+            &finished.redactor.apply(&body),
+            COMMENT_MAX_CHARS,
+        ));
+        self.comment(context, body, &mut finished.extras).await;
 
         let usage = Usage {
             model: step.usage.model.clone(),
             input_tokens: finished.digest.input_tokens,
             output_tokens: finished.digest.output_tokens,
         };
-        step.cost_micros = self.pricing_of(&usage.model).cost_micros(&usage);
+        step.cost_micros = self.cost_of(&usage.model, &finished.digest);
         step.usage = usage;
         step.output = Some(output_of(&finished.digest, &finished.extras)?);
         step.latency_ms = Some(i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX));
@@ -691,37 +829,28 @@ impl<T: TaskRunner, H: CodeHost, X: TokenExchanger, C: CardCommenter> ExecutePip
             }
         }
         self.usecase.record_step(context.run.clone(), step).await?;
-        match reason {
-            None => Ok(()),
-            Some(reason) => Err(CoreError::Internal(reason)),
-        }
+        Ok(Ended {
+            result: match reason {
+                None => Ok(()),
+                Some(reason) => Err(reason),
+            },
+            job_started: finished.extras.job_started,
+        })
     }
 
-    async fn comment(&self, context: &ExecutionContext, body: &str) -> String {
+    async fn comment(&self, context: &ExecutionContext, body: String, extras: &mut Extras) {
         let run_id = context.run.id;
-        let delegation = match self.usecase.delegation_for(run_id, EXECUTOR_AGENT).await {
-            Ok(Some(delegation)) if !is_expired(&delegation, Utc::now()) => delegation,
-            Ok(Some(_)) => return skipped_comment(run_id, "the user's delegation expired"),
-            Ok(None) => return skipped_comment(run_id, "no delegation from the user"),
-            Err(error) => return skipped_comment(run_id, &error.to_string()),
-        };
-        let posted = retry_transient(
-            self.config.max_attempts,
-            self.config.retry_base,
-            |_| async {
-                let mcp_token = self
-                    .exchanger
-                    .for_mcp(&context.issuer_url, &delegation.token, EXECUTOR_AGENT)
-                    .await?;
-                self.commenter
-                    .comment(&mcp_token.token, context.card_id, run_id, body)
-                    .await
-            },
-        )
+        let posted = retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
+            self.usecase
+                .comment_card_as_executor(run_id, context.card_id, body.clone())
+        })
         .await;
         match posted {
-            Ok(()) => "posted".to_owned(),
-            Err(error) => skipped_comment(run_id, &error.to_string()),
+            Ok(comment_id) => {
+                extras.comment_id = Some(comment_id.0.to_string());
+                extras.comment = Some("posted".to_owned());
+            }
+            Err(error) => extras.comment = Some(skipped_comment(run_id, &error.to_string())),
         }
     }
 }
@@ -924,5 +1053,33 @@ mod tests {
         );
         assert_ne!(token, new_task_token().unwrap());
         assert_eq!(token_sha256(&token), token_sha256(&token));
+    }
+
+    #[test]
+    fn a_stopped_agent_says_why() {
+        assert_eq!(
+            stopped_reason("error_max_turns"),
+            "arrêté : nombre maximal de tours atteint"
+        );
+        assert!(stopped_reason("error_during_execution").starts_with("arrêté"));
+        assert!(stopped_reason("success").starts_with("arrêté"));
+        assert_eq!(stopped_reason("other"), "arrêté : other");
+    }
+
+    #[test]
+    fn mentions_in_agent_text_are_defanged() {
+        let text = defang_mentions("ping @octocat and @org/team");
+        assert!(!text.contains("@o") && !text.contains("@o"));
+        assert_eq!(text, "ping @\u{200B}octocat and @\u{200B}org/team");
+    }
+
+    #[test]
+    fn only_infrastructure_errors_interrupt_a_run() {
+        assert!(is_infrastructure(&CoreError::Database("down".into())));
+        assert!(is_infrastructure(&CoreError::Internal("flaky".into())));
+        assert!(!is_infrastructure(&CoreError::Invalid(
+            "la carte n'existe plus".into()
+        )));
+        assert!(!is_infrastructure(&CoreError::NotFound));
     }
 }

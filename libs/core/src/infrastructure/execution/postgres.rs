@@ -26,14 +26,15 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO task_grants (token_sha256, run_id, organization_id, repository, branch, expires_at, revoked_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO task_grants (token_sha256, run_id, organization_id, repository, branch, model, expires_at, revoked_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
             token_sha256.as_slice(),
             grant.run_id.0,
             grant.organization_id.0,
             grant.repository.to_string(),
             grant.branch,
+            grant.model,
             grant.expires_at,
             grant.revoked_at,
         )
@@ -47,7 +48,7 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
         let mut tx = self.tx.lock().await;
         let row = sqlx::query!(
             r#"
-            SELECT run_id, organization_id, repository, branch, expires_at, revoked_at
+            SELECT run_id, organization_id, repository, branch, model, expires_at, revoked_at
             FROM task_grants
             WHERE token_sha256 = $1
             "#,
@@ -62,6 +63,7 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
                 organization_id: OrganizationId(row.organization_id),
                 repository: row.repository.parse()?,
                 branch: row.branch,
+                model: row.model,
                 expires_at: row.expires_at,
                 revoked_at: row.revoked_at,
             })

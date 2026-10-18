@@ -32,6 +32,7 @@ data:
   EXECUTOR_PROXY_URL: {{ include "capitainerie.egressProxyUrl" . | quote }}
   EXECUTOR_MAX_TURNS: {{ .Values.executor.maxTurns | quote }}
   EXECUTOR_DEADLINE_SECS: {{ .Values.executor.deadlineSeconds | quote }}
+  EXECUTOR_CONCURRENCY: {{ .Values.executor.concurrency | quote }}
   {{- end }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}

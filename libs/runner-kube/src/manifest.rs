@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, net::IpAddr};
 
 use capitainerie_common::RunId;
 use capitainerie_core::domain::execution::TaskSpec;
@@ -6,12 +6,15 @@ use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
         core::v1::{
-            Capabilities, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-            PodSecurityContext, PodSpec, PodTemplateSpec, SeccompProfile, Secret,
+            Capabilities, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, HostAlias,
+            PodDNSConfig, PodSecurityContext, PodSpec, PodTemplateSpec, SeccompProfile, Secret,
             SecretKeySelector, SecurityContext, Volume, VolumeMount,
         },
     },
-    apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
+    apimachinery::pkg::{
+        api::resource::Quantity,
+        apis::meta::v1::{ObjectMeta, OwnerReference},
+    },
 };
 
 use crate::config::KubeRunnerConfig;
@@ -20,11 +23,18 @@ pub const PART_OF_LABEL: &str = "app.kubernetes.io/part-of";
 pub const RUN_ID_LABEL: &str = "capitainerie.dev/run-id";
 pub const TOKEN_KEY: &str = "task-token";
 const EXECUTOR_UID: i64 = 1000;
-const WRITABLE_DIRS: [(&str, &str); 3] = [
-    ("workspace", "/workspace"),
-    ("tmp", "/tmp"),
-    ("home", "/home/executor"),
+const WRITABLE_DIRS: [(&str, &str, &str); 3] = [
+    ("workspace", "/workspace", "4Gi"),
+    ("tmp", "/tmp", "1Gi"),
+    ("home", "/home/executor", "1Gi"),
 ];
+
+/// The proxy's address, resolved by the worker: the pod resolves nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyHost {
+    pub name: String,
+    pub ip: IpAddr,
+}
 
 pub fn job_name(run_id: RunId) -> String {
     format!("run-{}", run_id.0)
@@ -88,7 +98,7 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
     ]
 }
 
-pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec) -> Job {
+pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&ProxyHost>) -> Job {
     let name = job_name(spec.run_id);
     let labels = labels(spec.run_id);
     let container = Container {
@@ -111,7 +121,7 @@ pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec) -> Job {
         volume_mounts: Some(
             WRITABLE_DIRS
                 .iter()
-                .map(|(volume, path)| VolumeMount {
+                .map(|(volume, path, _)| VolumeMount {
                     name: (*volume).to_owned(),
                     mount_path: (*path).to_owned(),
                     ..Default::default()
@@ -152,13 +162,27 @@ pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec) -> Job {
                         }),
                         ..Default::default()
                     }),
+                    dns_policy: Some("None".to_owned()),
+                    dns_config: Some(PodDNSConfig {
+                        nameservers: Some(vec!["127.0.0.1".to_owned()]),
+                        ..Default::default()
+                    }),
+                    host_aliases: proxy.map(|proxy| {
+                        vec![HostAlias {
+                            ip: proxy.ip.to_string(),
+                            hostnames: Some(vec![proxy.name.clone()]),
+                        }]
+                    }),
                     containers: vec![container],
                     volumes: Some(
                         WRITABLE_DIRS
                             .iter()
-                            .map(|(volume, _)| Volume {
+                            .map(|(volume, _, limit)| Volume {
                                 name: (*volume).to_owned(),
-                                empty_dir: Some(EmptyDirVolumeSource::default()),
+                                empty_dir: Some(EmptyDirVolumeSource {
+                                    size_limit: Some(Quantity((*limit).to_owned())),
+                                    ..Default::default()
+                                }),
                                 ..Default::default()
                             })
                             .collect(),
@@ -208,7 +232,7 @@ mod tests {
             run_id: RunId(uuid::Uuid::parse_str("0a1b2c3d-0000-7000-8000-000000000000").unwrap()),
             repository: "acme/web".parse::<RepositoryRef>().unwrap(),
             base_branch: "main".into(),
-            branch: "capitainerie/0a1b2c3d".into(),
+            branch: "capitainerie/0a1b2c3d4e5f".into(),
             prompt: "Fix the bug".into(),
             model: ExecutorModel::default(),
             max_turns: 50,
@@ -222,6 +246,13 @@ mod tests {
             "capitainerie-executor:1",
             "http://capitainerie-egress-proxy.capitainerie.svc:4130",
         )
+    }
+
+    fn proxy() -> ProxyHost {
+        ProxyHost {
+            name: "capitainerie-egress-proxy.capitainerie.svc".into(),
+            ip: "10.96.0.12".parse().unwrap(),
+        }
     }
 
     fn pod(job: &Job) -> &PodSpec {
@@ -243,7 +274,7 @@ mod tests {
 
     #[test]
     fn the_job_is_named_after_the_run_and_bounded() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         assert_eq!(
             job.metadata.name.as_deref(),
             Some("run-0a1b2c3d-0000-7000-8000-000000000000")
@@ -255,13 +286,13 @@ mod tests {
         let job_spec = job.spec.as_ref().unwrap();
         assert_eq!(job_spec.backoff_limit, Some(0));
         assert_eq!(job_spec.active_deadline_seconds, Some(1800));
-        assert_eq!(job_spec.ttl_seconds_after_finished, Some(600));
+        assert_eq!(job_spec.ttl_seconds_after_finished, Some(1800));
         assert_eq!(env(&job, "MAX_TURNS").value.as_deref(), Some("50"));
     }
 
     #[test]
     fn job_and_pod_carry_the_labels() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         let template_labels = job
             .spec
             .as_ref()
@@ -276,7 +307,7 @@ mod tests {
 
     #[test]
     fn the_pod_is_locked_down() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         let pod = pod(&job);
         assert_eq!(pod.restart_policy.as_deref(), Some("Never"));
         assert_eq!(pod.automount_service_account_token, Some(false));
@@ -300,8 +331,65 @@ mod tests {
     }
 
     #[test]
+    fn the_pod_resolves_the_proxy_from_its_hosts_file_and_nothing_else() {
+        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let spec_of_pod = pod(&job);
+        assert_eq!(spec_of_pod.dns_policy.as_deref(), Some("None"));
+        assert_eq!(
+            spec_of_pod.dns_config.as_ref().unwrap().nameservers,
+            Some(vec!["127.0.0.1".to_owned()])
+        );
+        let aliases = spec_of_pod.host_aliases.as_ref().unwrap();
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(aliases[0].ip, "10.96.0.12");
+        assert_eq!(
+            aliases[0].hostnames,
+            Some(vec![
+                "capitainerie-egress-proxy.capitainerie.svc".to_owned()
+            ])
+        );
+        let literal = build_job(&config(), &spec(), None);
+        assert_eq!(pod(&literal).host_aliases, None);
+        assert_eq!(pod(&literal).dns_policy.as_deref(), Some("None"));
+    }
+
+    #[test]
+    fn the_writable_paths_and_the_container_are_size_bounded() {
+        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let pod = pod(&job);
+        let limits: BTreeMap<_, _> = pod
+            .volumes
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|volume| {
+                (
+                    volume.name.as_str(),
+                    volume
+                        .empty_dir
+                        .as_ref()
+                        .unwrap()
+                        .size_limit
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(limits["workspace"], "4Gi");
+        assert_eq!(limits["tmp"], "1Gi");
+        assert_eq!(limits["home"], "1Gi");
+        let container = pod.containers[0].resources.as_ref().unwrap();
+        assert_eq!(
+            container.limits.as_ref().unwrap()["ephemeral-storage"].0,
+            "6Gi"
+        );
+    }
+
+    #[test]
     fn the_only_writable_paths_are_empty_dirs() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         let pod = pod(&job);
         let volumes = pod.volumes.as_ref().unwrap();
         assert!(volumes.iter().all(|volume| volume.empty_dir.is_some()));
@@ -326,7 +414,7 @@ mod tests {
 
     #[test]
     fn the_task_token_is_the_only_secret_and_never_inline() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         let secret_name = "run-0a1b2c3d-0000-7000-8000-000000000000";
         let mut referenced = Vec::new();
         for var in pod(&job).containers[0].env.as_ref().unwrap() {
@@ -349,7 +437,7 @@ mod tests {
 
     #[test]
     fn the_environment_points_at_the_proxy() {
-        let job = build_job(&config(), &spec());
+        let job = build_job(&config(), &spec(), Some(&proxy()));
         let proxy = "http://capitainerie-egress-proxy.capitainerie.svc:4130";
         assert_eq!(
             env(&job, "ANTHROPIC_BASE_URL").value.as_deref(),
@@ -363,7 +451,7 @@ mod tests {
         assert_eq!(env(&job, "BASE_BRANCH").value.as_deref(), Some("main"));
         assert_eq!(
             env(&job, "BRANCH").value.as_deref(),
-            Some("capitainerie/0a1b2c3d")
+            Some("capitainerie/0a1b2c3d4e5f")
         );
         assert_eq!(
             env(&job, "MODEL").value.as_deref(),

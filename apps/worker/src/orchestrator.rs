@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex, PoisonError},
+    time::Duration,
+};
 
 use crate::dispatch::RunPipelines;
 use capitainerie_bus_iggy::IggyEventBus;
@@ -20,14 +24,57 @@ pub struct Orchestrator<P> {
     pipeline: Arc<P>,
     bus: IggyEventBus,
     slots: Arc<Semaphore>,
+    execution_slots: Arc<Semaphore>,
+    in_flight: InFlight,
+}
+
+/// The runs this worker is working on: an event and a sweep naming the same
+/// run must not start it twice.
+#[derive(Clone, Default)]
+struct InFlight(Arc<Mutex<HashSet<RunId>>>);
+
+struct InFlightClaim {
+    set: InFlight,
+    run_id: RunId,
+}
+
+impl InFlight {
+    fn claim(&self, run_id: RunId) -> Option<InFlightClaim> {
+        let inserted = self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(run_id);
+        inserted.then(|| InFlightClaim {
+            set: self.clone(),
+            run_id,
+        })
+    }
+}
+
+impl Drop for InFlightClaim {
+    fn drop(&mut self) {
+        self.set
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.run_id);
+    }
 }
 
 impl<P: RunPipelines> Orchestrator<P> {
-    pub fn new(pipeline: Arc<P>, bus: IggyEventBus, concurrency: usize) -> Self {
+    pub fn new(
+        pipeline: Arc<P>,
+        bus: IggyEventBus,
+        concurrency: usize,
+        execution_concurrency: usize,
+    ) -> Self {
         Self {
             pipeline,
             bus,
             slots: Arc::new(Semaphore::new(concurrency.max(1))),
+            execution_slots: Arc::new(Semaphore::new(execution_concurrency.max(1))),
+            in_flight: InFlight::default(),
         }
     }
 
@@ -88,9 +135,23 @@ impl<P: RunPipelines> Orchestrator<P> {
     }
 
     fn spawn(&self, tasks: &mut JoinSet<()>, run_id: RunId, traceparent: Option<String>) {
+        let Some(claim) = self.in_flight.claim(run_id) else {
+            tracing::debug!(%run_id, "run already in flight on this worker");
+            return;
+        };
         let pipeline = Arc::clone(&self.pipeline);
-        let slots = Arc::clone(&self.slots);
+        let meeting_slots = Arc::clone(&self.slots);
+        let execution_slots = Arc::clone(&self.execution_slots);
         tasks.spawn(async move {
+            let _claim = claim;
+            let slots = match pipeline.is_execution(run_id).await {
+                Ok(true) => execution_slots,
+                Ok(false) => meeting_slots,
+                Err(error) => {
+                    tracing::warn!(%run_id, %error, "cannot tell what kind of run this is");
+                    return;
+                }
+            };
             let Ok(_slot) = slots.acquire_owned().await else {
                 return;
             };
@@ -98,5 +159,24 @@ impl<P: RunPipelines> Orchestrator<P> {
                 tracing::error!(%run_id, %error, "run execution failed");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_run_in_flight_cannot_be_claimed_twice_until_it_ends() {
+        let in_flight = InFlight::default();
+        let run = RunId::new();
+
+        let first = in_flight.claim(run);
+        assert!(first.is_some());
+        assert!(in_flight.claim(run).is_none());
+        assert!(in_flight.claim(RunId::new()).is_some());
+
+        drop(first);
+        assert!(in_flight.claim(run).is_some());
     }
 }

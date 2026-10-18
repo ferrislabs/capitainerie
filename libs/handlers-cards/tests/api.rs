@@ -1,6 +1,9 @@
 #![allow(clippy::unwrap_used)]
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use axum::{Extension, Json, Router, routing::get, routing::post};
 use capitainerie_auth::{
@@ -67,7 +70,7 @@ async fn fake_identity_provider() -> String {
     base
 }
 
-async fn fake_github() -> String {
+async fn fake_github(calls: Arc<AtomicUsize>) -> String {
     let app = Router::new()
         .route(
             "/app/installations/{id}/access_tokens",
@@ -85,11 +88,28 @@ async fn fake_github() -> String {
         .route(
             "/repos/{owner}/{repo}",
             get(|| async { Json(json!({"default_branch": "trunk"})) }),
-        );
+        )
+        .layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                let calls = Arc::clone(&calls);
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    next.run(request).await
+                }
+            },
+        ));
     spawn(app).await
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Github {
+    Absent,
+    Fake,
+    Unreachable,
+}
+
 struct Fixture {
+    github_calls: Arc<AtomicUsize>,
     pool: PgPool,
     usecase: CapitainerieUseCase,
     organization: Organization,
@@ -97,6 +117,15 @@ struct Fixture {
 }
 
 async fn fixture(with_github_app: bool) -> Option<Fixture> {
+    let github = if with_github_app {
+        Github::Fake
+    } else {
+        Github::Absent
+    };
+    fixture_as(github, None).await
+}
+
+async fn fixture_as(github: Github, actor: Option<&str>) -> Option<Fixture> {
     let Some(url) = database_url() else {
         eprintln!("skipped: DATABASE_URL is unset");
         return None;
@@ -138,12 +167,19 @@ async fn fixture(with_github_app: bool) -> Option<Fixture> {
             agents: vec![],
         }),
     };
-    let github = if with_github_app {
-        let mut app = GithubApp::new(1, SecretToken::new(PEM));
-        app.api_base = fake_github().await;
-        Some(Arc::new(GithubClient::new(app).unwrap()))
-    } else {
-        None
+    let github_calls = Arc::new(AtomicUsize::new(0));
+    let github = match github {
+        Github::Absent => None,
+        Github::Fake => {
+            let mut app = GithubApp::new(1, SecretToken::new(PEM));
+            app.api_base = fake_github(Arc::clone(&github_calls)).await;
+            Some(Arc::new(GithubClient::new(app).unwrap()))
+        }
+        Github::Unreachable => {
+            let mut app = GithubApp::new(1, SecretToken::new(PEM));
+            app.api_base = "http://127.0.0.1:1".into();
+            Some(Arc::new(GithubClient::new(app).unwrap()))
+        }
     };
     let caller = Caller {
         identity: Identity {
@@ -153,7 +189,11 @@ async fn fixture(with_github_app: bool) -> Option<Fixture> {
             username: None,
             email: None,
             display_name: None,
-            actor: None,
+            actor: actor.map(|client_id| capitainerie_auth::Actor {
+                sub: "service-account".into(),
+                client_id: Some(client_id.to_owned()),
+                act: None,
+            }),
             roles: vec![],
         },
         organization: organization.clone(),
@@ -163,6 +203,7 @@ async fn fixture(with_github_app: bool) -> Option<Fixture> {
         .layer(Extension(caller))
         .with_state(state);
     Some(Fixture {
+        github_calls,
         pool,
         usecase,
         organization,
@@ -363,4 +404,66 @@ async fn a_stale_version_is_a_plain_conflict() {
 
     assert_eq!(response.status(), 409);
     assert_eq!(fixture.runs(card.id).await, 0);
+}
+
+#[tokio::test]
+async fn a_proposed_card_is_refused_before_github_is_asked_anything() {
+    let Some(fixture) = fixture_as(Github::Unreachable, None).await else {
+        return;
+    };
+    fixture.connect().await;
+    let card = fixture.proposed_card().await;
+
+    let response = fixture.execute(&card, "acme/web", card.version).await;
+
+    assert_eq!(response.status(), 409);
+    assert_eq!(message(response).await, "card_not_executable");
+    assert_eq!(fixture.runs(card.id).await, 0);
+}
+
+#[tokio::test]
+async fn an_agent_is_refused_before_github_is_asked_anything() {
+    let Some(fixture) = fixture_as(Github::Fake, Some("capitainerie-agent-executor")).await else {
+        return;
+    };
+    fixture.connect().await;
+    let card = fixture.todo_card().await;
+
+    let response = fixture.execute(&card, "acme/web", card.version).await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(fixture.github_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(fixture.runs(card.id).await, 0);
+}
+
+#[tokio::test]
+async fn an_unknown_card_is_a_404_before_github_is_asked_anything() {
+    let Some(fixture) = fixture_as(Github::Fake, None).await else {
+        return;
+    };
+    fixture.connect().await;
+    let card = fixture.todo_card().await;
+    let unknown = Card {
+        id: CardId::new(),
+        ..card
+    };
+
+    let response = fixture.execute(&unknown, "acme/web", 1).await;
+
+    assert_eq!(response.status(), 404);
+    assert_eq!(fixture.github_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn an_executable_card_reaches_github_after_the_checks() {
+    let Some(fixture) = fixture_as(Github::Fake, None).await else {
+        return;
+    };
+    fixture.connect().await;
+    let card = fixture.todo_card().await;
+
+    let response = fixture.execute(&card, "acme/web", card.version).await;
+
+    assert_eq!(response.status(), 202);
+    assert!(fixture.github_calls.load(Ordering::SeqCst) > 0);
 }

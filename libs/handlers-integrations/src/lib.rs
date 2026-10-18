@@ -10,7 +10,7 @@ pub mod state;
 
 use axum::Router;
 use axum_extra::routing::RouterExt;
-use capitainerie_core::{CapitainerieUseCase, application::CapitainerieAuthorizer};
+use capitainerie_core::CapitainerieUseCase;
 
 pub use dto::{
     ConnectGithubRequest, GithubIntegrationResponse, InstallUrlResponse, RepositoryListResponse,
@@ -21,11 +21,7 @@ pub use state::{GithubIntegration, IntegrationsState};
 
 pub const TAG: &str = "integrations";
 
-pub fn router<S>(
-    usecase: CapitainerieUseCase,
-    authz: CapitainerieAuthorizer,
-    github: GithubIntegration,
-) -> Router<S>
+pub fn router<S>(usecase: CapitainerieUseCase, github: GithubIntegration) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -35,9 +31,5 @@ where
         .typed_get(install_url::handler)
         .typed_post(callback::handler)
         .typed_get(list_repositories::handler)
-        .with_state(IntegrationsState {
-            usecase,
-            authz,
-            github,
-        })
+        .with_state(IntegrationsState { usecase, github })
 }

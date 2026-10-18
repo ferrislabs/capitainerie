@@ -23,6 +23,9 @@ pub enum IntegrationError {
 
     #[error("the connecting user has no access to this GitHub installation")]
     InstallationNotAccessible,
+
+    #[error("the connecting user does not administer the account this installation belongs to")]
+    InstallationNotOwned,
 }
 
 impl From<CoreError> for IntegrationError {
@@ -53,6 +56,12 @@ impl IntoResponse for IntegrationError {
                 StatusCode::FORBIDDEN,
                 "installation_not_accessible",
                 "the connecting user has no access to this GitHub installation".to_owned(),
+            ),
+            Self::InstallationNotOwned => (
+                StatusCode::FORBIDDEN,
+                "installation_not_owned",
+                "the connecting user does not administer the account this installation belongs to"
+                    .to_owned(),
             ),
         };
         let body = ApiErrorResponse {

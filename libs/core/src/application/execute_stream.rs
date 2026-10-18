@@ -5,12 +5,14 @@ use serde_json::Value;
 use crate::domain::{
     agent::ToolCall,
     execution::{TaskLine, TaskMarker},
+    run::step::CachedUsage,
 };
 
 pub(super) const REDACTED: &str = "***";
 const INPUT_MAX_CHARS: usize = 200;
 const OUTPUT_MAX_CHARS: usize = 300;
 const SUMMARY_MAX_CHARS: usize = 4_000;
+pub(super) const TOOL_CALLS_MAX: usize = 500;
 
 #[derive(Debug, Clone)]
 pub(super) struct Redactor {
@@ -48,13 +50,45 @@ struct PendingCall {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct Digest {
     pub tool_calls: Vec<ToolCall>,
+    pub dropped_tool_calls: u64,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
     pub summary: Option<String>,
     pub stopped: Option<String>,
     pub marker: Option<TaskMarker>,
     pub reported_cost_usd: Option<f64>,
     pub turns: Option<u64>,
+}
+
+impl Digest {
+    pub(super) fn cached_usage(&self) -> CachedUsage {
+        CachedUsage {
+            fresh_input: self
+                .input_tokens
+                .saturating_sub(self.cache_read_tokens)
+                .saturating_sub(self.cache_creation_tokens),
+            cache_read: self.cache_read_tokens,
+            cache_creation: self.cache_creation_tokens,
+            output: self.output_tokens,
+        }
+    }
+
+    /// The cost Claude Code reports, for a model without a known price.
+    pub(super) fn reported_cost_micros(&self) -> i64 {
+        self.reported_cost_usd
+            .filter(|usd| usd.is_finite() && *usd > 0.0)
+            .map_or(0, |usd| (usd * 1_000_000.0).round() as i64)
+    }
+
+    fn keep(&mut self, call: ToolCall) {
+        if self.tool_calls.len() < TOOL_CALLS_MAX {
+            self.tool_calls.push(call);
+        } else {
+            self.dropped_tool_calls += 1;
+        }
+    }
 }
 
 pub(super) struct StreamReader {
@@ -148,7 +182,7 @@ impl StreamReader {
             };
             let output = self.redactor.apply(&result_text(&item["content"]));
             let succeeded = !item["is_error"].as_bool().unwrap_or(false);
-            self.digest.tool_calls.push(ToolCall {
+            self.digest.keep(ToolCall {
                 tool: call.tool,
                 succeeded,
                 latency_ms: u64::try_from(call.since.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -165,6 +199,8 @@ impl StreamReader {
             .saturating_add(count("cache_read_input_tokens"))
             .saturating_add(count("cache_creation_input_tokens"));
         self.digest.output_tokens = count("output_tokens");
+        self.digest.cache_read_tokens = count("cache_read_input_tokens");
+        self.digest.cache_creation_tokens = count("cache_creation_input_tokens");
         self.digest.summary = event["result"]
             .as_str()
             .map(|text| truncate_chars(&self.redactor.apply(text), SUMMARY_MAX_CHARS))
@@ -180,7 +216,7 @@ impl StreamReader {
     pub(super) fn finish(mut self) -> Digest {
         for id in std::mem::take(&mut self.order) {
             if let Some(call) = self.pending.remove(&id) {
-                self.digest.tool_calls.push(ToolCall {
+                self.digest.keep(ToolCall {
                     tool: call.tool,
                     succeeded: false,
                     latency_ms: u64::try_from(call.since.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -264,6 +300,8 @@ mod tests {
         assert!(digest.tool_calls[2].summary.contains("jest: not found"));
         assert_eq!(digest.input_tokens, 9 + 16_360 + 5_805);
         assert_eq!(digest.output_tokens, 283);
+        assert_eq!(digest.cache_read_tokens, 16_360);
+        assert_eq!(digest.cache_creation_tokens, 5_805);
         assert!(
             digest
                 .summary
@@ -300,6 +338,33 @@ mod tests {
         assert!(stored.contains(REDACTED));
         assert_eq!(digest.tool_calls.len(), 2);
         assert!(digest.summary.unwrap().contains("I saw *** in the env"));
+    }
+
+    #[test]
+    fn tool_calls_beyond_the_cap_are_counted_not_stored() {
+        let mut sample = Vec::new();
+        for n in 0..(TOOL_CALLS_MAX + 7) {
+            sample.push(json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":format!("t{n}"),"name":"Bash","input":{"command":"ls"}}]}}).to_string());
+            sample.push(json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":format!("t{n}"),"content":"ok"}]}}).to_string());
+        }
+        let digest = read(&sample.join("\n"), "");
+        assert_eq!(digest.tool_calls.len(), TOOL_CALLS_MAX);
+        assert_eq!(digest.dropped_tool_calls, 7);
+    }
+
+    #[test]
+    fn the_reported_cost_stands_in_for_an_unpriced_model() {
+        let digest = Digest {
+            reported_cost_usd: Some(0.0291),
+            ..Digest::default()
+        };
+        assert_eq!(digest.reported_cost_micros(), 29_100);
+        assert_eq!(Digest::default().reported_cost_micros(), 0);
+        let negative = Digest {
+            reported_cost_usd: Some(-1.0),
+            ..Digest::default()
+        };
+        assert_eq!(negative.reported_cost_micros(), 0);
     }
 
     #[test]

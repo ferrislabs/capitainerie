@@ -131,6 +131,43 @@ struct InstallationDetails {
 #[derive(Deserialize)]
 struct AccountEntry {
     login: String,
+    #[serde(rename = "type", default)]
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct Membership {
+    role: String,
+    state: String,
+}
+
+#[derive(Deserialize)]
+struct AuthenticatedUser {
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct RefDetails {
+    object: RefObject,
+}
+
+#[derive(Deserialize)]
+struct RefObject {
+    sha: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountKind {
+    User,
+    Organization,
+    Other,
+}
+
+/// The account an installation belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallationAccount {
+    pub login: String,
+    pub kind: AccountKind,
 }
 
 #[derive(Deserialize)]
@@ -141,7 +178,21 @@ struct PullRequestResponse {
 #[derive(Deserialize)]
 struct ErrorBody {
     message: String,
+    #[serde(default)]
+    errors: Vec<ErrorDetail>,
 }
+
+#[derive(Deserialize)]
+struct ErrorDetail {
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PullRequestListEntry {
+    html_url: String,
+}
+
+const PULL_REQUEST_EXISTS: &str = "A pull request already exists";
 
 type CacheKey = (i64, Option<RepositoryRef>);
 
@@ -188,7 +239,18 @@ impl GithubClient {
         let message = response
             .json::<ErrorBody>()
             .await
-            .map(|body| body.message)
+            .map(|body| {
+                let details: Vec<_> = body
+                    .errors
+                    .into_iter()
+                    .filter_map(|detail| detail.message)
+                    .collect();
+                if details.is_empty() {
+                    body.message
+                } else {
+                    format!("{}: {}", body.message, details.join("; "))
+                }
+            })
             .unwrap_or_else(|_| {
                 status
                     .canonical_reason()
@@ -287,7 +349,10 @@ impl GithubClient {
 
     /// The login of the account the App is installed on; authenticated as the
     /// App itself, since the installation id comes from an untrusted redirect.
-    pub async fn installation_account(&self, installation_id: i64) -> Result<String, GithubError> {
+    pub async fn installation_account(
+        &self,
+        installation_id: i64,
+    ) -> Result<InstallationAccount, GithubError> {
         let jwt = jwt::sign(
             self.app.app_id,
             self.app.private_key_pem.expose(),
@@ -301,10 +366,86 @@ impl GithubClient {
             ),
         )
         .await?;
-        Ok(Self::decode::<InstallationDetails>(response)
-            .await?
-            .account
-            .login)
+        let account = Self::decode::<InstallationDetails>(response).await?.account;
+        Ok(InstallationAccount {
+            kind: match account.kind.as_str() {
+                "User" => AccountKind::User,
+                "Organization" => AccountKind::Organization,
+                _ => AccountKind::Other,
+            },
+            login: account.login,
+        })
+    }
+
+    /// Whether the connecting user may bind this installation: an admin of the
+    /// organization it is installed on, or the user it is installed on.
+    pub async fn user_owns_installation(
+        &self,
+        token: &UserToken,
+        account: &InstallationAccount,
+    ) -> Result<bool, GithubError> {
+        let authorization = format!("Bearer {}", token.0.expose());
+        match account.kind {
+            AccountKind::Organization => {
+                let response = Self::send(
+                    self.request(
+                        self.http
+                            .get(self.url(&format!("/user/memberships/orgs/{}", account.login)))
+                            .header(AUTHORIZATION, authorization),
+                    ),
+                )
+                .await;
+                match response {
+                    Ok(response) => {
+                        let membership: Membership = Self::decode(response).await?;
+                        Ok(membership.role == "admin" && membership.state == "active")
+                    }
+                    Err(GithubError::Status {
+                        status: 403 | 404, ..
+                    }) => Ok(false),
+                    Err(error) => Err(error),
+                }
+            }
+            AccountKind::User => {
+                let response = Self::send(
+                    self.request(
+                        self.http
+                            .get(self.url("/user"))
+                            .header(AUTHORIZATION, authorization),
+                    ),
+                )
+                .await?;
+                let user: AuthenticatedUser = Self::decode(response).await?;
+                Ok(user.login.eq_ignore_ascii_case(&account.login))
+            }
+            AccountKind::Other => Ok(false),
+        }
+    }
+
+    async fn branch_sha(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+        branch: &str,
+    ) -> Result<Option<String>, GithubError> {
+        let token = self.token_for(installation_id, Some(repository)).await?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .get(self.url(&format!(
+                        "/repos/{}/{}/git/ref/heads/{branch}",
+                        repository.owner(),
+                        repository.name()
+                    )))
+                    .header(AUTHORIZATION, format!("Bearer {}", token.token.expose())),
+            ),
+        )
+        .await;
+        match response {
+            Ok(response) => Ok(Some(Self::decode::<RefDetails>(response).await?.object.sha)),
+            Err(GithubError::Status { status: 404, .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn oauth_configured(&self) -> bool {
@@ -365,7 +506,7 @@ impl GithubClient {
                 .get(LINK)
                 .and_then(|value| value.to_str().ok())
                 .and_then(next_link)
-                .filter(|link| link.starts_with(api_base))
+                .filter(|link| same_origin(link, api_base))
                 .map(str::to_owned);
             let page: UserInstallationsPage = Self::decode(response).await?;
             if page
@@ -401,7 +542,7 @@ impl GithubClient {
                 .get(LINK)
                 .and_then(|value| value.to_str().ok())
                 .and_then(next_link)
-                .filter(|link| link.starts_with(api_base))
+                .filter(|link| same_origin(link, api_base))
                 .map(str::to_owned);
             let page: RepositoriesPage = Self::decode(response).await?;
             for entry in page.repositories {
@@ -424,14 +565,15 @@ impl GithubClient {
     ) -> Result<PullRequestUrl, GithubError> {
         let repository = &pull_request.repository;
         let token = self.token_for(installation_id, Some(repository)).await?;
-        let response = Self::send(
+        let pulls_url = self.url(&format!(
+            "/repos/{}/{}/pulls",
+            repository.owner(),
+            repository.name()
+        ));
+        let created = Self::send(
             self.request(
                 self.http
-                    .post(self.url(&format!(
-                        "/repos/{}/{}/pulls",
-                        repository.owner(),
-                        repository.name()
-                    )))
+                    .post(&pulls_url)
                     .header(AUTHORIZATION, format!("Bearer {}", token.token.expose()))
                     .json(&json!({
                         "title": pull_request.title,
@@ -442,9 +584,82 @@ impl GithubClient {
                     })),
             ),
         )
+        .await;
+        match created {
+            Ok(response) => {
+                let created: PullRequestResponse = Self::decode(response).await?;
+                Ok(PullRequestUrl(created.html_url))
+            }
+            Err(GithubError::Status {
+                status: 422,
+                message,
+            }) if message.contains(PULL_REQUEST_EXISTS) => {
+                match self
+                    .open_pull_request_of(&pulls_url, &token, repository, &pull_request.head)
+                    .await?
+                {
+                    Some(url) => Ok(url),
+                    None => Err(GithubError::Status {
+                        status: 422,
+                        message,
+                    }),
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn open_pull_request_of(
+        &self,
+        pulls_url: &str,
+        token: &InstallationToken,
+        repository: &RepositoryRef,
+        branch: &str,
+    ) -> Result<Option<PullRequestUrl>, GithubError> {
+        let response = Self::send(
+            self.request(
+                self.http
+                    .get(pulls_url)
+                    .query(&[
+                        ("head", format!("{}:{branch}", repository.owner())),
+                        ("state", "open".to_owned()),
+                    ])
+                    .header(AUTHORIZATION, format!("Bearer {}", token.token.expose())),
+            ),
+        )
         .await?;
-        let created: PullRequestResponse = Self::decode(response).await?;
-        Ok(PullRequestUrl(created.html_url))
+        let open: Vec<PullRequestListEntry> = Self::decode(response).await?;
+        Ok(open
+            .into_iter()
+            .next()
+            .map(|entry| PullRequestUrl(entry.html_url)))
+    }
+}
+
+fn origin(url: &str) -> Option<(String, String, u16)> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    if authority.contains('@') || authority.is_empty() {
+        return None;
+    }
+    let default_port = match scheme {
+        "https" => 443,
+        "http" => 80,
+        _ => return None,
+    };
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !host.ends_with(':') => (host, port.parse().ok()?),
+        _ => (authority, default_port),
+    };
+    Some((scheme.to_ascii_lowercase(), host.to_ascii_lowercase(), port))
+}
+
+/// Same scheme, host and port: a `Link` header must not lead the client, and
+/// the token it carries, to another server.
+fn same_origin(link: &str, base: &str) -> bool {
+    match (origin(link), origin(base)) {
+        (Some(link), Some(base)) => link == base,
+        _ => false,
     }
 }
 
@@ -462,6 +677,15 @@ pub(crate) fn next_link(header: &str) -> Option<&str> {
 impl CodeHost for GithubClient {
     async fn repositories(&self, installation_id: i64) -> Result<Vec<RepositoryRef>, CoreError> {
         Ok(self.list_repositories(installation_id).await?)
+    }
+
+    async fn branch_head(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+        branch: &str,
+    ) -> Result<Option<String>, CoreError> {
+        Ok(self.branch_sha(installation_id, repository, branch).await?)
     }
 
     async fn open_draft_pr(
@@ -497,6 +721,13 @@ mod tests {
         pull_bodies: Vec<Value>,
         expires_at: Option<String>,
         fail_pulls_with: Option<u16>,
+        pull_exists: bool,
+        listed_pulls: Vec<Value>,
+        account_kind: Option<String>,
+        membership: Option<Value>,
+        user_login: Option<String>,
+        branch_sha: Option<String>,
+        list_queries: Vec<HashMap<String, String>>,
         base: String,
         oauth_bodies: Vec<Value>,
         oauth_reply: Option<Value>,
@@ -550,6 +781,16 @@ mod tests {
         Json(body): Json<Value>,
     ) -> impl IntoResponse {
         let mut recorded = shared.lock().unwrap();
+        if recorded.pull_exists {
+            return (
+                AxumStatus::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "message": "Validation Failed",
+                    "errors": [{"resource": "PullRequest", "code": "custom", "message": "A pull request already exists for acme:capitainerie/run-1."}],
+                })),
+            )
+                .into_response();
+        }
         if let Some(status) = recorded.fail_pulls_with {
             return (
                 AxumStatus::from_u16(status).unwrap(),
@@ -560,6 +801,15 @@ mod tests {
         assert_eq!(headers["authorization"], "Bearer ghs_secret1");
         recorded.pull_bodies.push(body);
         Json(json!({"html_url": "https://github.com/acme/api/pull/9"})).into_response()
+    }
+
+    async fn list_pulls(
+        State(shared): State<Shared>,
+        Query(query): Query<HashMap<String, String>>,
+    ) -> Json<Value> {
+        let mut recorded = shared.lock().unwrap();
+        recorded.list_queries.push(query);
+        Json(Value::Array(recorded.listed_pulls.clone()))
     }
 
     async fn repo() -> Json<Value> {
@@ -575,8 +825,44 @@ mod tests {
         if id == 404 {
             return (AxumStatus::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response();
         }
-        Json(json!({"id": id, "account": {"login": "acme", "type": "Organization"}}))
-            .into_response()
+        let kind = shared
+            .lock()
+            .unwrap()
+            .account_kind
+            .clone()
+            .unwrap_or_else(|| "Organization".to_owned());
+        Json(json!({"id": id, "account": {"login": "acme", "type": kind}})).into_response()
+    }
+
+    async fn membership(State(shared): State<Shared>) -> impl IntoResponse {
+        match shared.lock().unwrap().membership.clone() {
+            Some(body) => Json(body).into_response(),
+            None => (AxumStatus::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response(),
+        }
+    }
+
+    async fn authenticated_user(State(shared): State<Shared>) -> Json<Value> {
+        let login = shared
+            .lock()
+            .unwrap()
+            .user_login
+            .clone()
+            .unwrap_or_default();
+        Json(json!({"login": login}))
+    }
+
+    async fn git_ref(
+        State(shared): State<Shared>,
+        axum::extract::Path((_owner, _repo, branch)): axum::extract::Path<(String, String, String)>,
+    ) -> impl IntoResponse {
+        assert_eq!(branch, "capitainerie/run-1");
+        match shared.lock().unwrap().branch_sha.clone() {
+            Some(sha) => {
+                Json(json!({"ref": format!("refs/heads/{branch}"), "object": {"sha": sha}}))
+                    .into_response()
+            }
+            None => (AxumStatus::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response(),
+        }
     }
 
     async fn oauth_token(
@@ -625,10 +911,16 @@ mod tests {
             .route("/login/oauth/access_token", post(oauth_token))
             .route("/user/installations", get(user_installations))
             .route("/app/installations/{id}", get(installation))
+            .route("/user/memberships/orgs/{org}", get(membership))
+            .route("/user", get(authenticated_user))
+            .route(
+                "/repos/{owner}/{repo}/git/ref/heads/{*branch}",
+                get(git_ref),
+            )
             .route("/app/installations/{id}/access_tokens", post(issue_token))
             .route("/installation/repositories", get(repositories))
             .route("/repos/{owner}/{repo}", get(repo))
-            .route("/repos/{owner}/{repo}/pulls", post(pulls))
+            .route("/repos/{owner}/{repo}/pulls", post(pulls).get(list_pulls))
             .with_state(Arc::clone(&shared));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -821,7 +1113,9 @@ mod tests {
     async fn installation_account_is_read_with_the_app_jwt() {
         let shared = Shared::default();
         let client = serve(Arc::clone(&shared)).await;
-        assert_eq!(client.installation_account(5).await.unwrap(), "acme");
+        let account = client.installation_account(5).await.unwrap();
+        assert_eq!(account.login, "acme");
+        assert_eq!(account.kind, AccountKind::Organization);
         {
             let recorded = shared.lock().unwrap();
             assert!(
@@ -833,6 +1127,96 @@ mod tests {
         }
         let error = client.installation_account(404).await.unwrap_err();
         assert!(matches!(error, GithubError::Status { status: 404, .. }));
+    }
+
+    async fn owns(shared: &Shared, kind: &str) -> bool {
+        shared.lock().unwrap().account_kind = Some(kind.to_owned());
+        let client = serve(Arc::clone(shared)).await;
+        let token = client.exchange_user_code("c").await.unwrap();
+        let account = client.installation_account(5).await.unwrap();
+        client
+            .user_owns_installation(&token, &account)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn only_an_active_org_admin_owns_an_organization_installation() {
+        let admin = Shared::default();
+        admin.lock().unwrap().membership = Some(json!({"role": "admin", "state": "active"}));
+        assert!(owns(&admin, "Organization").await);
+
+        let member = Shared::default();
+        member.lock().unwrap().membership = Some(json!({"role": "member", "state": "active"}));
+        assert!(!owns(&member, "Organization").await);
+
+        let pending = Shared::default();
+        pending.lock().unwrap().membership = Some(json!({"role": "admin", "state": "pending"}));
+        assert!(!owns(&pending, "Organization").await);
+
+        let outsider = Shared::default();
+        assert!(!owns(&outsider, "Organization").await);
+    }
+
+    #[tokio::test]
+    async fn a_user_installation_is_owned_by_that_user_only() {
+        let same = Shared::default();
+        same.lock().unwrap().user_login = Some("ACME".into());
+        assert!(owns(&same, "User").await);
+
+        let other = Shared::default();
+        other.lock().unwrap().user_login = Some("mallory".into());
+        assert!(!owns(&other, "User").await);
+    }
+
+    #[tokio::test]
+    async fn any_other_account_kind_is_not_owned() {
+        let shared = Shared::default();
+        shared.lock().unwrap().user_login = Some("acme".into());
+        assert!(!owns(&shared, "Bot").await);
+    }
+
+    #[tokio::test]
+    async fn the_head_of_a_branch_is_read_and_a_missing_branch_is_none() {
+        let shared = Shared::default();
+        shared.lock().unwrap().branch_sha = Some("abc123".into());
+        let client = serve(Arc::clone(&shared)).await;
+        let api = repo_ref("acme/api");
+
+        assert_eq!(
+            client
+                .branch_head(5, &api, "capitainerie/run-1")
+                .await
+                .unwrap(),
+            Some("abc123".to_owned())
+        );
+        shared.lock().unwrap().branch_sha = None;
+        assert_eq!(
+            client
+                .branch_head(5, &api, "capitainerie/run-1")
+                .await
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_link_must_share_scheme_host_and_port_with_the_api() {
+        let base = "https://api.github.com";
+        assert!(same_origin(
+            "https://api.github.com/user/installations?page=2",
+            base
+        ));
+        assert!(same_origin("https://API.github.com:443/x", base));
+        assert!(!same_origin("https://api.github.com.evil.example/x", base));
+        assert!(!same_origin("https://api.github.com@evil.example/x", base));
+        assert!(!same_origin("http://api.github.com/x", base));
+        assert!(!same_origin("https://api.github.com:8443/x", base));
+        assert!(!same_origin("not a url", base));
+        assert!(same_origin(
+            "http://127.0.0.1:4000/a",
+            "http://127.0.0.1:4000"
+        ));
     }
 
     #[tokio::test]
@@ -876,6 +1260,39 @@ mod tests {
                 "draft": true,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn an_existing_pull_request_for_the_branch_is_reused() {
+        let shared = Shared::default();
+        {
+            let mut recorded = shared.lock().unwrap();
+            recorded.pull_exists = true;
+            recorded.listed_pulls = vec![json!({"html_url": "https://github.com/acme/api/pull/4"})];
+        }
+        let client = serve(Arc::clone(&shared)).await;
+
+        let url = client.open_draft_pr(5, draft()).await.unwrap();
+
+        assert_eq!(
+            url,
+            PullRequestUrl("https://github.com/acme/api/pull/4".into())
+        );
+        let recorded = shared.lock().unwrap();
+        assert_eq!(recorded.list_queries.len(), 1);
+        assert_eq!(recorded.list_queries[0]["head"], "acme:capitainerie/run-1");
+        assert_eq!(recorded.list_queries[0]["state"], "open");
+    }
+
+    #[tokio::test]
+    async fn a_duplicate_error_without_an_open_pull_request_stays_an_error() {
+        let shared = Shared::default();
+        shared.lock().unwrap().pull_exists = true;
+        let client = serve(Arc::clone(&shared)).await;
+
+        let error = client.open_draft_pr(5, draft()).await.unwrap_err();
+
+        assert!(matches!(error, CoreError::Invalid(_)));
     }
 
     #[tokio::test]

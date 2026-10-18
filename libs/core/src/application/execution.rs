@@ -1,8 +1,9 @@
-use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
+use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::transactional;
 use chrono::Utc;
+use uuid::Uuid;
 
-use super::{CapitainerieUseCase, run::AgentDelegation};
+use super::CapitainerieUseCase;
 use crate::{
     domain::{
         authorization::{AccessRequest, Action, ResourceKind, Subject, require},
@@ -11,22 +12,21 @@ use crate::{
             ports::CardRepository,
             service::{CardService, MoveCard},
         },
-        delegation::{
-            DelegatedToken,
-            ports::{DelegationVault, TokenExchanger},
-        },
         event::ports::EventEmitter,
         execution::{
             EXECUTOR_AGENT, ExecutableCard, GithubInstallation, RepositoryRef, TaskGrant,
             ports::{GithubInstallationRepository, TaskGrantRepository},
         },
         provider::ports::ModelAssignmentRepository,
-        run::{Run, ports::RunRepository},
+        run::{
+            Run, StepKind,
+            ports::{RunRepository, StepRepository},
+        },
     },
-    infrastructure::{
-        card::postgres::PgCardRepository, crypto::SecretCipher, delegation::PgDelegationVault,
-    },
+    infrastructure::card::postgres::PgCardRepository,
 };
+
+pub(super) const COMMENT_ID_FIELD: &str = "comment_id";
 
 #[derive(Debug, Clone)]
 pub struct StartedExecution {
@@ -35,36 +35,38 @@ pub struct StartedExecution {
 }
 
 impl CapitainerieUseCase {
-    /// Exchanges the user's token for the executor first, so an identity
-    /// provider outage refuses the request instead of queueing a run that
-    /// could never comment on the card; then stores everything at once.
-    pub async fn execute_card_delegated<X: TokenExchanger>(
+    /// The read-only half of `execute_card`: the policy, the card, its state
+    /// and its executions, so a handler can refuse before it calls GitHub.
+    /// `execute_card` checks everything again inside its writing transaction.
+    #[transactional(card, run, authz)]
+    pub async fn check_card_executable(
         &self,
         subject: Subject,
         card_id: CardId,
-        repository: RepositoryRef,
-        base_branch: String,
-        expected_version: i32,
-        delegation: AgentDelegation<'_, X>,
-    ) -> Result<StartedExecution, CoreError> {
-        let token = delegation
-            .exchanger
-            .for_agent(delegation.issuer, delegation.user_token, EXECUTOR_AGENT)
-            .await?;
-        let cipher = self.cipher()?;
-        self.execute_card(
-            subject,
-            card_id,
-            repository,
-            base_branch,
-            expected_version,
-            token,
-            cipher,
+    ) -> Result<(), CoreError> {
+        let mut card_repository = card_repository;
+        let mut run_repository = run_repository;
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::CardExecute,
+                ResourceKind::Card,
+                Some(card_id.0),
+            ),
         )
-        .await
+        .await?;
+        let card = card_repository
+            .find(subject.organization_id, card_id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        if run_repository.has_active_execution(card_id).await? {
+            return Err(CoreError::Conflict("execution_already_active".into()));
+        }
+        ExecutableCard::try_from(card)?;
+        Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[transactional(
         card,
         card_comment,
@@ -75,15 +77,13 @@ impl CapitainerieUseCase {
         emitter,
         authz
     )]
-    async fn execute_card(
+    pub async fn execute_card(
         &self,
         subject: Subject,
         card_id: CardId,
         repository: RepositoryRef,
         base_branch: String,
         expected_version: i32,
-        token: DelegatedToken,
-        cipher: &SecretCipher,
     ) -> Result<StartedExecution, CoreError> {
         let mut run_repository = run_repository;
         let mut model_assignment_repository = model_assignment_repository;
@@ -145,13 +145,88 @@ impl CapitainerieUseCase {
         run.models = model_assignment_repository.get(organization_id).await?;
         run_repository.insert(&run).await?;
         emitter.emit(&queued)?;
-        PgDelegationVault::new(&tx, cipher)
-            .store(run.id, EXECUTOR_AGENT, &token)
-            .await?;
         Ok(StartedExecution {
             run_id: run.id,
             card,
         })
+    }
+
+    /// The executor's report on its card. The worker writes it itself, as the
+    /// human who handed the card over with the executor as the acting agent;
+    /// the policy decision is audited with the run. Posting twice is a no-op:
+    /// the id of the comment lives in the Execute step, in the same
+    /// transaction as the comment.
+    #[transactional(card, card_comment, transcript, run, step, emitter, authz)]
+    pub async fn comment_card_as_executor(
+        &self,
+        run_id: RunId,
+        card_id: CardId,
+        body: String,
+    ) -> Result<CardCommentId, CoreError> {
+        let mut run_repository = run_repository;
+        let mut step_repository = step_repository;
+        let run = run_repository
+            .lock(run_id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        if run.subject.card_id() != Some(card_id) {
+            return Err(CoreError::Invalid(
+                "the run does not belong to this card".into(),
+            ));
+        }
+        let mut execute_step = step_repository
+            .list(run_id)
+            .await?
+            .into_iter()
+            .find(|step| step.kind == StepKind::Execute);
+        if let Some(posted) = execute_step
+            .as_ref()
+            .and_then(|step| step.output.as_ref())
+            .and_then(|output| output[COMMENT_ID_FIELD].as_str())
+            .and_then(|id| id.parse::<uuid::Uuid>().ok())
+        {
+            return Ok(CardCommentId(posted));
+        }
+        let comment = CardService::new(
+            card_repository,
+            card_comment_repository,
+            transcript_repository,
+            emitter,
+            authz,
+        )
+        .comment(
+            Subject {
+                id: run.initiated_by.clone(),
+                organization_id: run.organization_id,
+                actor: Some(EXECUTOR_AGENT.to_owned()),
+                is_admin: false,
+            },
+            card_id,
+            body,
+            Some(run_id),
+        )
+        .await?;
+        if let Some(step) = execute_step.as_mut() {
+            let mut output = step.output.take().unwrap_or_else(|| serde_json::json!({}));
+            output[COMMENT_ID_FIELD] = serde_json::json!(comment.id.0.to_string());
+            step.output = Some(output);
+            step_repository.save(step).await?;
+        }
+        Ok(comment.id)
+    }
+
+    /// Asks the policy decision point on behalf of a handler that must refuse
+    /// before it does anything else; the decision is audited either way.
+    #[transactional(authz)]
+    pub async fn authorize(
+        &self,
+        subject: Subject,
+        action: Action,
+        kind: ResourceKind,
+        id: Option<Uuid>,
+    ) -> Result<(), CoreError> {
+        let _ = &tx;
+        require(authz, AccessRequest::new(subject, action, kind, id)).await
     }
 
     /// Any member may know whether GitHub is connected; the organization

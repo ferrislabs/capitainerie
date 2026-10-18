@@ -11,6 +11,15 @@ pub enum RunnerError {
     #[error("job {0} disappeared while it was followed")]
     JobGone(String),
 
+    #[error("the proxy url {0:?} has no host")]
+    ProxyUrl(String),
+
+    #[error("cannot resolve the proxy host {0}: {1}")]
+    ProxyLookup(String, std::io::Error),
+
+    #[error("the proxy host {0} has no address")]
+    ProxyUnresolved(String),
+
     #[error("job {0} has no uid, so the secret cannot be owned by it")]
     NoJobUid(String),
 }

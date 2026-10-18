@@ -31,9 +31,11 @@ use tokio::{net::TcpListener, sync::mpsc};
 const TASK_TOKEN: &str = "task-token-0001";
 const ANTHROPIC_KEY: &str = "sk-ant-real-key";
 const INSTALLATION_TOKEN: &str = "ghs_installation";
-const BRANCH: &str = "capitainerie/0a1b2c3d";
+const MODEL: &str = "claude-sonnet-5-5";
+const BRANCH: &str = "capitainerie/0a1b2c3d4e5f";
 const OLD: &str = "1111111111111111111111111111111111111111";
 const NEW: &str = "2222222222222222222222222222222222222222";
+const MESSAGE: &str = r#"{"model":"claude-sonnet-5-5","max_tokens":1024}"#;
 const ZERO: &str = "0000000000000000000000000000000000000000";
 
 fn sha256(token: &str) -> [u8; 32] {
@@ -50,6 +52,7 @@ fn grant() -> TaskGrant {
         organization_id: OrganizationId(uuid::Uuid::nil()),
         repository: "acme/web".parse().unwrap(),
         branch: BRANCH.into(),
+        model: MODEL.into(),
         expires_at: Utc::now() + chrono::Duration::minutes(30),
         revoked_at: None,
     }
@@ -219,9 +222,20 @@ impl Harness {
             .post(format!("{}/anthropic{path}", self.url))
             .header("x-api-key", token)
             .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "tools-2024")
+            .header("anthropic-beta", "prompt-caching-2024-07-31, tools-2024")
             .header("content-type", "application/json")
-            .body(r#"{"model":"m"}"#)
+            .body(MESSAGE)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn messages_with(&self, body: serde_json::Value) -> reqwest::Response {
+        self.client
+            .post(format!("{}/anthropic/v1/messages", self.url))
+            .header("x-api-key", TASK_TOKEN)
+            .header("content-type", "application/json")
+            .body(body.to_string())
             .send()
             .await
             .unwrap()
@@ -379,8 +393,11 @@ async fn anthropic_messages_are_forwarded_with_the_real_key_only() {
     assert_eq!(request.uri, "/v1/messages?beta=true");
     assert_eq!(request.headers["x-api-key"], ANTHROPIC_KEY);
     assert_eq!(request.headers["anthropic-version"], "2023-06-01");
-    assert_eq!(request.headers["anthropic-beta"], "tools-2024");
-    assert_eq!(request.body, Bytes::from_static(br#"{"model":"m"}"#));
+    assert_eq!(
+        request.headers["anthropic-beta"],
+        "prompt-caching-2024-07-31"
+    );
+    assert_eq!(request.body, Bytes::from_static(MESSAGE.as_bytes()));
     assert!(request.headers.get("authorization").is_none());
     for (_, value) in &request.headers {
         assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
@@ -394,7 +411,7 @@ async fn a_bearer_task_token_and_count_tokens_are_accepted() {
         .client
         .post(format!("{}/anthropic/v1/messages/count_tokens", h.url))
         .bearer_auth(TASK_TOKEN)
-        .body("{}")
+        .body(r#"{"model":"claude-sonnet-5-5"}"#)
         .send()
         .await
         .unwrap();
@@ -716,4 +733,205 @@ async fn an_unreachable_upstream_is_a_generic_502() {
     assert_eq!(response.status(), 502);
     let body = response.text().await.unwrap();
     assert!(!body.contains("127.0.0.1"));
+}
+
+#[tokio::test]
+async fn the_original_bytes_are_forwarded_not_a_reserialization() {
+    let h = harness().await;
+    let body = "{ \"max_tokens\" :  1,   \"model\":\"claude-sonnet-5-5\" ,\"x\":1.0}";
+    let response = h
+        .client
+        .post(format!("{}/anthropic/v1/messages", h.url))
+        .header("x-api-key", TASK_TOKEN)
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        Harness::received(&h.anthropic)[0].body.as_ref(),
+        body.as_bytes()
+    );
+}
+
+#[tokio::test]
+async fn s1_a_model_other_than_the_grants_is_403() {
+    let h = harness().await;
+    for body in [
+        serde_json::json!({"model": "claude-opus-5", "max_tokens": 10}),
+        serde_json::json!({"max_tokens": 10}),
+    ] {
+        assert_eq!(h.messages_with(body).await.status(), 403);
+    }
+    assert!(Harness::received(&h.anthropic).is_empty());
+}
+
+#[tokio::test]
+async fn s1_max_tokens_is_capped_at_32000() {
+    let h = harness().await;
+    let over = h
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_001}))
+        .await;
+    let at = h
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_000}))
+        .await;
+    assert_eq!(over.status(), 403);
+    assert_eq!(at.status(), 200);
+}
+
+#[tokio::test]
+async fn s1_remote_mcp_servers_and_containers_are_403() {
+    let h = harness().await;
+    for extra in [
+        serde_json::json!({"mcp_servers": [{"type": "url", "url": "https://x", "name": "x"}]}),
+        serde_json::json!({"container": "c1"}),
+    ] {
+        let mut body = serde_json::json!({"model": MODEL, "max_tokens": 10});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        assert_eq!(h.messages_with(body).await.status(), 403);
+    }
+    assert!(Harness::received(&h.anthropic).is_empty());
+}
+
+#[tokio::test]
+async fn s1_server_side_tools_are_403_and_client_tools_pass() {
+    let h = harness().await;
+    for kind in [
+        "web_search_20250305",
+        "web_fetch_20250910",
+        "code_execution_20250522",
+        "bash_20250124",
+        "computer_20250124",
+        "text_editor_20250728",
+        "mcp_toolset",
+    ] {
+        let body = serde_json::json!({
+            "model": MODEL, "max_tokens": 10,
+            "tools": [{"type": kind, "name": "t"}],
+        });
+        assert_eq!(h.messages_with(body).await.status(), 403, "{kind}");
+    }
+    assert!(Harness::received(&h.anthropic).is_empty());
+    let client_tools = serde_json::json!({
+        "model": MODEL, "max_tokens": 10,
+        "tools": [{"name": "Bash", "description": "d", "input_schema": {"type": "object"}}],
+    });
+    assert_eq!(h.messages_with(client_tools).await.status(), 200);
+}
+
+#[tokio::test]
+async fn s1_only_allow_listed_betas_and_beta_true_are_forwarded() {
+    let h = harness().await;
+    let response = h
+        .client
+        .post(format!("{}/anthropic/v1/messages?beta=true&evil=1", h.url))
+        .header("x-api-key", TASK_TOKEN)
+        .header(
+            "anthropic-beta",
+            "files-api-2025-04-14,interleaved-thinking-2025-05-14",
+        )
+        .body(MESSAGE)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let only_unlisted = h
+        .client
+        .post(format!("{}/anthropic/v1/messages?other=1", h.url))
+        .header("x-api-key", TASK_TOKEN)
+        .header("anthropic-beta", "files-api-2025-04-14")
+        .body(MESSAGE)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(only_unlisted.status(), 200);
+
+    let seen = Harness::received(&h.anthropic);
+    assert_eq!(seen[0].uri, "/v1/messages?beta=true");
+    assert_eq!(
+        seen[0].headers["anthropic-beta"],
+        "interleaved-thinking-2025-05-14"
+    );
+    assert_eq!(seen[1].uri, "/v1/messages");
+    assert!(seen[1].headers.get("anthropic-beta").is_none());
+}
+
+#[tokio::test]
+async fn s1_a_body_over_10_mib_is_413_and_never_forwarded() {
+    let h = harness().await;
+    let big = format!(
+        r#"{{"model":"{MODEL}","max_tokens":1,"pad":"{}"}}"#,
+        "x".repeat(10 * 1024 * 1024)
+    );
+    let declared = h
+        .client
+        .post(format!("{}/anthropic/v1/messages", h.url))
+        .header("x-api-key", TASK_TOKEN)
+        .body(big.clone())
+        .send()
+        .await;
+    if let Ok(declared) = declared {
+        assert_eq!(declared.status(), 413);
+    }
+    let chunks: Vec<Result<Vec<u8>, Infallible>> = big
+        .as_bytes()
+        .chunks(64 * 1024)
+        .map(|chunk| Ok(chunk.to_vec()))
+        .collect();
+    let streamed = h
+        .client
+        .post(format!("{}/anthropic/v1/messages", h.url))
+        .header("x-api-key", TASK_TOKEN)
+        .body(reqwest::Body::wrap_stream(stream::iter(chunks)))
+        .send()
+        .await;
+    if let Ok(streamed) = streamed {
+        assert_eq!(streamed.status(), 413);
+    }
+    assert!(Harness::received(&h.anthropic).is_empty());
+}
+
+#[tokio::test]
+async fn s8_unknown_tokens_are_remembered_for_a_moment() {
+    let h = harness().await;
+    for _ in 0..4 {
+        assert_eq!(h.messages("/v1/messages", "nope").await.status(), 401);
+    }
+    assert_eq!(h.lookups.load(Ordering::SeqCst), 1);
+    assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
+}
+
+#[tokio::test]
+async fn s8_a_grant_serves_at_most_16_requests_at_once() {
+    let upstream = Router::new().fallback(|| async {
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        "slow"
+    });
+    let anthropic_url = serve(upstream).await;
+    let (github_url, github) = capturing_upstream().await;
+    let h = Arc::new(
+        start(
+            Fake::with(grant()),
+            anthropic_url,
+            github_url,
+            Log::default(),
+            github,
+        )
+        .await,
+    );
+    let calls: Vec<_> = (0..20)
+        .map(|_| {
+            let h = Arc::clone(&h);
+            tokio::spawn(async move { h.messages("/v1/messages", TASK_TOKEN).await.status() })
+        })
+        .collect();
+    let mut statuses = Vec::new();
+    for call in calls {
+        statuses.push(call.await.unwrap().as_u16());
+    }
+    assert_eq!(statuses.iter().filter(|s| **s == 200).count(), 16);
+    assert_eq!(statuses.iter().filter(|s| **s == 429).count(), 4);
+    assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
 }
