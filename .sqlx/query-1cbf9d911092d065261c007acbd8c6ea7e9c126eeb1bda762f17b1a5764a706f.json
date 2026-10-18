@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT kind, base_url, preview, created_by, updated_at\n            FROM provider_credentials\n            WHERE organization_id = $1\n            ORDER BY kind\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "base_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "preview",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1cbf9d911092d065261c007acbd8c6ea7e9c126eeb1bda762f17b1a5764a706f"
+}

@@ -16,6 +16,7 @@ Le chart ne crée aucune valeur secrète. Créer le Secret `secrets.existingSecr
 |---|---|
 | `DATABASE_URL` | api, worker, mcp-kanban, migrations |
 | `DELEGATION_KEY` (`openssl rand -base64 32`, identique pour api et worker) | api, worker |
+| `SECRETS_KEY` (`openssl rand -base64 32`, identique pour api et worker ; chiffre les clés des fournisseurs) | api, worker |
 | `EXCHANGE_CLIENT_ID`, `EXCHANGE_CLIENT_SECRET` | api, worker |
 | `AGENT_CREDENTIALS` (`client=secret,...`) | api, worker |
 | `IGGY_USERNAME`, `IGGY_PASSWORD` | api, worker, exporter |

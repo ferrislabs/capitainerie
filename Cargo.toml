@@ -15,6 +15,7 @@ members = [
     "libs/handlers-analytics",
     "libs/handlers-cards",
     "libs/handlers-identity",
+    "libs/handlers-providers",
     "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/macros",
@@ -89,6 +90,7 @@ capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-analytics = { path = "libs/handlers-analytics" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
+capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
