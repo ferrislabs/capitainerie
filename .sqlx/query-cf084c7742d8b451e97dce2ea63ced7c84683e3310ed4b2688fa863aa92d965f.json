@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title\n            FROM runs r\n            JOIN transcripts t ON t.id = r.transcript_id\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title\n            FROM runs r\n            JOIN transcripts t ON t.id = r.transcript_id\n            WHERE r.id = $1\n            FOR UPDATE OF r SKIP LOCKED\n            ",
   "describe": {
     "columns": [
       {
@@ -60,15 +60,18 @@
       },
       {
         "ordinal": 11,
+        "name": "models",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
         "name": "transcript_title",
         "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -83,8 +86,9 @@
       true,
       true,
       true,
+      true,
       false
     ]
   },
-  "hash": "994c0c4a91e2aca991966003ef9edbf7ed8619760eb64d37d2688c407fff832f"
+  "hash": "cf084c7742d8b451e97dce2ea63ced7c84683e3310ed4b2688fa863aa92d965f"
 }

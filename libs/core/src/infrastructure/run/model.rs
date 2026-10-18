@@ -22,6 +22,7 @@ pub(super) struct RunOverviewRow {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub trace_id: Option<String>,
+    pub models: Option<serde_json::Value>,
     pub transcript_title: String,
 }
 
@@ -46,6 +47,11 @@ impl TryFrom<RunOverviewRow> for RunOverview {
                 started_at: row.started_at,
                 finished_at: row.finished_at,
                 trace_id: row.trace_id,
+                models: row
+                    .models
+                    .map(serde_json::from_value)
+                    .transpose()
+                    .map_err(|error| CoreError::Internal(format!("stored run models: {error}")))?,
             },
             transcript_title: row.transcript_title,
         })

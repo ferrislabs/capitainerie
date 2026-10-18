@@ -37,6 +37,9 @@ pub struct Run {
     pub finished_at: Option<DateTime<Utc>>,
     /// Trace id of the worker span that runs it, to open the trace backend.
     pub trace_id: Option<String>,
+    /// Models frozen at submission; `None` for runs queued before model
+    /// assignments existed, which use the worker's defaults.
+    pub models: Option<crate::domain::provider::ModelAssignments>,
 }
 
 /// A run as the console lists it.
@@ -69,6 +72,7 @@ impl Run {
             started_at: None,
             finished_at: None,
             trace_id: None,
+            models: None,
         };
         let event = RunQueued {
             run_id: run.id.0,
