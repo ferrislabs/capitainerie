@@ -41,6 +41,11 @@ config:
   # -- Client ids of the agents a run acts through (PIPELINE_AGENTS on api and worker, MCP_ACCEPTED_AGENTS on mcp-kanban).
   pipelineAgents:
     - capitainerie-agent-writer
+  github:
+    # -- URL name of the GitHub App (GITHUB_APP_SLUG): the install link is github.com/apps/<slug>/installations/new.
+    appSlug: ""
+    # -- GITHUB_API_BASE, for GitHub Enterprise. Empty keeps https://api.github.com.
+    apiBase: ""
   iggy:
     # -- host:port of the Iggy TCP endpoint (IGGY_ADDRESS).
     address: iggy:8090
@@ -84,6 +89,8 @@ api:
     - DATABASE_URL
     - DELEGATION_KEY
     - SECRETS_KEY
+    - GITHUB_APP_ID
+    - GITHUB_APP_PRIVATE_KEY
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS
@@ -148,6 +155,8 @@ worker:
     tag: ""
   # -- Value of MCP_URL. Empty uses the in-cluster mcp-kanban Service.
   mcpUrl: ""
+  # -- Value of CONSOLE_URL, linked from the pull requests of executions. Empty omits the link.
+  consoleUrl: ""
   llm:
     # -- OpenAI-compatible endpoint (LLM_BASE_URL).
     baseUrl: http://ollama:11434/v1

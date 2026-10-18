@@ -1,0 +1,57 @@
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use capitainerie_common::CoreError;
+use capitainerie_github::GithubError;
+use capitainerie_handlers::{ApiError, errors::ApiErrorResponse};
+use thiserror::Error;
+
+use crate::signer::InvalidState;
+
+#[derive(Debug, Error)]
+pub enum IntegrationError {
+    #[error(transparent)]
+    Api(#[from] ApiError),
+
+    #[error("the GitHub App is not configured: {0}")]
+    NotConfigured(&'static str),
+
+    #[error(transparent)]
+    InvalidState(#[from] InvalidState),
+}
+
+impl From<CoreError> for IntegrationError {
+    fn from(error: CoreError) -> Self {
+        Self::Api(error.into())
+    }
+}
+
+impl From<GithubError> for IntegrationError {
+    fn from(error: GithubError) -> Self {
+        CoreError::from(error).into()
+    }
+}
+
+impl IntoResponse for IntegrationError {
+    fn into_response(self) -> Response {
+        let (status, code, message) = match self {
+            Self::Api(error) => return error.into_response(),
+            Self::NotConfigured(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "github_app_not_configured",
+                format!("the GitHub App is not configured on this server: {message}"),
+            ),
+            Self::InvalidState(error) => {
+                (StatusCode::BAD_REQUEST, "invalid_state", error.to_string())
+            }
+        };
+        let body = ApiErrorResponse {
+            code,
+            status: status.as_u16(),
+            message,
+        };
+        (status, Json(body)).into_response()
+    }
+}

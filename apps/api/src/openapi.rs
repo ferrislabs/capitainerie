@@ -6,6 +6,7 @@ use capitainerie_handlers_analytics::{
 };
 use capitainerie_handlers_cards::{
     self as cards,
+    execute_card::{ExecuteCardRequest, ExecuteCardResponse},
     list_cards::CardListResponse,
     move_card::MoveCardRequest,
     response::{CardResponse, ColumnDto, ProvenanceResponse},
@@ -13,6 +14,10 @@ use capitainerie_handlers_cards::{
 use capitainerie_handlers_identity::{
     self as identity,
     me::{MeOrganization, MeResponse},
+};
+use capitainerie_handlers_integrations::{
+    self as integrations, ConnectGithubRequest, GithubIntegrationResponse, InstallUrlResponse,
+    RepositoryListResponse, RepositoryResponse,
 };
 use capitainerie_handlers_providers::{
     self as providers,
@@ -52,6 +57,7 @@ use utoipa::{
         runs::timeline::handler,
         cards::list_cards::handler,
         cards::move_card::handler,
+        cards::execute_card::handler,
         analytics::costs::handler,
         analytics::agents::handler,
         providers::list_providers::handler,
@@ -61,6 +67,11 @@ use utoipa::{
         providers::list_models::handler,
         providers::get_assignments::handler,
         providers::put_assignments::handler,
+        integrations::get_integration::handler,
+        integrations::disconnect::handler,
+        integrations::install_url::handler,
+        integrations::callback::handler,
+        integrations::list_repositories::handler,
     ),
     components(schemas(
         ApiErrorResponse,
@@ -82,6 +93,8 @@ use utoipa::{
         ColumnDto,
         ProvenanceResponse,
         MoveCardRequest,
+        ExecuteCardRequest,
+        ExecuteCardResponse,
         CostsResponse,
         CostRowResponse,
         CostTotals,
@@ -100,6 +113,11 @@ use utoipa::{
         ModelRefDto,
         ModelAssignmentsDto,
         ModelAssignmentsResponse,
+        GithubIntegrationResponse,
+        InstallUrlResponse,
+        ConnectGithubRequest,
+        RepositoryListResponse,
+        RepositoryResponse,
     )),
     modifiers(&BearerAuth),
     tags(
@@ -109,6 +127,7 @@ use utoipa::{
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
+        (name = integrations::TAG, description = "The GitHub App installation that lets Claude Code work on a repository"),
     )
 )]
 pub struct ApiDoc;
@@ -191,5 +210,20 @@ mod tests {
         let provider = &spec["components"]["schemas"]["ProviderResponse"]["properties"];
         assert!(provider.get("api_key").is_none());
         assert!(provider["preview"].is_object());
+    }
+
+    #[test]
+    fn the_execution_and_github_endpoints_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/cards/{card_id}/executions"]["post"].is_object());
+        assert!(paths["/api/v1/integrations/github"]["get"].is_object());
+        assert!(paths["/api/v1/integrations/github"]["delete"].is_object());
+        assert!(paths["/api/v1/integrations/github/install"]["get"].is_object());
+        assert!(paths["/api/v1/integrations/github/callback"]["post"].is_object());
+        assert!(paths["/api/v1/integrations/github/repositories"]["get"].is_object());
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["ExecuteCardResponse"]["properties"]["run_id"].is_object());
+        assert!(schemas["GithubIntegrationResponse"]["properties"]["app_configured"].is_object());
     }
 }

@@ -90,6 +90,16 @@ struct RepositoryDetails {
 }
 
 #[derive(Deserialize)]
+struct InstallationDetails {
+    account: AccountEntry,
+}
+
+#[derive(Deserialize)]
+struct AccountEntry {
+    login: String,
+}
+
+#[derive(Deserialize)]
 struct PullRequestResponse {
     html_url: String,
 }
@@ -239,6 +249,28 @@ impl GithubClient {
         Ok(Self::decode::<RepositoryDetails>(response)
             .await?
             .default_branch)
+    }
+
+    /// The login of the account the App is installed on; authenticated as the
+    /// App itself, since the installation id comes from an untrusted redirect.
+    pub async fn installation_account(&self, installation_id: i64) -> Result<String, GithubError> {
+        let jwt = jwt::sign(
+            self.app.app_id,
+            self.app.private_key_pem.expose(),
+            Utc::now(),
+        )?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .get(self.url(&format!("/app/installations/{installation_id}")))
+                    .bearer_auth(jwt),
+            ),
+        )
+        .await?;
+        Ok(Self::decode::<InstallationDetails>(response)
+            .await?
+            .account
+            .login)
     }
 
     async fn list_repositories(
@@ -425,8 +457,22 @@ mod tests {
         Json(json!({"default_branch": "trunk"}))
     }
 
+    async fn installation(
+        State(shared): State<Shared>,
+        axum::extract::Path(id): axum::extract::Path<i64>,
+        headers: HeaderMap,
+    ) -> impl IntoResponse {
+        shared.lock().unwrap().token_headers.push(headers);
+        if id == 404 {
+            return (AxumStatus::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response();
+        }
+        Json(json!({"id": id, "account": {"login": "acme", "type": "Organization"}}))
+            .into_response()
+    }
+
     async fn serve(shared: Shared) -> GithubClient {
         let app = Router::new()
+            .route("/app/installations/{id}", get(installation))
             .route("/app/installations/{id}/access_tokens", post(issue_token))
             .route("/installation/repositories", get(repositories))
             .route("/repos/{owner}/{repo}", get(repo))
@@ -543,6 +589,24 @@ mod tests {
         assert_eq!(names, ["acme/api", "acme/web", "acme/docs"]);
         let recorded = shared.lock().unwrap();
         assert!(recorded.token_bodies[0].get("repositories").is_none());
+    }
+
+    #[tokio::test]
+    async fn installation_account_is_read_with_the_app_jwt() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        assert_eq!(client.installation_account(5).await.unwrap(), "acme");
+        {
+            let recorded = shared.lock().unwrap();
+            assert!(
+                recorded.token_headers[0]["authorization"]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("Bearer ey")
+            );
+        }
+        let error = client.installation_account(404).await.unwrap_err();
+        assert!(matches!(error, GithubError::Status { status: 404, .. }));
     }
 
     #[tokio::test]

@@ -1,8 +1,11 @@
 use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
 use capitainerie_analytics::Analytics;
-use capitainerie_core::domain::provider::ports::ModelCatalog;
+use capitainerie_core::{
+    application::CapitainerieAuthorizer, domain::provider::ports::ModelCatalog,
+};
 use capitainerie_handlers::{AppState, auth::authenticate, health};
+use capitainerie_handlers_integrations::GithubIntegration;
 use capitainerie_handlers_realtime::Gateway;
 use tower_http::{
     cors::{AllowHeaders, AllowMethods, CorsLayer},
@@ -19,6 +22,8 @@ pub fn router<A: Analytics + 'static, C: ModelCatalog + 'static>(
     realtime: Gateway<AppState>,
     analytics: A,
     catalog: C,
+    authz: CapitainerieAuthorizer,
+    github: GithubIntegration,
     allowed_origins: &[String],
 ) -> anyhow::Result<Router> {
     let origins = allowed_origins
@@ -32,11 +37,16 @@ pub fn router<A: Analytics + 'static, C: ModelCatalog + 'static>(
     let protected = Router::new()
         .merge(capitainerie_handlers_identity::router())
         .merge(capitainerie_handlers_runs::router())
-        .merge(capitainerie_handlers_cards::router())
+        .merge(capitainerie_handlers_cards::router(github.client.clone()))
         .merge(capitainerie_handlers_analytics::router(analytics))
         .merge(capitainerie_handlers_providers::router(
             state.usecase.clone(),
             catalog,
+        ))
+        .merge(capitainerie_handlers_integrations::router(
+            state.usecase.clone(),
+            authz,
+            github,
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
 

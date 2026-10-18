@@ -1,0 +1,33 @@
+use axum::{Extension, Json, extract::State};
+use axum_extra::routing::TypedPath;
+use capitainerie_handlers::Caller;
+use serde::Deserialize;
+
+use crate::{GithubIntegrationResponse, IntegrationError, state::IntegrationsState};
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/api/v1/integrations/github")]
+pub struct GithubPath;
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/integrations/github",
+    operation_id = "getGithubIntegration",
+    tag = super::TAG,
+    responses(
+        (status = 200, description = "Whether the organization's GitHub App installation is connected", body = GithubIntegrationResponse),
+        (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn handler(
+    _: GithubPath,
+    State(state): State<IntegrationsState>,
+    Extension(caller): Extension<Caller>,
+) -> Result<Json<GithubIntegrationResponse>, IntegrationError> {
+    let installation = state.usecase.github_installation(caller.subject()).await?;
+    Ok(Json(GithubIntegrationResponse::new(
+        installation,
+        state.github.app_configured(),
+    )))
+}

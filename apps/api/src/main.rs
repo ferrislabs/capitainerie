@@ -5,17 +5,26 @@ mod router;
 use anyhow::Context;
 use capitainerie_analytics::{AnalyticsArgs, DataFusionAnalytics, Dataset};
 use capitainerie_args::{
-    AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, SecretsArgs, ServerArgs,
+    AuthArgs, DatabaseArgs, DelegationArgs, GithubAppArgs, LogArgs, ObservabilityArgs, SecretsArgs,
+    ServerArgs,
 };
 use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
 use capitainerie_bus_iggy::IggyArgs;
 use capitainerie_core::{
     CapitainerieUseCase,
-    infrastructure::{crypto::SecretCipher, postgres},
+    domain::agent::SecretToken,
+    infrastructure::{
+        authorization::{AuditedAuthorizer, LocalPolicyEngine},
+        crypto::SecretCipher,
+        postgres,
+    },
 };
+use capitainerie_github::{GithubApp, GithubClient};
 use capitainerie_handlers::{AppState, Delegation};
+use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
 use clap::Parser;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
 const REALTIME_BACKLOG: usize = 256;
@@ -36,6 +45,8 @@ struct Args {
     #[command(flatten)]
     secrets: SecretsArgs,
     #[command(flatten)]
+    github: GithubAppArgs,
+    #[command(flatten)]
     iggy: IggyArgs,
     #[command(flatten)]
     analytics: AnalyticsArgs,
@@ -55,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = postgres::connect(&args.database.url, args.database.max_connections)
         .await
         .context("connecting to postgres")?;
+    let authz = AuditedAuthorizer::new(LocalPolicyEngine, pool.clone());
     let mut usecase = CapitainerieUseCase::with_local_policies(pool);
     match &args.secrets.key {
         Some(key) => {
@@ -81,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    let github = github_integration(&args.github, args.secrets.key.as_deref())?;
     let state = AppState {
         usecase,
         verifier: verifier(args.auth),
@@ -101,6 +114,8 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
+        authz,
+        github,
         &args.server.allowed_origins,
     )?;
 
@@ -122,6 +137,37 @@ async fn main() -> anyhow::Result<()> {
 /// the consumer deletes its Iggy groups before the process exits.
 async fn stopped_signal(mut stopped: tokio::sync::watch::Receiver<bool>) {
     let _ = stopped.wait_for(|stop| *stop).await;
+}
+
+fn github_integration(
+    args: &GithubAppArgs,
+    secrets_key: Option<&str>,
+) -> anyhow::Result<GithubIntegration> {
+    let client = match (args.app_id, &args.private_key) {
+        (Some(app_id), Some(key)) => {
+            let mut app = GithubApp::new(app_id, SecretToken::new(key.as_str()));
+            app.api_base.clone_from(&args.api_base);
+            Some(Arc::new(
+                GithubClient::new(app).context("building the GitHub client")?,
+            ))
+        }
+        (None, None) => {
+            tracing::warn!(
+                "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are unset: GitHub cannot be connected and cards cannot be executed"
+            );
+            None
+        }
+        _ => anyhow::bail!("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY must be set together"),
+    };
+    let signer = secrets_key
+        .map(StateSigner::from_base64)
+        .transpose()
+        .context("SECRETS_KEY is unusable")?;
+    Ok(GithubIntegration {
+        client,
+        slug: args.slug.clone(),
+        signer,
+    })
 }
 
 fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
