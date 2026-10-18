@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/api",
+    "apps/egress-proxy",
     "apps/exporter",
     "apps/mcp-kanban",
     "apps/worker",
@@ -10,15 +11,18 @@ members = [
     "libs/bus-iggy",
     "libs/common",
     "libs/events",
+    "libs/github",
     "libs/core",
     "libs/handlers",
     "libs/handlers-analytics",
     "libs/handlers-cards",
     "libs/handlers-identity",
+    "libs/handlers-integrations",
     "libs/handlers-providers",
     "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/macros",
+    "libs/runner-kube",
     "libs/runtime-rig",
     "libs/telemetry",
     "libs/vector-lancedb",
@@ -85,15 +89,18 @@ capitainerie-auth = { path = "libs/auth" }
 capitainerie-bus-iggy = { path = "libs/bus-iggy" }
 capitainerie-common = { path = "libs/common" }
 capitainerie-events = { path = "libs/events" }
+capitainerie-github = { path = "libs/github" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-analytics = { path = "libs/handlers-analytics" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
+capitainerie-handlers-integrations = { path = "libs/handlers-integrations" }
 capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-macros = { path = "libs/macros" }
+capitainerie-runner-kube = { path = "libs/runner-kube" }
 capitainerie-runtime-rig = { path = "libs/runtime-rig" }
 capitainerie-telemetry = { path = "libs/telemetry" }
 capitainerie-vector-lancedb = { path = "libs/vector-lancedb" }

@@ -1,0 +1,23 @@
+[package]
+name = "capitainerie-egress-proxy"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "capitainerie_egress_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "capitainerie-egress-proxy"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

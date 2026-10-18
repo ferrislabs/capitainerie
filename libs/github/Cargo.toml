@@ -1,0 +1,13 @@
+[package]
+name = "capitainerie-github"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+
+[lints]
+workspace = true
