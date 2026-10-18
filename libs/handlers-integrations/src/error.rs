@@ -29,6 +29,9 @@ pub enum IntegrationError {
 
     #[error("the connecting user does not administer the account this installation belongs to")]
     InstallationNotOwned,
+
+    #[error("the GitHub App lacks the organization permission Members: read")]
+    MembersPermissionMissing,
 }
 
 impl From<CoreError> for IntegrationError {
@@ -59,6 +62,12 @@ impl IntoResponse for IntegrationError {
                 StatusCode::FORBIDDEN,
                 "installation_not_accessible",
                 "the connecting user has no access to this GitHub installation".to_owned(),
+            ),
+            Self::MembersPermissionMissing => (
+                StatusCode::FORBIDDEN,
+                "github_app_members_permission_missing",
+                "the GitHub App needs the organization permission Members: read to check who administers the organization"
+                    .to_owned(),
             ),
             Self::InstallationNotOwned => (
                 StatusCode::FORBIDDEN,

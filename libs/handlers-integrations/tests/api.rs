@@ -790,7 +790,8 @@ async fn the_manifest_targets_the_owner_and_the_console() {
         json!([format!("{CONSOLE}/settings/integrations/github/callback")])
     );
     assert_eq!(manifest["public"], false);
-    assert_eq!(manifest["hook_attributes"]["active"], false);
+    assert!(manifest.get("hook_attributes").is_none());
+    assert_eq!(manifest["default_permissions"]["members"], "read");
     assert_eq!(bad.status(), 422);
 }
 

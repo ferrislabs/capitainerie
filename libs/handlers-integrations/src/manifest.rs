@@ -45,6 +45,7 @@ pub(crate) fn manifest(console_url: &str, name: &str) -> String {
             "contents": "write",
             "pull_requests": "write",
             "metadata": "read",
+            "members": "read",
         },
         "default_events": [],
     })
@@ -120,7 +121,7 @@ mod tests {
         assert_eq!(manifest["public"], false);
         assert_eq!(
             manifest["default_permissions"],
-            json!({"contents": "write", "pull_requests": "write", "metadata": "read"})
+            json!({"contents": "write", "pull_requests": "write", "metadata": "read", "members": "read"})
         );
         assert_eq!(manifest["default_events"], json!([]));
         // GitHub refuses a hook URL it cannot reach, even inactive: a local

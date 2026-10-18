@@ -24,6 +24,9 @@ export function connectErrorMessage(error: unknown): string | undefined {
 	) {
 		return NOT_OWNER_MESSAGE
 	}
+	if (hasErrorKey(error, 'github_app_members_permission_missing')) {
+		return 'L’application GitHub doit pouvoir lire les membres de l’organisation : dans ses réglages GitHub, Permissions › Organization permissions › Members : Read-only. Acceptez la nouvelle permission sur l’installation, puis recommencez.'
+	}
 	if (hasErrorKey(error, 'installation_already_connected')) {
 		return 'Cette installation GitHub est déjà connectée à une autre organisation.'
 	}

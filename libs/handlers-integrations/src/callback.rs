@@ -2,6 +2,7 @@ use axum::{Extension, Json, extract::State};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::authorization::{Action, ResourceKind};
+use capitainerie_github::GithubError;
 use capitainerie_handlers::Caller;
 use chrono::Utc;
 use serde::Deserialize;
@@ -69,8 +70,13 @@ pub async fn handler(
         return Err(IntegrationError::InstallationNotAccessible);
     }
     let account = client.installation_account(request.installation_id).await?;
-    if !client.user_owns_installation(&user_token, &account).await? {
-        return Err(IntegrationError::InstallationNotOwned);
+    match client.user_owns_installation(&user_token, &account).await {
+        Ok(true) => {}
+        Ok(false) => return Err(IntegrationError::InstallationNotOwned),
+        Err(GithubError::MissingPermission(_)) => {
+            return Err(IntegrationError::MembersPermissionMissing);
+        }
+        Err(error) => return Err(error.into()),
     }
     drop(user_token);
     let installation = state

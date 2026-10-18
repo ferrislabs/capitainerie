@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { useConnectGithub } from '#/domain/integrations/hooks/use-github-mutations'
@@ -22,35 +22,35 @@ function parseInstallationId(value: string | undefined): number | undefined {
 
 export function GithubCallbackPage({ installationId, code, state }: Props) {
 	const navigate = useNavigate()
-	const connection = useConnectGithub()
+	const { connect } = useConnectGithub()
 	const started = useRef(false)
+	const [errorMessage, setErrorMessage] = useState<string>()
 	const id = parseInstallationId(installationId)
 	const complete = id !== undefined && Boolean(code) && Boolean(state)
 
+	// Awaited, not watched: see GithubAppCallbackPage.
 	useEffect(() => {
 		if (started.current || id === undefined || !code || !state) return
 		started.current = true
-		connection.connect({ installationId: id, code, state })
-	}, [id, code, state, connection.connect])
-
-	useEffect(() => {
-		if (connection.isSuccess) {
+		void connect({ installationId: id, code, state }).then((error) => {
+			if (error) {
+				setErrorMessage(error)
+				return
+			}
 			void navigate({
 				to: '/settings/integrations',
 				search: { connected: true },
 				replace: true,
 			})
-		}
-	}, [connection.isSuccess, navigate])
+		})
+	}, [id, code, state, connect, navigate])
 
 	return (
 		<>
 			<PageHeader title="Connexion à GitHub" />
 			<SectionCard title="GitHub">
 				<GithubCallbackView
-					errorMessage={
-						complete ? connection.errorMessage : INCOMPLETE_CALLBACK_MESSAGE
-					}
+					errorMessage={complete ? errorMessage : INCOMPLETE_CALLBACK_MESSAGE}
 				/>
 			</SectionCard>
 		</>

@@ -27,6 +27,11 @@ describe('connectErrorMessage', () => {
 			),
 		).toContain('déjà connectée')
 		expect(
+			connectErrorMessage(
+				new ApiRequestError(403, 'github_app_members_permission_missing', 'x'),
+			),
+		).toContain('Members')
+		expect(
 			connectErrorMessage(new ApiRequestError(403, 'forbidden', 'nope')),
 		).toBe(ADMIN_ONLY_GITHUB)
 		expect(connectErrorMessage(new Error('x'))).toContain('a échoué')

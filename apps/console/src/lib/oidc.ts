@@ -76,3 +76,18 @@ export function getUserManager(): UserManager | null {
 
 	return instance
 }
+
+/**
+ * Only the OIDC redirect page carries a sign-in response: other pages may
+ * receive their own `code` and `state` (the GitHub App callbacks do).
+ */
+export function isSigninCallback(
+	location: Location,
+	redirectUri: string,
+): boolean {
+	try {
+		return new URL(redirectUri, location.origin).pathname === location.pathname
+	} catch {
+		return false
+	}
+}
