@@ -40,7 +40,7 @@ export function CostsSection({
 		<SectionCard
 			title={title}
 			description="Étapes terminées, regroupées au choix."
-			flush
+			bare
 			actions={
 				<fieldset className="flex items-center rounded-md border bg-muted/60 p-0.5">
 					<legend className="sr-only">Regrouper les coûts</legend>
@@ -66,7 +66,7 @@ export function CostsSection({
 			}
 		>
 			{isError ? (
-				<InlineAlert tone="danger" className="m-4">
+				<InlineAlert tone="danger">
 					Impossible de charger les coûts.
 				</InlineAlert>
 			) : isPending || !costs ? (
@@ -76,7 +76,6 @@ export function CostsSection({
 					icon={Coins}
 					title="Aucun coût"
 					description="Aucune étape terminée sur les 30 derniers jours."
-					className="m-4"
 				/>
 			) : (
 				<Table>

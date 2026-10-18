@@ -1,21 +1,15 @@
 import { useAuth } from 'react-oidc-context'
 import { useMe } from '#/domain/identity/hooks/use-me'
-import { OrganizationName } from '#/domain/identity/ui/organization-name'
 import { UserMenu } from '#/domain/identity/ui/user-menu'
+import { useTheme } from '#/hooks/use-theme'
 
-export function OrganizationNameFeature() {
-	const { data, isPending, isError } = useMe()
-	return (
-		<OrganizationName
-			name={data?.organization.name}
-			isPending={isPending}
-			isError={isError}
-		/>
-	)
+interface Props {
+	compact?: boolean
 }
 
-export function UserMenuFeature() {
+export function UserMenuFeature({ compact = false }: Props) {
 	const auth = useAuth()
+	const theme = useTheme()
 	const { data } = useMe()
 
 	const displayName = data
@@ -28,6 +22,9 @@ export function UserMenuFeature() {
 			email={data?.email ?? undefined}
 			organizationName={data?.organization.name ?? ''}
 			isPending={!data}
+			compact={compact}
+			theme={theme.preference}
+			onThemeChange={theme.setPreference}
 			onSignOut={() => {
 				void auth.signoutRedirect()
 			}}

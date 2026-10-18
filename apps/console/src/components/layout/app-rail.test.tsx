@@ -2,7 +2,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AppRail } from '#/components/layout/app-rail'
-import { PRIMARY_NAV, SECONDARY_NAV } from '#/components/layout/nav-items'
+import { NAV_SECTIONS } from '#/components/layout/nav-items'
 import { renderAtPath } from '#/components/layout/test-router'
 import { TooltipProvider } from '#/components/ui/tooltip'
 
@@ -10,8 +10,7 @@ function rail(
 	overrides: Partial<Parameters<typeof AppRail>[0]> = {},
 ): Parameters<typeof AppRail>[0] {
 	return {
-		primary: PRIMARY_NAV,
-		secondary: SECONDARY_NAV,
+		sections: NAV_SECTIONS,
 		expanded: true,
 		canExpand: true,
 		onExpandedChange: vi.fn(),
@@ -30,14 +29,22 @@ async function renderRail(path: string, props = rail()) {
 }
 
 describe('AppRail', () => {
-	it('lists the four destinations and marks the current page', async () => {
+	it('groups the destinations by section and marks the current page', async () => {
 		await renderRail('/kanban')
 
-		const nav = screen.getByRole('navigation', {
-			name: 'Navigation principale',
-		})
-		expect(nav).toBeTruthy()
-		for (const label of ['Runs', 'Kanban', 'Agents', 'Paramètres']) {
+		expect(
+			screen.getByRole('navigation', { name: 'Navigation principale' }),
+		).toBeTruthy()
+		for (const section of ['Travail', 'Supervision', 'Paramètres']) {
+			expect(screen.getByRole('list', { name: section })).toBeTruthy()
+		}
+		for (const label of [
+			'Runs',
+			'Kanban',
+			'Agents',
+			'Fournisseurs',
+			'Modèles',
+		]) {
 			expect(screen.getByRole('link', { name: label })).toBeTruthy()
 		}
 		expect(
@@ -48,14 +55,19 @@ describe('AppRail', () => {
 		).toBeNull()
 	})
 
-	it('keeps Paramètres active on its sub-pages', async () => {
+	it('marks a settings page as current', async () => {
 		await renderRail('/settings/models')
 
 		expect(
 			screen
-				.getByRole('link', { name: 'Paramètres' })
+				.getByRole('link', { name: 'Modèles' })
 				.getAttribute('aria-current'),
 		).toBe('page')
+		expect(
+			screen
+				.getByRole('link', { name: 'Fournisseurs' })
+				.getAttribute('aria-current'),
+		).toBeNull()
 	})
 
 	it('names icon-only links when collapsed', async () => {
@@ -83,7 +95,19 @@ describe('AppRail', () => {
 		expect(screen.queryByRole('button', { name: /menu/ })).toBeNull()
 	})
 
-	it('moves focus with the arrow keys', async () => {
+	it('renders the footer with the expanded state', async () => {
+		await renderRail(
+			'/runs',
+			rail({
+				expanded: false,
+				footer: (expanded) => <p>{expanded ? 'large' : 'compact'}</p>,
+			}),
+		)
+
+		expect(screen.getByText('compact')).toBeTruthy()
+	})
+
+	it('moves focus with the arrow keys across sections', async () => {
 		await renderRail('/runs')
 		const nav = screen.getByRole('navigation', {
 			name: 'Navigation principale',
@@ -96,9 +120,14 @@ describe('AppRail', () => {
 			screen.getByRole('link', { name: 'Kanban' }),
 		)
 
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Agents' }),
+		)
+
 		fireEvent.keyDown(nav, { key: 'End' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Paramètres' }),
+			screen.getByRole('link', { name: 'Modèles' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })

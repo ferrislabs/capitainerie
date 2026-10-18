@@ -32,13 +32,13 @@ Every agent write is decided by an authorization policy and audited; agents act 
 
 - Stack: React 19, TanStack Start (SPA) + Router + Query + Form, Tailwind v4 CSS-first, shadcn/ui new-york, lucide-react, Biome, Vitest.
 - UI language: French. Front conventions in docs/CONVENTIONS.md §14 (domain/<d>/{hooks,feature,ui}, presentational ui without hooks, kebab-case files).
-- License Apache-2.0. Qovery's console (GPL-3.0) is a reference for principles only: nothing copied.
+- License Apache-2.0. Qovery's console (GPL-3.0) and Mistral's Studio panel are references for principles only: nothing copied.
 - Fournisseurs and Modèles pages are live (wave B): provider keys, connection test, model catalog, one model per agent role; admin-only edits, read-only for members.
 
 ## Brand Commitments
 
 - Name: Capitainerie (a harbour master's office), orchestrating AI agents.
-- Spec decision P5: new visual identity inspired by Qovery's principles: two-level side navigation, dense pages, page headers, careful empty states.
+- Spec decision P5: own visual identity. Redesign of 2026-10-18 (user's brief): follow the principles of Mistral's Studio panel, a light sidebar grouped in titled sections, a warm off-white ground, a near-black primary button, tables laid on the ground, large page titles. User choices: sections in the sidebar (no secondary nav), keep Atkinson Hyperlegible, keep state colours but softened.
 
 ## Evidence on Hand
 

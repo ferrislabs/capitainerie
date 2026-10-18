@@ -1,10 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import type { ReactNode } from 'react'
 import {
 	CapitainerieMark,
 	CapitainerieWordmark,
 } from '#/components/brand/capitainerie-mark'
-import type { NavItem } from '#/components/layout/nav-items'
+import type { NavItem, NavSection } from '#/components/layout/nav-items'
 import { moveFocusBetweenLinks } from '#/components/layout/roving-focus'
 import {
 	Tooltip,
@@ -14,12 +15,15 @@ import {
 import { cn } from '#/lib/utils'
 
 interface Props {
-	primary: ReadonlyArray<NavItem>
-	secondary: ReadonlyArray<NavItem>
+	sections: ReadonlyArray<NavSection>
 	expanded: boolean
 	canExpand: boolean
 	onExpandedChange: (expanded: boolean) => void
+	footer?: (expanded: boolean) => ReactNode
 }
+
+const FOCUS =
+	'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring'
 
 function RailLink({ item, expanded }: { item: NavItem; expanded: boolean }) {
 	const Icon = item.icon
@@ -28,17 +32,14 @@ function RailLink({ item, expanded }: { item: NavItem; expanded: boolean }) {
 			to={item.to}
 			aria-label={expanded ? undefined : item.label}
 			className={cn(
-				'group relative flex h-9 items-center gap-3 rounded-md px-2.5 text-[13px] font-medium text-rail-foreground transition-colors duration-150',
-				'hover:bg-rail-accent/70 hover:text-rail-foreground-active',
-				'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-rail-indicator',
-				'aria-[current=page]:bg-rail-accent aria-[current=page]:text-rail-foreground-active',
+				'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm text-rail-foreground transition-colors duration-150',
+				'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+				'aria-[current=page]:bg-rail-accent aria-[current=page]:font-medium aria-[current=page]:text-rail-foreground-active',
+				!expanded && 'justify-center px-0',
+				FOCUS,
 			)}
 		>
-			<span
-				aria-hidden="true"
-				className="absolute top-2 bottom-2 -left-2 w-[3px] rounded-r-full bg-rail-indicator opacity-0 transition-opacity duration-150 group-aria-[current=page]:opacity-100"
-			/>
-			<Icon aria-hidden="true" className="size-[18px] shrink-0" />
+			<Icon aria-hidden="true" className="size-4 shrink-0" />
 			{expanded ? <span className="truncate">{item.label}</span> : null}
 		</Link>
 	)
@@ -53,11 +54,11 @@ function RailLink({ item, expanded }: { item: NavItem; expanded: boolean }) {
 }
 
 export function AppRail({
-	primary,
-	secondary,
+	sections,
 	expanded,
 	canExpand,
 	onExpandedChange,
+	footer,
 }: Props) {
 	const isExpanded = expanded && canExpand
 	const ToggleIcon = isExpanded ? PanelLeftClose : PanelLeftOpen
@@ -67,49 +68,85 @@ export function AppRail({
 		<aside
 			data-expanded={isExpanded}
 			className={cn(
-				'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-rail-border bg-rail px-2 py-3 text-rail-foreground transition-[width] duration-200 ease-out-expo',
-				isExpanded ? 'w-52' : 'w-14',
+				'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-rail-border bg-rail text-rail-foreground transition-[width] duration-200 ease-out-expo',
+				isExpanded ? 'w-60' : 'w-14',
 			)}
 		>
-			<Link
-				to="/runs"
-				aria-label="Capitainerie, accueil"
-				className="mb-4 flex h-9 items-center gap-2.5 rounded-md px-1 text-rail-foreground-active focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-rail-indicator"
+			<div
+				className={cn(
+					'flex shrink-0 gap-1 px-2 pt-3 pb-2',
+					isExpanded ? 'h-14 items-center' : 'flex-col items-center',
+				)}
 			>
-				<CapitainerieMark className="size-8 shrink-0" />
-				{isExpanded ? <CapitainerieWordmark /> : null}
-			</Link>
+				<Link
+					to="/runs"
+					aria-label="Capitainerie, accueil"
+					className={cn(
+						'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-rail-foreground-active',
+						!isExpanded && 'flex-none justify-center px-0',
+						FOCUS,
+					)}
+				>
+					<CapitainerieMark className="size-7 shrink-0" />
+					{isExpanded ? <CapitainerieWordmark /> : null}
+				</Link>
+				{canExpand ? (
+					<button
+						type="button"
+						onClick={() => onExpandedChange(!isExpanded)}
+						aria-label={toggleLabel}
+						aria-expanded={isExpanded}
+						title={toggleLabel}
+						className={cn(
+							'flex size-8 shrink-0 items-center justify-center rounded-md text-rail-label transition-colors duration-150 hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+							FOCUS,
+						)}
+					>
+						<ToggleIcon aria-hidden="true" className="size-4" />
+					</button>
+				) : null}
+			</div>
 			<nav
 				aria-label="Navigation principale"
-				className="flex flex-1 flex-col"
+				className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
 				onKeyDown={moveFocusBetweenLinks}
 			>
-				<ul className="flex flex-col gap-0.5">
-					{primary.map((item) => (
-						<li key={item.to}>
-							<RailLink item={item} expanded={isExpanded} />
-						</li>
-					))}
-				</ul>
-				<ul className="mt-auto flex flex-col gap-0.5 border-t border-rail-border pt-2">
-					{secondary.map((item) => (
-						<li key={item.to}>
-							<RailLink item={item} expanded={isExpanded} />
-						</li>
-					))}
-				</ul>
+				{sections.map((section, index) => {
+					const labelId = `rail-section-${index}`
+					return (
+						<div
+							key={section.label}
+							className={cn(
+								index > 0 &&
+									(isExpanded
+										? 'mt-5'
+										: 'mt-2 border-t border-rail-border pt-2'),
+							)}
+						>
+							<p
+								id={labelId}
+								className={cn(
+									'px-2 pb-1.5 text-xs text-rail-label',
+									!isExpanded && 'sr-only',
+								)}
+							>
+								{section.label}
+							</p>
+							<ul aria-labelledby={labelId} className="flex flex-col gap-0.5">
+								{section.items.map((item) => (
+									<li key={item.to}>
+										<RailLink item={item} expanded={isExpanded} />
+									</li>
+								))}
+							</ul>
+						</div>
+					)
+				})}
 			</nav>
-			{canExpand ? (
-				<button
-					type="button"
-					onClick={() => onExpandedChange(!isExpanded)}
-					aria-label={toggleLabel}
-					aria-expanded={isExpanded}
-					className="mt-2 flex h-8 items-center gap-3 rounded-md px-2.5 text-xs text-rail-foreground transition-colors hover:bg-rail-accent/70 hover:text-rail-foreground-active focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-rail-indicator"
-				>
-					<ToggleIcon aria-hidden="true" className="size-4 shrink-0" />
-					{isExpanded ? <span>Réduire</span> : null}
-				</button>
+			{footer ? (
+				<div className="flex shrink-0 flex-col gap-1 border-t border-rail-border p-2">
+					{footer(isExpanded)}
+				</div>
 			) : null}
 		</aside>
 	)

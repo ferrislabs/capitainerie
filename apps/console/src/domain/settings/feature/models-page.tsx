@@ -95,10 +95,10 @@ export function ModelsPage() {
 			<SectionCard
 				title="Catalogue"
 				description="Les modèles annoncés par chaque fournisseur configuré. Prix en dollars par million de tokens, quand ils sont connus."
-				flush
+				bare
 			>
 				{catalog.isError || providers.isError ? (
-					<InlineAlert tone="danger" className="m-4">
+					<InlineAlert tone="danger">
 						Impossible de charger le catalogue des modèles.
 					</InlineAlert>
 				) : catalog.isPending || providers.isPending ? (

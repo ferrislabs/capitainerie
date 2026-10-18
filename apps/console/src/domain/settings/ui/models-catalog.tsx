@@ -42,7 +42,6 @@ export function ModelsCatalog({
 				title="Aucun fournisseur configuré"
 				description="Configurez un fournisseur pour voir les modèles qu’il annonce et les assigner aux rôles d’agent."
 				action={emptyAction}
-				className="m-4"
 			/>
 		)
 	}
@@ -56,7 +55,7 @@ export function ModelsCatalog({
 	return (
 		<div className="flex flex-col">
 			{errors.length > 0 ? (
-				<div className="flex flex-col gap-2 border-b p-4">
+				<div className="flex flex-col gap-2 pb-3">
 					{errors.map((error) => (
 						<InlineAlert key={error.provider} tone="danger">
 							{providerLabel(error.provider)} injoignable : {error.message}
@@ -69,7 +68,6 @@ export function ModelsCatalog({
 					icon={Cpu}
 					title="Aucun modèle annoncé"
 					description="Les fournisseurs configurés n’annoncent aucun modèle pour l’instant."
-					className="m-4"
 				/>
 			) : (
 				<Table>

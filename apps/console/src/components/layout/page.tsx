@@ -10,7 +10,7 @@ export function Page({ children, className }: Props) {
 	return (
 		<div
 			className={cn(
-				'mx-auto flex w-full max-w-[90rem] min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6',
+				'flex w-full max-w-[90rem] min-w-0 flex-col gap-6 px-4 pt-8 pb-10 sm:px-8 lg:pt-12',
 				className,
 			)}
 		>

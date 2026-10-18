@@ -29,7 +29,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
 		<thead
 			data-slot="table-header"
 			className={cn(
-				'sticky top-0 z-10 bg-card [&_th]:border-b [&_th]:border-border',
+				'sticky top-0 z-10 bg-background [&_th]:border-b [&_th]:border-border',
 				className,
 			)}
 			{...props}
@@ -41,7 +41,7 @@ function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
 	return (
 		<tbody
 			data-slot="table-body"
-			className={cn('[&_tr:last-child_td]:border-0', className)}
+			className={className}
 			{...props}
 		/>
 	)
@@ -52,7 +52,7 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
 		<tr
 			data-slot="table-row"
 			className={cn(
-				'transition-colors duration-100 [tbody_&]:hover:bg-muted/60',
+				'transition-colors duration-100 [tbody_&]:hover:bg-muted/70',
 				className,
 			)}
 			{...props}
@@ -65,7 +65,7 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
 		<th
 			data-slot="table-head"
 			className={cn(
-				'h-8 bg-card px-3 text-left align-middle text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-4 last:pr-4',
+				'h-9 bg-background px-3 text-left align-middle text-[13px] font-medium whitespace-nowrap text-foreground',
 				className,
 			)}
 			{...props}
@@ -78,7 +78,7 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
 		<td
 			data-slot="table-cell"
 			className={cn(
-				'h-9 border-b border-border/70 px-3 py-1.5 align-middle first:pl-4 last:pr-4',
+				'h-10 border-b border-border px-3 py-2 align-middle',
 				className,
 			)}
 			{...props}

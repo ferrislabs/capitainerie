@@ -32,7 +32,7 @@ export function KanbanBoard({
 	}
 
 	return (
-		<div className="grid gap-3 pb-2 lg:grid-flow-col lg:auto-cols-[minmax(12rem,1fr)] lg:items-start lg:overflow-x-auto">
+		<div className="grid gap-3 pb-2 lg:grid-flow-col lg:auto-cols-[minmax(11rem,1fr)] lg:items-start lg:overflow-x-auto">
 			{COLUMNS.map((column) => {
 				const items = cards.filter((card) => card.column === column)
 				const highlighted = column === 'proposed'
@@ -42,7 +42,7 @@ export function KanbanBoard({
 						aria-label={COLUMN_LABELS[column]}
 						data-column={column}
 						className={cn(
-							'flex min-w-0 flex-col overflow-hidden rounded-lg border lg:max-h-[calc(100dvh-13rem)]',
+							'flex min-w-0 flex-col overflow-hidden rounded-lg border lg:max-h-[calc(100dvh-15rem)]',
 							highlighted
 								? 'border-signal-attention/70 bg-signal-attention-soft/60'
 								: 'bg-muted/50',

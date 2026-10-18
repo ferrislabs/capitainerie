@@ -14,7 +14,7 @@ export function TableSkeleton({
 	return (
 		<output className="flex flex-col">
 			<span className="sr-only">{label}</span>
-			<div className="flex h-8 items-center gap-6 border-b px-4">
+			<div className="flex h-9 items-center gap-6 border-b px-3">
 				{Array.from({ length: columns }, (_, column) => (
 					<Skeleton
 						// biome-ignore lint/suspicious/noArrayIndexKey: static placeholder
@@ -27,7 +27,7 @@ export function TableSkeleton({
 				<div
 					// biome-ignore lint/suspicious/noArrayIndexKey: static placeholder
 					key={row}
-					className="flex h-9 items-center gap-6 border-b border-border/70 px-4 last:border-0"
+					className="flex h-10 items-center gap-6 border-b px-3"
 				>
 					{Array.from({ length: columns }, (_, column) => (
 						<Skeleton

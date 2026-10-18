@@ -27,7 +27,6 @@ export function AgentsTable({ agents }: Props) {
 				icon={Bot}
 				title="Aucun agent"
 				description="Les agents apparaîtront ici après leur premier run."
-				className="m-4"
 			/>
 		)
 	}

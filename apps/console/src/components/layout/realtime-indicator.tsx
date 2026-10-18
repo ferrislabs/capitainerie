@@ -11,13 +11,20 @@ const INDICATORS: Record<
 	offline: { label: 'Hors ligne', dot: 'bg-muted-foreground/60', pulse: false },
 }
 
-export function RealtimeIndicator() {
+interface Props {
+	compact?: boolean
+}
+
+export function RealtimeIndicator({ compact = false }: Props) {
 	const { label, dot, pulse } = INDICATORS[useRealtimeState()]
 
 	return (
 		<output
 			title={label}
-			className="flex h-7 items-center gap-2 rounded-md px-1.5 text-xs font-medium text-muted-foreground sm:px-2"
+			className={cn(
+				'flex h-7 items-center gap-2 rounded-md px-2 text-xs text-rail-label',
+				compact && 'justify-center px-0',
+			)}
 		>
 			<span className="relative flex size-2" aria-hidden="true">
 				{pulse ? (
@@ -30,7 +37,7 @@ export function RealtimeIndicator() {
 				) : null}
 				<span className={cn('relative size-2 rounded-full', dot)} />
 			</span>
-			<span className="max-sm:sr-only">{label}</span>
+			<span className={cn(compact && 'sr-only')}>{label}</span>
 		</output>
 	)
 }
