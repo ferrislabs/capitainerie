@@ -134,7 +134,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         authorization::{Decision, ports::MockAuthorizer},
-        run::{RunStatus, ports::MockRunRepository},
+        run::{RunStatus, RunSubject, ports::MockRunRepository},
         transcript::ports::MockTranscriptRepository,
     };
 
@@ -193,7 +193,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(run.transcript_id, transcript.id);
+        assert_eq!(run.subject, RunSubject::Transcript(transcript.id));
         assert_eq!(run.initiated_by, "user-1");
         assert_eq!(*emitter.0.lock().unwrap(), [RunQueued::KIND]);
     }

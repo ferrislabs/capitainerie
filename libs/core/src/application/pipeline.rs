@@ -91,13 +91,28 @@ impl CapitainerieUseCase {
             }
             RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled => return Ok(None),
         };
+        let Some(transcript_id) = run.subject.transcript_id() else {
+            run.fail(
+                "the meeting pipeline cannot process a card execution".into(),
+                now,
+            )?;
+            run_repository.save(&run, Some(now)).await?;
+            purge_delegations(&tx, run.id).await?;
+            emitter.emit(&RunFinished {
+                run_id: id.0,
+                organization_id: run.organization_id.0,
+                status: run.status.as_str().to_owned(),
+                failure: run.failure.clone(),
+            })?;
+            return Ok(None);
+        };
         if trace_id.is_some() {
             run.trace_id = trace_id;
         }
         run_repository.save(&run, Some(now)).await?;
 
         let transcript = transcript_repository
-            .find(run.organization_id, run.transcript_id)
+            .find(run.organization_id, transcript_id)
             .await?
             .ok_or_else(|| CoreError::Internal(format!("run {id} has no transcript")))?;
         let organization = organization_repository
@@ -413,7 +428,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                 match kind {
                     StepKind::Extract => actions = restore_actions(done)?,
                     StepKind::Deduplicate => dedup = restore_dedup(done),
-                    StepKind::Write => {}
+                    StepKind::Write | StepKind::Execute => {}
                 }
                 continue;
             }
@@ -425,6 +440,11 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                 StepKind::Write => {
                     let (new, duplicates) = split_actions(&actions, dedup.as_ref());
                     self.write(context, seq, new, duplicates).await?;
+                }
+                StepKind::Execute => {
+                    return Err(CoreError::Invalid(
+                        "the meeting pipeline cannot run an execute step".into(),
+                    ));
                 }
             }
         }

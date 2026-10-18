@@ -7,7 +7,10 @@ use crate::{DomainEvent, Topic};
 pub struct RunQueued {
     pub run_id: Uuid,
     pub organization_id: Uuid,
-    pub transcript_id: Uuid,
+    #[serde(default)]
+    pub transcript_id: Option<Uuid>,
+    #[serde(default)]
+    pub card_id: Option<Uuid>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
 }
@@ -76,3 +79,36 @@ macro_rules! run_event {
 run_event!(RunStarted, "run.started");
 run_event!(StepFinished, "run.step_finished");
 run_event!(RunFinished, "run.finished");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_queued_event_stored_before_card_runs_still_deserializes() {
+        let old = serde_json::json!({
+            "run_id": Uuid::nil(),
+            "organization_id": Uuid::nil(),
+            "transcript_id": Uuid::nil(),
+            "initiated_by": "user-1",
+            "pipeline": ["extract"],
+        });
+        let event: RunQueued = serde_json::from_value(old).unwrap();
+        assert_eq!(event.transcript_id, Some(Uuid::nil()));
+        assert_eq!(event.card_id, None);
+    }
+
+    #[test]
+    fn a_card_run_event_has_no_transcript() {
+        let value = serde_json::json!({
+            "run_id": Uuid::nil(),
+            "organization_id": Uuid::nil(),
+            "card_id": Uuid::nil(),
+            "initiated_by": "user-1",
+            "pipeline": ["execute"],
+        });
+        let event: RunQueued = serde_json::from_value(value).unwrap();
+        assert_eq!(event.transcript_id, None);
+        assert_eq!(event.card_id, Some(Uuid::nil()));
+    }
+}

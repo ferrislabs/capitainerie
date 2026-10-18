@@ -1,16 +1,18 @@
-use capitainerie_common::{CoreError, OrganizationId, RunId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::repository;
 use chrono::{DateTime, Utc};
 
 use super::model::{RunOverviewRow, StepRow};
 use crate::{
     domain::run::{
-        Run, RunOverview,
+        Run, RunOverview, RunSubject,
         ports::{RunRepository, StepRepository},
         step::Step,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
+
+const ACTIVE_EXECUTION_INDEX: &str = "runs_one_active_execution";
 
 #[repository(domain = Run, backend = Postgres)]
 pub struct PgRunRepository<'tx> {
@@ -36,15 +38,31 @@ impl RunRepository for PgRunRepository<'_> {
             .map(serde_json::to_value)
             .transpose()
             .map_err(|error| CoreError::Internal(format!("encoding run models: {error}")))?;
+        let (transcript_id, card_id, repository, base_branch) = match &run.subject {
+            RunSubject::Transcript(id) => (Some(id.0), None, None, None),
+            RunSubject::Card {
+                card_id,
+                repository,
+                base_branch,
+            } => (
+                None,
+                Some(card_id.0),
+                Some(repository.to_string()),
+                Some(base_branch.as_str()),
+            ),
+        };
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO runs (id, organization_id, transcript_id, initiated_by, status, pipeline, failure, created_at, started_at, finished_at, trace_id, models)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            INSERT INTO runs (id, organization_id, transcript_id, card_id, repository, base_branch, initiated_by, status, pipeline, failure, created_at, started_at, finished_at, trace_id, models)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             "#,
             run.id.0,
             run.organization_id.0,
-            run.transcript_id.0,
+            transcript_id,
+            card_id,
+            repository,
+            base_branch,
             run.initiated_by,
             run.status.as_str(),
             &pipeline,
@@ -58,7 +76,12 @@ impl RunRepository for PgRunRepository<'_> {
         .execute(&mut ***tx)
         .await
         .map(|_| ())
-        .map_err(map_sqlx_error)
+        .map_err(|error| match &error {
+            sqlx::Error::Database(db) if db.constraint() == Some(ACTIVE_EXECUTION_INDEX) => {
+                CoreError::Conflict("execution_already_active".into())
+            }
+            _ => map_sqlx_error(error),
+        })
     }
 
     async fn list(
@@ -71,10 +94,11 @@ impl RunRepository for PgRunRepository<'_> {
         let rows = sqlx::query_as!(
             RunOverviewRow,
             r#"
-            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
             FROM runs r
-            JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
             WHERE r.organization_id = $1
             ORDER BY r.created_at DESC, r.id DESC
             LIMIT $2 OFFSET $3
@@ -110,10 +134,11 @@ impl RunRepository for PgRunRepository<'_> {
         sqlx::query_as!(
             RunOverviewRow,
             r#"
-            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
             FROM runs r
-            JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
             WHERE r.organization_id = $1 AND r.id = $2
             "#,
             organization_id.0,
@@ -131,10 +156,11 @@ impl RunRepository for PgRunRepository<'_> {
         sqlx::query_as!(
             RunOverviewRow,
             r#"
-            SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
             FROM runs r
-            JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
             WHERE r.id = $1
             FOR UPDATE OF r SKIP LOCKED
             "#,
@@ -195,6 +221,21 @@ impl RunRepository for PgRunRepository<'_> {
         .fetch_all(&mut ***tx)
         .await
         .map(|ids| ids.into_iter().map(RunId).collect())
+        .map_err(map_sqlx_error)
+    }
+
+    async fn has_active_execution(&mut self, card_id: CardId) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM runs WHERE card_id = $1 AND status IN ('queued', 'running')
+            ) AS "active!"
+            "#,
+            card_id.0,
+        )
+        .fetch_one(&mut ***tx)
+        .await
         .map_err(map_sqlx_error)
     }
 

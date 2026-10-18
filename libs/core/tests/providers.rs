@@ -113,6 +113,7 @@ fn assignments(chat: ModelRef) -> ModelAssignments {
         judge: chat.clone(),
         writer: chat,
         embeddings: model_ref(ProviderKind::OpenAiCompatible, "bge-m3"),
+        executor: Default::default(),
     }
 }
 

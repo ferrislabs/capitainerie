@@ -1,0 +1,255 @@
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
+use capitainerie_macros::transactional;
+use chrono::Utc;
+
+use super::{CapitainerieUseCase, run::AgentDelegation};
+use crate::{
+    domain::{
+        authorization::{AccessRequest, Action, ResourceKind, Subject, require},
+        card::{
+            Card, Column,
+            ports::CardRepository,
+            service::{CardService, MoveCard},
+        },
+        delegation::{
+            DelegatedToken,
+            ports::{DelegationVault, TokenExchanger},
+        },
+        event::ports::EventEmitter,
+        execution::{
+            EXECUTOR_AGENT, ExecutableCard, GithubInstallation, RepositoryRef, TaskGrant,
+            ports::{GithubInstallationRepository, TaskGrantRepository},
+        },
+        provider::ports::ModelAssignmentRepository,
+        run::{Run, ports::RunRepository},
+    },
+    infrastructure::{
+        card::postgres::PgCardRepository, crypto::SecretCipher, delegation::PgDelegationVault,
+    },
+};
+
+#[derive(Debug, Clone)]
+pub struct StartedExecution {
+    pub run_id: RunId,
+    pub card: Card,
+}
+
+impl CapitainerieUseCase {
+    /// Exchanges the user's token for the executor first, so an identity
+    /// provider outage refuses the request instead of queueing a run that
+    /// could never comment on the card; then stores everything at once.
+    pub async fn execute_card_delegated<X: TokenExchanger>(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        repository: RepositoryRef,
+        base_branch: String,
+        expected_version: i32,
+        delegation: AgentDelegation<'_, X>,
+    ) -> Result<StartedExecution, CoreError> {
+        let token = delegation
+            .exchanger
+            .for_agent(delegation.issuer, delegation.user_token, EXECUTOR_AGENT)
+            .await?;
+        let cipher = self.cipher()?;
+        self.execute_card(
+            subject,
+            card_id,
+            repository,
+            base_branch,
+            expected_version,
+            token,
+            cipher,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[transactional(
+        card,
+        card_comment,
+        transcript,
+        run,
+        model_assignment,
+        github_installation,
+        emitter,
+        authz
+    )]
+    async fn execute_card(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        repository: RepositoryRef,
+        base_branch: String,
+        expected_version: i32,
+        token: DelegatedToken,
+        cipher: &SecretCipher,
+    ) -> Result<StartedExecution, CoreError> {
+        let mut run_repository = run_repository;
+        let mut model_assignment_repository = model_assignment_repository;
+        let mut github_installation_repository = github_installation_repository;
+        let organization_id = subject.organization_id;
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::CardExecute,
+                ResourceKind::Card,
+                Some(card_id.0),
+            ),
+        )
+        .await?;
+
+        let card = PgCardRepository::new(&tx)
+            .find(organization_id, card_id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        if run_repository.has_active_execution(card_id).await? {
+            return Err(CoreError::Conflict("execution_already_active".into()));
+        }
+        ExecutableCard::try_from(card)?;
+        if github_installation_repository
+            .get(organization_id)
+            .await?
+            .is_none()
+        {
+            return Err(CoreError::Conflict("github_not_connected".into()));
+        }
+
+        let card = CardService::new(
+            card_repository,
+            card_comment_repository,
+            transcript_repository,
+            emitter,
+            authz,
+        )
+        .move_card(
+            subject.clone(),
+            card_id,
+            MoveCard {
+                to: Column::InProgress,
+                expected_version,
+                run_id: None,
+            },
+        )
+        .await?;
+
+        let (mut run, queued) = Run::queue_execution(
+            organization_id,
+            card_id,
+            repository,
+            base_branch,
+            subject.id,
+            Utc::now(),
+        );
+        run.models = model_assignment_repository.get(organization_id).await?;
+        run_repository.insert(&run).await?;
+        emitter.emit(&queued)?;
+        PgDelegationVault::new(&tx, cipher)
+            .store(run.id, EXECUTOR_AGENT, &token)
+            .await?;
+        Ok(StartedExecution {
+            run_id: run.id,
+            card,
+        })
+    }
+
+    /// Any member may know whether GitHub is connected; the organization
+    /// scopes the read.
+    #[transactional(github_installation)]
+    pub async fn github_installation(
+        &self,
+        subject: Subject,
+    ) -> Result<Option<GithubInstallation>, CoreError> {
+        let mut github_installation_repository = github_installation_repository;
+        github_installation_repository
+            .get(subject.organization_id)
+            .await
+    }
+
+    #[transactional(github_installation, authz)]
+    pub async fn connect_github(
+        &self,
+        subject: Subject,
+        installation_id: i64,
+        account_login: String,
+    ) -> Result<GithubInstallation, CoreError> {
+        let mut github_installation_repository = github_installation_repository;
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::GithubManage,
+                ResourceKind::GithubInstallation,
+                None,
+            ),
+        )
+        .await?;
+        let installation = GithubInstallation {
+            organization_id: subject.organization_id,
+            installation_id,
+            account_login,
+            created_by: subject.id,
+            created_at: Utc::now(),
+        };
+        github_installation_repository.save(&installation).await?;
+        Ok(installation)
+    }
+
+    #[transactional(github_installation, authz)]
+    pub async fn disconnect_github(&self, subject: Subject) -> Result<(), CoreError> {
+        let mut github_installation_repository = github_installation_repository;
+        require(
+            authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::GithubManage,
+                ResourceKind::GithubInstallation,
+                None,
+            ),
+        )
+        .await?;
+        github_installation_repository
+            .delete(subject.organization_id)
+            .await
+    }
+
+    /// For the worker and the proxy, which act for no user: no policy
+    /// decision, the organization of the run scopes the read.
+    #[transactional(github_installation)]
+    pub async fn github_installation_for(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<GithubInstallation>, CoreError> {
+        let mut github_installation_repository = github_installation_repository;
+        github_installation_repository.get(organization_id).await
+    }
+
+    #[transactional(task_grant)]
+    pub async fn create_task_grant(
+        &self,
+        run_id: RunId,
+        token_sha256: [u8; 32],
+        grant: TaskGrant,
+    ) -> Result<(), CoreError> {
+        let mut task_grant_repository = task_grant_repository;
+        task_grant_repository
+            .insert(token_sha256, &TaskGrant { run_id, ..grant })
+            .await
+    }
+
+    #[transactional(task_grant)]
+    pub async fn find_task_grant(
+        &self,
+        token_sha256: [u8; 32],
+    ) -> Result<Option<TaskGrant>, CoreError> {
+        let mut task_grant_repository = task_grant_repository;
+        task_grant_repository.find(token_sha256).await
+    }
+
+    #[transactional(task_grant)]
+    pub async fn revoke_task_grants(&self, run_id: RunId) -> Result<(), CoreError> {
+        let mut task_grant_repository = task_grant_repository;
+        task_grant_repository.revoke(run_id, Utc::now()).await
+    }
+}

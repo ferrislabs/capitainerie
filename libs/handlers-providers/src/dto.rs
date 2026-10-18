@@ -1,6 +1,8 @@
 use axum_extra::routing::TypedPath;
+use capitainerie_common::CoreError;
 use capitainerie_core::{
     application::ModelListing,
+    domain::execution::ExecutorModel,
     domain::provider::{
         ModelAssignments, ModelRef, ProviderKind, ProviderSummary, ports::CatalogModel,
     },
@@ -192,6 +194,10 @@ pub struct ModelAssignmentsDto {
     pub judge: ModelRefDto,
     pub writer: ModelRefDto,
     pub embeddings: ModelRefDto,
+    /// The Anthropic model Claude Code runs on. When absent on a PUT, the
+    /// current value (or the default) is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor: Option<String>,
 }
 
 impl From<ModelAssignments> for ModelAssignmentsDto {
@@ -201,18 +207,27 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             judge: assignments.judge.into(),
             writer: assignments.writer.into(),
             embeddings: assignments.embeddings.into(),
+            executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
 }
 
-impl From<ModelAssignmentsDto> for ModelAssignments {
-    fn from(assignments: ModelAssignmentsDto) -> Self {
-        Self {
-            extractor: assignments.extractor.into(),
-            judge: assignments.judge.into(),
-            writer: assignments.writer.into(),
-            embeddings: assignments.embeddings.into(),
-        }
+impl ModelAssignmentsDto {
+    pub fn into_assignments(
+        self,
+        current: Option<&ModelAssignments>,
+    ) -> Result<ModelAssignments, CoreError> {
+        let executor = match self.executor {
+            Some(model) => ExecutorModel::new(model)?,
+            None => current.map(|c| c.executor.clone()).unwrap_or_default(),
+        };
+        Ok(ModelAssignments {
+            extractor: self.extractor.into(),
+            judge: self.judge.into(),
+            writer: self.writer.into(),
+            embeddings: self.embeddings.into(),
+            executor,
+        })
     }
 }
 
@@ -237,6 +252,31 @@ mod tests {
             );
             assert_eq!(ProviderKind::from(dto), kind);
         }
+    }
+
+    fn dto(executor: Option<&str>) -> ModelAssignmentsDto {
+        let defaults = ModelAssignmentsDto::from(ModelAssignments::defaults("chat", "embed"));
+        ModelAssignmentsDto {
+            executor: executor.map(str::to_owned),
+            ..defaults
+        }
+    }
+
+    #[test]
+    fn an_absent_executor_keeps_the_current_one_or_the_default() {
+        let mut current = ModelAssignments::defaults("chat", "embed");
+        current.executor = ExecutorModel::new("claude-opus-5").unwrap();
+
+        let kept = dto(None).into_assignments(Some(&current)).unwrap();
+        let defaulted = dto(None).into_assignments(None).unwrap();
+        let replaced = dto(Some("claude-haiku-5-5"))
+            .into_assignments(Some(&current))
+            .unwrap();
+
+        assert_eq!(kept.executor.as_str(), "claude-opus-5");
+        assert_eq!(defaulted.executor, ExecutorModel::default());
+        assert_eq!(replaced.executor.as_str(), "claude-haiku-5-5");
+        assert!(dto(Some(" ")).into_assignments(None).is_err());
     }
 
     #[test]

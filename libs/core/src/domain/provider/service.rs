@@ -348,6 +348,7 @@ mod tests {
             judge: chat.clone(),
             writer: chat,
             embeddings: reference(ProviderKind::OpenAiCompatible, "bge-m3"),
+            executor: Default::default(),
         }
     }
 

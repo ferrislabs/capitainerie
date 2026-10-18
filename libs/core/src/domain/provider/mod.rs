@@ -5,7 +5,7 @@ use capitainerie_common::{CoreError, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::agent::SecretToken;
+use crate::domain::{agent::SecretToken, execution::ExecutorModel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +39,9 @@ pub struct ModelAssignments {
     pub judge: ModelRef,
     pub writer: ModelRef,
     pub embeddings: ModelRef,
+    /// Always an Anthropic model; runs queued before it existed take the default.
+    #[serde(default)]
+    pub executor: ExecutorModel,
 }
 
 /// An organization's key for one provider. The secret never leaves the
@@ -163,6 +166,7 @@ impl ModelAssignments {
                 provider: ProviderKind::OpenAiCompatible,
                 model: embedding_model.to_owned(),
             },
+            executor: ExecutorModel::default(),
         }
     }
 }
@@ -203,6 +207,14 @@ mod tests {
                 serde_json::Value::String(kind.as_str().to_owned())
             );
         }
+    }
+
+    #[test]
+    fn assignments_stored_without_an_executor_take_the_default() {
+        let mut stored = serde_json::to_value(ModelAssignments::defaults("chat", "embed")).unwrap();
+        stored.as_object_mut().unwrap().remove("executor");
+        let assignments: ModelAssignments = serde_json::from_value(stored).unwrap();
+        assert_eq!(assignments.executor, ExecutorModel::default());
     }
 
     #[test]

@@ -3,9 +3,11 @@ pub mod ports;
 pub mod service;
 pub mod step;
 
-use capitainerie_common::{CoreError, OrganizationId, RunId, TranscriptId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, TranscriptId};
 use capitainerie_events::run::RunQueued;
 use chrono::{DateTime, Utc};
+
+use crate::domain::execution::RepositoryRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
@@ -21,13 +23,24 @@ pub enum StepKind {
     Extract,
     Deduplicate,
     Write,
+    Execute,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunSubject {
+    Transcript(TranscriptId),
+    Card {
+        card_id: CardId,
+        repository: RepositoryRef,
+        base_branch: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Run {
     pub id: RunId,
     pub organization_id: OrganizationId,
-    pub transcript_id: TranscriptId,
+    pub subject: RunSubject,
     pub initiated_by: String,
     pub status: RunStatus,
     pub pipeline: Vec<StepKind>,
@@ -46,7 +59,7 @@ pub struct Run {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOverview {
     pub run: Run,
-    pub transcript_title: String,
+    pub title: Option<String>,
 }
 
 impl Run {
@@ -60,10 +73,49 @@ impl Run {
         pipeline: Vec<StepKind>,
         now: DateTime<Utc>,
     ) -> (Self, RunQueued) {
+        Self::queued(
+            organization_id,
+            RunSubject::Transcript(transcript_id),
+            initiated_by,
+            pipeline,
+            now,
+        )
+    }
+
+    pub const EXECUTION_PIPELINE: [StepKind; 1] = [StepKind::Execute];
+
+    pub fn queue_execution(
+        organization_id: OrganizationId,
+        card_id: CardId,
+        repository: RepositoryRef,
+        base_branch: String,
+        initiated_by: String,
+        now: DateTime<Utc>,
+    ) -> (Self, RunQueued) {
+        Self::queued(
+            organization_id,
+            RunSubject::Card {
+                card_id,
+                repository,
+                base_branch,
+            },
+            initiated_by,
+            Self::EXECUTION_PIPELINE.to_vec(),
+            now,
+        )
+    }
+
+    fn queued(
+        organization_id: OrganizationId,
+        subject: RunSubject,
+        initiated_by: String,
+        pipeline: Vec<StepKind>,
+        now: DateTime<Utc>,
+    ) -> (Self, RunQueued) {
         let run = Self {
             id: RunId::new(),
             organization_id,
-            transcript_id,
+            subject,
             initiated_by,
             status: RunStatus::Queued,
             pipeline,
@@ -77,7 +129,8 @@ impl Run {
         let event = RunQueued {
             run_id: run.id.0,
             organization_id: organization_id.0,
-            transcript_id: transcript_id.0,
+            transcript_id: run.subject.transcript_id().map(|id| id.0),
+            card_id: run.subject.card_id().map(|id| id.0),
             initiated_by: run.initiated_by.clone(),
             pipeline: run
                 .pipeline
@@ -130,6 +183,22 @@ impl Run {
     }
 }
 
+impl RunSubject {
+    pub fn transcript_id(&self) -> Option<TranscriptId> {
+        match self {
+            Self::Transcript(id) => Some(*id),
+            Self::Card { .. } => None,
+        }
+    }
+
+    pub fn card_id(&self) -> Option<CardId> {
+        match self {
+            Self::Transcript(_) => None,
+            Self::Card { card_id, .. } => Some(*card_id),
+        }
+    }
+}
+
 impl RunStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -163,6 +232,7 @@ impl StepKind {
             Self::Extract => "extract",
             Self::Deduplicate => "deduplicate",
             Self::Write => "write",
+            Self::Execute => "execute",
         }
     }
 }
@@ -175,6 +245,7 @@ impl TryFrom<&str> for StepKind {
             "extract" => Ok(Self::Extract),
             "deduplicate" => Ok(Self::Deduplicate),
             "write" => Ok(Self::Write),
+            "execute" => Ok(Self::Execute),
             other => Err(CoreError::Internal(format!("unknown step kind {other}"))),
         }
     }
@@ -206,7 +277,11 @@ mod tests {
         );
         assert_eq!(run.status, RunStatus::Queued);
         assert_eq!(event.run_id, run.id.0);
-        assert_eq!(event.transcript_id, run.transcript_id.0);
+        assert_eq!(
+            event.transcript_id,
+            run.subject.transcript_id().map(|id| id.0)
+        );
+        assert_eq!(event.card_id, None);
         assert_eq!(event.pipeline, ["extract", "deduplicate", "write"]);
     }
 
@@ -246,8 +321,31 @@ mod tests {
         ] {
             assert_eq!(RunStatus::try_from(status.as_str()).unwrap(), status);
         }
-        for step in Run::MEETING_PIPELINE {
+        for step in Run::MEETING_PIPELINE
+            .into_iter()
+            .chain(Run::EXECUTION_PIPELINE)
+        {
             assert_eq!(StepKind::try_from(step.as_str()).unwrap(), step);
         }
+    }
+
+    #[test]
+    fn queue_execution_binds_the_card_and_the_repository() {
+        let card_id = CardId::new();
+        let (run, event) = Run::queue_execution(
+            OrganizationId::new(),
+            card_id,
+            "acme/web".parse().unwrap(),
+            "main".into(),
+            "user-1".into(),
+            Utc::now(),
+        );
+        assert_eq!(run.status, RunStatus::Queued);
+        assert_eq!(run.pipeline, [StepKind::Execute]);
+        assert_eq!(run.subject.card_id(), Some(card_id));
+        assert_eq!(run.subject.transcript_id(), None);
+        assert_eq!(event.card_id, Some(card_id.0));
+        assert_eq!(event.transcript_id, None);
+        assert_eq!(event.pipeline, ["execute"]);
     }
 }

@@ -1,4 +1,5 @@
 mod card;
+mod execution;
 mod organization;
 mod pipeline;
 mod provider;
@@ -15,6 +16,7 @@ use crate::infrastructure::{
     postgres,
 };
 
+pub use execution::StartedExecution;
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};
 pub use provider::{ModelListing, ProviderFailure};
 pub use run::{AgentDelegation, RunTimeline, SubmittedTranscript};

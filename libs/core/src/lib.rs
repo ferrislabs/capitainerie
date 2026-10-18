@@ -6,6 +6,6 @@ pub mod infrastructure;
 
 pub use application::{
     AgentDelegation, CapitainerieUseCase, MeetingPipeline, PipelineConfig, RunContext, RunTimeline,
-    SubmittedTranscript,
+    StartedExecution, SubmittedTranscript,
 };
 pub use domain::organization::{Organization, OrganizationSlug};

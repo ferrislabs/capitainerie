@@ -277,7 +277,8 @@ mod tests {
             &RunQueued {
                 run_id: run,
                 organization_id: org,
-                transcript_id: Uuid::now_v7(),
+                transcript_id: Some(Uuid::now_v7()),
+                card_id: None,
                 initiated_by: user.into(),
                 pipeline: vec!["extract".into()],
             },

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO github_installations (organization_id, installation_id, account_login, created_by, created_at)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (organization_id) DO UPDATE\n            SET installation_id = EXCLUDED.installation_id, account_login = EXCLUDED.account_login,\n                created_by = EXCLUDED.created_by, created_at = EXCLUDED.created_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f068d25e276036e55c9cfa58124bc578a42a0b673b0d74ae7d70ea316730c5f1"
+}

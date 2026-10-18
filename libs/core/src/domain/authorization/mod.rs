@@ -41,6 +41,8 @@ pub enum Action {
     ProviderRead,
     ProviderManage,
     ModelsAssign,
+    CardExecute,
+    GithubManage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,7 @@ pub enum ResourceKind {
     Card,
     Provider,
     ModelAssignments,
+    GithubInstallation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +87,8 @@ impl Action {
             Self::ProviderRead => "provider.read",
             Self::ProviderManage => "provider.manage",
             Self::ModelsAssign => "models.assign",
+            Self::CardExecute => "card.execute",
+            Self::GithubManage => "github.manage",
         }
     }
 }
@@ -96,6 +101,7 @@ impl ResourceKind {
             Self::Card => "card",
             Self::Provider => "provider",
             Self::ModelAssignments => "model_assignments",
+            Self::GithubInstallation => "github_installation",
         }
     }
 }

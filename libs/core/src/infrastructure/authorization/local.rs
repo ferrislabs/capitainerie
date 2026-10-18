@@ -29,7 +29,9 @@ fn decide(request: &AccessRequest) -> Decision {
 
 fn decide_for_human(subject: &Subject, action: Action) -> Decision {
     match action {
-        Action::ProviderManage | Action::ModelsAssign if !subject.is_admin => {
+        Action::ProviderManage | Action::ModelsAssign | Action::GithubManage
+            if !subject.is_admin =>
+        {
             deny("only an organization admin may do this")
         }
         _ => Decision::Allow,
@@ -127,6 +129,56 @@ mod tests {
                 Decision::Deny { .. }
             ));
         }
+    }
+
+    #[test]
+    fn only_admins_manage_github() {
+        assert_eq!(
+            decide(&admin_request(Action::GithubManage, None, true)),
+            Decision::Allow
+        );
+        assert!(matches!(
+            decide(&admin_request(Action::GithubManage, None, false)),
+            Decision::Deny { .. }
+        ));
+    }
+
+    #[test]
+    fn members_execute_cards_in_their_own_organization_only() {
+        assert!(allowed(Action::CardExecute, None));
+        assert!(matches!(
+            decide(&request(Action::CardExecute, None, false)),
+            Decision::Deny { .. }
+        ));
+    }
+
+    #[test]
+    fn agents_never_execute_cards_or_manage_github() {
+        for actor in [AGENT, Some(crate::domain::execution::EXECUTOR_AGENT)] {
+            for admin in [false, true] {
+                for action in [Action::CardExecute, Action::GithubManage] {
+                    assert!(matches!(
+                        decide(&admin_request(action, actor, admin)),
+                        Decision::Deny { .. }
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_executor_agent_keeps_the_card_rights_of_agents() {
+        let executor = Some(crate::domain::execution::EXECUTOR_AGENT);
+        assert!(allowed(Action::CardComment, executor));
+        assert!(allowed(Action::CardRead, executor));
+        assert!(!allowed(Action::TranscriptCreate, executor));
+        assert!(!allowed(
+            Action::CardMove {
+                from: Column::Proposed,
+                to: Column::Todo
+            },
+            executor
+        ));
     }
 
     #[test]

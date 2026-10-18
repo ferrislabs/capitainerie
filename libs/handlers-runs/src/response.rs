@@ -1,5 +1,5 @@
-use capitainerie_common::{RunId, TranscriptId};
-use capitainerie_core::domain::run::RunOverview;
+use capitainerie_common::{CardId, RunId, TranscriptId};
+use capitainerie_core::domain::run::{RunOverview, RunSubject};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -18,8 +18,11 @@ pub enum RunStatusResponse {
 pub struct RunResponse {
     pub id: RunId,
     pub status: RunStatusResponse,
-    pub transcript_id: TranscriptId,
-    pub transcript_title: String,
+    pub transcript_id: Option<TranscriptId>,
+    pub transcript_title: Option<String>,
+    pub title: Option<String>,
+    pub card_id: Option<CardId>,
+    pub repository: Option<String>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
     pub failure: Option<String>,
@@ -31,13 +34,17 @@ pub struct RunResponse {
 }
 
 impl From<RunOverview> for RunResponse {
-    fn from(
-        RunOverview {
-            run,
-            transcript_title,
-        }: RunOverview,
-    ) -> Self {
+    fn from(RunOverview { run, title }: RunOverview) -> Self {
         use capitainerie_core::domain::run::RunStatus;
+        let (transcript_id, card_id, repository) = match &run.subject {
+            RunSubject::Transcript(id) => (Some(*id), None, None),
+            RunSubject::Card {
+                card_id,
+                repository,
+                ..
+            } => (None, Some(*card_id), Some(repository.to_string())),
+        };
+        let transcript_title = transcript_id.and(title.clone());
         Self {
             id: run.id,
             status: match run.status {
@@ -47,8 +54,11 @@ impl From<RunOverview> for RunResponse {
                 RunStatus::Failed => RunStatusResponse::Failed,
                 RunStatus::Cancelled => RunStatusResponse::Cancelled,
             },
-            transcript_id: run.transcript_id,
+            transcript_id,
             transcript_title,
+            title,
+            card_id,
+            repository,
             initiated_by: run.initiated_by,
             pipeline: run
                 .pipeline

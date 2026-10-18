@@ -1,11 +1,11 @@
-use capitainerie_common::{CoreError, OrganizationId, RunId, StepId, TranscriptId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, StepId, TranscriptId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{
     agent::Usage,
     run::{
-        Run, RunOverview, RunStatus, StepKind,
+        Run, RunOverview, RunStatus, RunSubject, StepKind,
         step::{Step, StepStatus},
     },
 };
@@ -13,7 +13,10 @@ use crate::domain::{
 pub(super) struct RunOverviewRow {
     pub id: Uuid,
     pub organization_id: Uuid,
-    pub transcript_id: Uuid,
+    pub transcript_id: Option<Uuid>,
+    pub card_id: Option<Uuid>,
+    pub repository: Option<String>,
+    pub base_branch: Option<String>,
     pub initiated_by: String,
     pub status: String,
     pub pipeline: Vec<String>,
@@ -23,18 +26,41 @@ pub(super) struct RunOverviewRow {
     pub finished_at: Option<DateTime<Utc>>,
     pub trace_id: Option<String>,
     pub models: Option<serde_json::Value>,
-    pub transcript_title: String,
+    pub title: Option<String>,
+}
+
+fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
+    match (
+        row.transcript_id,
+        row.card_id,
+        &row.repository,
+        &row.base_branch,
+    ) {
+        (Some(transcript_id), None, None, None) => {
+            Ok(RunSubject::Transcript(TranscriptId(transcript_id)))
+        }
+        (None, Some(card_id), Some(repository), Some(base_branch)) => Ok(RunSubject::Card {
+            card_id: CardId(card_id),
+            repository: repository.parse()?,
+            base_branch: base_branch.clone(),
+        }),
+        _ => Err(CoreError::Internal(format!(
+            "run {} has no valid subject",
+            row.id
+        ))),
+    }
 }
 
 impl TryFrom<RunOverviewRow> for RunOverview {
     type Error = CoreError;
 
     fn try_from(row: RunOverviewRow) -> Result<Self, Self::Error> {
+        let subject = subject(&row)?;
         Ok(Self {
             run: Run {
                 id: RunId(row.id),
                 organization_id: OrganizationId(row.organization_id),
-                transcript_id: TranscriptId(row.transcript_id),
+                subject,
                 initiated_by: row.initiated_by,
                 status: RunStatus::try_from(row.status.as_str())?,
                 pipeline: row
@@ -53,7 +79,7 @@ impl TryFrom<RunOverviewRow> for RunOverview {
                     .transpose()
                     .map_err(|error| CoreError::Internal(format!("stored run models: {error}")))?,
             },
-            transcript_title: row.transcript_title,
+            title: row.title,
         })
     }
 }
