@@ -47,7 +47,6 @@ pub(crate) fn manifest(console_url: &str, name: &str) -> String {
             "metadata": "read",
         },
         "default_events": [],
-        "hook_attributes": {"url": format!("{console_url}/"), "active": false},
     })
     .to_string()
 }
@@ -124,10 +123,9 @@ mod tests {
             json!({"contents": "write", "pull_requests": "write", "metadata": "read"})
         );
         assert_eq!(manifest["default_events"], json!([]));
-        assert_eq!(
-            manifest["hook_attributes"],
-            json!({"url": "http://localhost:4080/", "active": false})
-        );
+        // GitHub refuses a hook URL it cannot reach, even inactive: a local
+        // console must still be able to create its App.
+        assert!(manifest.get("hook_attributes").is_none());
     }
 
     #[test]
