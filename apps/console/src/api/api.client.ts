@@ -9,6 +9,7 @@ export namespace Schemas {
     runs: number;
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
+  export type CapabilitiesResponse = { chat: boolean; embeddings: boolean };
   export type CardId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type RunId = string;
@@ -57,7 +58,36 @@ export namespace Schemas {
     subject: string;
     username?: (string | null) | undefined;
   };
+  export type ProviderKindDto = "anthropic" | "mistral" | "openai_compatible";
+  export type ModelRefDto = { model: string; provider: ProviderKindDto };
+  export type ModelAssignmentsDto = {
+    embeddings: ModelRefDto;
+    extractor: ModelRefDto;
+    judge: ModelRefDto;
+    writer: ModelRefDto;
+  };
+  export type ModelAssignmentsResponse = Partial<{ assignments: null | ModelAssignmentsDto }>;
+  export type ProviderErrorResponse = { message: string; provider: ProviderKindDto };
+  export type PriceResponse = Partial<{ input_per_mtok_micros: number | null; output_per_mtok_micros: number | null }>;
+  export type ModelResponse = {
+    capabilities: CapabilitiesResponse;
+    context_window?: (number | null) | undefined;
+    display_name: string;
+    id: string;
+    price?: (null | PriceResponse) | undefined;
+    provider: ProviderKindDto;
+  };
+  export type ModelCatalogResponse = { errors: Array<ProviderErrorResponse>; models: Array<ModelResponse> };
   export type MoveCardRequest = { expected_version: number; to: ColumnDto };
+  export type ProviderResponse = {
+    base_url?: (string | null) | undefined;
+    created_by: string;
+    kind: ProviderKindDto;
+    preview: string;
+    updated_at: string;
+  };
+  export type ProviderListResponse = { providers: Array<ProviderResponse> };
+  export type PutProviderRequest = Partial<{ api_key: string; base_url: string | null }>;
   export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type RunResponse = {
     created_at: string;
@@ -100,6 +130,7 @@ export namespace Schemas {
   };
   export type SubmitTranscriptRequest = { body: string; title: string };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
+  export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
 
   // </Schemas>
 }
@@ -158,6 +189,85 @@ export namespace Endpoints {
     requestFormat: "json";
     parameters: never;
     responses: { 200: Schemas.MeResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type get_GetModelAssignments = {
+    method: "GET";
+    path: "/api/v1/model-assignments";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ModelAssignmentsResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type put_PutModelAssignments = {
+    method: "PUT";
+    path: "/api/v1/model-assignments";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.ModelAssignmentsDto;
+    };
+    responses: {
+      200: Schemas.ModelAssignmentsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListModels = {
+    method: "GET";
+    path: "/api/v1/models";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ModelCatalogResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type get_ListProviders = {
+    method: "GET";
+    path: "/api/v1/providers";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ProviderListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type put_PutProvider = {
+    method: "PUT";
+    path: "/api/v1/providers/{kind}";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+
+      body: Schemas.PutProviderRequest;
+    };
+    responses: {
+      200: Schemas.ProviderResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_DeleteProvider = {
+    method: "DELETE";
+    path: "/api/v1/providers/{kind}";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+    };
+    responses: {
+      204: unknown;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_TestProvider = {
+    method: "POST";
+    path: "/api/v1/providers/{kind}/test";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+    };
+    responses: {
+      200: Schemas.TestProviderResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
   };
   export type get_ListRuns = {
     method: "GET";
@@ -225,6 +335,9 @@ export type EndpointByMethod = {
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/me": Endpoints.get_GetMe;
+    "/api/v1/model-assignments": Endpoints.get_GetModelAssignments;
+    "/api/v1/models": Endpoints.get_ListModels;
+    "/api/v1/providers": Endpoints.get_ListProviders;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
@@ -233,7 +346,15 @@ export type EndpointByMethod = {
   };
   post: {
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
+    "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
+  };
+  put: {
+    "/api/v1/model-assignments": Endpoints.put_PutModelAssignments;
+    "/api/v1/providers/{kind}": Endpoints.put_PutProvider;
+  };
+  delete: {
+    "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
   };
 };
 
@@ -242,6 +363,8 @@ export type EndpointByMethod = {
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
 export type PostEndpoints = EndpointByMethod["post"];
+export type PutEndpoints = EndpointByMethod["put"];
+export type DeleteEndpoints = EndpointByMethod["delete"];
 // </EndpointByMethod.Shorthands>
 
 // <ApiClientTypes>
@@ -535,6 +658,68 @@ export class ApiClient {
     return this.request("post", path, ...params);
   }
   // </ApiClient.post>
+
+  // <ApiClient.put>
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  put<Path extends keyof PutEndpoints, _TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("put", path, ...params);
+  }
+  // </ApiClient.put>
+
+  // <ApiClient.delete>
+  delete<Path extends keyof DeleteEndpoints, TEndpoint extends DeleteEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  delete<Path extends keyof DeleteEndpoints, TEndpoint extends DeleteEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  delete<Path extends keyof DeleteEndpoints, _TEndpoint extends DeleteEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("delete", path, ...params);
+  }
+  // </ApiClient.delete>
 
   // <ApiClient.request>
   /**
