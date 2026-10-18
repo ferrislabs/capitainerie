@@ -1,0 +1,623 @@
+use std::{collections::HashMap, fmt};
+
+use capitainerie_common::CoreError;
+use capitainerie_core::domain::{
+    agent::SecretToken,
+    execution::{DraftPullRequest, PullRequestUrl, RepositoryRef, ports::CodeHost},
+};
+use chrono::{DateTime, Duration, Utc};
+use reqwest::{
+    RequestBuilder, Response,
+    header::{ACCEPT, AUTHORIZATION, LINK, USER_AGENT},
+};
+use serde::Deserialize;
+use serde_json::json;
+use tokio::sync::Mutex;
+
+use crate::{GithubError, jwt};
+
+const DEFAULT_API_BASE: &str = "https://api.github.com";
+const API_VERSION: &str = "2022-11-28";
+const AGENT: &str = concat!("capitainerie/", env!("CARGO_PKG_VERSION"));
+const REFRESH_MARGIN_MINUTES: i64 = 5;
+
+#[derive(Clone)]
+pub struct GithubApp {
+    pub app_id: u64,
+    pub private_key_pem: SecretToken,
+    pub api_base: String,
+}
+
+impl GithubApp {
+    pub fn new(app_id: u64, private_key_pem: SecretToken) -> Self {
+        Self {
+            app_id,
+            private_key_pem,
+            api_base: DEFAULT_API_BASE.to_owned(),
+        }
+    }
+}
+
+impl fmt::Debug for GithubApp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GithubApp")
+            .field("app_id", &self.app_id)
+            .field("api_base", &self.api_base)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone)]
+pub struct InstallationToken {
+    pub token: SecretToken,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl fmt::Debug for InstallationToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InstallationToken")
+            .field("token", &"***")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+impl InstallationToken {
+    fn is_fresh(&self, now: DateTime<Utc>) -> bool {
+        now < self.expires_at - Duration::minutes(REFRESH_MARGIN_MINUTES)
+    }
+}
+
+#[derive(Deserialize)]
+struct TokenResponse {
+    token: String,
+    expires_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+struct RepositoriesPage {
+    repositories: Vec<RepositoryEntry>,
+}
+
+#[derive(Deserialize)]
+struct RepositoryEntry {
+    full_name: String,
+}
+
+#[derive(Deserialize)]
+struct RepositoryDetails {
+    default_branch: String,
+}
+
+#[derive(Deserialize)]
+struct PullRequestResponse {
+    html_url: String,
+}
+
+#[derive(Deserialize)]
+struct ErrorBody {
+    message: String,
+}
+
+type CacheKey = (i64, Option<RepositoryRef>);
+
+pub struct GithubClient {
+    app: GithubApp,
+    http: reqwest::Client,
+    cache: Mutex<HashMap<CacheKey, InstallationToken>>,
+}
+
+impl GithubClient {
+    pub fn new(app: GithubApp) -> Result<Self, GithubError> {
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(GithubError::transport)?;
+        Ok(Self::with_http(app, http))
+    }
+
+    pub fn with_http(app: GithubApp, http: reqwest::Client) -> Self {
+        Self {
+            app,
+            http,
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.app.api_base.trim_end_matches('/'))
+    }
+
+    fn request(&self, builder: RequestBuilder) -> RequestBuilder {
+        builder
+            .header(ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .header(USER_AGENT, AGENT)
+    }
+
+    async fn send(builder: RequestBuilder) -> Result<Response, GithubError> {
+        let response = builder.send().await.map_err(GithubError::transport)?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        let status = response.status();
+        let message = response
+            .json::<ErrorBody>()
+            .await
+            .map(|body| body.message)
+            .unwrap_or_else(|_| {
+                status
+                    .canonical_reason()
+                    .unwrap_or("unknown error")
+                    .to_owned()
+            });
+        Err(GithubError::Status {
+            status: status.as_u16(),
+            message,
+        })
+    }
+
+    async fn decode<T: for<'de> Deserialize<'de>>(response: Response) -> Result<T, GithubError> {
+        response
+            .json()
+            .await
+            .map_err(|error| GithubError::Decode(error.without_url().to_string()))
+    }
+
+    /// `repository` of `None` asks for a token over every repository the
+    /// installation can see, which listing repositories requires.
+    async fn token_for(
+        &self,
+        installation_id: i64,
+        repository: Option<&RepositoryRef>,
+    ) -> Result<InstallationToken, GithubError> {
+        let key = (installation_id, repository.cloned());
+        if let Some(token) = self.cache.lock().await.get(&key)
+            && token.is_fresh(Utc::now())
+        {
+            return Ok(token.clone());
+        }
+
+        let body = match repository {
+            Some(repository) => json!({
+                "repositories": [repository.name()],
+                "permissions": {"contents": "write", "pull_requests": "write"},
+            }),
+            None => json!({"permissions": {"metadata": "read"}}),
+        };
+        let jwt = jwt::sign(
+            self.app.app_id,
+            self.app.private_key_pem.expose(),
+            Utc::now(),
+        )?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .post(self.url(&format!(
+                        "/app/installations/{installation_id}/access_tokens"
+                    )))
+                    .bearer_auth(jwt)
+                    .json(&body),
+            ),
+        )
+        .await?;
+        let issued: TokenResponse = Self::decode(response).await?;
+        let token = InstallationToken {
+            token: SecretToken::new(issued.token),
+            expires_at: issued.expires_at,
+        };
+        self.cache.lock().await.insert(key, token.clone());
+        Ok(token)
+    }
+
+    pub async fn installation_token(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<InstallationToken, GithubError> {
+        self.token_for(installation_id, Some(repository)).await
+    }
+
+    pub async fn default_branch(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<String, GithubError> {
+        let token = self.token_for(installation_id, Some(repository)).await?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .get(self.url(&format!(
+                        "/repos/{}/{}",
+                        repository.owner(),
+                        repository.name()
+                    )))
+                    .header(AUTHORIZATION, format!("Bearer {}", token.token.expose())),
+            ),
+        )
+        .await?;
+        Ok(Self::decode::<RepositoryDetails>(response)
+            .await?
+            .default_branch)
+    }
+
+    async fn list_repositories(
+        &self,
+        installation_id: i64,
+    ) -> Result<Vec<RepositoryRef>, GithubError> {
+        let token = self.token_for(installation_id, None).await?;
+        let api_base = self.app.api_base.trim_end_matches('/');
+        let mut next = Some(self.url("/installation/repositories?per_page=100"));
+        let mut repositories = Vec::new();
+        while let Some(url) = next {
+            let response = Self::send(
+                self.request(
+                    self.http
+                        .get(&url)
+                        .header(AUTHORIZATION, format!("Bearer {}", token.token.expose())),
+                ),
+            )
+            .await?;
+            next = response
+                .headers()
+                .get(LINK)
+                .and_then(|value| value.to_str().ok())
+                .and_then(next_link)
+                .filter(|link| link.starts_with(api_base))
+                .map(str::to_owned);
+            let page: RepositoriesPage = Self::decode(response).await?;
+            for entry in page.repositories {
+                match entry.full_name.parse() {
+                    Ok(repository) => repositories.push(repository),
+                    Err(_) => tracing::warn!(
+                        full_name = %entry.full_name,
+                        "skipping a repository with an unsupported name"
+                    ),
+                }
+            }
+        }
+        Ok(repositories)
+    }
+
+    async fn create_draft_pr(
+        &self,
+        installation_id: i64,
+        pull_request: &DraftPullRequest,
+    ) -> Result<PullRequestUrl, GithubError> {
+        let repository = &pull_request.repository;
+        let token = self.token_for(installation_id, Some(repository)).await?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .post(self.url(&format!(
+                        "/repos/{}/{}/pulls",
+                        repository.owner(),
+                        repository.name()
+                    )))
+                    .header(AUTHORIZATION, format!("Bearer {}", token.token.expose()))
+                    .json(&json!({
+                        "title": pull_request.title,
+                        "head": pull_request.head,
+                        "base": pull_request.base,
+                        "body": pull_request.body,
+                        "draft": true,
+                    })),
+            ),
+        )
+        .await?;
+        let created: PullRequestResponse = Self::decode(response).await?;
+        Ok(PullRequestUrl(created.html_url))
+    }
+}
+
+pub(crate) fn next_link(header: &str) -> Option<&str> {
+    header.split(',').find_map(|part| {
+        let (target, params) = part.split_once(';')?;
+        let is_next = params
+            .split(';')
+            .any(|param| param.trim().replace(' ', "") == "rel=\"next\"");
+        let url = target.trim().strip_prefix('<')?.strip_suffix('>')?;
+        is_next.then_some(url)
+    })
+}
+
+impl CodeHost for GithubClient {
+    async fn repositories(&self, installation_id: i64) -> Result<Vec<RepositoryRef>, CoreError> {
+        Ok(self.list_repositories(installation_id).await?)
+    }
+
+    async fn open_draft_pr(
+        &self,
+        installation_id: i64,
+        pull_request: DraftPullRequest,
+    ) -> Result<PullRequestUrl, CoreError> {
+        Ok(self.create_draft_pr(installation_id, &pull_request).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    use axum::{
+        Json, Router,
+        extract::{Query, State},
+        http::{HeaderMap, StatusCode as AxumStatus},
+        response::IntoResponse,
+        routing::{get, post},
+    };
+    use serde_json::Value;
+
+    use super::*;
+
+    const PRIVATE: &str = include_str!("../tests/fixtures/test-only-app-key.pem");
+
+    #[derive(Default)]
+    struct Recorded {
+        token_bodies: Vec<Value>,
+        token_headers: Vec<HeaderMap>,
+        pull_bodies: Vec<Value>,
+        expires_at: Option<String>,
+        fail_pulls_with: Option<u16>,
+        base: String,
+    }
+
+    type Shared = Arc<StdMutex<Recorded>>;
+
+    async fn issue_token(
+        State(shared): State<Shared>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        let mut recorded = shared.lock().unwrap();
+        recorded.token_bodies.push(body);
+        recorded.token_headers.push(headers);
+        let n = recorded.token_bodies.len();
+        let expires_at = recorded
+            .expires_at
+            .clone()
+            .unwrap_or_else(|| (Utc::now() + Duration::hours(1)).to_rfc3339());
+        Json(json!({"token": format!("ghs_secret{n}"), "expires_at": expires_at}))
+    }
+
+    async fn repositories(
+        State(shared): State<Shared>,
+        Query(query): Query<HashMap<String, String>>,
+        headers: HeaderMap,
+    ) -> impl IntoResponse {
+        assert_eq!(headers["authorization"], "Bearer ghs_secret1");
+        assert_eq!(query["per_page"], "100");
+        let base = shared.lock().unwrap().base.clone();
+        match query.get("page").map(String::as_str) {
+            None => (
+                [(
+                    "link",
+                    format!("<{base}/installation/repositories?per_page=100&page=2>; rel=\"next\""),
+                )],
+                Json(
+                    json!({"repositories": [{"full_name": "acme/api"}, {"full_name": "acme/web"}]}),
+                ),
+            )
+                .into_response(),
+            _ => Json(json!({"repositories": [{"full_name": "acme/docs"}]})).into_response(),
+        }
+    }
+
+    async fn pulls(
+        State(shared): State<Shared>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> impl IntoResponse {
+        let mut recorded = shared.lock().unwrap();
+        if let Some(status) = recorded.fail_pulls_with {
+            return (
+                AxumStatus::from_u16(status).unwrap(),
+                Json(json!({"message": "Validation Failed"})),
+            )
+                .into_response();
+        }
+        assert_eq!(headers["authorization"], "Bearer ghs_secret1");
+        recorded.pull_bodies.push(body);
+        Json(json!({"html_url": "https://github.com/acme/api/pull/9"})).into_response()
+    }
+
+    async fn repo() -> Json<Value> {
+        Json(json!({"default_branch": "trunk"}))
+    }
+
+    async fn serve(shared: Shared) -> GithubClient {
+        let app = Router::new()
+            .route("/app/installations/{id}/access_tokens", post(issue_token))
+            .route("/installation/repositories", get(repositories))
+            .route("/repos/{owner}/{repo}", get(repo))
+            .route("/repos/{owner}/{repo}/pulls", post(pulls))
+            .with_state(Arc::clone(&shared));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        shared.lock().unwrap().base = base.clone();
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut github = GithubApp::new(1, SecretToken::new(PRIVATE));
+        github.api_base = base;
+        GithubClient::new(github).unwrap()
+    }
+
+    fn repo_ref(value: &str) -> RepositoryRef {
+        value.parse().unwrap()
+    }
+
+    #[test]
+    fn next_link_is_parsed() {
+        let header = "<https://x/a?page=1>; rel=\"prev\", <https://x/a?page=3>; rel=\"next\", <https://x/a?page=9>; rel=\"last\"";
+        assert_eq!(next_link(header), Some("https://x/a?page=3"));
+        assert_eq!(next_link("<https://x/a?page=9>; rel=\"last\""), None);
+        assert_eq!(next_link(""), None);
+    }
+
+    #[test]
+    fn debug_hides_secrets() {
+        let token = InstallationToken {
+            token: SecretToken::new("ghs_leak"),
+            expires_at: Utc::now(),
+        };
+        assert!(!format!("{token:?}").contains("ghs_leak"));
+        let app = GithubApp::new(1, SecretToken::new("pem-leak"));
+        assert!(!format!("{app:?}").contains("pem-leak"));
+    }
+
+    #[test]
+    fn errors_map_to_core_errors() {
+        let status = |status| {
+            CoreError::from(GithubError::Status {
+                status,
+                message: "m".into(),
+            })
+        };
+        for transient in [429, 500, 502] {
+            assert!(matches!(status(transient), CoreError::Internal(_)));
+        }
+        for permanent in [401, 403, 404, 422] {
+            assert!(matches!(status(permanent), CoreError::Invalid(_)));
+        }
+        assert!(matches!(
+            CoreError::from(GithubError::Transport("down".into())),
+            CoreError::Internal(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn token_request_is_scoped_and_cached() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let api = repo_ref("acme/api");
+
+        let first = client.installation_token(5, &api).await.unwrap();
+        let second = client.installation_token(5, &api).await.unwrap();
+        assert_eq!(first.token.expose(), "ghs_secret1");
+        assert_eq!(second.token.expose(), "ghs_secret1");
+        client
+            .installation_token(5, &repo_ref("acme/web"))
+            .await
+            .unwrap();
+
+        let recorded = shared.lock().unwrap();
+        assert_eq!(recorded.token_bodies.len(), 2);
+        assert_eq!(
+            recorded.token_bodies[0],
+            json!({
+                "repositories": ["api"],
+                "permissions": {"contents": "write", "pull_requests": "write"},
+            })
+        );
+        let headers = &recorded.token_headers[0];
+        assert!(
+            headers["authorization"]
+                .to_str()
+                .unwrap()
+                .starts_with("Bearer ey")
+        );
+        assert_eq!(headers["accept"], "application/vnd.github+json");
+        assert_eq!(headers["x-github-api-version"], "2022-11-28");
+        assert!(headers.contains_key("user-agent"));
+    }
+
+    #[tokio::test]
+    async fn token_close_to_expiry_is_renewed() {
+        let shared = Shared::default();
+        shared.lock().unwrap().expires_at = Some((Utc::now() + Duration::minutes(4)).to_rfc3339());
+        let client = serve(Arc::clone(&shared)).await;
+        let api = repo_ref("acme/api");
+        client.installation_token(5, &api).await.unwrap();
+        client.installation_token(5, &api).await.unwrap();
+        assert_eq!(shared.lock().unwrap().token_bodies.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn repositories_follow_pagination_with_an_unscoped_token() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let repositories = client.repositories(5).await.unwrap();
+        let names: Vec<_> = repositories
+            .iter()
+            .map(|r| format!("{}/{}", r.owner(), r.name()))
+            .collect();
+        assert_eq!(names, ["acme/api", "acme/web", "acme/docs"]);
+        let recorded = shared.lock().unwrap();
+        assert!(recorded.token_bodies[0].get("repositories").is_none());
+    }
+
+    #[tokio::test]
+    async fn default_branch_is_read() {
+        let client = serve(Shared::default()).await;
+        assert_eq!(
+            client
+                .default_branch(5, &repo_ref("acme/api"))
+                .await
+                .unwrap(),
+            "trunk"
+        );
+    }
+
+    fn draft() -> DraftPullRequest {
+        DraftPullRequest {
+            repository: repo_ref("acme/api"),
+            base: "main".into(),
+            head: "capitainerie/run-1".into(),
+            title: "Fix it".into(),
+            body: "details".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn draft_pull_request_is_created() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let url = client.open_draft_pr(5, draft()).await.unwrap();
+        assert_eq!(
+            url,
+            PullRequestUrl("https://github.com/acme/api/pull/9".into())
+        );
+        assert_eq!(
+            shared.lock().unwrap().pull_bodies[0],
+            json!({
+                "title": "Fix it",
+                "head": "capitainerie/run-1",
+                "base": "main",
+                "body": "details",
+                "draft": true,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn github_failures_are_mapped_without_leaking_tokens() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        for (status, transient) in [
+            (422, false),
+            (404, false),
+            (403, false),
+            (503, true),
+            (429, true),
+        ] {
+            shared.lock().unwrap().fail_pulls_with = Some(status);
+            let error = client.open_draft_pr(5, draft()).await.unwrap_err();
+            let text = error.to_string();
+            assert!(!text.contains("ghs_secret"));
+            if transient {
+                assert!(matches!(error, CoreError::Internal(_)), "{status}");
+            } else {
+                assert!(text.contains("Validation Failed"));
+                assert!(matches!(error, CoreError::Invalid(_)), "{status}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn unreachable_host_is_transient() {
+        let mut app = GithubApp::new(1, SecretToken::new(PRIVATE));
+        app.api_base = "http://127.0.0.1:1".into();
+        let client = GithubClient::new(app).unwrap();
+        let error = client.repositories(5).await.unwrap_err();
+        assert!(matches!(error, CoreError::Internal(_)));
+    }
+}
