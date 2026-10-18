@@ -124,8 +124,8 @@ Sur une carte validée par un humain, un membre clique « Confier à Claude Code
 
 ### Erreurs
 
-- `CoreError` existant ; nouvelles variantes de domaine : `CardNotExecutable`, `ExecutionAlreadyActive`, `GithubNotConnected`, `RepositoryNotAllowed`.
-- `runner-kube` et `github` : `thiserror`, convertis en `CoreError::Unavailable` (transitoire, réessayé) ou `CoreError::Internal`.
+- `CoreError` existant, codes stables dans `Conflict` (voir Contrats figés).
+- `runner-kube` et `github` : `thiserror`, convertis en `CoreError::Internal` (transitoire, réessayé) ou `CoreError::Invalid`.
 
 ## Acceptance (Gherkin)
 
@@ -203,30 +203,11 @@ Ordre : W1 d'abord (contrats figés), puis W2, W3, W4 en parallèle, puis W5, pu
 
 ## Contrats figés
 
-```rust
-// core/domain/execution
-pub struct RepositoryRef { pub owner: String, pub name: String }          // "owner/name", validé
-pub struct ExecutorModel(String);                                          // modèle Anthropic
-pub struct ExecutableCard(Card);                                           // TryFrom<Card> : Todo seulement
-pub struct TaskSpec { pub run_id: RunId, pub repository: RepositoryRef, pub base_branch: String,
-                      pub branch: String, pub prompt: String, pub model: ExecutorModel,
-                      pub max_turns: u32, pub deadline: Duration, pub task_token: SecretToken }
-pub enum TaskLine { Agent(serde_json::Value), Capitainerie(TaskMarker) }
-pub enum TaskMarker { Cloned, Pushed { sha: String }, NoChanges }
-pub enum TaskOutcome { Succeeded, Failed { reason: String }, DeadlineExceeded }
+Dans le code : `libs/core/src/domain/execution/mod.rs` (types) et `ports.rs` (ports `TaskRunner`, `CodeHost`, `TaskGrantRepository`, `GithubInstallationRepository`). Ces fichiers font foi.
 
-pub trait TaskRunner: Send + Sync {
-    fn start(&self, spec: &TaskSpec) -> impl Future<Output = Result<(), CoreError>> + Send;
-    fn lines(&self, run_id: RunId) -> impl Stream<Item = Result<TaskLine, CoreError>> + Send;
-    fn outcome(&self, run_id: RunId) -> impl Future<Output = Result<TaskOutcome, CoreError>> + Send;
-    fn delete(&self, run_id: RunId) -> impl Future<Output = Result<(), CoreError>> + Send;
-}
-
-pub trait CodeHost: Send + Sync {
-    fn repositories(&self, installation_id: i64) -> impl Future<Output = Result<Vec<RepositoryRef>, CoreError>> + Send;
-    fn open_draft_pr(&self, installation_id: i64, pr: DraftPullRequest) -> impl Future<Output = Result<PullRequestUrl, CoreError>> + Send;
-}
-```
+- `TaskRunner::follow(run_id, mpsc::Sender<TaskLine>) -> TaskOutcome` : le flux passe par un canal `tokio::mpsc`, car `core` ne dépend pas de `futures`.
+- Erreur transitoire (réessayée) : `CoreError::Internal`, comme pour les étapes actuelles.
+- Les erreurs de domaine sont des `CoreError::Conflict` avec un code stable : `card_not_executable`, `execution_already_active`, `github_not_connected` ; `RepositoryNotAllowed` est un `CoreError::Forbidden`.
 
 ## Dépendances ajoutées
 
@@ -260,3 +241,5 @@ cd apps/console && corepack pnpm check && corepack pnpm test && corepack pnpm bu
 ```
 
 Plus un run réel (`@spec-exec-7`) sur un dépôt de test de l'organisation, avec la clé Anthropic de l'utilisateur et son accord sur le coût.
+
+Amended: 2026-10-18 contrats figés dans le code ; suivi par canal mpsc ; erreurs sur CoreError existant.
