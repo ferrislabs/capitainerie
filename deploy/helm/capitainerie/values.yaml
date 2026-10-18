@@ -39,11 +39,17 @@ config:
   # -- Value of MCP_AUDIENCE (audience of the delegated agent tokens).
   mcpAudience: capitainerie-mcp
   # -- Client ids of the agents a run acts through (PIPELINE_AGENTS on api and worker, MCP_ACCEPTED_AGENTS on mcp-kanban).
+  # With executor.enabled, mcp-kanban also accepts capitainerie-agent-executor (not added to PIPELINE_AGENTS):
+  # AGENT_CREDENTIALS must then include its client secret (capitainerie-agent-executor=<secret>).
   pipelineAgents:
     - capitainerie-agent-writer
   github:
     # -- URL name of the GitHub App (GITHUB_APP_SLUG): the install link is github.com/apps/<slug>/installations/new.
     appSlug: ""
+    # -- GITHUB_APP_CLIENT_ID, the App's OAuth client id. Its secret goes in api.secretEnv (GITHUB_APP_CLIENT_SECRET).
+    clientId: ""
+    # -- GITHUB_OAUTH_BASE, for GitHub Enterprise. Empty keeps https://github.com.
+    oauthBase: ""
     # -- GITHUB_API_BASE, for GitHub Enterprise. Empty keeps https://api.github.com.
     apiBase: ""
   iggy:
@@ -91,6 +97,7 @@ api:
     - SECRETS_KEY
     - GITHUB_APP_ID
     - GITHUB_APP_PRIVATE_KEY
+    - GITHUB_APP_CLIENT_SECRET
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS

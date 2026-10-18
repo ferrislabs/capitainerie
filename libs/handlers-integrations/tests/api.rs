@@ -2,7 +2,11 @@
 
 use std::sync::Arc;
 
-use axum::{Extension, Json, Router, routing::get, routing::post};
+use axum::{
+    Extension, Json, Router,
+    extract::Request,
+    routing::{get, post},
+};
 use capitainerie_auth::Identity;
 use capitainerie_common::OrganizationId;
 use capitainerie_core::{
@@ -89,8 +93,41 @@ async fn spawn(app: Router) -> String {
     format!("http://{address}")
 }
 
+fn fresh_installation() -> i64 {
+    (Uuid::now_v7().as_u128() & 0x3FFF_FFFF_FFFF_FFFF) as i64
+}
+
+fn code_for(installations: &[i64]) -> String {
+    installations
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 async fn fake_github() -> String {
     let app = Router::new()
+        .route(
+            "/login/oauth/access_token",
+            post(|Json(body): Json<Value>| async move {
+                assert_eq!(body["client_id"], "Iv1.test");
+                assert_eq!(body["client_secret"], "oauth-secret");
+                Json(json!({"access_token": format!("ghu_{}", body["code"].as_str().unwrap())}))
+            }),
+        )
+        .route(
+            "/user/installations",
+            get(|request: Request| async move {
+                let token = request.headers()["authorization"].to_str().unwrap();
+                let ids = token.trim_start_matches("Bearer ghu_");
+                let installations: Vec<Value> = ids
+                    .split(',')
+                    .filter_map(|id| id.parse::<i64>().ok())
+                    .map(|id| json!({"id": id}))
+                    .collect();
+                Json(json!({"total_count": installations.len(), "installations": installations}))
+            }),
+        )
         .route(
             "/app/installations/{id}",
             get(|| async { Json(json!({"account": {"login": "acme"}})) }),
@@ -122,6 +159,9 @@ fn signer() -> StateSigner {
 async fn configured() -> GithubIntegration {
     let mut app = GithubApp::new(1, SecretToken::new(PEM));
     app.api_base = fake_github().await;
+    app.oauth_base.clone_from(&app.api_base);
+    app.client_id = Some("Iv1.test".into());
+    app.client_secret = Some(SecretToken::new("oauth-secret"));
     GithubIntegration {
         client: Some(Arc::new(GithubClient::new(app).unwrap())),
         slug: Some("capitainerie-test".into()),
@@ -166,13 +206,35 @@ async fn install_state(client: &reqwest::Client, admin: &str) -> String {
     url.split("state=").nth(1).unwrap().to_owned()
 }
 
-async fn connect(client: &reqwest::Client, base: &str, state: &str) -> reqwest::Response {
+async fn connect_with(
+    client: &reqwest::Client,
+    base: &str,
+    state: &str,
+    installation_id: i64,
+    code: &str,
+) -> reqwest::Response {
     client
         .post(format!("{base}/api/v1/integrations/github/callback"))
-        .json(&json!({"installation_id": 42, "state": state}))
+        .json(&json!({"installation_id": installation_id, "code": code, "state": state}))
         .send()
         .await
         .unwrap()
+}
+
+async fn connect(
+    client: &reqwest::Client,
+    base: &str,
+    state: &str,
+    installation_id: i64,
+) -> reqwest::Response {
+    connect_with(
+        client,
+        base,
+        state,
+        installation_id,
+        &code_for(&[installation_id]),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -207,6 +269,7 @@ async fn a_non_admin_cannot_start_the_installation_and_the_denial_is_audited() {
 async fn an_admin_connects_a_member_reads_and_lists_repositories() {
     let Some(pool) = pool().await else { return };
     let organization = organization(&pool).await;
+    let installation_id = fresh_installation();
     let github = configured().await;
     let admin = serve(
         &pool,
@@ -231,7 +294,7 @@ async fn an_admin_connects_a_member_reads_and_lists_repositories() {
         .await
         .unwrap();
     let state = install_state(&client, &admin).await;
-    let connected = connect(&client, &admin, &state).await;
+    let connected = connect(&client, &admin, &state, installation_id).await;
     let connected_status = connected.status();
     let connected: Value = connected.json().await.unwrap();
     let after: Value = client
@@ -275,7 +338,7 @@ async fn an_admin_connects_a_member_reads_and_lists_repositories() {
     assert_eq!(connected["connected"], true);
     for body in [&connected, &after] {
         assert_eq!(body["account_login"], "acme");
-        assert_eq!(body["installation_id"], 42);
+        assert_eq!(body["installation_id"], installation_id);
         assert_eq!(body["connected_by"], "user-1");
         assert!(body["connected_at"].is_string());
     }
@@ -298,6 +361,7 @@ async fn a_forged_expired_or_borrowed_state_is_refused_and_nothing_is_stored() {
     )
     .await;
     let client = reqwest::Client::new();
+    let installation_id = fresh_installation();
     let now = Utc::now();
     let good = signer().sign(organization.id, "user-1", now);
     let (payload, tag) = good.split_once('.').unwrap();
@@ -314,7 +378,7 @@ async fn a_forged_expired_or_borrowed_state_is_refused_and_nothing_is_stored() {
         "garbage".to_owned(),
     ];
     for state in &refused {
-        let response = connect(&client, &admin, state).await;
+        let response = connect(&client, &admin, state, installation_id).await;
         assert_eq!(response.status(), 400, "{state}");
         assert_eq!(
             response.json::<Value>().await.unwrap()["code"],
@@ -329,7 +393,12 @@ async fn a_forged_expired_or_borrowed_state_is_refused_and_nothing_is_stored() {
             .await
             .unwrap();
     assert_eq!(stored, 0);
-    assert_eq!(connect(&client, &admin, &good).await.status(), 200);
+    assert_eq!(
+        connect(&client, &admin, &good, installation_id)
+            .await
+            .status(),
+        200
+    );
 }
 
 #[tokio::test]
@@ -344,7 +413,13 @@ async fn a_non_admin_with_a_valid_state_is_still_refused_by_the_policy() {
     .await;
     let state = signer().sign(organization.id, "user-2", Utc::now());
 
-    let response = connect(&reqwest::Client::new(), &member, &state).await;
+    let response = connect(
+        &reqwest::Client::new(),
+        &member,
+        &state,
+        fresh_installation(),
+    )
+    .await;
 
     assert_eq!(response.status(), 403);
     assert_eq!(denied(&pool, &organization).await, 1);
@@ -375,7 +450,7 @@ async fn without_a_github_app_the_status_says_so_and_the_rest_answers_503() {
         .send()
         .await
         .unwrap();
-    let callback = connect(&client, &admin, "state").await;
+    let callback = connect(&client, &admin, "state", 1).await;
     let repositories = client
         .get(format!("{admin}/api/v1/integrations/github/repositories"))
         .send()
@@ -390,4 +465,95 @@ async fn without_a_github_app_the_status_says_so_and_the_rest_answers_503() {
         assert_eq!(body["code"], "github_app_not_configured");
         assert!(body["message"].as_str().unwrap().contains("not configured"));
     }
+}
+
+async fn stored(pool: &PgPool, organization: &Organization) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM github_installations WHERE organization_id = $1")
+        .bind(organization.id.0)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn an_installation_the_admin_cannot_access_is_refused_and_nothing_is_stored() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let admin = serve(
+        &pool,
+        caller(&organization, "user-1", &[ADMIN]),
+        configured().await,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let installation_id = fresh_installation();
+    let state = signer().sign(organization.id, "user-1", Utc::now());
+
+    let foreign = connect_with(
+        &client,
+        &admin,
+        &state,
+        installation_id,
+        &code_for(&[installation_id + 1]),
+    )
+    .await;
+    let nothing = connect_with(&client, &admin, &state, installation_id, "").await;
+
+    for response in [foreign, nothing] {
+        assert_eq!(response.status(), 403);
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["code"],
+            "installation_not_accessible"
+        );
+    }
+    assert_eq!(stored(&pool, &organization).await, 0);
+    assert_eq!(
+        connect_with(
+            &client,
+            &admin,
+            &state,
+            installation_id,
+            &code_for(&[1, installation_id]),
+        )
+        .await
+        .status(),
+        200
+    );
+    assert_eq!(stored(&pool, &organization).await, 1);
+}
+
+#[tokio::test]
+async fn an_installation_bound_to_another_organization_is_a_conflict() {
+    let Some(pool) = pool().await else { return };
+    let first = organization(&pool).await;
+    let second = organization(&pool).await;
+    let github = configured().await;
+    let first_admin = serve(&pool, caller(&first, "user-1", &[ADMIN]), github.clone()).await;
+    let second_admin = serve(&pool, caller(&second, "user-1", &[ADMIN]), github).await;
+    let client = reqwest::Client::new();
+    let installation_id = fresh_installation();
+
+    let bound = connect(
+        &client,
+        &first_admin,
+        &signer().sign(first.id, "user-1", Utc::now()),
+        installation_id,
+    )
+    .await;
+    let refused = connect(
+        &client,
+        &second_admin,
+        &signer().sign(second.id, "user-1", Utc::now()),
+        installation_id,
+    )
+    .await;
+
+    assert_eq!(bound.status(), 200);
+    assert_eq!(refused.status(), 409);
+    assert_eq!(
+        refused.json::<Value>().await.unwrap()["message"],
+        "installation_already_connected"
+    );
+    assert_eq!(stored(&pool, &second).await, 0);
+    assert_eq!(stored(&pool, &first).await, 1);
 }

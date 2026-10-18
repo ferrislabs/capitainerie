@@ -45,6 +45,8 @@ pub struct InstallUrlResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ConnectGithubRequest {
     pub installation_id: i64,
+    /// The OAuth `code` GitHub returns with the redirect; proves the admin can access the installation.
+    pub code: String,
     /// The `state` of the install URL, returned untouched by GitHub.
     pub state: String,
 }

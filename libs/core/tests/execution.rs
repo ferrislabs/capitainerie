@@ -58,6 +58,10 @@ impl TokenExchanger for FakeExchanger {
     }
 }
 
+fn fresh_installation() -> i64 {
+    (Uuid::now_v7().as_u128() & 0x3FFF_FFFF_FFFF_FFFF) as i64
+}
+
 async fn setup() -> Option<(PgPool, CapitainerieUseCase, OrganizationId)> {
     let pool = postgres::connect(
         &database_url().or_else(|| {
@@ -128,7 +132,11 @@ async fn todo_card(usecase: &CapitainerieUseCase, organization_id: OrganizationI
 
 async fn connect(usecase: &CapitainerieUseCase, organization_id: OrganizationId) {
     usecase
-        .connect_github(human(organization_id, true), 42, "acme".into())
+        .connect_github(
+            human(organization_id, true),
+            fresh_installation(),
+            "acme".into(),
+        )
         .await
         .unwrap();
 }
@@ -461,20 +469,21 @@ async fn only_an_admin_connects_github() {
     let Some((_pool, usecase, organization_id)) = setup().await else {
         return;
     };
+    let first = fresh_installation();
 
     let refused = usecase
-        .connect_github(human(organization_id, false), 7, "acme".into())
+        .connect_github(human(organization_id, false), first, "acme".into())
         .await;
     let before = usecase
         .github_installation(human(organization_id, false))
         .await
         .unwrap();
     let connected = usecase
-        .connect_github(human(organization_id, true), 7, "acme".into())
+        .connect_github(human(organization_id, true), first, "acme".into())
         .await
         .unwrap();
     let replaced = usecase
-        .connect_github(human(organization_id, true), 8, "acme-inc".into())
+        .connect_github(human(organization_id, true), first + 1, "acme-inc".into())
         .await
         .unwrap();
     let read_by_member = usecase
@@ -499,7 +508,7 @@ async fn only_an_admin_connects_github() {
 
     assert!(matches!(refused, Err(CoreError::Forbidden { .. })));
     assert_eq!(before, None);
-    assert_eq!(connected.installation_id, 7);
+    assert_eq!(connected.installation_id, first);
     assert_eq!(read_by_member, Some(replaced.clone()));
     assert_eq!(read_by_member.unwrap().account_login, "acme-inc");
     assert_eq!(system_read, Some(replaced));
@@ -517,7 +526,11 @@ async fn a_denied_connection_is_audited() {
     };
 
     let _ = usecase
-        .connect_github(human(organization_id, false), 7, "acme".into())
+        .connect_github(
+            human(organization_id, false),
+            fresh_installation(),
+            "acme".into(),
+        )
         .await;
 
     let denied: i64 = sqlx::query_scalar(

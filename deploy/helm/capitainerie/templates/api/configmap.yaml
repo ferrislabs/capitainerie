@@ -19,6 +19,12 @@ data:
   {{- with .Values.config.github.appSlug }}
   GITHUB_APP_SLUG: {{ . | quote }}
   {{- end }}
+  {{- with .Values.config.github.clientId }}
+  GITHUB_APP_CLIENT_ID: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.github.oauthBase }}
+  GITHUB_OAUTH_BASE: {{ . | quote }}
+  {{- end }}
   {{- with .Values.config.github.apiBase }}
   GITHUB_API_BASE: {{ . | quote }}
   {{- end }}

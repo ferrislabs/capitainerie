@@ -17,4 +17,5 @@ pub use args::{EmbeddingArgs, LlmArgs};
 pub use catalog::RigModelCatalog;
 pub use embeddings::RigEmbedder;
 pub use error::RuntimeError;
+pub use prices::claude_prices;
 pub use runtime::RigAgentRuntime;

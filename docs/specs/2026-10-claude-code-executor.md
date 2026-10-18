@@ -45,6 +45,7 @@ Sur une carte validée par un humain, un membre clique « Confier à Claude Code
 8. Le modèle de l'Exécutant est un modèle Anthropic. [type : `ExecutorModel(String)`, pas un `ModelRef` multi-fournisseur]
 9. Une exécution est bornée : durée (`activeDeadlineSeconds`, 30 min par défaut) et nombre de tours (`--max-turns`, 50 par défaut). [test sur la spec du Job]
 10. Aucune clé ni aucun jeton dans les logs, les traces, les événements ou la timeline. [test : les sorties `stream-json` sont filtrées avant stockage]
+11. Une installation GitHub n'est liée à une organisation que si l'admin qui la connecte y a accès (OAuth GitHub) ; une installation n'est liée qu'à une seule organisation. [test]
 
 ## Hors périmètre
 
@@ -182,6 +183,12 @@ Sur une carte validée par un humain, un membre clique « Confier à Claude Code
 @spec-exec-10 Scenario: seul un admin connecte GitHub
   When un membre non admin appelle POST /api/v1/integrations/github/callback
   Then la réponse est 403 et la décision est auditée
+
+@spec-exec-11 Scenario: une installation GitHub inaccessible ou déjà liée est refusée
+  Given un admin dont le code OAuth GitHub ne donne pas accès à l'installation
+  When il appelle POST /api/v1/integrations/github/callback avec { installation_id, code, state }
+  Then la réponse est 403 `installation_not_accessible` et rien n'est stocké
+  And une installation déjà liée à une autre organisation répond 409 `installation_already_connected`
 ```
 
 ## Simulation
@@ -243,3 +250,4 @@ cd apps/console && corepack pnpm check && corepack pnpm test && corepack pnpm bu
 Plus un run réel (`@spec-exec-7`) sur un dépôt de test de l'organisation, avec la clé Anthropic de l'utilisateur et son accord sur le coût.
 
 Amended: 2026-10-18 contrats figés dans le code ; suivi par canal mpsc ; erreurs sur CoreError existant.
+Amended: 2026-10-19 l'installation GitHub est liée par OAuth (invariant 11), unique par organisation ; MCP_ACCEPTED_AGENTS inclut l'Exécutant du chart.

@@ -20,6 +20,9 @@ pub enum IntegrationError {
 
     #[error(transparent)]
     InvalidState(#[from] InvalidState),
+
+    #[error("the connecting user has no access to this GitHub installation")]
+    InstallationNotAccessible,
 }
 
 impl From<CoreError> for IntegrationError {
@@ -46,6 +49,11 @@ impl IntoResponse for IntegrationError {
             Self::InvalidState(error) => {
                 (StatusCode::BAD_REQUEST, "invalid_state", error.to_string())
             }
+            Self::InstallationNotAccessible => (
+                StatusCode::FORBIDDEN,
+                "installation_not_accessible",
+                "the connecting user has no access to this GitHub installation".to_owned(),
+            ),
         };
         let body = ApiErrorResponse {
             code,

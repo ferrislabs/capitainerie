@@ -93,8 +93,13 @@ struct World {
     pool: PgPool,
     usecase: CapitainerieUseCase,
     organization_id: OrganizationId,
+    installation_id: i64,
     run_id: RunId,
     card: Card,
+}
+
+fn fresh_installation() -> i64 {
+    (Uuid::now_v7().as_u128() & 0x3FFF_FFFF_FFFF_FFFF) as i64
 }
 
 async fn world() -> Option<World> {
@@ -116,13 +121,14 @@ async fn world() -> Option<World> {
     let organization_id = OrganizationId(id);
     let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
         .with_cipher(SecretCipher::new(&[7u8; 32]).unwrap());
+    let installation_id = fresh_installation();
     usecase
         .connect_github(
             Subject {
                 is_admin: true,
                 ..human(organization_id)
             },
-            42,
+            installation_id,
             "acme".into(),
         )
         .await
@@ -171,6 +177,7 @@ async fn world() -> Option<World> {
         pool,
         usecase,
         organization_id,
+        installation_id,
         run_id: started.run_id,
         card: started.card,
     })
@@ -241,12 +248,12 @@ fn runner_ending(seen: &Seen, lines: Vec<TaskLine>, outcome: TaskOutcome) -> Moc
     runner
 }
 
-fn host(seen: &Seen) -> MockCodeHost {
+fn host(seen: &Seen, installation_id: i64) -> MockCodeHost {
     let mut host = MockCodeHost::new();
     let pull_requests = seen.pull_requests.clone();
     host.expect_open_draft_pr()
         .returning(move |installation, pull_request| {
-            assert_eq!(installation, 42);
+            assert_eq!(installation, installation_id);
             pull_requests.lock().unwrap().push(pull_request);
             Box::pin(std::future::ready(Ok(PullRequestUrl(PR_URL.into()))))
         });
@@ -374,7 +381,12 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
             Ok(TaskOutcome::Succeeded)
         })
     });
-    let pipeline = pipeline(&world, runner, host(&seen), commenter(&seen));
+    let pipeline = pipeline(
+        &world,
+        runner,
+        host(&seen, world.installation_id),
+        commenter(&seen),
+    );
 
     pipeline.execute(world.run_id, None).await.unwrap();
 

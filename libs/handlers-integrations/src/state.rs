@@ -16,14 +16,18 @@ pub struct GithubIntegration {
 
 impl GithubIntegration {
     pub fn app_configured(&self) -> bool {
-        self.client.is_some() && self.slug.is_some() && self.signer.is_some()
+        self.client
+            .as_ref()
+            .is_some_and(|client| client.oauth_configured())
+            && self.slug.is_some()
+            && self.signer.is_some()
     }
 
     pub(crate) fn client(&self) -> Result<&GithubClient, IntegrationError> {
         self.client
             .as_deref()
             .ok_or(IntegrationError::NotConfigured(
-                "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are unset",
+                "GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET are unset",
             ))
     }
 

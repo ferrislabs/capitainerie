@@ -192,7 +192,15 @@ impl CapitainerieUseCase {
             created_by: subject.id,
             created_at: Utc::now(),
         };
-        github_installation_repository.save(&installation).await?;
+        github_installation_repository
+            .save(&installation)
+            .await
+            .map_err(|error| match error {
+                CoreError::Conflict(_) => {
+                    CoreError::Conflict("installation_already_connected".into())
+                }
+                other => other,
+            })?;
         Ok(installation)
     }
 

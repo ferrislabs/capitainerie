@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 use crate::{GithubError, jwt};
 
 const DEFAULT_API_BASE: &str = "https://api.github.com";
+const DEFAULT_OAUTH_BASE: &str = "https://github.com";
 const API_VERSION: &str = "2022-11-28";
 const AGENT: &str = concat!("capitainerie/", env!("CARGO_PKG_VERSION"));
 const REFRESH_MARGIN_MINUTES: i64 = 5;
@@ -26,6 +27,9 @@ pub struct GithubApp {
     pub app_id: u64,
     pub private_key_pem: SecretToken,
     pub api_base: String,
+    pub oauth_base: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<SecretToken>,
 }
 
 impl GithubApp {
@@ -34,6 +38,9 @@ impl GithubApp {
             app_id,
             private_key_pem,
             api_base: DEFAULT_API_BASE.to_owned(),
+            oauth_base: DEFAULT_OAUTH_BASE.to_owned(),
+            client_id: None,
+            client_secret: None,
         }
     }
 }
@@ -43,7 +50,18 @@ impl fmt::Debug for GithubApp {
         f.debug_struct("GithubApp")
             .field("app_id", &self.app_id)
             .field("api_base", &self.api_base)
+            .field("oauth_base", &self.oauth_base)
+            .field("client_id", &self.client_id)
             .finish_non_exhaustive()
+    }
+}
+
+/// A user-to-server token: used once to check an installation, never stored.
+pub struct UserToken(SecretToken);
+
+impl fmt::Debug for UserToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("UserToken").field(&"***").finish()
     }
 }
 
@@ -72,6 +90,22 @@ impl InstallationToken {
 struct TokenResponse {
     token: String,
     expires_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+struct OAuthResponse {
+    access_token: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UserInstallationsPage {
+    installations: Vec<UserInstallationEntry>,
+}
+
+#[derive(Deserialize)]
+struct UserInstallationEntry {
+    id: i64,
 }
 
 #[derive(Deserialize)]
@@ -273,6 +307,78 @@ impl GithubClient {
             .login)
     }
 
+    pub fn oauth_configured(&self) -> bool {
+        self.app.client_id.is_some() && self.app.client_secret.is_some()
+    }
+
+    /// Exchanges the `code` GitHub appends to the setup redirect when the App
+    /// asks for user authorization during installation.
+    pub async fn exchange_user_code(&self, code: &str) -> Result<UserToken, GithubError> {
+        let (Some(client_id), Some(client_secret)) = (&self.app.client_id, &self.app.client_secret)
+        else {
+            return Err(GithubError::OAuthNotConfigured);
+        };
+        let url = format!(
+            "{}/login/oauth/access_token",
+            self.app.oauth_base.trim_end_matches('/')
+        );
+        let response = Self::send(
+            self.http
+                .post(url)
+                .header(ACCEPT, "application/json")
+                .header(USER_AGENT, AGENT)
+                .json(&json!({
+                    "client_id": client_id,
+                    "client_secret": client_secret.expose(),
+                    "code": code,
+                })),
+        )
+        .await?;
+        let exchanged: OAuthResponse = Self::decode(response).await?;
+        match (exchanged.access_token, exchanged.error) {
+            (Some(token), _) => Ok(UserToken(SecretToken::new(token))),
+            (None, error) => Err(GithubError::Status {
+                status: 400,
+                message: error.unwrap_or_else(|| "no access token returned".to_owned()),
+            }),
+        }
+    }
+
+    pub async fn user_can_access_installation(
+        &self,
+        token: &UserToken,
+        installation_id: i64,
+    ) -> Result<bool, GithubError> {
+        let api_base = self.app.api_base.trim_end_matches('/');
+        let mut next = Some(self.url("/user/installations?per_page=100"));
+        while let Some(url) = next {
+            let response = Self::send(
+                self.request(
+                    self.http
+                        .get(&url)
+                        .header(AUTHORIZATION, format!("Bearer {}", token.0.expose())),
+                ),
+            )
+            .await?;
+            next = response
+                .headers()
+                .get(LINK)
+                .and_then(|value| value.to_str().ok())
+                .and_then(next_link)
+                .filter(|link| link.starts_with(api_base))
+                .map(str::to_owned);
+            let page: UserInstallationsPage = Self::decode(response).await?;
+            if page
+                .installations
+                .iter()
+                .any(|entry| entry.id == installation_id)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     async fn list_repositories(
         &self,
         installation_id: i64,
@@ -392,6 +498,9 @@ mod tests {
         expires_at: Option<String>,
         fail_pulls_with: Option<u16>,
         base: String,
+        oauth_bodies: Vec<Value>,
+        oauth_reply: Option<Value>,
+        user_auth: Vec<String>,
     }
 
     type Shared = Arc<StdMutex<Recorded>>;
@@ -470,8 +579,51 @@ mod tests {
             .into_response()
     }
 
+    async fn oauth_token(
+        State(shared): State<Shared>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        assert_eq!(headers["accept"], "application/json");
+        let mut recorded = shared.lock().unwrap();
+        recorded.oauth_bodies.push(body);
+        Json(
+            recorded
+                .oauth_reply
+                .clone()
+                .unwrap_or_else(|| json!({"access_token": "ghu_secret", "token_type": "bearer"})),
+        )
+    }
+
+    async fn user_installations(
+        State(shared): State<Shared>,
+        Query(query): Query<HashMap<String, String>>,
+        headers: HeaderMap,
+    ) -> impl IntoResponse {
+        let base = {
+            let mut recorded = shared.lock().unwrap();
+            recorded
+                .user_auth
+                .push(headers["authorization"].to_str().unwrap().to_owned());
+            recorded.base.clone()
+        };
+        match query.get("page").map(String::as_str) {
+            None => (
+                [(
+                    "link",
+                    format!("<{base}/user/installations?per_page=100&page=2>; rel=\"next\""),
+                )],
+                Json(json!({"total_count": 3, "installations": [{"id": 1}, {"id": 2}]})),
+            )
+                .into_response(),
+            _ => Json(json!({"total_count": 3, "installations": [{"id": 3}]})).into_response(),
+        }
+    }
+
     async fn serve(shared: Shared) -> GithubClient {
         let app = Router::new()
+            .route("/login/oauth/access_token", post(oauth_token))
+            .route("/user/installations", get(user_installations))
             .route("/app/installations/{id}", get(installation))
             .route("/app/installations/{id}/access_tokens", post(issue_token))
             .route("/installation/repositories", get(repositories))
@@ -483,7 +635,10 @@ mod tests {
         shared.lock().unwrap().base = base.clone();
         tokio::spawn(async move { axum::serve(listener, app).await });
         let mut github = GithubApp::new(1, SecretToken::new(PRIVATE));
-        github.api_base = base;
+        github.api_base.clone_from(&base);
+        github.oauth_base = base;
+        github.client_id = Some("Iv1.abc".into());
+        github.client_secret = Some(SecretToken::new("oauth-secret"));
         GithubClient::new(github).unwrap()
     }
 
@@ -508,6 +663,77 @@ mod tests {
         assert!(!format!("{token:?}").contains("ghs_leak"));
         let app = GithubApp::new(1, SecretToken::new("pem-leak"));
         assert!(!format!("{app:?}").contains("pem-leak"));
+        let mut app = GithubApp::new(1, SecretToken::new("pem"));
+        app.client_secret = Some(SecretToken::new("oauth-leak"));
+        assert!(!format!("{app:?}").contains("oauth-leak"));
+        assert!(!format!("{:?}", UserToken(SecretToken::new("ghu_leak"))).contains("ghu_leak"));
+    }
+
+    #[tokio::test]
+    async fn the_oauth_code_is_exchanged_for_a_user_token() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let token = client.exchange_user_code("the-code").await.unwrap();
+        assert_eq!(token.0.expose(), "ghu_secret");
+        assert_eq!(
+            shared.lock().unwrap().oauth_bodies[0],
+            json!({"client_id": "Iv1.abc", "client_secret": "oauth-secret", "code": "the-code"})
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rejected_oauth_code_is_a_permanent_error() {
+        let shared = Shared::default();
+        shared.lock().unwrap().oauth_reply = Some(json!({"error": "bad_verification_code"}));
+        let client = serve(Arc::clone(&shared)).await;
+        let error = client.exchange_user_code("stale").await.unwrap_err();
+        assert!(matches!(error, GithubError::Status { status: 400, .. }));
+        assert!(matches!(
+            CoreError::from(error),
+            CoreError::Invalid(message) if message.contains("bad_verification_code")
+        ));
+    }
+
+    #[tokio::test]
+    async fn exchanging_without_oauth_settings_fails() {
+        let client = GithubClient::new(GithubApp::new(1, SecretToken::new(PRIVATE))).unwrap();
+        assert!(!client.oauth_configured());
+        assert!(matches!(
+            client.exchange_user_code("c").await,
+            Err(GithubError::OAuthNotConfigured)
+        ));
+    }
+
+    #[tokio::test]
+    async fn user_installations_are_searched_across_pages_with_the_user_token() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let token = client.exchange_user_code("c").await.unwrap();
+        assert!(
+            client
+                .user_can_access_installation(&token, 3)
+                .await
+                .unwrap()
+        );
+        assert!(
+            client
+                .user_can_access_installation(&token, 1)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !client
+                .user_can_access_installation(&token, 9)
+                .await
+                .unwrap()
+        );
+        let recorded = shared.lock().unwrap();
+        assert!(
+            recorded
+                .user_auth
+                .iter()
+                .all(|auth| auth == "Bearer ghu_secret")
+        );
     }
 
     #[test]

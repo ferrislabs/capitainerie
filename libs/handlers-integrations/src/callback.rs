@@ -22,7 +22,8 @@ pub struct CallbackPath;
         (status = 200, description = "Connected", body = GithubIntegrationResponse),
         (status = 400, description = "The state is forged, expired, or was issued to someone else", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 403, description = "The caller is not an organization admin", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 403, description = "The caller is not an organization admin, or cannot access the installation (installation_not_accessible)", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 409, description = "The installation is already connected to an organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 503, description = "The GitHub App is not configured", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -41,6 +42,14 @@ pub async fn handler(
         &subject.id,
         Utc::now(),
     )?;
+    let user_token = client.exchange_user_code(&request.code).await?;
+    if !client
+        .user_can_access_installation(&user_token, request.installation_id)
+        .await?
+    {
+        return Err(IntegrationError::InstallationNotAccessible);
+    }
+    drop(user_token);
     let account_login = client.installation_account(request.installation_id).await?;
     let installation = state
         .usecase

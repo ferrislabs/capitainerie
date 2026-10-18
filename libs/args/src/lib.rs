@@ -116,6 +116,38 @@ pub struct GithubAppArgs {
         default_value = "https://api.github.com"
     )]
     pub api_base: String,
+
+    /// OAuth client id of the App: proves the connecting admin can access the installation.
+    #[arg(
+        id = "github_app_client_id",
+        long = "github-app-client-id",
+        env = "GITHUB_APP_CLIENT_ID"
+    )]
+    pub client_id: Option<String>,
+
+    #[arg(
+        id = "github_app_client_secret",
+        long = "github-app-client-secret",
+        env = "GITHUB_APP_CLIENT_SECRET"
+    )]
+    pub client_secret: Option<String>,
+
+    #[arg(
+        id = "github_oauth_base",
+        long = "github-oauth-base",
+        env = "GITHUB_OAUTH_BASE",
+        default_value = "https://github.com"
+    )]
+    pub oauth_base: String,
+}
+
+impl GithubAppArgs {
+    pub fn app_configured(&self) -> bool {
+        self.app_id.is_some()
+            && self.private_key.is_some()
+            && self.client_id.is_some()
+            && self.client_secret.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Args)]

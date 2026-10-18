@@ -143,21 +143,38 @@ fn github_integration(
     args: &GithubAppArgs,
     secrets_key: Option<&str>,
 ) -> anyhow::Result<GithubIntegration> {
-    let client = match (args.app_id, &args.private_key) {
-        (Some(app_id), Some(key)) => {
+    let any_set = args.app_id.is_some()
+        || args.private_key.is_some()
+        || args.client_id.is_some()
+        || args.client_secret.is_some();
+    let client = match (args.app_configured(), any_set) {
+        (true, _) => {
+            let (Some(app_id), Some(key), Some(client_id), Some(client_secret)) = (
+                args.app_id,
+                &args.private_key,
+                &args.client_id,
+                &args.client_secret,
+            ) else {
+                anyhow::bail!("the GitHub App settings are incomplete");
+            };
             let mut app = GithubApp::new(app_id, SecretToken::new(key.as_str()));
             app.api_base.clone_from(&args.api_base);
+            app.oauth_base.clone_from(&args.oauth_base);
+            app.client_id = Some(client_id.clone());
+            app.client_secret = Some(SecretToken::new(client_secret.as_str()));
             Some(Arc::new(
                 GithubClient::new(app).context("building the GitHub client")?,
             ))
         }
-        (None, None) => {
+        (false, false) => {
             tracing::warn!(
-                "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are unset: GitHub cannot be connected and cards cannot be executed"
+                "the GitHub App settings are unset: GitHub cannot be connected and cards cannot be executed"
             );
             None
         }
-        _ => anyhow::bail!("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY must be set together"),
+        (false, true) => anyhow::bail!(
+            "GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET must be set together"
+        ),
     };
     let signer = secrets_key
         .map(StateSigner::from_base64)

@@ -2,7 +2,6 @@ mod commenter;
 mod dispatch;
 mod indexer;
 mod orchestrator;
-mod prices;
 
 use std::{sync::Arc, time::Duration};
 
@@ -29,14 +28,15 @@ use capitainerie_core::{
 };
 use capitainerie_github::{GithubApp, GithubClient};
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
-use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder};
+use capitainerie_runtime_rig::{
+    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, claude_prices,
+};
 use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
 
 use crate::{
-    commenter::McpCommenter, dispatch::Dispatcher, indexer::CardIndexer,
-    orchestrator::Orchestrator, prices::executor_prices,
+    commenter::McpCommenter, dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator,
 };
 
 #[derive(Debug, Parser)]
@@ -196,7 +196,7 @@ async fn main() -> anyhow::Result<()> {
             progress_every: Duration::from_secs(5),
             console_url: args.console_url.clone(),
             default_models,
-            prices: executor_prices(),
+            prices: claude_prices(),
         },
     );
     let pipeline = Dispatcher::new(meeting, execution);

@@ -39,6 +39,10 @@ fn database_url() -> Option<String> {
     }
 }
 
+fn fresh_installation() -> i64 {
+    (Uuid::now_v7().as_u128() & 0x3FFF_FFFF_FFFF_FFFF) as i64
+}
+
 async fn spawn(app: Router) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -178,7 +182,7 @@ impl Fixture {
 
     async fn connect(&self) {
         self.usecase
-            .connect_github(self.subject(true), 42, "acme".into())
+            .connect_github(self.subject(true), fresh_installation(), "acme".into())
             .await
             .unwrap();
     }

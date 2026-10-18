@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX github_installations_installation_id ON github_installations (installation_id);

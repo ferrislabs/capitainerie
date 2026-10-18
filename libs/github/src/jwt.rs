@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
@@ -22,12 +24,22 @@ impl AppClaims {
     }
 }
 
+/// Secrets in `.env` files and Kubernetes manifests often carry the PEM on one
+/// line with literal `\n` sequences.
+fn normalize_pem(pem: &str) -> Cow<'_, str> {
+    if !pem.contains('\n') && pem.contains("\\n") {
+        Cow::Owned(pem.replace("\\n", "\n"))
+    } else {
+        Cow::Borrowed(pem)
+    }
+}
+
 pub(crate) fn sign(
     app_id: u64,
     private_key_pem: &str,
     now: DateTime<Utc>,
 ) -> Result<String, GithubError> {
-    let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
+    let key = EncodingKey::from_rsa_pem(normalize_pem(private_key_pem).as_bytes())
         .map_err(|error| GithubError::Jwt(error.to_string()))?;
     jsonwebtoken::encode(
         &Header::new(Algorithm::RS256),
@@ -68,6 +80,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded.claims.iss, 7);
+    }
+
+    #[test]
+    fn a_pem_with_escaped_newlines_signs_like_the_original() {
+        let escaped = PRIVATE.trim_end().replace('\n', "\\n");
+        assert!(!escaped.contains('\n'));
+        assert_eq!(normalize_pem(&escaped), PRIVATE.trim_end());
+        assert!(sign(7, &escaped, Utc::now()).is_ok());
+        assert!(matches!(normalize_pem(PRIVATE), Cow::Borrowed(_)));
+        assert!(sign(7, PRIVATE, Utc::now()).is_ok());
     }
 
     #[test]
