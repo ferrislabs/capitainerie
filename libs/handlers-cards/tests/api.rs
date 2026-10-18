@@ -54,11 +54,13 @@ async fn spawn(app: Router) -> String {
     format!("http://{address}")
 }
 
-async fn fake_identity_provider() -> String {
+/// Served under a per-organization path: a port the OS hands out again must
+/// not repeat an issuer URL, which is unique in `organizations`.
+async fn fake_identity_provider(realm: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    let endpoint = format!("{base}/token");
-    let app = Router::new()
+    let issuer = format!("http://{}/realms/{realm}", listener.local_addr().unwrap());
+    let endpoint = format!("{issuer}/token");
+    let routes = Router::new()
         .route(
             "/.well-known/openid-configuration",
             get(move || async move { Json(json!({"token_endpoint": endpoint})) }),
@@ -67,8 +69,9 @@ async fn fake_identity_provider() -> String {
             "/token",
             post(|| async { Json(json!({"access_token": "executor-token", "expires_in": 1800})) }),
         );
+    let app = Router::new().nest(&format!("/realms/{realm}"), routes);
     tokio::spawn(async move { axum::serve(listener, app).await });
-    base
+    issuer
 }
 
 async fn fake_github(calls: Arc<AtomicUsize>) -> String {
@@ -134,7 +137,7 @@ async fn fixture_as(github: Github, actor: Option<&str>) -> Option<Fixture> {
     let pool = postgres::connect(&url, 3).await.unwrap();
     let id = Uuid::now_v7();
     let slug = format!("test-{}", id.simple());
-    let issuer_url = fake_identity_provider().await;
+    let issuer_url = fake_identity_provider(&slug).await;
     sqlx::query(
         "INSERT INTO organizations (id, slug, name, issuer_url) VALUES ($1, $2, 'Test', $3)",
     )
