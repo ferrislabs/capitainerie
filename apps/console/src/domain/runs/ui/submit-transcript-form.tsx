@@ -1,4 +1,6 @@
+import { FileUp } from 'lucide-react'
 import type { ChangeEvent, FormEvent } from 'react'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -48,7 +50,7 @@ export function SubmitTranscriptForm({
 
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-			<div className="flex flex-col gap-2">
+			<div className="flex flex-col gap-1.5">
 				<Label htmlFor="transcript-title">Titre</Label>
 				<Input
 					id="transcript-title"
@@ -57,63 +59,73 @@ export function SubmitTranscriptForm({
 					disabled={isPending}
 					aria-invalid={Boolean(titleError)}
 				/>
-				<div className="flex justify-between gap-2 text-xs">
+				<div className="flex min-h-4 justify-between gap-2 text-xs">
 					<span
 						role={titleError ? 'alert' : undefined}
-						className="text-destructive"
+						className="text-signal-danger"
 					>
 						{titleError}
 					</span>
-					<span className="text-muted-foreground">
+					<span className="ml-auto text-muted-foreground figures">
 						{title.length} / {titleMaxLength}
 					</span>
 				</div>
 			</div>
-			<div className="flex flex-col gap-2">
+			<div className="flex flex-col gap-1.5">
 				<Label htmlFor="transcript-body">Transcript</Label>
 				<Textarea
 					id="transcript-body"
-					className="min-h-40"
+					className="max-h-80 min-h-40 font-mono text-[13px] leading-relaxed"
 					value={body}
 					onChange={(event) => onBodyChange(event.target.value)}
 					disabled={isPending}
 					aria-invalid={Boolean(bodyError)}
 				/>
-				<div className="flex justify-between gap-2 text-xs">
+				<div className="flex min-h-4 justify-between gap-2 text-xs">
 					<span
 						role={bodyError ? 'alert' : undefined}
-						className="text-destructive"
+						className="text-signal-danger"
 					>
 						{bodyError}
 					</span>
-					<span className="text-muted-foreground">
+					<span className="ml-auto text-muted-foreground figures">
 						{body.length} / {bodyMaxLength}
 					</span>
 				</div>
 			</div>
-			<div className="flex flex-col gap-2">
+			<div className="flex flex-col gap-1.5">
 				<Label htmlFor="transcript-file">
-					Importer un fichier .txt (optionnel)
+					Importer un fichier .txt{' '}
+					<span className="font-normal text-muted-foreground">(optionnel)</span>
 				</Label>
-				<Input
-					id="transcript-file"
-					type="file"
-					accept=".txt,text/plain"
-					onChange={handleFile}
-					disabled={isPending}
-				/>
+				<div className="flex items-center gap-3">
+					<input
+						id="transcript-file"
+						type="file"
+						className="peer sr-only"
+						accept=".txt,text/plain"
+						onChange={handleFile}
+						disabled={isPending}
+					/>
+					<label
+						htmlFor="transcript-file"
+						className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input/70 bg-card px-3 text-[13px] font-medium transition-colors duration-150 hover:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:pointer-events-none peer-disabled:opacity-50"
+					>
+						<FileUp aria-hidden="true" className="size-4" />
+						Choisir un fichier
+					</label>
+					<span className="text-xs text-muted-foreground">
+						Son contenu remplace le transcript.
+					</span>
+				</div>
 			</div>
 			{serverError ? (
-				<p role="alert" className="text-sm text-destructive">
-					{serverError}
-				</p>
+				<InlineAlert tone="danger">{serverError}</InlineAlert>
 			) : null}
 			{successMessage ? (
-				<output className="text-sm text-muted-foreground">
-					{successMessage}
-				</output>
+				<InlineAlert tone="success">{successMessage}</InlineAlert>
 			) : null}
-			<div>
+			<div className="flex items-center justify-end border-t pt-4">
 				<Button type="submit" disabled={isPending}>
 					{isPending ? 'Envoi…' : 'Lancer le run'}
 				</Button>

@@ -1,6 +1,13 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
-import type { CostDimension } from '#/domain/agents/dimensions'
+import { InlineAlert } from '#/components/layout/inline-alert'
+import { Page } from '#/components/layout/page'
+import { PageHeader } from '#/components/layout/page-header'
+import { SectionCard } from '#/components/layout/section-card'
+import { TableSkeleton } from '#/components/layout/table-skeleton'
+import {
+	COSTS_WINDOW_DAYS,
+	type CostDimension,
+} from '#/domain/agents/dimensions'
 import { useAgents } from '#/domain/agents/hooks/use-agents'
 import { useCosts } from '#/domain/agents/hooks/use-costs'
 import { AgentsTable } from '#/domain/agents/ui/agents-table'
@@ -12,31 +19,34 @@ export function AgentsPage() {
 	const costs = useCosts(by)
 
 	return (
-		<section className="flex flex-col gap-6">
-			<h1 className="text-2xl font-semibold">Agents</h1>
-			{agents.isError ? (
-				<p role="alert" className="text-sm text-destructive">
-					Impossible de charger les agents.
-				</p>
-			) : agents.isPending ? (
-				<p className="text-sm text-muted-foreground">Chargement…</p>
-			) : (
-				<AgentsTable agents={agents.data} />
-			)}
-			<Card>
-				<CardHeader>
-					<CardTitle>Coûts des 30 derniers jours</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<CostsSection
-						by={by}
-						costs={costs.data}
-						isPending={costs.isPending}
-						isError={costs.isError}
-						onChange={setBy}
-					/>
-				</CardContent>
-			</Card>
-		</section>
+		<Page>
+			<PageHeader
+				title="Agents"
+				description="Chaque agent agit avec un jeton délégué. Son activité et ce qu'elle coûte, run par run."
+			/>
+			<SectionCard
+				title="Agents actifs"
+				description="Runs, dernière activité, tokens et coût cumulés."
+				flush
+			>
+				{agents.isError ? (
+					<InlineAlert tone="danger" className="m-4">
+						Impossible de charger les agents.
+					</InlineAlert>
+				) : agents.isPending ? (
+					<TableSkeleton rows={3} columns={5} />
+				) : (
+					<AgentsTable agents={agents.data} />
+				)}
+			</SectionCard>
+			<CostsSection
+				title={`Coûts des ${COSTS_WINDOW_DAYS} derniers jours`}
+				by={by}
+				costs={costs.data}
+				isPending={costs.isPending}
+				isError={costs.isError}
+				onChange={setBy}
+			/>
+		</Page>
 	)
 }

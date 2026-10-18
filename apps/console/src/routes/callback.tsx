@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useEffect } from 'react'
 import { useAuth } from 'react-oidc-context'
+import { FullscreenMessage } from '#/components/layout/fullscreen-message'
 import { Button } from '#/components/ui/button'
 import { safeReturnTo } from '#/lib/return-to'
 
@@ -18,20 +19,28 @@ function Callback() {
 
 	if (auth.error) {
 		return (
-			<div className="flex min-h-screen flex-col items-center justify-center gap-3 p-8 text-center">
-				<ShieldAlert className="size-8 text-destructive" />
-				<p className="font-medium">Connexion impossible</p>
-				<p className="text-sm text-muted-foreground">{auth.error.message}</p>
-				<Button onClick={() => void navigate({ to: '/', replace: true })}>
-					Réessayer
-				</Button>
-			</div>
+			<FullscreenMessage
+				icon={
+					<ShieldAlert
+						aria-hidden="true"
+						className="size-5 text-signal-danger"
+					/>
+				}
+				title="Connexion impossible"
+				message={auth.error.message}
+				action={
+					<Button onClick={() => void navigate({ to: '/', replace: true })}>
+						Réessayer
+					</Button>
+				}
+			/>
 		)
 	}
 
 	return (
-		<div className="flex min-h-screen items-center justify-center">
-			<Loader2 className="size-6 animate-spin text-primary" />
-		</div>
+		<FullscreenMessage
+			icon={<Loader2 aria-hidden="true" className="size-5 animate-spin" />}
+			title="Connexion en cours…"
+		/>
 	)
 }

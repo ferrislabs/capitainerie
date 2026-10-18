@@ -27,6 +27,7 @@ export function AgentsTable({ agents }: Props) {
 				icon={Bot}
 				title="Aucun agent"
 				description="Les agents apparaîtront ici après leur premier run."
+				className="m-4"
 			/>
 		)
 	}
@@ -45,16 +46,18 @@ export function AgentsTable({ agents }: Props) {
 			<TableBody>
 				{agents.map((agent) => (
 					<TableRow key={agent.agent}>
-						<TableCell className="font-medium">{agent.agent}</TableCell>
-						<TableCell className="text-right">{agent.runs}</TableCell>
-						<TableCell>
+						<TableCell className="font-mono text-xs font-medium">
+							{agent.agent}
+						</TableCell>
+						<TableCell className="text-right figures">{agent.runs}</TableCell>
+						<TableCell className="whitespace-nowrap text-muted-foreground figures">
 							{dateFormat.format(new Date(agent.last_seen))}
 						</TableCell>
-						<TableCell className="text-right">
+						<TableCell className="text-right figures">
 							{formatTokens(agent.input_tokens)} /{' '}
 							{formatTokens(agent.output_tokens)}
 						</TableCell>
-						<TableCell className="text-right">
+						<TableCell className="text-right figures">
 							{formatCost(agent.cost_micros)}
 						</TableCell>
 					</TableRow>
