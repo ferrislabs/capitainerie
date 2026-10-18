@@ -6,6 +6,10 @@ use std::{
 };
 
 use axum::{Json, Router, extract::State, http::request::Parts, routing::post};
+use capitainerie_core::domain::{
+    agent::SecretToken,
+    provider::{ModelRef, ModelTarget, ProviderAccess, ProviderKind},
+};
 use capitainerie_runtime_rig::LlmArgs;
 use rmcp::{
     ErrorData, ServerHandler,
@@ -18,6 +22,8 @@ use rmcp::{
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
+
+pub mod providers;
 
 pub const MODEL: &str = "fake-model";
 
@@ -270,5 +276,27 @@ pub fn args(base_url: &str, mcp_url: &str) -> LlmArgs {
         model: MODEL.to_owned(),
         timeout_secs: 30,
         mcp_url: mcp_url.to_owned(),
+    }
+}
+
+pub fn target(kind: ProviderKind, model: &str, access: Option<ProviderAccess>) -> ModelTarget {
+    ModelTarget {
+        model: ModelRef {
+            provider: kind,
+            model: model.to_owned(),
+        },
+        access,
+    }
+}
+
+pub fn local() -> ModelTarget {
+    target(ProviderKind::OpenAiCompatible, MODEL, None)
+}
+
+pub fn access(kind: ProviderKind, secret: &str, base_url: &str) -> ProviderAccess {
+    ProviderAccess {
+        kind,
+        secret: SecretToken::new(secret),
+        base_url: Some(base_url.to_owned()),
     }
 }

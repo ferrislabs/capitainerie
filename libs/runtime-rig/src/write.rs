@@ -6,7 +6,7 @@ use std::{
 
 use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{
-    DuplicateAction, LocatedAction, ToolCall, WriteReport, WriteRequest,
+    DuplicateAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
 };
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
@@ -17,8 +17,11 @@ use rig_core::{
 use rmcp::{RoleClient, service::Peer};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tracing::{Instrument, field, info_span};
 
+use crate::anthropic::{Api, Request};
+use crate::client::Engine;
 use crate::mcp::{
     COMMENT, CREATE_CARD, McpSession, call_create_card, call_tool, comment_arguments,
     create_card_arguments,
@@ -27,6 +30,7 @@ use crate::usage::{truncate_chars, usage_of};
 
 pub(crate) const AGENT_NAME: &str = "writer";
 const TOOL_NAME: &str = "propose_card";
+const MAX_TOKENS: u32 = 4096;
 
 pub(crate) const SYSTEM_PROMPT: &str = "\
 You are the writer of a meeting assistant. You receive a numbered list of action items found in a meeting.
@@ -276,8 +280,124 @@ async fn comment_duplicates(peer: &Peer<RoleClient>, request: &WriteRequest) -> 
     calls
 }
 
-pub(crate) async fn run(
+fn tool_definition() -> Value {
+    json!({
+        "name": TOOL_NAME,
+        "description": "Propose one Kanban card for one numbered action. Call it exactly once per action.",
+        "strict": true,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action_index": {
+                    "type": "integer",
+                    "description": "The number of the action in the list you were given.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Clear French title, imperative mood, at most 80 characters.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "French description that keeps the owner and the deadline.",
+                },
+            },
+            "required": ["action_index", "title", "description"],
+            "additionalProperties": false,
+        },
+    })
+}
+
+async fn tool_result(tool: &ProposeCard, call: &Value) -> Value {
+    let name = call["name"].as_str().unwrap_or_default();
+    let (content, is_error) = if name == TOOL_NAME {
+        match serde_json::from_value::<ProposeCardArgs>(call["input"].clone()) {
+            Ok(args) => match PortableTool::call(tool, args).await {
+                Ok(summary) => (summary, false),
+                Err(failure) => (failure.0, true),
+            },
+            Err(error) => (format!("invalid arguments: {error}"), true),
+        }
+    } else {
+        (format!("unknown tool {name}"), true)
+    };
+    json!({
+        "type": "tool_result",
+        "tool_use_id": call["id"],
+        "content": content,
+        "is_error": is_error,
+    })
+}
+
+async fn tool_loop(
+    api: &Api,
+    model_name: &str,
+    tool: &ProposeCard,
+    listing: String,
+    max_turns: usize,
+) -> Result<Usage, CoreError> {
+    let tools = [tool_definition()];
+    let mut messages = vec![json!({ "role": "user", "content": listing })];
+    let mut usage = Usage {
+        model: model_name.to_owned(),
+        ..Usage::default()
+    };
+    for _ in 0..max_turns {
+        let reply = api
+            .send(&Request {
+                model: model_name,
+                max_tokens: MAX_TOKENS,
+                system: SYSTEM_PROMPT,
+                messages: &messages,
+                tools: Some(&tools),
+                schema: None,
+            })
+            .await?;
+        usage.absorb(&reply.usage);
+        if reply.stop_reason != "tool_use" {
+            return Ok(usage);
+        }
+        let mut results = Vec::new();
+        for call in reply.tool_uses() {
+            results.push(tool_result(tool, call).await);
+        }
+        if results.is_empty() {
+            return Ok(usage);
+        }
+        messages.push(json!({ "role": "assistant", "content": reply.content }));
+        messages.push(json!({ "role": "user", "content": results }));
+    }
+    tracing::warn!(max_turns, "the writer ran out of turns");
+    Ok(usage)
+}
+
+async fn rig_loop(
     model: DynModel<Completion>,
+    model_name: &str,
+    tool: &ProposeCard,
+    listing: String,
+    max_turns: usize,
+) -> Result<Usage, CoreError> {
+    let agent = AgentBuilder::new(model)
+        .name(AGENT_NAME)
+        .preamble(SYSTEM_PROMPT)
+        .tool(tool.clone())
+        .default_max_turns(max_turns)
+        .build();
+    match agent.prompt(listing).max_turns(max_turns).await {
+        Ok(response) => Ok(usage_of(model_name, &response.usage)),
+        Err(PromptError::MaxTurns { .. }) => {
+            tracing::warn!(max_turns, "the writer ran out of turns");
+            Ok(usage_of(model_name, &Default::default()))
+        }
+        Err(error) => Err(CoreError::Internal(format!(
+            "the language model call failed: {error}"
+        ))),
+    }
+}
+
+pub(crate) async fn run(
+    engine: Engine,
+    provider: &str,
     model_name: &str,
     mcp_url: &str,
     request: WriteRequest,
@@ -292,6 +412,7 @@ pub(crate) async fn run(
         "invoke_agent",
         otel.name = format!("invoke_agent {AGENT_NAME}"),
         gen_ai.operation.name = "invoke_agent",
+        gen_ai.provider.name = provider,
         gen_ai.agent.name = AGENT_NAME,
         gen_ai.request.model = model_name,
     );
@@ -315,26 +436,12 @@ pub(crate) async fn run(
             request.transcript_id,
             request.actions,
         );
-        let agent = AgentBuilder::new(model)
-            .name(AGENT_NAME)
-            .preamble(SYSTEM_PROMPT)
-            .tool(tool.clone())
-            .default_max_turns(max_turns)
-            .build();
-        let outcome = agent.prompt(listing).max_turns(max_turns).await;
-        session.close().await;
-        let usage = match outcome {
-            Ok(response) => usage_of(model_name, &response.usage),
-            Err(PromptError::MaxTurns { .. }) => {
-                tracing::warn!(max_turns, "the writer ran out of turns");
-                usage_of(model_name, &Default::default())
-            }
-            Err(error) => {
-                return Err(CoreError::Internal(format!(
-                    "the language model call failed: {error}"
-                )));
-            }
+        let outcome = match engine {
+            Engine::Chat(model) => rig_loop(model, model_name, &tool, listing, max_turns).await,
+            Engine::Anthropic(api) => tool_loop(&api, model_name, &tool, listing, max_turns).await,
         };
+        session.close().await;
+        let usage = outcome?;
         comments.extend(tool.recorded());
         Ok(WriteReport {
             tool_calls: comments,

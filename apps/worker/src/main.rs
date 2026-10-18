@@ -4,12 +4,13 @@ mod orchestrator;
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
-use capitainerie_args::{DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs};
+use capitainerie_args::{DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, SecretsArgs};
 use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
     CapitainerieUseCase, MeetingPipeline, PipelineConfig,
     domain::{
+        provider::ModelAssignments,
         run::step::Pricing,
         similarity::{DEFAULT_DEDUP_GRAY_FLOOR, DEFAULT_DEDUP_THRESHOLD},
     },
@@ -19,7 +20,7 @@ use capitainerie_core::{
         postgres,
     },
 };
-use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, OpenAiEmbedder, RigAgentRuntime};
+use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder};
 use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
@@ -61,6 +62,8 @@ struct Args {
     exchange: ExchangeArgs,
     #[command(flatten)]
     delegation: DelegationArgs,
+    #[command(flatten)]
+    secrets: SecretsArgs,
     /// Price of the model, in micro-units per million input tokens (0 for a local model).
     #[arg(
         long = "llm-price-input",
@@ -108,8 +111,18 @@ async fn main() -> anyhow::Result<()> {
         args.delegation.key.as_deref().context(
             "DELEGATION_KEY is required: the worker reads the delegations the API sealed",
         )?;
-    let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
+    let mut usecase = CapitainerieUseCase::with_local_policies(pool.clone())
         .with_cipher(SecretCipher::from_base64(key)?);
+    match &args.secrets.key {
+        Some(key) => {
+            usecase = usecase.with_secrets_cipher(
+                SecretCipher::from_base64(key).context("SECRETS_KEY is unusable")?,
+            );
+        }
+        None => tracing::warn!(
+            "SECRETS_KEY is unset: the organizations' provider keys cannot be read, every run uses the default endpoint"
+        ),
+    }
     let bus = IggyEventBus::connect(&args.iggy)
         .await
         .context("connecting to iggy")?;
@@ -119,8 +132,9 @@ async fn main() -> anyhow::Result<()> {
         .first()
         .cloned()
         .context("PIPELINE_AGENTS names no writer agent")?;
-    let embedder = OpenAiEmbedder::new(&args.llm, &args.embedding)?;
-    let vectors = LanceVectorStore::open(&args.lancedb_uri, args.embedding.dimensions)
+    let default_models = ModelAssignments::defaults(&args.llm.model, &args.embedding.model);
+    let embedder = RigEmbedder::new(&args.llm)?;
+    let vectors = LanceVectorStore::open(&args.lancedb_uri)
         .await
         .context("opening the vector store")?;
     let indexer = CardIndexer::new(
@@ -128,6 +142,7 @@ async fn main() -> anyhow::Result<()> {
         bus.clone(),
         embedder.clone(),
         vectors.clone(),
+        default_models.clone(),
     );
     let pipeline = MeetingPipeline::new(
         usecase,
@@ -145,6 +160,7 @@ async fn main() -> anyhow::Result<()> {
             stale_after: Duration::from_secs(15 * 60),
             dedup_threshold: args.dedup_threshold,
             dedup_gray_floor: args.dedup_gray_floor,
+            default_models,
         },
     );
     let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);
@@ -175,4 +191,16 @@ async fn main() -> anyhow::Result<()> {
     orchestrated?;
     tracing::info!("worker stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Args;
+
+    #[test]
+    fn the_command_line_definition_is_valid() {
+        Args::command().debug_assert();
+    }
 }

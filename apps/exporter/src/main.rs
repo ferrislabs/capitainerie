@@ -137,3 +137,15 @@ async fn flush(batcher: &mut Batcher, writer: &ParquetEventWriter) {
         Err(error) => tracing::error!(%error, "flush task failed"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Args;
+
+    #[test]
+    fn the_command_line_definition_is_valid() {
+        Args::command().debug_assert();
+    }
+}

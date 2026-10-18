@@ -10,8 +10,8 @@ use capitainerie_core::domain::{
     },
     similarity::{Embedding, SimilarCard, ports::Embedder},
 };
-use capitainerie_runtime_rig::{EmbeddingArgs, OpenAiEmbedder, RigAgentRuntime};
-use common::{FakeLlm, FakeMcp, MODEL, args, text_response, tool_call_response};
+use capitainerie_runtime_rig::{RigAgentRuntime, RigEmbedder};
+use common::{FakeLlm, FakeMcp, MODEL, args, local, text_response, tool_call_response};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -67,6 +67,7 @@ async fn judge_duplicate_reads_a_yes_and_the_usage() {
 
     let judgement = runtime
         .judge_duplicate(
+            &local(),
             &located("Rédiger et envoyer l'email aux clients", "q", 0, 1),
             &candidate("Envoyer un email aux clients\nPour l'offre"),
         )
@@ -99,6 +100,7 @@ async fn judge_duplicate_reads_a_no() {
 
     let judgement = runtime
         .judge_duplicate(
+            &local(),
             &located("Relancer Acme", "q", 0, 1),
             &candidate("Relancer Globex"),
         )
@@ -119,7 +121,7 @@ async fn judge_duplicate_retries_once_and_sums_the_usage() {
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
     let judgement = runtime
-        .judge_duplicate(&located("A", "q", 0, 1), &candidate("A"))
+        .judge_duplicate(&local(), &located("A", "q", 0, 1), &candidate("A"))
         .await
         .unwrap();
 
@@ -139,7 +141,7 @@ async fn judge_duplicate_gives_up_after_one_retry() {
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
     let error = runtime
-        .judge_duplicate(&located("A", "q", 0, 1), &candidate("A"))
+        .judge_duplicate(&local(), &located("A", "q", 0, 1), &candidate("A"))
         .await
         .unwrap_err();
 
@@ -162,7 +164,10 @@ async fn extract_returns_the_actions_and_the_usage() {
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
     let extraction = runtime
-        .extract("Marie doit relancer Acme. Il faut envoyer le devis.")
+        .extract(
+            &local(),
+            "Marie doit relancer Acme. Il faut envoyer le devis.",
+        )
         .await
         .unwrap();
 
@@ -193,7 +198,7 @@ async fn extract_retries_malformed_output_and_sums_usage() {
     let base = llm.serve().await;
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
-    let extraction = runtime.extract("transcript").await.unwrap();
+    let extraction = runtime.extract(&local(), "transcript").await.unwrap();
 
     assert_eq!(extraction.actions.len(), 1);
     assert_eq!(extraction.usage.input_tokens, 210);
@@ -212,7 +217,7 @@ async fn extract_gives_up_as_invalid_after_two_retries() {
     let base = llm.serve().await;
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
-    let error = runtime.extract("transcript").await.unwrap_err();
+    let error = runtime.extract(&local(), "transcript").await.unwrap_err();
 
     assert!(matches!(error, CoreError::Invalid(_)), "{error:?}");
     assert_eq!(llm.request_bodies().len(), 3);
@@ -223,7 +228,7 @@ async fn extract_reports_an_unreachable_model_as_internal() {
     let runtime =
         RigAgentRuntime::new(&args("http://127.0.0.1:1/v1", "http://127.0.0.1:1/mcp")).unwrap();
 
-    let error = runtime.extract("transcript").await.unwrap_err();
+    let error = runtime.extract(&local(), "transcript").await.unwrap_err();
 
     assert!(matches!(&error, CoreError::Internal(message) if message.contains("language model")));
 }
@@ -244,10 +249,13 @@ async fn write_creates_the_card_with_provenance_bearer_and_traceparent() {
     let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
 
     let report = runtime
-        .write(write_request(vec![
-            located("Relancer Acme", "relancer Acme", 5, 18),
-            located("Envoyer le devis", "envoyer le devis", 30, 46),
-        ]))
+        .write(
+            &local(),
+            write_request(vec![
+                located("Relancer Acme", "relancer Acme", 5, 18),
+                located("Envoyer le devis", "envoyer le devis", 30, 46),
+            ]),
+        )
         .await
         .unwrap();
 
@@ -299,7 +307,7 @@ async fn write_without_traceparent_sends_none() {
     let mut request = write_request(vec![located("A", "a", 0, 1)]);
     request.traceparent = None;
 
-    runtime.write(request).await.unwrap();
+    runtime.write(&local(), request).await.unwrap();
 
     assert_eq!(mcp.recorded()[0].traceparent, None);
 }
@@ -320,7 +328,7 @@ async fn write_out_of_range_index_is_a_tool_error_and_no_mcp_call() {
     let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
 
     let report = runtime
-        .write(write_request(vec![located("A", "a", 0, 1)]))
+        .write(&local(), write_request(vec![located("A", "a", 0, 1)]))
         .await
         .unwrap();
 
@@ -348,7 +356,7 @@ async fn write_records_an_mcp_refusal_and_shows_it_to_the_model() {
     let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
 
     let report = runtime
-        .write(write_request(vec![located("A", "a", 0, 1)]))
+        .write(&local(), write_request(vec![located("A", "a", 0, 1)]))
         .await
         .unwrap();
 
@@ -367,7 +375,7 @@ async fn write_reports_what_happened_when_the_model_never_calls_the_tool() {
     let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
 
     let report = runtime
-        .write(write_request(vec![located("A", "a", 0, 1)]))
+        .write(&local(), write_request(vec![located("A", "a", 0, 1)]))
         .await
         .unwrap();
 
@@ -382,7 +390,7 @@ async fn write_reports_an_unreachable_mcp_server_as_internal() {
     let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
 
     let error = runtime
-        .write(write_request(vec![located("A", "a", 0, 1)]))
+        .write(&local(), write_request(vec![located("A", "a", 0, 1)]))
         .await
         .unwrap_err();
 
@@ -412,7 +420,7 @@ async fn write_proposing_the_same_action_twice_creates_one_card() {
     let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
 
     let report = runtime
-        .write(write_request(vec![located("A", "a", 0, 1)]))
+        .write(&local(), write_request(vec![located("A", "a", 0, 1)]))
         .await
         .unwrap();
 
@@ -438,7 +446,7 @@ async fn duplicates_only_comment_the_existing_cards_and_never_call_the_model() {
     let mut request = write_request(Vec::new());
     request.duplicates = vec![duplicate("mettre à jour les prix", 7)];
 
-    let report = runtime.write(request).await.unwrap();
+    let report = runtime.write(&local(), request).await.unwrap();
 
     assert!(llm.request_bodies().is_empty(), "no LLM call expected");
     assert!(mcp.recorded().is_empty(), "no card is created");
@@ -487,7 +495,7 @@ async fn duplicates_are_commented_before_the_writer_proposes_the_new_cards() {
     let mut request = write_request(vec![located("Envoyer le devis", "envoyer", 0, 7)]);
     request.duplicates = vec![duplicate("q1", 7), duplicate("q2", 8)];
 
-    let report = runtime.write(request).await.unwrap();
+    let report = runtime.write(&local(), request).await.unwrap();
 
     assert_eq!(mcp.recorded_comments().len(), 2);
     assert_eq!(mcp.recorded().len(), 1);
@@ -505,22 +513,23 @@ async fn a_refused_comment_is_reported_as_failed() {
     let mut request = write_request(Vec::new());
     request.duplicates = vec![duplicate("REFUSE", 7)];
 
-    let report = runtime.write(request).await.unwrap();
+    let report = runtime.write(&local(), request).await.unwrap();
 
     assert_eq!(report.tool_calls.len(), 1);
     assert!(!report.tool_calls[0].succeeded);
     assert!(report.tool_calls[0].summary.contains("forbidden"));
 }
 
-fn embedder(base: &str) -> OpenAiEmbedder {
-    OpenAiEmbedder::new(
-        &args(base, "http://127.0.0.1:1/mcp"),
-        &EmbeddingArgs {
-            model: "bge-test".into(),
-            dimensions: 4,
-        },
+fn embedder(base: &str) -> RigEmbedder {
+    RigEmbedder::new(&args(base, "http://127.0.0.1:1/mcp")).unwrap()
+}
+
+fn bge() -> capitainerie_core::domain::provider::ModelTarget {
+    common::target(
+        capitainerie_core::domain::provider::ProviderKind::OpenAiCompatible,
+        "bge-test",
+        None,
     )
-    .unwrap()
 }
 
 #[tokio::test]
@@ -529,7 +538,7 @@ async fn embeddings_come_back_in_input_order_with_the_token_count() {
     let base = llm.serve().await;
 
     let (embeddings, usage) = embedder(&base)
-        .embed(&["un".to_owned(), "deux".to_owned()])
+        .embed(&bge(), &["un".to_owned(), "deux".to_owned()])
         .await
         .unwrap();
 
@@ -543,32 +552,11 @@ async fn embeddings_come_back_in_input_order_with_the_token_count() {
 }
 
 #[tokio::test]
-async fn embeddings_of_the_wrong_size_are_refused() {
-    let llm = FakeLlm::with(vec![]);
-    let base = llm.serve().await;
-    let wrong = OpenAiEmbedder::new(
-        &args(&base, "http://127.0.0.1:1/mcp"),
-        &EmbeddingArgs {
-            model: "bge-test".into(),
-            dimensions: 1024,
-        },
-    )
-    .unwrap();
-
-    let error = wrong.embed(&["un".to_owned()]).await.unwrap_err();
-
-    assert!(
-        matches!(&error, CoreError::Internal(m) if m.contains("dimensions")),
-        "{error:?}"
-    );
-}
-
-#[tokio::test]
 async fn embedding_nothing_makes_no_call() {
     let llm = FakeLlm::with(vec![]);
     let base = llm.serve().await;
 
-    let (embeddings, _) = embedder(&base).embed(&[]).await.unwrap();
+    let (embeddings, _) = embedder(&base).embed(&bge(), &[]).await.unwrap();
 
     assert!(embeddings.is_empty());
     assert!(llm.embedding_requests.lock().unwrap().is_empty());
@@ -577,7 +565,7 @@ async fn embedding_nothing_makes_no_call() {
 #[tokio::test]
 async fn an_unreachable_embedding_server_is_internal() {
     let error = embedder("http://127.0.0.1:1/v1")
-        .embed(&["un".to_owned()])
+        .embed(&bge(), &["un".to_owned()])
         .await
         .unwrap_err();
 

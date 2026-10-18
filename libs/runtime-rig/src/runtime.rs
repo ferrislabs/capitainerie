@@ -1,19 +1,22 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use capitainerie_common::CoreError;
-use capitainerie_core::domain::agent::{
-    Extraction, Judgement, LocatedAction, WriteReport, WriteRequest, ports::AgentRuntime,
+use capitainerie_core::domain::{
+    agent::{Extraction, Judgement, LocatedAction, WriteReport, WriteRequest, ports::AgentRuntime},
+    provider::ModelTarget,
+    similarity::SimilarCard,
 };
-use capitainerie_core::domain::similarity::SimilarCard;
-use rig_core::providers::openai::{OpenAI, OpenAIConfig};
-use rig_reqwest::{ReqwestClient, reqwest};
 
-use crate::{args::LlmArgs, error::RuntimeError, extract, judge, write};
+use crate::{
+    args::LlmArgs,
+    client::{Clients, Resolved},
+    error::RuntimeError,
+    extract, judge, write,
+};
 
 #[derive(Clone)]
 pub struct RigAgentRuntime {
-    client: OpenAI,
-    model: Arc<str>,
+    clients: Arc<Clients>,
     mcp_url: Arc<str>,
 }
 
@@ -22,35 +25,43 @@ impl RigAgentRuntime {
         args.mcp_url
             .parse::<http::Uri>()
             .map_err(|error| RuntimeError::McpUrl(error.to_string()))?;
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(args.timeout_secs))
-            .build()
-            .map_err(|error| RuntimeError::HttpClient(error.to_string()))?;
-        let client = OpenAIConfig::new(args.api_key.as_str())
-            .with_base_url(args.base_url.as_str())
-            .connect(ReqwestClient::from(http));
         Ok(Self {
-            client,
-            model: Arc::from(args.model.as_str()),
+            clients: Arc::new(Clients::new(args)?),
             mcp_url: Arc::from(args.mcp_url.as_str()),
         })
+    }
+
+    fn resolve(&self, target: &ModelTarget) -> Result<Resolved, CoreError> {
+        self.clients.resolve(target)
     }
 }
 
 impl AgentRuntime for RigAgentRuntime {
-    async fn extract(&self, transcript: &str) -> Result<Extraction, CoreError> {
+    async fn extract(
+        &self,
+        target: &ModelTarget,
+        transcript: &str,
+    ) -> Result<Extraction, CoreError> {
+        let resolved = self.resolve(target)?;
         extract::run(
-            self.client.chat(&*self.model).into(),
-            &self.model,
+            resolved.engine(),
+            resolved.provider,
+            &resolved.model,
             transcript,
         )
         .await
     }
 
-    async fn write(&self, request: WriteRequest) -> Result<WriteReport, CoreError> {
+    async fn write(
+        &self,
+        target: &ModelTarget,
+        request: WriteRequest,
+    ) -> Result<WriteReport, CoreError> {
+        let resolved = self.resolve(target)?;
         write::run(
-            self.client.chat(&*self.model).into(),
-            &self.model,
+            resolved.engine(),
+            resolved.provider,
+            &resolved.model,
             &self.mcp_url,
             request,
         )
@@ -59,12 +70,15 @@ impl AgentRuntime for RigAgentRuntime {
 
     async fn judge_duplicate(
         &self,
+        target: &ModelTarget,
         action: &LocatedAction,
         candidate: &SimilarCard,
     ) -> Result<Judgement, CoreError> {
+        let resolved = self.resolve(target)?;
         judge::run(
-            self.client.chat(&*self.model).into(),
-            &self.model,
+            resolved.engine(),
+            resolved.provider,
+            &resolved.model,
             action,
             candidate,
         )

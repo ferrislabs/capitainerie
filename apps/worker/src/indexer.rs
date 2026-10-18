@@ -6,6 +6,7 @@ use capitainerie_core::{
     CapitainerieUseCase,
     domain::{
         card::Card,
+        provider::{ModelAssignments, ModelTarget},
         similarity::{
             CardVector, card_text,
             ports::{Embedder, VectorStore},
@@ -22,18 +23,20 @@ use tokio::sync::watch;
 const CONSUMER_GROUP: &str = "card-indexer";
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const BATCH: u32 = 20;
-const BACKFILL_BATCH: usize = 16;
 
 /// Keeps the vector index in step with the cards: every card ever proposed,
 /// edited or moved is embedded and upserted, so the Deduplicate step sees them
-/// all. The group starts at the beginning of the topic, so a fresh index
-/// catches up by itself; the backfill covers an index wiped while the
-/// group's offset survived.
+/// all. Each organization is indexed with the embedding model it currently
+/// chooses, in the index of that model. The group starts at the beginning of
+/// the topic, so a fresh index catches up by itself; the backfill covers an
+/// index wiped while the group's offset survived, and an organization that has
+/// no index yet for its embedding model.
 pub struct CardIndexer<E> {
     usecase: CapitainerieUseCase,
     bus: IggyEventBus,
     embedder: E,
     vectors: LanceVectorStore,
+    defaults: ModelAssignments,
 }
 
 impl<E: Embedder> CardIndexer<E> {
@@ -42,24 +45,20 @@ impl<E: Embedder> CardIndexer<E> {
         bus: IggyEventBus,
         embedder: E,
         vectors: LanceVectorStore,
+        defaults: ModelAssignments,
     ) -> Self {
         Self {
             usecase,
             bus,
             embedder,
             vectors,
+            defaults,
         }
     }
 
     pub async fn run(self, mut stopped: watch::Receiver<bool>) {
-        match self.vectors.is_empty().await {
-            Ok(true) => {
-                if let Err(error) = self.backfill().await {
-                    tracing::warn!(%error, "backfilling the card index failed");
-                }
-            }
-            Ok(false) => {}
-            Err(error) => tracing::warn!(%error, "cannot tell whether the card index is empty"),
+        if let Err(error) = self.backfill().await {
+            tracing::warn!(%error, "backfilling the card index failed");
         }
         let mut poll = tokio::time::interval(POLL_INTERVAL);
         loop {
@@ -98,19 +97,39 @@ impl<E: Embedder> CardIndexer<E> {
         else {
             return Ok(());
         };
-        index_cards(&self.embedder, &self.vectors, std::slice::from_ref(&card)).await
+        let target = self
+            .usecase
+            .embedding_target_for(organization_id, &self.defaults)
+            .await?;
+        self.usecase
+            .ensure_indexed(&self.embedder, &self.vectors, &target, organization_id)
+            .await?;
+        index_cards(
+            &self.embedder,
+            &self.vectors,
+            &target,
+            std::slice::from_ref(&card),
+        )
+        .await
     }
 
     async fn backfill(&self) -> Result<(), CoreError> {
-        let mut indexed = 0usize;
         for organization_id in self.usecase.organizations_for_index().await? {
-            let cards = self.usecase.cards_for_index(organization_id).await?;
-            for chunk in cards.chunks(BACKFILL_BATCH) {
-                index_cards(&self.embedder, &self.vectors, chunk).await?;
-                indexed += chunk.len();
+            let result = async {
+                let target = self
+                    .usecase
+                    .embedding_target_for(organization_id, &self.defaults)
+                    .await?;
+                self.usecase
+                    .ensure_indexed(&self.embedder, &self.vectors, &target, organization_id)
+                    .await
+            }
+            .await;
+            if let Err(error) = result {
+                tracing::warn!(%organization_id, %error, "backfilling an organization failed");
             }
         }
-        tracing::info!(indexed, "card index backfilled");
+        tracing::info!("card index backfilled");
         Ok(())
     }
 }
@@ -131,6 +150,7 @@ fn touched_cards(envelopes: &[EventEnvelope]) -> BTreeSet<(uuid::Uuid, uuid::Uui
 async fn index_cards<E: Embedder, V: VectorStore>(
     embedder: &E,
     vectors: &V,
+    target: &ModelTarget,
     cards: &[Card],
 ) -> Result<(), CoreError> {
     if cards.is_empty() {
@@ -140,7 +160,7 @@ async fn index_cards<E: Embedder, V: VectorStore>(
         .iter()
         .map(|card| card_text(card.title.as_str(), &card.description))
         .collect();
-    let (embeddings, _) = embedder.embed(&texts).await?;
+    let (embeddings, _) = embedder.embed(target, &texts).await?;
     if embeddings.len() != cards.len() {
         return Err(CoreError::Internal(format!(
             "the embedder returned {} vectors for {} cards",
@@ -150,13 +170,16 @@ async fn index_cards<E: Embedder, V: VectorStore>(
     }
     for ((card, text), embedding) in cards.iter().zip(texts).zip(embeddings) {
         vectors
-            .upsert(CardVector {
-                card_id: card.id,
-                organization_id: card.organization_id,
-                text,
-                embedding,
-                column: card.column,
-            })
+            .upsert(
+                &target.model.model,
+                CardVector {
+                    card_id: card.id,
+                    organization_id: card.organization_id,
+                    text,
+                    embedding,
+                    column: card.column,
+                },
+            )
             .await?;
     }
     Ok(())
@@ -170,6 +193,7 @@ mod tests {
     use capitainerie_core::domain::{
         agent::Usage,
         card::{Author, CardTitle, Column},
+        provider::{ModelRef, ProviderKind},
         similarity::{
             Embedding,
             ports::{MockEmbedder, MockVectorStore},
@@ -208,6 +232,16 @@ mod tests {
             version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+        }
+    }
+
+    fn target() -> ModelTarget {
+        ModelTarget {
+            model: ModelRef {
+                provider: ProviderKind::OpenAiCompatible,
+                model: "bge-m3".into(),
+            },
+            access: None,
         }
     }
 
@@ -257,7 +291,8 @@ mod tests {
     async fn a_card_is_indexed_under_its_title_and_description_with_its_column() {
         let cards = [card("Titre", "Détails", Column::Rejected)];
         let mut embedder = MockEmbedder::new();
-        embedder.expect_embed().times(1).returning(|texts| {
+        embedder.expect_embed().times(1).returning(|target, texts| {
+            assert_eq!(target.model.model, "bge-m3");
             assert_eq!(texts, ["Titre\nDétails"]);
             Box::pin(std::future::ready(Ok((
                 vec![Embedding(vec![1.0, 2.0])],
@@ -267,12 +302,18 @@ mod tests {
         let stored = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&stored);
         let mut vectors = MockVectorStore::new();
-        vectors.expect_upsert().times(1).returning(move |vector| {
-            sink.lock().unwrap().push(vector);
-            Box::pin(std::future::ready(Ok(())))
-        });
+        vectors
+            .expect_upsert()
+            .times(1)
+            .returning(move |model, vector| {
+                assert_eq!(model, "bge-m3");
+                sink.lock().unwrap().push(vector);
+                Box::pin(std::future::ready(Ok(())))
+            });
 
-        index_cards(&embedder, &vectors, &cards).await.unwrap();
+        index_cards(&embedder, &vectors, &target(), &cards)
+            .await
+            .unwrap();
 
         let stored = stored.lock().unwrap();
         assert_eq!(stored[0].card_id, cards[0].id);
@@ -286,6 +327,8 @@ mod tests {
     async fn indexing_nothing_calls_nothing() {
         let embedder = MockEmbedder::new();
         let vectors = MockVectorStore::new();
-        index_cards(&embedder, &vectors, &[]).await.unwrap();
+        index_cards(&embedder, &vectors, &target(), &[])
+            .await
+            .unwrap();
     }
 }

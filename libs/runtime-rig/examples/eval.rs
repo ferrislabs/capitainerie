@@ -4,7 +4,10 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use capitainerie_core::domain::agent::{ExtractedAction, ports::AgentRuntime};
+use capitainerie_core::domain::{
+    agent::{ExtractedAction, SecretToken, ports::AgentRuntime},
+    provider::{ModelRef, ModelTarget, ProviderAccess, ProviderKind},
+};
 use capitainerie_runtime_rig::{LlmArgs, RigAgentRuntime};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -17,6 +20,37 @@ struct Cli {
     only: Option<String>,
     #[arg(long)]
     label: Option<String>,
+    #[arg(long, env = "EVAL_PROVIDER", default_value = "openai_compatible")]
+    provider: String,
+    #[arg(long, env = "ANTHROPIC_API_KEY", hide_env_values = true)]
+    anthropic_api_key: Option<String>,
+    #[arg(long, env = "MISTRAL_API_KEY", hide_env_values = true)]
+    mistral_api_key: Option<String>,
+}
+
+fn target(cli: &Cli) -> Result<ModelTarget, Box<dyn std::error::Error>> {
+    let kind = ProviderKind::try_from(cli.provider.as_str())?;
+    let key = match kind {
+        ProviderKind::Anthropic => cli.anthropic_api_key.clone(),
+        ProviderKind::Mistral => cli.mistral_api_key.clone(),
+        ProviderKind::OpenAiCompatible => None,
+    };
+    let access = match (kind, key) {
+        (ProviderKind::OpenAiCompatible, _) => None,
+        (kind, Some(key)) => Some(ProviderAccess {
+            kind,
+            secret: SecretToken::new(key),
+            base_url: None,
+        }),
+        (kind, None) => return Err(format!("no API key for {}", kind.as_str()).into()),
+    };
+    Ok(ModelTarget {
+        model: ModelRef {
+            provider: kind,
+            model: cli.llm.model.clone(),
+        },
+        access,
+    })
 }
 
 #[derive(Deserialize)]
@@ -222,11 +256,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("eval");
     let cases = load(&root.join("data"), cli.only.as_deref())?;
     let runtime = RigAgentRuntime::new(&cli.llm)?;
+    let target = target(&cli)?;
 
     let mut results = Vec::new();
     for case in &cases {
         let started = Instant::now();
-        let outcome = runtime.extract(&case.transcript).await;
+        let outcome = runtime.extract(&target, &case.transcript).await;
         let latency = started.elapsed().as_millis();
         let scored = match outcome {
             Ok(extraction) => score(case, extraction.actions, latency, None),
