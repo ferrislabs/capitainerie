@@ -29,6 +29,7 @@ export namespace Schemas {
     version: number;
   };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type ConnectGithubRequest = { code: string; installation_id: number; state: string };
   export type CostDimensionParam = "agent" | "user" | "model" | "day";
   export type CostRowResponse = {
     cost_micros: number;
@@ -40,6 +41,9 @@ export namespace Schemas {
   };
   export type CostTotals = { cost_micros: number; input_tokens: number; output_tokens: number };
   export type CostsResponse = { rows: Array<CostRowResponse>; total: CostTotals };
+  export type CreateGithubAppRequest = { code: string; state: string };
+  export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
+  export type CreateManifestRequest = { owner: ManifestOwner };
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -49,6 +53,37 @@ export namespace Schemas {
     resource_id?: (string | null) | undefined;
     resource_kind: string;
   };
+  export type ExecuteCardRequest = { expected_version: number; repository: string };
+  export type ExecuteCardResponse = { card: CardResponse; run_id: RunId };
+  export type ExecutionResponse = Partial<{
+    branch: string | null;
+    dropped_tool_calls: number;
+    error: string | null;
+    no_changes: boolean;
+    pull_request: string | null;
+    sha: string | null;
+    summary: string | null;
+  }>;
+  export type GithubAppResponse = {
+    created_at: string;
+    created_by: string;
+    html_url: string;
+    owner_login: string;
+    owner_type: string;
+    slug: string;
+  };
+  export type GithubInstallationResponse = {
+    account_login: string;
+    connected_at: string;
+    connected_by: string;
+    installation_id: number;
+  };
+  export type GithubIntegrationResponse = Partial<{
+    app: null | GithubAppResponse;
+    installation: null | GithubInstallationResponse;
+  }>;
+  export type InstallUrlResponse = { url: string };
+  export type ManifestResponse = { action_url: string; manifest: string; state: string };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
   export type MeResponse = {
@@ -62,6 +97,7 @@ export namespace Schemas {
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
     embeddings: ModelRefDto;
+    executor?: (string | null) | undefined;
     extractor: ModelRefDto;
     judge: ModelRefDto;
     writer: ModelRefDto;
@@ -88,19 +124,24 @@ export namespace Schemas {
   };
   export type ProviderListResponse = { providers: Array<ProviderResponse> };
   export type PutProviderRequest = Partial<{ api_key: string; base_url: string | null }>;
+  export type RepositoryResponse = { full_name: string; name: string; owner: string };
+  export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
   export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type RunResponse = {
+    card_id?: (null | CardId) | undefined;
     created_at: string;
     failure?: (string | null) | undefined;
     finished_at?: (string | null) | undefined;
     id: RunId;
     initiated_by: string;
     pipeline: Array<string>;
+    repository?: (string | null) | undefined;
     started_at?: (string | null) | undefined;
     status: RunStatusResponse;
+    title?: (string | null) | undefined;
     trace_id?: (string | null) | undefined;
-    transcript_id: TranscriptId;
-    transcript_title: string;
+    transcript_id?: (null | TranscriptId) | undefined;
+    transcript_title?: (string | null) | undefined;
   };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
   export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
@@ -110,6 +151,7 @@ export namespace Schemas {
     cost_micros: number;
     detail?: (string | null) | undefined;
     error?: (string | null) | undefined;
+    execution?: (null | ExecutionResponse) | undefined;
     finished_at?: (string | null) | undefined;
     input_tokens: number;
     kind: string;
@@ -166,6 +208,24 @@ export namespace Endpoints {
     parameters: never;
     responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse };
   };
+  export type post_ExecuteCard = {
+    method: "POST";
+    path: "/api/v1/cards/{card_id}/executions";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.ExecuteCardRequest;
+    };
+    responses: {
+      202: Schemas.ExecuteCardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type post_MoveCard = {
     method: "POST";
     path: "/api/v1/cards/{card_id}/move";
@@ -182,6 +242,101 @@ export namespace Endpoints {
       404: Schemas.ApiErrorResponse;
       409: Schemas.ApiErrorResponse;
     };
+  };
+  export type get_GetGithubIntegration = {
+    method: "GET";
+    path: "/api/v1/integrations/github";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.GithubIntegrationResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type delete_DisconnectGithub = {
+    method: "DELETE";
+    path: "/api/v1/integrations/github";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.GithubIntegrationResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateGithubApp = {
+    method: "POST";
+    path: "/api/v1/integrations/github/app";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateGithubAppRequest;
+    };
+    responses: {
+      201: Schemas.GithubAppResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_DeleteGithubApp = {
+    method: "DELETE";
+    path: "/api/v1/integrations/github/app";
+    requestFormat: "json";
+    parameters: never;
+    responses: {
+      200: Schemas.GithubAppResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_CreateGithubAppManifest = {
+    method: "POST";
+    path: "/api/v1/integrations/github/app/manifest";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateManifestRequest;
+    };
+    responses: {
+      200: Schemas.ManifestResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_ConnectGithub = {
+    method: "POST";
+    path: "/api/v1/integrations/github/callback";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.ConnectGithubRequest;
+    };
+    responses: {
+      200: Schemas.GithubIntegrationResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetGithubInstallUrl = {
+    method: "GET";
+    path: "/api/v1/integrations/github/install";
+    requestFormat: "json";
+    parameters: never;
+    responses: {
+      200: Schemas.InstallUrlResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListGithubRepositories = {
+    method: "GET";
+    path: "/api/v1/integrations/github/repositories";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.RepositoryListResponse; 401: Schemas.ApiErrorResponse; 409: Schemas.ApiErrorResponse };
   };
   export type get_GetMe = {
     method: "GET";
@@ -334,6 +489,9 @@ export type EndpointByMethod = {
     "/api/v1/agents": Endpoints.get_ListAgents;
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
+    "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
+    "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
+    "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
     "/api/v1/me": Endpoints.get_GetMe;
     "/api/v1/model-assignments": Endpoints.get_GetModelAssignments;
     "/api/v1/models": Endpoints.get_ListModels;
@@ -345,16 +503,22 @@ export type EndpointByMethod = {
     "/health/ready": Endpoints.get_GetReadiness;
   };
   post: {
+    "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
+    "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
+    "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
+    "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
+  };
+  delete: {
+    "/api/v1/integrations/github": Endpoints.delete_DisconnectGithub;
+    "/api/v1/integrations/github/app": Endpoints.delete_DeleteGithubApp;
+    "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
   };
   put: {
     "/api/v1/model-assignments": Endpoints.put_PutModelAssignments;
     "/api/v1/providers/{kind}": Endpoints.put_PutProvider;
-  };
-  delete: {
-    "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
   };
 };
 
@@ -363,8 +527,8 @@ export type EndpointByMethod = {
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
 export type PostEndpoints = EndpointByMethod["post"];
-export type PutEndpoints = EndpointByMethod["put"];
 export type DeleteEndpoints = EndpointByMethod["delete"];
+export type PutEndpoints = EndpointByMethod["put"];
 // </EndpointByMethod.Shorthands>
 
 // <ApiClientTypes>
@@ -659,37 +823,6 @@ export class ApiClient {
   }
   // </ApiClient.post>
 
-  // <ApiClient.put>
-  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-    >
-  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
-
-  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-    >
-  ): Promise<SafeApiResponse<TEndpoint>>;
-
-  put<Path extends keyof PutEndpoints, _TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<any>
-  ): Promise<any> {
-    return this.request("put", path, ...params);
-  }
-  // </ApiClient.put>
-
   // <ApiClient.delete>
   delete<Path extends keyof DeleteEndpoints, TEndpoint extends DeleteEndpoints[Path]>(
     path: Path,
@@ -720,6 +853,37 @@ export class ApiClient {
     return this.request("delete", path, ...params);
   }
   // </ApiClient.delete>
+
+  // <ApiClient.put>
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  put<Path extends keyof PutEndpoints, _TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("put", path, ...params);
+  }
+  // </ApiClient.put>
 
   // <ApiClient.request>
   /**

@@ -39,8 +39,15 @@ config:
   # -- Value of MCP_AUDIENCE (audience of the delegated agent tokens).
   mcpAudience: capitainerie-mcp
   # -- Client ids of the agents a run acts through (PIPELINE_AGENTS on api and worker, MCP_ACCEPTED_AGENTS on mcp-kanban).
+  # The executor that runs Claude Code on a card is not one of them: it holds no token and writes through the worker only.
   pipelineAgents:
     - capitainerie-agent-writer
+  github:
+    # -- GITHUB_WEB_BASE, for GitHub Enterprise: OAuth, App manifest and installation pages. Empty keeps https://github.com.
+    # Each organization creates its own GitHub App from the console; there is nothing else to configure here.
+    webBase: ""
+    # -- GITHUB_API_BASE, for GitHub Enterprise. Empty keeps https://api.github.com.
+    apiBase: ""
   iggy:
     # -- host:port of the Iggy TCP endpoint (IGGY_ADDRESS).
     address: iggy:8090
@@ -75,6 +82,9 @@ api:
   # -- Origins allowed by CORS (ALLOWED_ORIGINS). Follows the console host.
   allowedOrigins:
     - http://localhost:4080
+  # -- Value of CONSOLE_URL: the console as the browser reaches it. GitHub redirects the browser there once an organization
+  # created or installed its App; GitHub never calls Capitainerie. Follows the console host.
+  consoleUrl: http://localhost:4080
   # -- Client ids whose tokens are accepted (AUTH_ACCEPTED_CLIENTS, the `azp`).
   acceptedClients:
     - capitainerie-console
@@ -148,6 +158,8 @@ worker:
     tag: ""
   # -- Value of MCP_URL. Empty uses the in-cluster mcp-kanban Service.
   mcpUrl: ""
+  # -- Value of CONSOLE_URL, linked from the pull requests of executions. Empty omits the link.
+  consoleUrl: ""
   llm:
     # -- OpenAI-compatible endpoint (LLM_BASE_URL).
     baseUrl: http://ollama:11434/v1
@@ -202,6 +214,54 @@ worker:
       memory: 192Mi
     limits:
       memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+executor:
+  # -- Runs Claude Code on validated cards, one Job per execution, in its own namespace.
+  # Creates the tasks namespace, its NetworkPolicy, the worker RBAC and the egress proxy.
+  enabled: false
+  # -- Namespace of the task Jobs (created by the chart).
+  namespace: capitainerie-tasks
+  image:
+    # -- Overrides <image.prefix>-executor.
+    repository: ""
+    # -- Defaults to .Chart.AppVersion.
+    tag: ""
+  # -- Value of EXECUTOR_MAX_TURNS (--max-turns of Claude Code).
+  maxTurns: 50
+  # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).
+  deadlineSeconds: 1800
+  # -- Value of EXECUTOR_CONCURRENCY: executions the worker follows at once, apart from WORKER_CONCURRENCY.
+  concurrency: 2
+
+egressProxy:
+  # -- Deployed with executor.enabled. The only network exit of the task pods.
+  replicaCount: 2
+  image:
+    repository: ""
+    tag: ""
+  # -- Value of EGRESS_PROXY_PORT.
+  port: 4130
+  # -- Key of the Secret holding the proxy's own DATABASE_URL. Point it at a
+  # connection string for the capitainerie_egress_proxy role (deploy/postgres/egress-proxy-role.sql),
+  # which can only read the three tables the proxy needs. The default is the shared DATABASE_URL.
+  databaseUrlSecretKey: DATABASE_URL
+  secretEnv:
+    - SECRETS_KEY
+  extraEnv: []
+  podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 4130
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -356,3 +416,11 @@ networkPolicy:
     otlp:
       to: []
       ports: [4317, 4318]
+    # -- Kubernetes API, reached by the worker when executor.enabled.
+    kubeApi:
+      to: []
+      ports: [443, 6443]
+    # -- api.anthropic.com and github.com, reached by the egress proxy.
+    upstream:
+      to: []
+      ports: [443]

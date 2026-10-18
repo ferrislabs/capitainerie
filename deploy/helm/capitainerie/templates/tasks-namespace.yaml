@@ -1,0 +1,33 @@
+{{- if .Values.executor.enabled }}
+{{- $ctx := dict "root" . "component" "executor" }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.executor.namespace }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: executor-tasks
+  namespace: {{ .Values.executor.namespace }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "capitainerie.selectorLabels" (dict "root" . "component" "egress-proxy") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.egressProxy.port }}
+{{- end }}

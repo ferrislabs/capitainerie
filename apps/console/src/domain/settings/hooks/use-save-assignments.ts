@@ -4,6 +4,25 @@ import { mutationErrorMessage } from '#/domain/settings/errors'
 import { ASSIGNMENTS_QUERY_KEY } from '#/domain/settings/hooks/use-settings-queries'
 import { ADMIN_ONLY_MODELS } from '#/domain/settings/providers'
 import type { ModelAssignments } from '#/domain/settings/roles'
+import { isApiRequestError } from '#/lib/api-error'
+
+export const EXECUTOR_MODEL_MESSAGE =
+	'Le modèle de l’Exécutant doit être un modèle Claude (Anthropic).'
+
+export function assignmentsErrorMessage(error: unknown): string | undefined {
+	if (
+		isApiRequestError(error) &&
+		error.status === 422 &&
+		/executor|claude/i.test(error.message)
+	) {
+		return EXECUTOR_MODEL_MESSAGE
+	}
+	return mutationErrorMessage(
+		error,
+		ADMIN_ONLY_MODELS,
+		'Enregistrement impossible.',
+	)
+}
 
 export function useSaveAssignments() {
 	const queryClient = useQueryClient()
@@ -27,10 +46,6 @@ export function useSaveAssignments() {
 		reset: mutation.reset,
 		isPending: mutation.isPending,
 		isSuccess: mutation.isSuccess,
-		errorMessage: mutationErrorMessage(
-			mutation.error,
-			ADMIN_ONLY_MODELS,
-			'Enregistrement impossible.',
-		),
+		errorMessage: assignmentsErrorMessage(mutation.error),
 	}
 }

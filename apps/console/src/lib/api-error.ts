@@ -14,6 +14,12 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 	return error instanceof ApiRequestError
 }
 
+export function hasErrorKey(error: unknown, key: string): boolean {
+	return (
+		isApiRequestError(error) && (error.code === key || error.message === key)
+	)
+}
+
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([408, 429])
 export const MAX_RETRIES = 3
 

@@ -1,0 +1,78 @@
+{{- if .Values.executor.enabled }}
+{{- $ctx := dict "root" . "component" "egress-proxy" }}
+{{- $name := include "capitainerie.egressProxyName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.egressProxy.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "capitainerie.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/egress-proxy/configmap.yaml") . | sha256sum }}
+        {{- with .Values.egressProxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "capitainerie.labels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.egressProxy.terminationGracePeriodSeconds }}
+      {{- include "capitainerie.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "capitainerie.topologySpread" $ctx | nindent 6 }}
+      {{- include "capitainerie.scheduling" .Values.egressProxy | nindent 6 }}
+      containers:
+        - name: egress-proxy
+          image: {{ include "capitainerie.image" (dict "root" . "component" "egress-proxy" "values" .Values.egressProxy) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.egressProxy.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret | quote }}
+                  key: {{ .Values.egressProxy.databaseUrlSecretKey | quote }}
+            {{- include "capitainerie.secretEnv" (dict "root" . "keys" (without .Values.egressProxy.secretEnv "DATABASE_URL")) | nindent 12 }}
+            {{- with .Values.egressProxy.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.egressProxy.resources | nindent 12 }}
+{{- end }}

@@ -33,7 +33,7 @@ spec:
         {{- include "capitainerie.labels" $ctx | nindent 8 }}
     spec:
       serviceAccountName: {{ $name }}
-      automountServiceAccountToken: false
+      automountServiceAccountToken: {{ .Values.executor.enabled }}
       terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       {{- include "capitainerie.imagePullSecrets" . | nindent 6 }}
       securityContext:

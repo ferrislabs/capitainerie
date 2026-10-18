@@ -3,6 +3,7 @@ pub mod card;
 pub mod crypto;
 pub mod delegation;
 pub mod event;
+pub mod execution;
 pub mod organization;
 pub mod postgres;
 pub mod provider;

@@ -2,7 +2,10 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '#/api'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
-import { useSaveAssignments } from '#/domain/settings/hooks/use-save-assignments'
+import {
+	EXECUTOR_MODEL_MESSAGE,
+	useSaveAssignments,
+} from '#/domain/settings/hooks/use-save-assignments'
 import { ADMIN_ONLY_MODELS } from '#/domain/settings/providers'
 import { clearAuth, setAuth } from '#/store/auth.store'
 
@@ -94,5 +97,29 @@ describe('useSaveAssignments', () => {
 		await waitFor(() =>
 			expect(result.current.errorMessage).toBe(ADMIN_ONLY_MODELS),
 		)
+	})
+
+	it('sends the executor and explains a refused one', async () => {
+		fetchMock.mockResolvedValue(
+			json(422, {
+				code: 'invalid',
+				status: 422,
+				message: 'the executor model must be a claude-* model',
+			}),
+		)
+		const { result } = renderHook(() => useSaveAssignments(), {
+			wrapper: harness.wrapper,
+		})
+
+		act(() => result.current.save({ ...ASSIGNMENTS, executor: 'gpt-4o' }))
+
+		await waitFor(() =>
+			expect(result.current.errorMessage).toBe(EXECUTOR_MODEL_MESSAGE),
+		)
+		const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
+		expect(JSON.parse(String(init.body))).toEqual({
+			...ASSIGNMENTS,
+			executor: 'gpt-4o',
+		})
 	})
 })

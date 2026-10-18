@@ -18,6 +18,7 @@ interface Props {
 	expanded: boolean
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
+	onExecute?: (card: Schemas.CardResponse) => void
 }
 
 export function CardItem({
@@ -26,12 +27,14 @@ export function CardItem({
 	expanded,
 	onToggleExpanded,
 	onMove,
+	onExecute,
 }: Props) {
 	const selectId = useId()
 	const agent = card.created_by_agent
 
 	return (
 		<article
+			id={`card-${card.id}`}
 			aria-busy={isPending || undefined}
 			className={cn(
 				'flex flex-col gap-2 rounded-md border bg-card p-3 transition-opacity duration-150',
@@ -134,6 +137,18 @@ export function CardItem({
 					</div>
 				)}
 			</div>
+			{card.column === 'todo' && onExecute ? (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					className="h-auto min-h-7 w-full py-1 whitespace-normal"
+					disabled={isPending}
+					onClick={() => onExecute(card)}
+				>
+					Confier à Claude Code
+				</Button>
+			) : null}
 		</article>
 	)
 }

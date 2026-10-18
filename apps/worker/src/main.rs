@@ -1,14 +1,17 @@
+mod dispatch;
 mod indexer;
 mod orchestrator;
 
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
-use capitainerie_args::{DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, SecretsArgs};
+use capitainerie_args::{
+    DatabaseArgs, DelegationArgs, ExecutorArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
+};
 use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
-    CapitainerieUseCase, MeetingPipeline, PipelineConfig,
+    CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor, MeetingPipeline, PipelineConfig,
     domain::{
         provider::ModelAssignments,
         run::step::Pricing,
@@ -20,12 +23,16 @@ use capitainerie_core::{
         postgres,
     },
 };
-use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder};
+use capitainerie_github::{GithubApps, GithubBases};
+use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
+use capitainerie_runtime_rig::{
+    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, claude_prices,
+};
 use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
 
-use crate::{indexer::CardIndexer, orchestrator::Orchestrator};
+use crate::{dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator};
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-worker", version)]
@@ -84,6 +91,13 @@ struct Args {
         default_value_t = 2
     )]
     concurrency: usize,
+    #[command(flatten)]
+    executor: ExecutorArgs,
+    #[command(flatten)]
+    github: GithubArgs,
+    /// Base URL of the console, to link a card from its pull request.
+    #[arg(long = "console-url", env = "CONSOLE_URL")]
+    console_url: Option<String>,
     #[command(flatten)]
     log: LogArgs,
     #[command(flatten)]
@@ -144,8 +158,8 @@ async fn main() -> anyhow::Result<()> {
         vectors.clone(),
         default_models.clone(),
     );
-    let pipeline = MeetingPipeline::new(
-        usecase,
+    let meeting = MeetingPipeline::new(
+        usecase.clone(),
         RigAgentRuntime::new(&args.llm)?,
         args.exchange.exchanger()?,
         embedder,
@@ -160,10 +174,32 @@ async fn main() -> anyhow::Result<()> {
             stale_after: Duration::from_secs(15 * 60),
             dedup_threshold: args.dedup_threshold,
             dedup_gray_floor: args.dedup_gray_floor,
-            default_models,
+            default_models: default_models.clone(),
         },
     );
-    let orchestrator = Orchestrator::new(Arc::new(pipeline), bus.clone(), args.concurrency);
+    let executor = executor_from(&args, usecase.clone()).await;
+    let execution = ExecutePipeline::new(
+        usecase,
+        executor,
+        ExecuteConfig {
+            max_attempts: 3,
+            retry_base: Duration::from_secs(1),
+            stale_after: Duration::from_secs(15 * 60),
+            max_turns: args.executor.max_turns,
+            deadline: Duration::from_secs(args.executor.deadline_secs),
+            progress_every: Duration::from_secs(5),
+            console_url: args.console_url.clone(),
+            default_models,
+            prices: claude_prices(),
+        },
+    );
+    let pipeline = Dispatcher::new(meeting, execution);
+    let orchestrator = Orchestrator::new(
+        Arc::new(pipeline),
+        bus.clone(),
+        args.concurrency,
+        args.executor.concurrency,
+    );
 
     let (stop, stopped) = watch::channel(false);
     tracing::info!(
@@ -191,6 +227,47 @@ async fn main() -> anyhow::Result<()> {
     orchestrated?;
     tracing::info!("worker stopped");
     Ok(())
+}
+
+async fn executor_from(
+    args: &Args,
+    usecase: CapitainerieUseCase,
+) -> Executor<KubeTaskRunner, GithubApps> {
+    match build_executor(args, usecase).await {
+        Ok(executor) => executor,
+        Err(reason) => {
+            tracing::warn!(%reason, "card executions are disabled");
+            Executor::Disabled { reason }
+        }
+    }
+}
+
+async fn build_executor(
+    args: &Args,
+    usecase: CapitainerieUseCase,
+) -> Result<Executor<KubeTaskRunner, GithubApps>, String> {
+    let namespace = args
+        .executor
+        .namespace
+        .as_deref()
+        .ok_or("les exécutions sont désactivées : EXECUTOR_NAMESPACE n'est pas défini")?;
+    let (Some(image), Some(proxy_url)) = (&args.executor.image, &args.executor.proxy_url) else {
+        return Err("EXECUTOR_IMAGE et EXECUTOR_PROXY_URL sont requis pour les exécutions".into());
+    };
+    let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str());
+    config.namespace = namespace.to_owned();
+    let runner = KubeTaskRunner::try_default(config)
+        .await
+        .map_err(|error| format!("le cluster Kubernetes est inaccessible : {error}"))?;
+    let host = GithubApps::new(
+        usecase,
+        GithubBases {
+            api_base: args.github.api_base.clone(),
+            web_base: args.github.web_base.clone(),
+        },
+    )
+    .map_err(|error| format!("le client GitHub est inutilisable : {error}"))?;
+    Ok(Executor::Ready { runner, host })
 }
 
 #[cfg(test)]

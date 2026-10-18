@@ -117,7 +117,7 @@ async fn submitting_a_transcript_queues_a_run_and_its_event_atomically() {
         .await
         .unwrap();
     assert_eq!(run.run.status, RunStatus::Queued);
-    assert_eq!(run.transcript_title, "Point hebdo");
+    assert_eq!(run.title.as_deref(), Some("Point hebdo"));
     assert_eq!(
         outbox_kinds_for_run(&pool, submitted.run_id.0).await,
         ["run.queued"]
@@ -173,7 +173,7 @@ async fn runs_are_listed_newest_first_and_never_across_organizations() {
     assert_eq!(total, 2);
     assert_eq!(
         runs.iter()
-            .map(|r| r.transcript_title.as_str())
+            .map(|r| r.title.as_deref().unwrap_or_default())
             .collect::<Vec<_>>(),
         ["Second", "Premier"]
     );
@@ -237,7 +237,7 @@ async fn the_relay_publishes_committed_events_once_the_bus_accepts_them() {
         .find(|envelope| envelope.partition_key == run_id)
         .unwrap();
     let event: RunQueued = ours.open().unwrap().unwrap();
-    assert_eq!(event.transcript_id, submitted.transcript_id.0);
+    assert_eq!(event.transcript_id, Some(submitted.transcript_id.0));
     assert_eq!(event.organization_id, organization_id.0);
 }
 

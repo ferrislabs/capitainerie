@@ -28,6 +28,9 @@ RUN cargo build --release --locked -p capitainerie-exporter
 FROM cook AS build-mcp-kanban
 RUN cargo build --release --locked -p capitainerie-mcp-kanban
 
+FROM cook AS build-egress-proxy
+RUN cargo build --release --locked -p capitainerie-egress-proxy
+
 FROM rust:1.97.1-bookworm AS build-sqlx
 RUN cargo install sqlx-cli --version 0.8.6 --no-default-features --features rustls,postgres --locked
 
@@ -52,6 +55,11 @@ FROM runtime AS mcp-kanban
 COPY --from=build-mcp-kanban /usr/local/src/capitainerie/target/release/capitainerie-mcp-kanban /usr/local/bin/capitainerie-mcp-kanban
 EXPOSE 4101
 ENTRYPOINT ["/usr/local/bin/capitainerie-mcp-kanban"]
+
+FROM runtime AS egress-proxy
+COPY --from=build-egress-proxy /usr/local/src/capitainerie/target/release/capitainerie-egress-proxy /usr/local/bin/capitainerie-egress-proxy
+EXPOSE 4130
+ENTRYPOINT ["/usr/local/bin/capitainerie-egress-proxy"]
 
 FROM runtime AS migrations
 COPY --from=build-sqlx /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx

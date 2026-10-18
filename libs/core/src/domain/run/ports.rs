@@ -1,4 +1,4 @@
-use capitainerie_common::{CoreError, OrganizationId, RunId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 
 use super::{Run, RunOverview, step::Step};
@@ -40,6 +40,11 @@ pub trait RunRepository: Send {
         stale_before: DateTime<Utc>,
         limit: i64,
     ) -> impl Future<Output = Result<Vec<RunId>, CoreError>> + Send;
+
+    fn has_active_execution(
+        &mut self,
+        card_id: CardId,
+    ) -> impl Future<Output = Result<bool, CoreError>> + Send;
 
     fn heartbeat_at(
         &mut self,

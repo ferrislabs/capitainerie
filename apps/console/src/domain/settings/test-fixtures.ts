@@ -30,6 +30,11 @@ export const SONNET = model('anthropic', 'claude-sonnet-5', {
 		output_per_mtok_micros: 20_000_000,
 	},
 })
+export const CLAUDE_HAIKU = model('anthropic', 'claude-haiku-5', {
+	display_name: 'Claude Haiku 5',
+})
+export const ANTHROPIC_OTHER = model('anthropic', 'legacy-model')
+export const CLAUDE_LOOKALIKE = model('openai_compatible', 'claude-proxy')
 export const MISTRAL_EMBED = model('mistral', 'mistral-embed', {
 	capabilities: { chat: false, embeddings: true },
 })

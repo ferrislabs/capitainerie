@@ -6,7 +6,13 @@ import { ADMIN_ROLE } from '#/domain/identity/roles'
 import { ModelsPage } from '#/domain/settings/feature/models-page'
 import { ProvidersPage } from '#/domain/settings/feature/providers-page'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
-import { BGE, COMPATIBLE_PROVIDER, QWEN } from '#/domain/settings/test-fixtures'
+import {
+	BGE,
+	CLAUDE_LOOKALIKE,
+	COMPATIBLE_PROVIDER,
+	QWEN,
+	SONNET,
+} from '#/domain/settings/test-fixtures'
 import { clearAuth, setAuth } from '#/store/auth.store'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -165,5 +171,46 @@ describe('settings pages', () => {
 		expect(
 			screen.getByText('qwen2.5:7b-instruct', { selector: 'span' }),
 		).toBeTruthy()
+	})
+
+	it('saves the executor along with a saved set of roles', async () => {
+		setAuth({ accessToken: tokenWithRoles([ADMIN_ROLE]) })
+		const ref = { provider: 'openai_compatible', model: QWEN.id }
+		let saved: unknown = {
+			extractor: ref,
+			judge: ref,
+			writer: ref,
+			embeddings: { provider: 'openai_compatible', model: BGE.id },
+		}
+		fetchMock.mockImplementation(
+			routes({
+				'GET /api/v1/providers': () =>
+					json(200, { providers: [COMPATIBLE_PROVIDER] }),
+				'GET /api/v1/models': () =>
+					json(200, {
+						models: [QWEN, BGE, SONNET, CLAUDE_LOOKALIKE],
+						errors: [],
+					}),
+				'GET /api/v1/model-assignments': () =>
+					json(200, { assignments: saved }),
+				'PUT /api/v1/model-assignments': (init) => {
+					saved = JSON.parse(String(init.body))
+					return json(200, { assignments: saved })
+				},
+			}),
+		)
+		const user = userEvent.setup()
+		render(<ModelsPage />, { wrapper: harness.wrapper })
+
+		const executor = await screen.findByLabelText('Exécutant')
+		expect(
+			(screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement)
+				.disabled,
+		).toBe(true)
+		await user.selectOptions(executor, 'claude-sonnet-5')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		expect(await screen.findByText(/Modèles enregistrés/)).toBeTruthy()
+		expect(saved).toMatchObject({ executor: 'claude-sonnet-5' })
 	})
 })

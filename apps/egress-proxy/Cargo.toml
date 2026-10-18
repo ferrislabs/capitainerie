@@ -1,0 +1,41 @@
+[package]
+name = "capitainerie-egress-proxy"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "capitainerie_egress_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "capitainerie-egress-proxy"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+aws-lc-rs.workspace = true
+axum.workspace = true
+base64.workspace = true
+capitainerie-args.workspace = true
+capitainerie-common.workspace = true
+capitainerie-core.workspace = true
+capitainerie-github.workspace = true
+capitainerie-telemetry.workspace = true
+chrono.workspace = true
+clap.workspace = true
+dotenvy.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "sync", "time"] }
+uuid.workspace = true
+
+[lints]
+workspace = true

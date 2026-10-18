@@ -11,6 +11,7 @@ function run(
 	return {
 		id,
 		status,
+		title: `Réunion ${id}`,
 		transcript_id: `t-${id}`,
 		transcript_title: `Réunion ${id}`,
 		initiated_by: 'ada',
@@ -72,6 +73,48 @@ describe('RunsTable', () => {
 		expect(
 			screen.getByRole('link', { name: 'Réunion 7' }).getAttribute('href'),
 		).toBe('/runs/7')
+	})
+
+	it('marks a card run with its repository and a card title', () => {
+		render(
+			<RunsTable
+				runs={[
+					{
+						...run('8', 'running'),
+						title: 'Corriger le bug',
+						transcript_id: null,
+						transcript_title: null,
+						card_id: 'c8',
+						repository: 'acme/web',
+					},
+					run('9', 'queued'),
+				]}
+			/>,
+		)
+
+		expect(screen.getByRole('link', { name: 'Corriger le bug' })).toBeTruthy()
+		expect(screen.getAllByText('Exécution')).toHaveLength(1)
+		expect(screen.getByText('acme/web').className).toContain('font-mono')
+	})
+
+	it('never renders a blank title', () => {
+		render(
+			<RunsTable
+				runs={[
+					{
+						...run('a1b2c3d4e5', 'queued'),
+						title: null,
+						transcript_title: null,
+						card_id: 'c1',
+						repository: 'acme/web',
+					},
+				]}
+			/>,
+		)
+
+		expect(
+			screen.getByRole('link', { name: 'Exécution sur acme/web' }),
+		).toBeTruthy()
 	})
 
 	it('renders the empty state without runs', () => {

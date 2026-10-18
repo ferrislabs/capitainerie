@@ -9,7 +9,7 @@ use capitainerie_events::{EventEnvelope, Topic};
 use iggy::prelude::*;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, clap::Args)]
+#[derive(Clone, clap::Args)]
 pub struct IggyArgs {
     #[arg(
         long = "iggy-address",
@@ -29,6 +29,18 @@ pub struct IggyArgs {
     pub stream: String,
     #[arg(long = "iggy-partitions", env = "IGGY_PARTITIONS", default_value_t = 3)]
     pub partitions: u32,
+}
+
+impl std::fmt::Debug for IggyArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IggyArgs")
+            .field("address", &self.address)
+            .field("username", &self.username)
+            .field("password", &"***")
+            .field("stream", &self.stream)
+            .field("partitions", &self.partitions)
+            .finish()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -28,9 +28,14 @@ pub async fn handler<C: ModelCatalog + 'static>(
     Extension(caller): Extension<Caller>,
     Json(request): Json<ModelAssignmentsDto>,
 ) -> Result<Json<ModelAssignmentsResponse>, ApiError> {
+    let current = state
+        .usecase
+        .get_model_assignments(caller.subject())
+        .await?;
+    let assignments = request.into_assignments(current.as_ref())?;
     let stored = state
         .usecase
-        .put_model_assignments(caller.subject(), request.into(), state.catalog.as_ref())
+        .put_model_assignments(caller.subject(), assignments, state.catalog.as_ref())
         .await?;
     Ok(Json(ModelAssignmentsResponse {
         assignments: Some(stored.into()),

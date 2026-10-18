@@ -49,6 +49,27 @@ impl Pricing {
     }
 }
 
+/// Input tokens split by how Anthropic bills them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CachedUsage {
+    pub fresh_input: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub output: u64,
+}
+
+impl Pricing {
+    /// Cache reads cost 10 % of the input price, cache writes 125 %.
+    pub fn cost_micros_cached(&self, usage: &CachedUsage) -> i64 {
+        let input_weight = u128::from(usage.fresh_input) * 100
+            + u128::from(usage.cache_read) * 10
+            + u128::from(usage.cache_creation) * 125;
+        let cost = input_weight * u128::from(self.input_per_million_micros)
+            + u128::from(usage.output) * 100 * u128::from(self.output_per_million_micros);
+        i64::try_from(cost / 100_000_000).unwrap_or(i64::MAX)
+    }
+}
+
 /// What the write step stores as its output.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WriteOutput {
@@ -99,5 +120,24 @@ mod tests {
         };
         assert_eq!(pricing.cost_micros(&usage), 300 + 300);
         assert_eq!(Pricing::default().cost_micros(&usage), 0);
+    }
+
+    #[test]
+    fn cache_reads_cost_a_tenth_and_cache_writes_a_quarter_more() {
+        let pricing = Pricing {
+            input_per_million_micros: 2_000_000,
+            output_per_million_micros: 10_000_000,
+        };
+        let usage = CachedUsage {
+            fresh_input: 1_000_000,
+            cache_read: 1_000_000,
+            cache_creation: 1_000_000,
+            output: 100_000,
+        };
+        assert_eq!(
+            pricing.cost_micros_cached(&usage),
+            2_000_000 + 200_000 + 2_500_000 + 1_000_000
+        );
+        assert_eq!(Pricing::default().cost_micros_cached(&usage), 0);
     }
 }

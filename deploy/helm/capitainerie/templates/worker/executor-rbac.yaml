@@ -1,0 +1,40 @@
+{{- if and .Values.worker.enabled .Values.executor.enabled }}
+{{- $ctx := dict "root" . "component" "worker" }}
+{{- $name := include "capitainerie.componentName" $ctx }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-executor
+  namespace: {{ .Values.executor.namespace }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-executor
+  namespace: {{ .Values.executor.namespace }}
+  labels:
+    {{- include "capitainerie.labels" $ctx | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-executor
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

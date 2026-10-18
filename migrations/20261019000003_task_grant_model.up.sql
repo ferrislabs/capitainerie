@@ -1,0 +1,2 @@
+ALTER TABLE task_grants ADD COLUMN model TEXT NOT NULL DEFAULT 'claude-sonnet-5-5';
+ALTER TABLE task_grants ALTER COLUMN model DROP DEFAULT;

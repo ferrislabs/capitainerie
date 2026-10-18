@@ -224,7 +224,7 @@ impl TokenExchanger for FerrisKeyTokenExchange {
     }
 }
 
-#[derive(Debug, Clone, clap::Args)]
+#[derive(Clone, clap::Args)]
 pub struct ExchangeArgs {
     #[arg(long = "exchange-client-id", env = "EXCHANGE_CLIENT_ID")]
     pub client_id: Option<String>,
@@ -242,6 +242,17 @@ pub struct ExchangeArgs {
         default_value = "capitainerie-mcp"
     )]
     pub mcp_audience: String,
+}
+
+impl std::fmt::Debug for ExchangeArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExchangeArgs")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &self.client_secret.as_ref().map(|_| "***"))
+            .field("agent_credentials", &"***")
+            .field("mcp_audience", &self.mcp_audience)
+            .finish()
+    }
 }
 
 impl ExchangeArgs {

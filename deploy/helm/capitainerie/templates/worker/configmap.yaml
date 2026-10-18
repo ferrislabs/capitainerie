@@ -23,6 +23,18 @@ data:
   DEDUP_THRESHOLD: {{ .Values.worker.dedupThreshold | quote }}
   DEDUP_GRAY_FLOOR: {{ .Values.worker.dedupGrayFloor | quote }}
   LANCEDB_URI: {{ .Values.worker.vectorStore.uri | quote }}
+  {{- with .Values.worker.consoleUrl }}
+  CONSOLE_URL: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.executor.enabled }}
+  EXECUTOR_NAMESPACE: {{ .Values.executor.namespace | quote }}
+  EXECUTOR_IMAGE: {{ include "capitainerie.image" (dict "root" . "component" "executor" "values" .Values.executor) | quote }}
+  EXECUTOR_PROXY_URL: {{ include "capitainerie.egressProxyUrl" . | quote }}
+  EXECUTOR_MAX_TURNS: {{ .Values.executor.maxTurns | quote }}
+  EXECUTOR_DEADLINE_SECS: {{ .Values.executor.deadlineSeconds | quote }}
+  EXECUTOR_CONCURRENCY: {{ .Values.executor.concurrency | quote }}
+  {{- end }}
+  {{- include "capitainerie.githubBases" . | nindent 2 }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

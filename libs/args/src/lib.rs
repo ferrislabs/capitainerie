@@ -1,4 +1,10 @@
+use std::fmt;
+
 use clap::Args;
+
+fn masked(value: &Option<String>) -> &'static str {
+    if value.is_some() { "***" } else { "unset" }
+}
 
 #[derive(Debug, Clone, Args)]
 pub struct ServerArgs {
@@ -17,7 +23,7 @@ pub struct ServerArgs {
     pub allowed_origins: Vec<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Clone, Args)]
 pub struct DatabaseArgs {
     #[arg(long = "database-url", env = "DATABASE_URL")]
     pub url: String,
@@ -28,6 +34,15 @@ pub struct DatabaseArgs {
         default_value_t = 10
     )]
     pub max_connections: u32,
+}
+
+impl fmt::Debug for DatabaseArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseArgs")
+            .field("url", &"***")
+            .field("max_connections", &self.max_connections)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -48,7 +63,7 @@ pub struct AuthArgs {
     pub audience: Option<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+#[derive(Clone, Args)]
 pub struct DelegationArgs {
     /// Base64 of 32 random bytes; seals the tokens agents act with between
     /// submission and execution. `openssl rand -base64 32`.
@@ -65,12 +80,29 @@ pub struct DelegationArgs {
     pub agents: Vec<String>,
 }
 
-#[derive(Debug, Clone, Args)]
+impl fmt::Debug for DelegationArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DelegationArgs")
+            .field("key", &masked(&self.key))
+            .field("agents", &self.agents)
+            .finish()
+    }
+}
+
+#[derive(Clone, Args)]
 pub struct SecretsArgs {
     /// Base64 of 32 random bytes, distinct from `DELEGATION_KEY`; seals the
     /// providers' API keys at rest. `openssl rand -base64 32`.
     #[arg(id = "secrets_key", long = "secrets-key", env = "SECRETS_KEY")]
     pub key: Option<String>,
+}
+
+impl fmt::Debug for SecretsArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretsArgs")
+            .field("key", &masked(&self.key))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -86,6 +118,108 @@ pub struct LogArgs {
 pub struct ObservabilityArgs {
     #[arg(long = "otlp-endpoint", env = "OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct GithubArgs {
+    #[arg(
+        id = "github_api_base",
+        long = "github-api-base",
+        env = "GITHUB_API_BASE",
+        default_value = "https://api.github.com"
+    )]
+    pub api_base: String,
+
+    #[arg(
+        id = "github_web_base",
+        long = "github-web-base",
+        env = "GITHUB_WEB_BASE",
+        default_value = "https://github.com"
+    )]
+    pub web_base: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ExecutorArgs {
+    /// Kubernetes namespace the task jobs run in. Unset, executions are off.
+    #[arg(
+        id = "executor_namespace",
+        long = "executor-namespace",
+        env = "EXECUTOR_NAMESPACE"
+    )]
+    pub namespace: Option<String>,
+
+    #[arg(id = "executor_image", long = "executor-image", env = "EXECUTOR_IMAGE")]
+    pub image: Option<String>,
+
+    /// Base URL of the credentials proxy as the task pods reach it.
+    #[arg(
+        id = "executor_proxy_url",
+        long = "executor-proxy-url",
+        env = "EXECUTOR_PROXY_URL"
+    )]
+    pub proxy_url: Option<String>,
+
+    #[arg(
+        id = "executor_max_turns",
+        long = "executor-max-turns",
+        env = "EXECUTOR_MAX_TURNS",
+        default_value_t = 50
+    )]
+    pub max_turns: u32,
+
+    #[arg(
+        id = "executor_deadline_secs",
+        long = "executor-deadline-secs",
+        env = "EXECUTOR_DEADLINE_SECS",
+        default_value_t = 1800
+    )]
+    pub deadline_secs: u64,
+
+    /// How many card executions the worker follows at once, apart from the
+    /// other runs: each one holds a Kubernetes Job and a log stream.
+    #[arg(
+        id = "executor_concurrency",
+        long = "executor-concurrency",
+        env = "EXECUTOR_CONCURRENCY",
+        default_value_t = 2
+    )]
+    pub concurrency: usize,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EgressProxyArgs {
+    #[arg(
+        id = "egress_proxy_host",
+        long = "egress-proxy-host",
+        env = "EGRESS_PROXY_HOST",
+        default_value = "0.0.0.0"
+    )]
+    pub host: String,
+
+    #[arg(
+        id = "egress_proxy_port",
+        long = "egress-proxy-port",
+        env = "EGRESS_PROXY_PORT",
+        default_value_t = 4130
+    )]
+    pub port: u16,
+
+    #[arg(
+        id = "egress_anthropic_base",
+        long = "egress-anthropic-base",
+        env = "EGRESS_ANTHROPIC_BASE",
+        default_value = "https://api.anthropic.com"
+    )]
+    pub anthropic_base: String,
+
+    #[arg(
+        id = "egress_github_base",
+        long = "egress-github-base",
+        env = "EGRESS_GITHUB_BASE",
+        default_value = "https://github.com"
+    )]
+    pub github_base: String,
 }
 
 #[cfg(test)]
@@ -111,6 +245,53 @@ mod tests {
         assert_eq!(cli.server.allowed_origins, vec!["http://localhost:4080"]);
         assert_eq!(cli.log.filter, "info");
         assert!(cli.observability.otlp_endpoint.is_none());
+    }
+
+    #[test]
+    fn debug_output_never_shows_a_secret() {
+        let shown = format!(
+            "{:?} {:?} {:?}",
+            DelegationArgs {
+                key: Some("delegation-leak".into()),
+                agents: vec![]
+            },
+            SecretsArgs {
+                key: Some("secrets-leak".into())
+            },
+            DatabaseArgs {
+                url: "postgres://u:db-leak@h/d".into(),
+                max_connections: 1
+            },
+        );
+        for leak in ["delegation-leak", "secrets-leak", "db-leak"] {
+            assert!(!shown.contains(leak), "{leak} in {shown}");
+        }
+    }
+
+    #[derive(Parser)]
+    struct GithubCli {
+        #[command(flatten)]
+        github: GithubArgs,
+    }
+
+    #[test]
+    fn github_hosts_default_to_the_public_service() {
+        let github = GithubCli::parse_from(["bin"]).github;
+        assert_eq!(github.api_base, "https://api.github.com");
+        assert_eq!(github.web_base, "https://github.com");
+    }
+
+    #[derive(Parser)]
+    struct ExecutorCli {
+        #[command(flatten)]
+        executor: ExecutorArgs,
+    }
+
+    #[test]
+    fn executions_have_their_own_concurrency_defaulting_to_two() {
+        assert_eq!(ExecutorCli::parse_from(["bin"]).executor.concurrency, 2);
+        let cli = ExecutorCli::parse_from(["bin", "--executor-concurrency", "5"]);
+        assert_eq!(cli.executor.concurrency, 5);
     }
 
     #[test]

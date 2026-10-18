@@ -1,0 +1,1 @@
+DROP INDEX github_installations_installation_id;

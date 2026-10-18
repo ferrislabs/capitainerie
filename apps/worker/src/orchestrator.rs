@@ -1,15 +1,12 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex, PoisonError},
+    time::Duration,
+};
 
+use crate::dispatch::RunPipelines;
 use capitainerie_bus_iggy::IggyEventBus;
 use capitainerie_common::{CoreError, RunId};
-use capitainerie_core::{
-    MeetingPipeline,
-    domain::{
-        agent::ports::AgentRuntime,
-        delegation::ports::TokenExchanger,
-        similarity::ports::{Embedder, VectorStore},
-    },
-};
 use capitainerie_events::{Topic, run::RunQueued};
 use tokio::{
     sync::{Semaphore, watch},
@@ -23,28 +20,61 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 /// Iggy wakes the orchestrator up; Postgres decides. A run is only executed
 /// once claimed in the database, so a lost or duplicated event costs at most
 /// one sweep interval, never a run.
-pub struct Orchestrator<R, X, E, V> {
-    pipeline: Arc<MeetingPipeline<R, X, E, V>>,
+pub struct Orchestrator<P> {
+    pipeline: Arc<P>,
     bus: IggyEventBus,
     slots: Arc<Semaphore>,
+    execution_slots: Arc<Semaphore>,
+    in_flight: InFlight,
 }
 
-impl<R, X, E, V> Orchestrator<R, X, E, V>
-where
-    R: AgentRuntime + 'static,
-    X: TokenExchanger + 'static,
-    E: Embedder + 'static,
-    V: VectorStore + 'static,
-{
+/// The runs this worker is working on: an event and a sweep naming the same
+/// run must not start it twice.
+#[derive(Clone, Default)]
+struct InFlight(Arc<Mutex<HashSet<RunId>>>);
+
+struct InFlightClaim {
+    set: InFlight,
+    run_id: RunId,
+}
+
+impl InFlight {
+    fn claim(&self, run_id: RunId) -> Option<InFlightClaim> {
+        let inserted = self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(run_id);
+        inserted.then(|| InFlightClaim {
+            set: self.clone(),
+            run_id,
+        })
+    }
+}
+
+impl Drop for InFlightClaim {
+    fn drop(&mut self) {
+        self.set
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.run_id);
+    }
+}
+
+impl<P: RunPipelines> Orchestrator<P> {
     pub fn new(
-        pipeline: Arc<MeetingPipeline<R, X, E, V>>,
+        pipeline: Arc<P>,
         bus: IggyEventBus,
         concurrency: usize,
+        execution_concurrency: usize,
     ) -> Self {
         Self {
             pipeline,
             bus,
             slots: Arc::new(Semaphore::new(concurrency.max(1))),
+            execution_slots: Arc::new(Semaphore::new(execution_concurrency.max(1))),
+            in_flight: InFlight::default(),
         }
     }
 
@@ -105,9 +135,23 @@ where
     }
 
     fn spawn(&self, tasks: &mut JoinSet<()>, run_id: RunId, traceparent: Option<String>) {
+        let Some(claim) = self.in_flight.claim(run_id) else {
+            tracing::debug!(%run_id, "run already in flight on this worker");
+            return;
+        };
         let pipeline = Arc::clone(&self.pipeline);
-        let slots = Arc::clone(&self.slots);
+        let meeting_slots = Arc::clone(&self.slots);
+        let execution_slots = Arc::clone(&self.execution_slots);
         tasks.spawn(async move {
+            let _claim = claim;
+            let slots = match pipeline.is_execution(run_id).await {
+                Ok(true) => execution_slots,
+                Ok(false) => meeting_slots,
+                Err(error) => {
+                    tracing::warn!(%run_id, %error, "cannot tell what kind of run this is");
+                    return;
+                }
+            };
             let Ok(_slot) = slots.acquire_owned().await else {
                 return;
             };
@@ -115,5 +159,24 @@ where
                 tracing::error!(%run_id, %error, "run execution failed");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_run_in_flight_cannot_be_claimed_twice_until_it_ends() {
+        let in_flight = InFlight::default();
+        let run = RunId::new();
+
+        let first = in_flight.claim(run);
+        assert!(first.is_some());
+        assert!(in_flight.claim(run).is_none());
+        assert!(in_flight.claim(RunId::new()).is_some());
+
+        drop(first);
+        assert!(in_flight.claim(run).is_some());
     }
 }

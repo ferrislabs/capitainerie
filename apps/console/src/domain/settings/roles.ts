@@ -1,10 +1,12 @@
 import type { Schemas } from '#/api/api.client'
 import { PROVIDER_KINDS, type ProviderKind } from '#/domain/settings/providers'
 
-export type AgentRole = keyof Schemas.ModelAssignmentsDto
+export type AgentRole = Exclude<keyof Schemas.ModelAssignmentsDto, 'executor'>
 export type ModelRef = Schemas.ModelRefDto
 export type ModelAssignments = Schemas.ModelAssignmentsDto
-export type AssignmentDraft = Partial<Record<AgentRole, ModelRef>>
+export type AssignmentDraft = Partial<Record<AgentRole, ModelRef>> & {
+	executor?: string | null
+}
 
 export interface RoleInfo {
 	label: string
@@ -41,6 +43,32 @@ export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 		description: 'Vectorise les cartes pour retrouver les doublons proches.',
 		capability: 'embeddings',
 	},
+}
+
+export const EXECUTOR_INFO = {
+	label: 'Exécutant',
+	description:
+		'Claude Code, sur les cartes confiées. Modèles Claude uniquement.',
+} as const
+
+export const EXECUTOR_MODEL_PREFIX = 'claude-'
+
+export function executorModels(
+	models: ReadonlyArray<Schemas.ModelResponse>,
+): Array<Schemas.ModelResponse> {
+	return models.filter(
+		(model) =>
+			model.provider === 'anthropic' &&
+			model.capabilities.chat &&
+			model.id.startsWith(EXECUTOR_MODEL_PREFIX),
+	)
+}
+
+export function sameExecutor(
+	a: string | null | undefined,
+	b: string | null | undefined,
+): boolean {
+	return (a ?? null) === (b ?? null)
 }
 
 export function compatibleModels(
@@ -90,9 +118,15 @@ export function sameModelRef(
 export function completeAssignments(
 	draft: AssignmentDraft,
 ): ModelAssignments | undefined {
-	const { extractor, judge, writer, embeddings } = draft
+	const { extractor, judge, writer, embeddings, executor } = draft
 	if (!extractor || !judge || !writer || !embeddings) return undefined
-	return { extractor, judge, writer, embeddings }
+	return {
+		extractor,
+		judge,
+		writer,
+		embeddings,
+		...(executor ? { executor } : {}),
+	}
 }
 
 export function catalogRef(model: Schemas.ModelResponse): ModelRef {

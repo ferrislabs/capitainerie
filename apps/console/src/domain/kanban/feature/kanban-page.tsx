@@ -1,9 +1,11 @@
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Skeleton } from '#/components/ui/skeleton'
 import { COLUMNS } from '#/domain/kanban/columns'
+import { ExecuteCardFlow } from '#/domain/kanban/feature/execute-card-flow'
 import { useCards } from '#/domain/kanban/hooks/use-cards'
 import { useMoveCard } from '#/domain/kanban/hooks/use-move-card'
 import { KanbanBoard } from '#/domain/kanban/ui/kanban-board'
@@ -30,6 +32,8 @@ export function KanbanPage() {
 	const cards = useCards()
 	const move = useMoveCard()
 	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
+	const [executingId, setExecutingId] = useState<string>()
+	const [startedRunId, setStartedRunId] = useState<string>()
 
 	function toggleExpanded(cardId: string) {
 		setExpandedIds((current) => {
@@ -45,6 +49,18 @@ export function KanbanPage() {
 				title="Kanban"
 				description="Les agents proposent, vous décidez : une carte ne quitte « Proposé » que sur votre validation."
 			/>
+			{startedRunId ? (
+				<InlineAlert tone="success">
+					Carte confiée à Claude Code.{' '}
+					<Link
+						to="/runs/$runId"
+						params={{ runId: startedRunId }}
+						className="underline underline-offset-2"
+					>
+						Suivre l’exécution
+					</Link>
+				</InlineAlert>
+			) : null}
 			{move.errorMessage ? (
 				<InlineAlert tone="danger">{move.errorMessage}</InlineAlert>
 			) : null}
@@ -60,6 +76,10 @@ export function KanbanPage() {
 					pendingCardId={move.pendingCardId}
 					expandedIds={expandedIds}
 					onToggleExpanded={toggleExpanded}
+					onExecute={(card) => {
+						setStartedRunId(undefined)
+						setExecutingId(card.id)
+					}}
 					onMove={(cardId, to, expectedVersion) =>
 						move.mutate({
 							path: { card_id: cardId },
@@ -68,6 +88,14 @@ export function KanbanPage() {
 					}
 				/>
 			)}
+			<ExecuteCardFlow
+				card={cards.data?.items.find((card) => card.id === executingId)}
+				onClose={() => setExecutingId(undefined)}
+				onStarted={(runId) => {
+					setExecutingId(undefined)
+					setStartedRunId(runId)
+				}}
+			/>
 		</Page>
 	)
 }

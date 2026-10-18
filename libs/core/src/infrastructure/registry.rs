@@ -8,10 +8,13 @@ pub mod domain {
     pub struct Card;
     pub struct CardComment;
     pub struct DecisionLog;
+    pub struct GithubApp;
+    pub struct GithubInstallation;
     pub struct ModelAssignment;
     pub struct Organization;
     pub struct Run;
     pub struct Step;
+    pub struct TaskGrant;
     pub struct Transcript;
 }
 
