@@ -58,6 +58,7 @@ fn member(organization_id: OrganizationId) -> Subject {
         id: "user-1".into(),
         organization_id,
         actor: None,
+        is_admin: false,
     }
 }
 
@@ -240,6 +241,62 @@ async fn the_relay_publishes_committed_events_once_the_bus_accepts_them() {
     assert_eq!(event.organization_id, organization_id.0);
 }
 
+#[tokio::test]
+async fn the_timeline_lists_what_the_run_did_not_its_reads() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let submitted = usecase
+        .submit_transcript(SubmitTranscript {
+            subject: member(organization_id),
+            title: "Point".into(),
+            body: "Claire : Malik migre la CI.".into(),
+        })
+        .await
+        .unwrap();
+    for (action, kind) in [
+        ("card.create", "card"),
+        ("run.read", "run"),
+        ("run.read", "run"),
+        ("card.read", "card"),
+        ("provider.read", "provider"),
+        ("run.read", "run"),
+    ] {
+        sqlx::query(
+            "INSERT INTO authorization_decisions (id, organization_id, subject, action, resource_kind, allowed, run_id) VALUES ($1, $2, 'user-1', $3, $4, true, $5)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(organization_id.0)
+        .bind(action)
+        .bind(kind)
+        .bind(submitted.run_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let timeline = usecase
+        .run_timeline(member(organization_id), submitted.run_id)
+        .await
+        .unwrap();
+
+    let actions: Vec<&str> = timeline
+        .decisions
+        .iter()
+        .map(|decision| decision.action.as_str())
+        .collect();
+    assert!(actions.contains(&"card.create"));
+    assert!(actions.iter().all(|action| !action.ends_with(".read")));
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_decisions WHERE run_id = $1 AND action LIKE '%.read'",
+    )
+    .bind(submitted.run_id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(audited >= 5);
+}
+
 mod cards {
     use capitainerie_common::CoreError;
     use capitainerie_core::domain::card::{
@@ -254,6 +311,7 @@ mod cards {
     fn agent(organization_id: OrganizationId) -> Subject {
         Subject {
             actor: Some("capitainerie-agent-writer".into()),
+            is_admin: false,
             ..member(organization_id)
         }
     }

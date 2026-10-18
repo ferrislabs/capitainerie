@@ -24,6 +24,8 @@ API_CLIENT_UUID="$(terraform -chdir="${TF_DIR}" output -raw api_client_uuid)"
 API_RESOURCE="$(terraform -chdir="${TF_DIR}" output -raw api_resource)"
 MCP_CLIENT_ID="$(terraform -chdir="${TF_DIR}" output -raw mcp_client_id)"
 AGENT_CLIENTS="$(terraform -chdir="${TF_DIR}" output -json agent_clients)"
+ADMIN_ROLE_UUID="$(terraform -chdir="${TF_DIR}" output -raw admin_role_uuid)"
+ADMIN_USERNAME="${ADMIN_USERNAME:-demo}"
 
 # What provider 0.1.0 cannot declare: token exchange, resource ownership and
 # exchange policies, through the admin API. Every call below converges.
@@ -60,6 +62,22 @@ for agent in $(jq -r 'keys[]' <<<"${AGENT_CLIENTS}"); do
     ensure_policy "${agent_uuid}" "${MCP_CLIENT_ID}" false true
 done
 
+# The role is declared above but granted here: the provider has no resource
+# for the grant that converges with a user created by self-registration.
+# Assigning a role the user already holds answers 500, hence the check first.
+admin_user_id="$(admin GET "/users" \
+    | jq -r --arg u "${ADMIN_USERNAME}" '(if type == "array" then . else .data end)[]? | select(.username == $u) | .id' \
+    | head -1)"
+if [ -n "${admin_user_id}" ]; then
+    echo "👑 ${ADMIN_USERNAME} -> capitainerie-admin"
+    if ! admin GET "/users/${admin_user_id}/roles" \
+        | jq -e '(if type == "array" then . else .data end)[]? | select(.name == "capitainerie-admin")' >/dev/null; then
+        admin POST "/users/${admin_user_id}/roles/${ADMIN_ROLE_UUID}" >/dev/null
+    fi
+else
+    echo "ℹ️  no user ${ADMIN_USERNAME} yet: register it, then run this script again to grant capitainerie-admin"
+fi
+
 client_secret() {
     admin GET "/clients/$1/client-secret" | jq -r '.data.client_secret // .client_secret'
 }
@@ -94,6 +112,7 @@ cat <<SUMMARY
      EXCHANGE_CLIENT_SECRET=${API_SECRET}
      AGENT_CREDENTIALS=${AGENT_CREDENTIALS}
      DELEGATION_KEY=<openssl rand -base64 32, the same for the API and the worker>
+     SECRETS_KEY=<openssl rand -base64 32, distinct from DELEGATION_KEY, the same for the API and the worker>
 
    Create your account from the console's login page ("Register"): FerrisKey
    has no admin API to set a password, so self-registration is the way in.

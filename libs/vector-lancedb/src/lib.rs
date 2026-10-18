@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, PoisonError},
+};
 
 use arrow_array::{
     FixedSizeListArray, RecordBatch, RecordBatchIterator, StringArray, cast::AsArray,
@@ -12,25 +15,17 @@ use capitainerie_core::domain::{
 };
 use futures_util::TryStreamExt;
 use lancedb::{
-    DistanceType, Table, connect,
+    Connection, DistanceType, Table, connect,
     query::{ExecutableQuery, QueryBase},
 };
 
-const TABLE: &str = "cards";
+const TABLE_PREFIX: &str = "cards__";
 const DISTANCE: &str = "_distance";
 
 #[derive(Debug, thiserror::Error)]
 pub enum VectorError {
     #[error("cannot open the vector store at {uri}: {reason}")]
     Open { uri: String, reason: String },
-    #[error(
-        "the vector table at {uri} holds {found}-dimensional vectors, not {expected}: use another LANCEDB_URI or delete it to re-index"
-    )]
-    Dimensions {
-        uri: String,
-        found: usize,
-        expected: usize,
-    },
 }
 
 impl From<VectorError> for CoreError {
@@ -61,71 +56,133 @@ fn schema(dimensions: usize) -> Result<SchemaRef, CoreError> {
     ])))
 }
 
-/// Card embeddings in a LanceDB table: a local directory in development,
-/// an object store later.
+/// `cards__bge_m3` for `bge-m3`: one table per embedding model, because the
+/// vectors of two models can neither be compared nor share a dimension.
+pub fn table_name(embedding_model: &str) -> String {
+    let mut name = String::from(TABLE_PREFIX);
+    let mut separated = true;
+    for character in embedding_model.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            name.push(character);
+            separated = false;
+        } else if !separated {
+            name.push('_');
+            separated = true;
+        }
+    }
+    while name.ends_with('_') && name.len() > TABLE_PREFIX.len() {
+        name.pop();
+    }
+    if name.len() == TABLE_PREFIX.len() {
+        name.push_str("default");
+    }
+    name
+}
+
 #[derive(Clone)]
-pub struct LanceVectorStore {
+struct Indexed {
     table: Table,
     dimensions: usize,
 }
 
+/// Card embeddings in LanceDB tables, one per embedding model: a local
+/// directory in development, an object store later.
+#[derive(Clone)]
+pub struct LanceVectorStore {
+    connection: Connection,
+    tables: Arc<Mutex<HashMap<String, Indexed>>>,
+}
+
 impl LanceVectorStore {
-    pub async fn open(uri: &str, dimensions: usize) -> Result<Self, VectorError> {
-        let open_error = |error: lancedb::Error| VectorError::Open {
-            uri: uri.to_owned(),
-            reason: error.to_string(),
-        };
-        let connection = connect(uri).execute().await.map_err(open_error)?;
-        let existing = connection
-            .table_names()
+    pub async fn open(uri: &str) -> Result<Self, VectorError> {
+        let connection = connect(uri)
             .execute()
             .await
-            .map_err(open_error)?;
-        let table = if existing.iter().any(|name| name == TABLE) {
-            let table = connection
-                .open_table(TABLE)
-                .execute()
-                .await
-                .map_err(open_error)?;
-            let stored = stored_dimensions(&table).await.map_err(open_error)?;
-            if stored != Some(dimensions) {
-                return Err(VectorError::Dimensions {
-                    uri: uri.to_owned(),
-                    found: stored.unwrap_or(0),
-                    expected: dimensions,
-                });
-            }
-            table
-        } else {
-            let schema = schema(dimensions).map_err(|error| VectorError::Open {
+            .map_err(|error| VectorError::Open {
                 uri: uri.to_owned(),
                 reason: error.to_string(),
             })?;
-            connection
-                .create_empty_table(TABLE, schema)
-                .execute()
-                .await
-                .map_err(open_error)?
-        };
-        Ok(Self { table, dimensions })
+        Ok(Self {
+            connection,
+            tables: Arc::default(),
+        })
     }
 
-    /// Whether nothing is indexed yet: the signal to backfill.
-    pub async fn is_empty(&self) -> Result<bool, CoreError> {
-        let rows = self.table.count_rows(None).await.map_err(internal)?;
-        Ok(rows == 0)
+    fn cached(&self, name: &str) -> Option<Indexed> {
+        self.tables
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(name)
+            .cloned()
     }
 
-    fn check(&self, embedding: &Embedding) -> Result<(), CoreError> {
-        if embedding.0.len() != self.dimensions {
-            return Err(CoreError::Invalid(format!(
-                "the embedding has {} dimensions, the store expects {}",
-                embedding.0.len(),
-                self.dimensions
-            )));
+    fn remember(&self, name: &str, indexed: &Indexed) {
+        self.tables
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(name.to_owned(), indexed.clone());
+    }
+
+    async fn existing(&self, name: &str) -> Result<Option<Indexed>, CoreError> {
+        if let Some(indexed) = self.cached(name) {
+            return Ok(Some(indexed));
         }
-        Ok(())
+        let names = self
+            .connection
+            .table_names()
+            .execute()
+            .await
+            .map_err(internal)?;
+        if !names.iter().any(|existing| existing == name) {
+            return Ok(None);
+        }
+        let table = self
+            .connection
+            .open_table(name)
+            .execute()
+            .await
+            .map_err(internal)?;
+        let dimensions = stored_dimensions(&table)
+            .await
+            .map_err(internal)?
+            .ok_or_else(|| internal(format!("table {name} has no vector column")))?;
+        let indexed = Indexed { table, dimensions };
+        self.remember(name, &indexed);
+        Ok(Some(indexed))
     }
+
+    async fn for_write(&self, name: &str, dimensions: usize) -> Result<Indexed, CoreError> {
+        let indexed = match self.existing(name).await? {
+            Some(indexed) => indexed,
+            None => {
+                let created = self
+                    .connection
+                    .create_empty_table(name, schema(dimensions)?)
+                    .execute()
+                    .await;
+                match created {
+                    Ok(table) => {
+                        let indexed = Indexed { table, dimensions };
+                        self.remember(name, &indexed);
+                        indexed
+                    }
+                    Err(error) => self.existing(name).await?.ok_or_else(|| internal(error))?,
+                }
+            }
+        };
+        check(&indexed, dimensions)?;
+        Ok(indexed)
+    }
+}
+
+fn check(indexed: &Indexed, dimensions: usize) -> Result<(), CoreError> {
+    if indexed.dimensions != dimensions {
+        return Err(CoreError::Invalid(format!(
+            "the embedding has {dimensions} dimensions, the index of this model expects {}",
+            indexed.dimensions
+        )));
+    }
+    Ok(())
 }
 
 async fn stored_dimensions(table: &Table) -> Result<Option<usize>, lancedb::Error> {
@@ -140,9 +197,12 @@ async fn stored_dimensions(table: &Table) -> Result<Option<usize>, lancedb::Erro
 }
 
 impl VectorStore for LanceVectorStore {
-    async fn upsert(&self, card: CardVector) -> Result<(), CoreError> {
-        self.check(&card.embedding)?;
-        let dimensions = i32::try_from(self.dimensions).map_err(internal)?;
+    async fn upsert(&self, embedding_model: &str, card: CardVector) -> Result<(), CoreError> {
+        let dimensions = card.embedding.0.len();
+        let indexed = self
+            .for_write(&table_name(embedding_model), dimensions)
+            .await?;
+        let width = i32::try_from(dimensions).map_err(internal)?;
         let vectors = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
             [Some(
                 card.embedding
@@ -152,9 +212,9 @@ impl VectorStore for LanceVectorStore {
                     .map(Some)
                     .collect::<Vec<_>>(),
             )],
-            dimensions,
+            width,
         );
-        let schema = schema(self.dimensions)?;
+        let schema = schema(dimensions)?;
         let batch = RecordBatch::try_new(
             schema.clone(),
             vec![
@@ -166,7 +226,7 @@ impl VectorStore for LanceVectorStore {
             ],
         )
         .map_err(internal)?;
-        let mut merge = self.table.merge_insert(&["card_id"]);
+        let mut merge = indexed.table.merge_insert(&["card_id"]);
         merge
             .when_matched_update_all(None)
             .when_not_matched_insert_all();
@@ -177,19 +237,39 @@ impl VectorStore for LanceVectorStore {
             .map_err(internal)
     }
 
+    async fn holds_cards(
+        &self,
+        embedding_model: &str,
+        organization_id: OrganizationId,
+    ) -> Result<bool, CoreError> {
+        let Some(indexed) = self.existing(&table_name(embedding_model)).await? else {
+            return Ok(false);
+        };
+        let rows = indexed
+            .table
+            .count_rows(Some(format!("organization_id = '{}'", organization_id.0)))
+            .await
+            .map_err(internal)?;
+        Ok(rows > 0)
+    }
+
     async fn nearest(
         &self,
+        embedding_model: &str,
         organization_id: OrganizationId,
         embedding: &Embedding,
         limit: usize,
     ) -> Result<Vec<SimilarCard>, CoreError> {
-        self.check(embedding)?;
+        let Some(indexed) = self.existing(&table_name(embedding_model)).await? else {
+            return Ok(Vec::new());
+        };
+        check(&indexed, embedding.0.len())?;
         let filter = format!(
             "organization_id = '{}' AND card_column != '{}'",
             organization_id.0,
             Column::Rejected.as_str()
         );
-        let batches: Vec<RecordBatch> = self
+        let batches: Vec<RecordBatch> = indexed
             .table
             .query()
             .nearest_to(embedding.0.as_slice())
@@ -251,6 +331,8 @@ mod tests {
 
     use super::*;
 
+    const MODEL: &str = "bge-m3";
+
     struct TempDir(PathBuf);
 
     impl TempDir {
@@ -281,7 +363,23 @@ mod tests {
     }
 
     async fn store(dir: &TempDir) -> LanceVectorStore {
-        LanceVectorStore::open(dir.uri(), 3).await.unwrap()
+        LanceVectorStore::open(dir.uri()).await.unwrap()
+    }
+
+    fn texts(found: &[SimilarCard]) -> Vec<&str> {
+        found.iter().map(|f| f.text.as_str()).collect()
+    }
+
+    #[test]
+    fn a_table_is_named_after_its_sanitized_embedding_model() {
+        assert_eq!(table_name("bge-m3"), "cards__bge_m3");
+        assert_eq!(
+            table_name("nomic-embed-text:v1.5"),
+            "cards__nomic_embed_text_v1_5"
+        );
+        assert_eq!(table_name("Mistral-Embed"), "cards__mistral_embed");
+        assert_eq!(table_name("--"), "cards__default");
+        assert_eq!(table_name("../etc"), "cards__etc");
     }
 
     #[tokio::test]
@@ -293,16 +391,15 @@ mod tests {
         let near = card(org, "near", [1.0, 1.0, 0.0], Column::Todo);
         let far = card(org, "far", [0.0, 0.0, 1.0], Column::Done);
         for c in [&far, &near, &same] {
-            store.upsert((*c).clone()).await.unwrap();
+            store.upsert(MODEL, (*c).clone()).await.unwrap();
         }
 
         let found = store
-            .nearest(org, &Embedding(vec![2.0, 0.0, 0.0]), 3)
+            .nearest(MODEL, org, &Embedding(vec![2.0, 0.0, 0.0]), 3)
             .await
             .unwrap();
 
-        let texts: Vec<_> = found.iter().map(|f| f.text.as_str()).collect();
-        assert_eq!(texts, ["same", "near", "far"]);
+        assert_eq!(texts(&found), ["same", "near", "far"]);
         assert!((found[0].score - 1.0).abs() < 1e-4, "{}", found[0].score);
         assert!(
             (found[1].score - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3,
@@ -320,12 +417,15 @@ mod tests {
         let org = OrganizationId::new();
         for i in 0..4 {
             store
-                .upsert(card(org, "c", [1.0, i as f32, 0.0], Column::Proposed))
+                .upsert(
+                    MODEL,
+                    card(org, "c", [1.0, i as f32, 0.0], Column::Proposed),
+                )
                 .await
                 .unwrap();
         }
         let found = store
-            .nearest(org, &Embedding(vec![1.0, 0.0, 0.0]), 2)
+            .nearest(MODEL, org, &Embedding(vec![1.0, 0.0, 0.0]), 2)
             .await
             .unwrap();
         assert_eq!(found.len(), 2);
@@ -337,13 +437,13 @@ mod tests {
         let store = store(&dir).await;
         let org = OrganizationId::new();
         let mut c = card(org, "before", [1.0, 0.0, 0.0], Column::Proposed);
-        store.upsert(c.clone()).await.unwrap();
+        store.upsert(MODEL, c.clone()).await.unwrap();
         c.text = "after".into();
         c.embedding = Embedding(vec![0.0, 1.0, 0.0]);
-        store.upsert(c.clone()).await.unwrap();
+        store.upsert(MODEL, c.clone()).await.unwrap();
 
         let found = store
-            .nearest(org, &Embedding(vec![0.0, 1.0, 0.0]), 5)
+            .nearest(MODEL, org, &Embedding(vec![0.0, 1.0, 0.0]), 5)
             .await
             .unwrap();
 
@@ -358,21 +458,30 @@ mod tests {
         let store = store(&dir).await;
         let (mine, theirs) = (OrganizationId::new(), OrganizationId::new());
         store
-            .upsert(card(mine, "mine", [1.0, 0.0, 0.0], Column::Proposed))
+            .upsert(MODEL, card(mine, "mine", [1.0, 0.0, 0.0], Column::Proposed))
             .await
             .unwrap();
         store
-            .upsert(card(theirs, "theirs", [1.0, 0.0, 0.0], Column::Proposed))
+            .upsert(
+                MODEL,
+                card(theirs, "theirs", [1.0, 0.0, 0.0], Column::Proposed),
+            )
             .await
             .unwrap();
 
         let found = store
-            .nearest(mine, &Embedding(vec![1.0, 0.0, 0.0]), 5)
+            .nearest(MODEL, mine, &Embedding(vec![1.0, 0.0, 0.0]), 5)
             .await
             .unwrap();
 
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].text, "mine");
+        assert_eq!(texts(&found), ["mine"]);
+        assert!(store.holds_cards(MODEL, mine).await.unwrap());
+        assert!(
+            !store
+                .holds_cards(MODEL, OrganizationId::new())
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -381,48 +490,118 @@ mod tests {
         let store = store(&dir).await;
         let org = OrganizationId::new();
         let mut c = card(org, "idea", [1.0, 0.0, 0.0], Column::Proposed);
-        store.upsert(c.clone()).await.unwrap();
+        store.upsert(MODEL, c.clone()).await.unwrap();
         c.column = Column::Rejected;
-        store.upsert(c).await.unwrap();
+        store.upsert(MODEL, c).await.unwrap();
 
-        assert!(!store.is_empty().await.unwrap());
+        assert!(store.holds_cards(MODEL, org).await.unwrap());
         let found = store
-            .nearest(org, &Embedding(vec![1.0, 0.0, 0.0]), 5)
+            .nearest(MODEL, org, &Embedding(vec![1.0, 0.0, 0.0]), 5)
             .await
             .unwrap();
         assert!(found.is_empty());
     }
 
     #[tokio::test]
-    async fn a_new_store_is_empty_and_reopening_keeps_the_data() {
+    async fn reopening_keeps_the_data() {
         let dir = TempDir::new();
         let org = OrganizationId::new();
         {
             let store = store(&dir).await;
-            assert!(store.is_empty().await.unwrap());
+            assert!(!store.holds_cards(MODEL, org).await.unwrap());
             store
-                .upsert(card(org, "kept", [1.0, 0.0, 0.0], Column::Todo))
+                .upsert(MODEL, card(org, "kept", [1.0, 0.0, 0.0], Column::Todo))
                 .await
                 .unwrap();
         }
         let reopened = store(&dir).await;
+        assert!(reopened.holds_cards(MODEL, org).await.unwrap());
         let found = reopened
-            .nearest(org, &Embedding(vec![1.0, 0.0, 0.0]), 1)
+            .nearest(MODEL, org, &Embedding(vec![1.0, 0.0, 0.0]), 1)
             .await
             .unwrap();
         assert_eq!(found[0].text, "kept");
     }
 
     #[tokio::test]
-    async fn a_wrong_dimension_is_refused() {
+    async fn each_embedding_model_has_its_own_index_and_dimension() {
         let dir = TempDir::new();
         let store = store(&dir).await;
+        let org = OrganizationId::new();
+        store
+            .upsert("model-a", card(org, "in a", [1.0, 0.0, 0.0], Column::Todo))
+            .await
+            .unwrap();
+        let in_b = CardVector {
+            embedding: Embedding(vec![1.0, 0.0]),
+            ..card(org, "in b", [0.0; 3], Column::Todo)
+        };
+        store.upsert("model-b", in_b).await.unwrap();
+
+        let a = store
+            .nearest("model-a", org, &Embedding(vec![1.0, 0.0, 0.0]), 5)
+            .await
+            .unwrap();
+        let b = store
+            .nearest("model-b", org, &Embedding(vec![1.0, 0.0]), 5)
+            .await
+            .unwrap();
+        let unknown = store
+            .nearest("model-c", org, &Embedding(vec![1.0]), 5)
+            .await
+            .unwrap();
+
+        assert_eq!(texts(&a), ["in a"]);
+        assert_eq!(texts(&b), ["in b"]);
+        assert!(unknown.is_empty());
+        assert!(!store.holds_cards("model-c", org).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_model_does_not_see_the_cards_indexed_for_another() {
+        let dir = TempDir::new();
+        let store = store(&dir).await;
+        let (mine, theirs) = (OrganizationId::new(), OrganizationId::new());
+        store
+            .upsert("model-a", card(mine, "mine", [1.0, 0.0, 0.0], Column::Todo))
+            .await
+            .unwrap();
+        store
+            .upsert(
+                "model-b",
+                card(theirs, "theirs", [1.0, 0.0, 0.0], Column::Todo),
+            )
+            .await
+            .unwrap();
+
+        assert!(store.holds_cards("model-a", mine).await.unwrap());
+        assert!(!store.holds_cards("model-b", mine).await.unwrap());
+        let found = store
+            .nearest("model-b", mine, &Embedding(vec![1.0, 0.0, 0.0]), 5)
+            .await
+            .unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_wrong_dimension_for_a_model_is_refused() {
+        let dir = TempDir::new();
+        let store = store(&dir).await;
+        let org = OrganizationId::new();
+        store
+            .upsert(MODEL, card(org, "c", [1.0, 0.0, 0.0], Column::Todo))
+            .await
+            .unwrap();
         let error = store
-            .nearest(OrganizationId::new(), &Embedding(vec![1.0, 0.0]), 1)
+            .nearest(MODEL, org, &Embedding(vec![1.0, 0.0]), 1)
             .await
             .unwrap_err();
         assert!(matches!(error, CoreError::Invalid(_)));
-        let error = LanceVectorStore::open(dir.uri(), 4).await.err().unwrap();
-        assert!(matches!(error, VectorError::Dimensions { found: 3, .. }));
+        let wrong = CardVector {
+            embedding: Embedding(vec![1.0, 0.0]),
+            ..card(org, "d", [0.0; 3], Column::Todo)
+        };
+        let error = store.upsert(MODEL, wrong).await.unwrap_err();
+        assert!(matches!(error, CoreError::Invalid(_)));
     }
 }

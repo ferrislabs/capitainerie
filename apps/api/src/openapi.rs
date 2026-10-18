@@ -14,6 +14,16 @@ use capitainerie_handlers_identity::{
     self as identity,
     me::{MeOrganization, MeResponse},
 };
+use capitainerie_handlers_providers::{
+    self as providers,
+    dto::{
+        CapabilitiesResponse, ModelAssignmentsDto, ModelAssignmentsResponse, ModelCatalogResponse,
+        ModelRefDto, ModelResponse, PriceResponse, ProviderErrorResponse, ProviderKindDto,
+        ProviderListResponse, ProviderResponse,
+    },
+    put_provider::PutProviderRequest,
+    test_provider::TestProviderResponse,
+};
 use capitainerie_handlers_runs::{
     self as runs,
     list_runs::RunListResponse,
@@ -44,6 +54,13 @@ use utoipa::{
         cards::move_card::handler,
         analytics::costs::handler,
         analytics::agents::handler,
+        providers::list_providers::handler,
+        providers::put_provider::handler,
+        providers::delete_provider::handler,
+        providers::test_provider::handler,
+        providers::list_models::handler,
+        providers::get_assignments::handler,
+        providers::put_assignments::handler,
     ),
     components(schemas(
         ApiErrorResponse,
@@ -70,6 +87,19 @@ use utoipa::{
         CostTotals,
         CostDimensionParam,
         AgentResponse,
+        ProviderKindDto,
+        ProviderResponse,
+        ProviderListResponse,
+        PutProviderRequest,
+        TestProviderResponse,
+        ModelResponse,
+        CapabilitiesResponse,
+        PriceResponse,
+        ProviderErrorResponse,
+        ModelCatalogResponse,
+        ModelRefDto,
+        ModelAssignmentsDto,
+        ModelAssignmentsResponse,
     )),
     modifiers(&BearerAuth),
     tags(
@@ -78,6 +108,7 @@ use utoipa::{
         (name = runs::TAG, description = "Transcripts and the runs processing them"),
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
+        (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
     )
 )]
 pub struct ApiDoc;
@@ -144,5 +175,21 @@ mod tests {
             .collect();
         assert_eq!(names, ["by", "from", "to"]);
         assert!(spec["paths"]["/api/v1/agents"]["get"].is_object());
+    }
+
+    #[test]
+    fn the_provider_endpoints_are_documented_without_a_key_in_any_response() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/providers"]["get"].is_object());
+        assert!(paths["/api/v1/providers/{kind}"]["put"].is_object());
+        assert!(paths["/api/v1/providers/{kind}"]["delete"].is_object());
+        assert!(paths["/api/v1/providers/{kind}/test"]["post"].is_object());
+        assert!(paths["/api/v1/models"]["get"].is_object());
+        assert!(paths["/api/v1/model-assignments"]["get"].is_object());
+        assert!(paths["/api/v1/model-assignments"]["put"].is_object());
+        let provider = &spec["components"]["schemas"]["ProviderResponse"]["properties"];
+        assert!(provider.get("api_key").is_none());
+        assert!(provider["preview"].is_object());
     }
 }

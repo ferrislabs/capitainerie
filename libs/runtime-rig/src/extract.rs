@@ -3,16 +3,20 @@ use capitainerie_core::domain::agent::{ExtractedAction, Extraction};
 use rig_agent::{
     agent::AgentBuilder, completion::StructuredOutputError, extractor::ExtractorBuilder,
 };
-use rig_core::{DynModel, operation::Completion};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
-use crate::{post, usage::usage_of};
+use crate::{client::Engine, post, usage::usage_of};
 
 pub(crate) const AGENT_NAME: &str = "extractor";
 pub(crate) const RETRIES: usize = 2;
 const TEMPERATURE: f64 = 0.1;
+const MAX_TOKENS: u32 = 8192;
+
+const STRUCTURED_RULES: &str =
+    "\nAnswer with the JSON object only. Use an empty string for owner or due when there is none.";
 
 pub(crate) const SYSTEM_PROMPT: &str = "\
 Extract the action items from the meeting transcript the user sends: concrete things that someone committed to do or that the meeting says must be done.
@@ -100,8 +104,36 @@ pub(crate) fn failure(error: StructuredOutputError) -> CoreError {
     }
 }
 
+fn schema() -> Value {
+    let text = |description: &str| json!({ "type": "string", "description": description });
+    json!({
+        "type": "object",
+        "properties": {
+            "actions": {
+                "type": "array",
+                "description": "Every action item found in the transcript. Empty when there is none.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": text("Short imperative title of the action."),
+                        "description": text("Context of the action, with owner and deadline when stated."),
+                        "quote": text("The shortest span of one speaker turn that states what is to be done, copied character for character, without the speaker name."),
+                        "owner": text("The person who commits to the task; empty for an unassigned task."),
+                        "due": text("Deadline, when stated; empty otherwise."),
+                    },
+                    "required": ["title", "description", "quote", "owner", "due"],
+                    "additionalProperties": false,
+                },
+            },
+        },
+        "required": ["actions"],
+        "additionalProperties": false,
+    })
+}
+
 pub(crate) async fn run(
-    model: DynModel<Completion>,
+    engine: Engine,
+    provider: &str,
     model_name: &str,
     transcript: &str,
 ) -> Result<Extraction, CoreError> {
@@ -109,31 +141,50 @@ pub(crate) async fn run(
         "invoke_agent",
         otel.name = format!("invoke_agent {AGENT_NAME}"),
         gen_ai.operation.name = "invoke_agent",
+        gen_ai.provider.name = provider,
         gen_ai.agent.name = AGENT_NAME,
         gen_ai.request.model = model_name,
     );
-    let extractor = ExtractorBuilder::<Actions>::from_agent_builder(
-        AgentBuilder::new(model)
-            .name(AGENT_NAME)
-            .temperature(TEMPERATURE),
-    )
-    .append_preamble(SYSTEM_PROMPT)
-    .retries(RETRIES)
-    .build();
-    let response = async { extractor.extract(transcript).await }
-        .instrument(span)
-        .await
-        .map_err(failure)?;
+    let (actions, usage) = match engine {
+        Engine::Chat(model) => {
+            let extractor = ExtractorBuilder::<Actions>::from_agent_builder(
+                AgentBuilder::new(model)
+                    .name(AGENT_NAME)
+                    .temperature(TEMPERATURE),
+            )
+            .append_preamble(SYSTEM_PROMPT)
+            .retries(RETRIES)
+            .build();
+            let response = async { extractor.extract(transcript).await }
+                .instrument(span)
+                .await
+                .map_err(failure)?;
+            (
+                response.output.actions,
+                usage_of(model_name, &response.usage),
+            )
+        }
+        Engine::Anthropic(api) => {
+            let system = format!("{SYSTEM_PROMPT}{STRUCTURED_RULES}");
+            let (parsed, usage) = api
+                .structured::<Actions>(
+                    model_name,
+                    &system,
+                    transcript,
+                    &schema(),
+                    MAX_TOKENS,
+                    RETRIES,
+                )
+                .instrument(span)
+                .await?;
+            (parsed.actions, usage)
+        }
+    };
     Ok(Extraction {
-        usage: usage_of(model_name, &response.usage),
+        usage,
         actions: post::clean(
             transcript,
-            response
-                .output
-                .actions
-                .into_iter()
-                .map(ExtractedAction::from)
-                .collect(),
+            actions.into_iter().map(ExtractedAction::from).collect(),
         ),
     })
 }

@@ -15,6 +15,9 @@ use crate::{
         delegation::ports::{DelegationVault, TokenExchanger},
         event::ports::EventEmitter,
         organization::ports::OrganizationRepository,
+        provider::{
+            AgentRole, ModelAssignments, ModelRef, ModelTarget, ProviderAccess, ProviderKind,
+        },
         run::{
             Run, RunStatus, StepKind,
             locate::locate,
@@ -22,7 +25,8 @@ use crate::{
             step::{Pricing, Step, StepStatus, WriteOutput},
         },
         similarity::{
-            DecidedBy, DedupOutput, DuplicateMatch, JudgedPair, Triage, action_text,
+            CardVector, DecidedBy, DedupOutput, DuplicateMatch, JudgedPair, Triage, action_text,
+            card_text,
             ports::{Embedder, VectorStore},
             triage,
         },
@@ -52,6 +56,7 @@ pub struct PipelineConfig {
     /// Cosine similarity from which an action is the same task as a card.
     pub dedup_threshold: f32,
     pub dedup_gray_floor: f32,
+    pub default_models: ModelAssignments,
 }
 
 impl CapitainerieUseCase {
@@ -198,6 +203,75 @@ impl CapitainerieUseCase {
         card_repository.list(organization_id).await
     }
 
+    pub async fn target_for(
+        &self,
+        organization_id: OrganizationId,
+        model: &ModelRef,
+    ) -> Result<ModelTarget, CoreError> {
+        let access = self
+            .provider_access(organization_id, model.provider)
+            .await?;
+        target_of(model, access)
+    }
+
+    pub async fn embedding_target_for(
+        &self,
+        organization_id: OrganizationId,
+        defaults: &ModelAssignments,
+    ) -> Result<ModelTarget, CoreError> {
+        let chosen = self.model_assignments_for(organization_id).await?;
+        let assignments = chosen.as_ref().unwrap_or(defaults);
+        self.target_for(organization_id, assignments.for_role(AgentRole::Embeddings))
+            .await
+    }
+
+    pub async fn ensure_indexed<E: Embedder, V: VectorStore>(
+        &self,
+        embedder: &E,
+        vectors: &V,
+        embedding: &ModelTarget,
+        organization_id: OrganizationId,
+    ) -> Result<(), CoreError> {
+        let model = embedding.model.model.as_str();
+        if vectors.holds_cards(model, organization_id).await? {
+            return Ok(());
+        }
+        let cards = self.cards_for_index(organization_id).await?;
+        if cards.is_empty() {
+            return Ok(());
+        }
+        tracing::info!(%organization_id, model, cards = cards.len(), "indexing the cards for this embedding model");
+        for chunk in cards.chunks(REINDEX_BATCH) {
+            let texts: Vec<String> = chunk
+                .iter()
+                .map(|card| card_text(card.title.as_str(), &card.description))
+                .collect();
+            let (embeddings, _) = embedder.embed(embedding, &texts).await?;
+            if embeddings.len() != chunk.len() {
+                return Err(CoreError::Internal(format!(
+                    "the embedder returned {} vectors for {} cards",
+                    embeddings.len(),
+                    chunk.len()
+                )));
+            }
+            for ((card, text), embedding) in chunk.iter().zip(texts).zip(embeddings) {
+                vectors
+                    .upsert(
+                        model,
+                        CardVector {
+                            card_id: card.id,
+                            organization_id: card.organization_id,
+                            text,
+                            embedding,
+                            column: card.column,
+                        },
+                    )
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn organizations_for_index(&self) -> Result<Vec<OrganizationId>, CoreError> {
         sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM organizations")
             .fetch_all(&self.pool)
@@ -215,6 +289,26 @@ impl CapitainerieUseCase {
         PgDelegationVault::new(&tx, self.cipher()?)
             .load(run_id, agent)
             .await
+    }
+}
+
+pub fn target_of(
+    model: &ModelRef,
+    access: Option<ProviderAccess>,
+) -> Result<ModelTarget, CoreError> {
+    match (model.provider, access) {
+        (_, Some(access)) => Ok(ModelTarget {
+            model: model.clone(),
+            access: Some(access),
+        }),
+        (ProviderKind::OpenAiCompatible, None) => Ok(ModelTarget {
+            model: model.clone(),
+            access: None,
+        }),
+        (kind, None) => Err(CoreError::Invalid(format!(
+            "no {} key configured for this organization",
+            kind.as_str()
+        ))),
     }
 }
 
@@ -337,6 +431,31 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         Ok(())
     }
 
+    async fn target(
+        &self,
+        context: &RunContext,
+        role: AgentRole,
+    ) -> Result<ModelTarget, CoreError> {
+        let assignments = context
+            .run
+            .models
+            .as_ref()
+            .unwrap_or(&self.config.default_models);
+        self.usecase
+            .target_for(context.run.organization_id, assignments.for_role(role))
+            .await
+    }
+
+    async fn dedup_targets(
+        &self,
+        context: &RunContext,
+    ) -> Result<(ModelTarget, ModelTarget), CoreError> {
+        Ok((
+            self.target(context, AgentRole::Embeddings).await?,
+            self.target(context, AgentRole::Judge).await?,
+        ))
+    }
+
     fn new_step(
         &self,
         context: &RunContext,
@@ -425,35 +544,39 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
-        let result = self
-            .with_retries(|_| self.runtime.extract(body))
-            .await
-            .map(|extraction| {
-                let mut located = Vec::new();
-                let mut unlocated = Vec::new();
-                for mut action in extraction.actions {
-                    match locate(body, &action.quote) {
-                        Some((start, end, text)) => {
-                            action.quote = text;
-                            located.push(LocatedAction { action, start, end });
-                        }
-                        None => unlocated.push(action.title),
+        let extracted = match self.target(context, AgentRole::Extractor).await {
+            Ok(target) => {
+                self.with_retries(|_| self.runtime.extract(&target, body))
+                    .await
+            }
+            Err(error) => Err(error),
+        };
+        let result = extracted.map(|extraction| {
+            let mut located = Vec::new();
+            let mut unlocated = Vec::new();
+            for mut action in extraction.actions {
+                match locate(body, &action.quote) {
+                    Some((start, end, text)) => {
+                        action.quote = text;
+                        located.push(LocatedAction { action, start, end });
                     }
+                    None => unlocated.push(action.title),
                 }
-                if !unlocated.is_empty() {
-                    tracing::warn!(
-                        count = unlocated.len(),
-                        "actions dropped: quote not found in the transcript"
-                    );
-                }
-                (
-                    ExtractOutput {
-                        actions: located,
-                        unlocated,
-                    },
-                    extraction.usage,
-                )
-            });
+            }
+            if !unlocated.is_empty() {
+                tracing::warn!(
+                    count = unlocated.len(),
+                    "actions dropped: quote not found in the transcript"
+                );
+            }
+            (
+                ExtractOutput {
+                    actions: located,
+                    unlocated,
+                },
+                extraction.usage,
+            )
+        });
         let result = result.and_then(|(output, usage)| {
             serde_json::to_value(&output)
                 .map(|value| (value, usage, StepStatus::Succeeded))
@@ -495,24 +618,41 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
-        let result = self
-            .with_retries(|_| {
-                find_duplicates(
-                    &self.runtime,
-                    &self.embedder,
-                    &self.vectors,
-                    context.run.organization_id,
-                    actions,
-                    self.config.dedup_threshold,
-                    self.config.dedup_gray_floor,
-                )
-            })
-            .await
-            .and_then(|(output, usage)| {
-                serde_json::to_value(&output)
-                    .map(|value| (value, usage, StepStatus::Succeeded))
-                    .map_err(|error| CoreError::Internal(format!("encoding the dedup: {error}")))
-            });
+        let found = match self.dedup_targets(context).await {
+            Ok((embedding, judge)) => {
+                self.with_retries(|_| async {
+                    self.usecase
+                        .ensure_indexed(
+                            &self.embedder,
+                            &self.vectors,
+                            &embedding,
+                            context.run.organization_id,
+                        )
+                        .await?;
+                    find_duplicates(
+                        &Dedup {
+                            runtime: &self.runtime,
+                            embedder: &self.embedder,
+                            vectors: &self.vectors,
+                            embedding: &embedding,
+                            judge: &judge,
+                            organization_id: context.run.organization_id,
+                            threshold: self.config.dedup_threshold,
+                            gray_floor: self.config.dedup_gray_floor,
+                        },
+                        actions,
+                    )
+                    .await
+                })
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        let result = found.and_then(|(output, usage)| {
+            serde_json::to_value(&output)
+                .map(|value| (value, usage, StepStatus::Succeeded))
+                .map_err(|error| CoreError::Internal(format!("encoding the dedup: {error}")))
+        });
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
@@ -545,9 +685,13 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
-        let result = self
-            .write_attempts(context, &writer, actions, duplicates)
-            .await;
+        let result = match self.target(context, AgentRole::Writer).await {
+            Ok(target) => {
+                self.write_attempts(context, &target, &writer, actions, duplicates)
+                    .await
+            }
+            Err(error) => Err(error),
+        };
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
@@ -558,6 +702,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
     async fn write_attempts(
         &self,
         context: &RunContext,
+        target: &ModelTarget,
         writer: &str,
         actions: Vec<LocatedAction>,
         duplicates: Vec<DuplicateAction>,
@@ -583,14 +728,17 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                     .for_mcp(&context.issuer_url, &delegation.token, writer)
                     .await?;
                 self.runtime
-                    .write(WriteRequest {
-                        run_id: context.run.id,
-                        transcript_id: context.transcript.id,
-                        actions: actions.clone(),
-                        duplicates: duplicates.clone(),
-                        mcp_token: SecretToken::new(mcp_token.token.expose()),
-                        traceparent: capitainerie_telemetry::current_traceparent(),
-                    })
+                    .write(
+                        target,
+                        WriteRequest {
+                            run_id: context.run.id,
+                            transcript_id: context.transcript.id,
+                            actions: actions.clone(),
+                            duplicates: duplicates.clone(),
+                            mcp_token: SecretToken::new(mcp_token.token.expose()),
+                            traceparent: capitainerie_telemetry::current_traceparent(),
+                        },
+                    )
                     .await
             })
             .await?;
@@ -630,17 +778,25 @@ fn write_succeeded(successful_tool_calls: usize) -> bool {
     successful_tool_calls > 0
 }
 
-async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
-    runtime: &R,
-    embedder: &E,
-    vectors: &V,
+const REINDEX_BATCH: usize = 16;
+
+struct Dedup<'a, R, E, V> {
+    runtime: &'a R,
+    embedder: &'a E,
+    vectors: &'a V,
+    embedding: &'a ModelTarget,
+    judge: &'a ModelTarget,
     organization_id: OrganizationId,
-    actions: &[LocatedAction],
     threshold: f32,
     gray_floor: f32,
+}
+
+async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
+    dedup: &Dedup<'_, R, E, V>,
+    actions: &[LocatedAction],
 ) -> Result<(DedupOutput, crate::domain::agent::Usage), CoreError> {
     let texts: Vec<String> = actions.iter().map(action_text).collect();
-    let (embeddings, mut usage) = embedder.embed(&texts).await?;
+    let (embeddings, mut usage) = dedup.embedder.embed(dedup.embedding, &texts).await?;
     if embeddings.len() != actions.len() {
         return Err(CoreError::Internal(format!(
             "the embedder returned {} vectors for {} texts",
@@ -650,7 +806,17 @@ async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
     }
     let mut neighbours = Vec::with_capacity(embeddings.len());
     for embedding in &embeddings {
-        neighbours.push(vectors.nearest(organization_id, embedding, 3).await?);
+        neighbours.push(
+            dedup
+                .vectors
+                .nearest(
+                    &dedup.embedding.model.model,
+                    dedup.organization_id,
+                    embedding,
+                    3,
+                )
+                .await?,
+        );
     }
     let mut output = DedupOutput {
         new: Vec::new(),
@@ -659,7 +825,7 @@ async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
         embedding_tokens: usage.input_tokens,
     };
     for (action, (located, candidates)) in actions.iter().zip(&neighbours).enumerate() {
-        match triage(candidates, threshold, gray_floor) {
+        match triage(candidates, dedup.threshold, dedup.gray_floor) {
             Triage::Duplicate(card) => output.duplicates.push(DuplicateMatch {
                 action,
                 card_id: card.card_id,
@@ -668,7 +834,10 @@ async fn find_duplicates<R: AgentRuntime, E: Embedder, V: VectorStore>(
             }),
             Triage::New => output.new.push(action),
             Triage::Judge(card) => {
-                let verdict = runtime.judge_duplicate(located, card).await;
+                let verdict = dedup
+                    .runtime
+                    .judge_duplicate(dedup.judge, located, card)
+                    .await;
                 let mut pair = JudgedPair {
                     action,
                     card_id: card.card_id,
@@ -778,6 +947,43 @@ mod tests {
         assert!(!write_succeeded(0));
     }
 
+    fn model(provider: ProviderKind) -> ModelRef {
+        ModelRef {
+            provider,
+            model: "m".into(),
+        }
+    }
+
+    fn access(kind: ProviderKind) -> ProviderAccess {
+        ProviderAccess {
+            kind,
+            secret: SecretToken::new("k"),
+            base_url: None,
+        }
+    }
+
+    #[test]
+    fn a_credential_of_the_organization_is_carried_into_the_target() {
+        let target = target_of(
+            &model(ProviderKind::Anthropic),
+            Some(access(ProviderKind::Anthropic)),
+        )
+        .unwrap();
+        assert_eq!(target.access, Some(access(ProviderKind::Anthropic)));
+        assert_eq!(target.model, model(ProviderKind::Anthropic));
+    }
+
+    #[test]
+    fn without_a_credential_only_the_openai_compatible_provider_uses_the_worker_endpoint() {
+        let local = target_of(&model(ProviderKind::OpenAiCompatible), None).unwrap();
+        assert_eq!(local.access, None);
+        for kind in [ProviderKind::Anthropic, ProviderKind::Mistral] {
+            let error = target_of(&model(kind), None).unwrap_err();
+            assert!(matches!(&error, CoreError::Invalid(message)
+                if message == &format!("no {} key configured for this organization", kind.as_str())));
+        }
+    }
+
     #[test]
     fn actions_split_into_new_and_duplicates() {
         let actions = [located("a"), located("b"), located("c")];
@@ -815,7 +1021,7 @@ mod tests {
 
     fn embedder(tokens: u64) -> MockEmbedder {
         let mut embedder = MockEmbedder::new();
-        embedder.expect_embed().returning(move |texts| {
+        embedder.expect_embed().returning(move |_, texts| {
             let embeddings = texts.iter().map(|_| Embedding(vec![1.0])).collect();
             Box::pin(std::future::ready(Ok((
                 embeddings,
@@ -841,12 +1047,44 @@ mod tests {
         let ids = cards.iter().map(|card| card.card_id).collect();
         let mut vectors = MockVectorStore::new();
         let calls = std::sync::atomic::AtomicUsize::new(0);
-        vectors.expect_nearest().returning(move |_, _, limit| {
+        vectors.expect_nearest().returning(move |_, _, _, limit| {
             assert_eq!(limit, 3);
             let at = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(std::future::ready(Ok(vec![cards[at].clone()])))
         });
         (vectors, ids)
+    }
+
+    fn target(model: &str) -> ModelTarget {
+        ModelTarget {
+            model: ModelRef {
+                provider: ProviderKind::OpenAiCompatible,
+                model: model.into(),
+            },
+            access: None,
+        }
+    }
+
+    fn targets() -> (ModelTarget, ModelTarget) {
+        (target("emb"), target("chat"))
+    }
+
+    fn dedup_with<'a>(
+        targets: &'a (ModelTarget, ModelTarget),
+        runtime: &'a MockAgentRuntime,
+        embedder: &'a MockEmbedder,
+        vectors: &'a MockVectorStore,
+    ) -> Dedup<'a, MockAgentRuntime, MockEmbedder, MockVectorStore> {
+        Dedup {
+            runtime,
+            embedder,
+            vectors,
+            embedding: &targets.0,
+            judge: &targets.1,
+            organization_id: OrganizationId::new(),
+            threshold: 0.75,
+            gray_floor: 0.65,
+        }
     }
 
     fn judgement(same_task: bool) -> Judgement {
@@ -868,14 +1106,10 @@ mod tests {
         let actions: Vec<LocatedAction> =
             (0..scores.len()).map(|i| located(&i.to_string())).collect();
         let (vectors, _) = vectors_scoring(scores);
+        let targets = targets();
         find_duplicates(
-            runtime,
-            &embedder(12),
-            &vectors,
-            OrganizationId::new(),
+            &dedup_with(&targets, runtime, &embedder(12), &vectors),
             &actions,
-            0.75,
-            0.65,
         )
         .await
     }
@@ -909,7 +1143,7 @@ mod tests {
         runtime
             .expect_judge_duplicate()
             .times(2)
-            .returning(move |_, _| {
+            .returning(move |_, _, _| {
                 let same = answers.lock().unwrap().remove(0);
                 Box::pin(std::future::ready(Ok(judgement(same))))
             });
@@ -948,25 +1182,21 @@ mod tests {
         let candidates = vec![second, best.clone()];
         vectors
             .expect_nearest()
-            .returning(move |_, _, _| Box::pin(std::future::ready(Ok(candidates.clone()))));
+            .returning(move |_, _, _, _| Box::pin(std::future::ready(Ok(candidates.clone()))));
         let mut runtime = MockAgentRuntime::new();
         let expected = best.clone();
         runtime
             .expect_judge_duplicate()
             .times(1)
-            .returning(move |_, candidate| {
+            .returning(move |_, _, candidate| {
                 assert_eq!(*candidate, expected);
                 Box::pin(std::future::ready(Ok(judgement(true))))
             });
 
+        let targets = targets();
         let (output, _) = find_duplicates(
-            &runtime,
-            &embedder(1),
-            &vectors,
-            OrganizationId::new(),
+            &dedup_with(&targets, &runtime, &embedder(1), &vectors),
             &[located("a")],
-            0.75,
-            0.65,
         )
         .await
         .unwrap();
@@ -977,11 +1207,14 @@ mod tests {
     #[tokio::test]
     async fn a_failing_judge_leaves_the_action_new_and_says_so() {
         let mut runtime = MockAgentRuntime::new();
-        runtime.expect_judge_duplicate().times(1).returning(|_, _| {
-            Box::pin(std::future::ready(Err(CoreError::Internal(
-                "model down".into(),
-            ))))
-        });
+        runtime
+            .expect_judge_duplicate()
+            .times(1)
+            .returning(|_, _, _| {
+                Box::pin(std::future::ready(Err(CoreError::Internal(
+                    "model down".into(),
+                ))))
+            });
 
         let (output, usage) = dedup(&runtime, vec![0.7]).await.unwrap();
 
@@ -1004,16 +1237,12 @@ mod tests {
         let mut embedder = MockEmbedder::new();
         embedder
             .expect_embed()
-            .returning(|_| Box::pin(std::future::ready(Ok((Vec::new(), Usage::default())))));
+            .returning(|_, _| Box::pin(std::future::ready(Ok((Vec::new(), Usage::default())))));
         let vectors = MockVectorStore::new();
+        let targets = targets();
         let error = find_duplicates(
-            &MockAgentRuntime::new(),
-            &embedder,
-            &vectors,
-            OrganizationId::new(),
+            &dedup_with(&targets, &MockAgentRuntime::new(), &embedder, &vectors),
             &[located("a")],
-            0.75,
-            0.65,
         )
         .await
         .unwrap_err();

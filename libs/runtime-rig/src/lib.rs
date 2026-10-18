@@ -1,15 +1,20 @@
+mod anthropic;
 mod args;
+mod catalog;
+mod client;
 mod embeddings;
 mod error;
 mod extract;
 mod judge;
 mod mcp;
 mod post;
+mod prices;
 mod runtime;
 mod usage;
 mod write;
 
 pub use args::{EmbeddingArgs, LlmArgs};
-pub use embeddings::OpenAiEmbedder;
+pub use catalog::RigModelCatalog;
+pub use embeddings::RigEmbedder;
 pub use error::RuntimeError;
 pub use runtime::RigAgentRuntime;

@@ -6,16 +6,17 @@ use capitainerie_core::domain::{
 use rig_agent::{
     agent::AgentBuilder, completion::StructuredOutputError, extractor::ExtractorBuilder,
 };
-use rig_core::{DynModel, operation::Completion};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tracing::{Instrument, info_span};
 
-use crate::usage::usage_of;
+use crate::{client::Engine, usage::usage_of};
 
 pub(crate) const AGENT_NAME: &str = "deduplicator";
 pub(crate) const RETRIES: usize = 1;
 const TEMPERATURE: f64 = 0.0;
+const MAX_TOKENS: u32 = 1024;
 
 pub(crate) const SYSTEM_PROMPT: &str = "\
 You decide whether two descriptions of work are the same task. The user sends a NEW action taken from a meeting and an EXISTING card of a task board. Both are usually in French.
@@ -66,8 +67,27 @@ fn question(action: &LocatedAction, candidate: &SimilarCard) -> String {
     )
 }
 
+fn schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "same_task": {
+                "type": "boolean",
+                "description": "true when the new action and the existing card are the same task, false otherwise.",
+            },
+            "reason": {
+                "type": "string",
+                "description": "One short sentence in French justifying the answer.",
+            },
+        },
+        "required": ["same_task", "reason"],
+        "additionalProperties": false,
+    })
+}
+
 pub(crate) async fn run(
-    model: DynModel<Completion>,
+    engine: Engine,
+    provider: &str,
     model_name: &str,
     action: &LocatedAction,
     candidate: &SimilarCard,
@@ -76,25 +96,43 @@ pub(crate) async fn run(
         "invoke_agent",
         otel.name = format!("invoke_agent {AGENT_NAME}"),
         gen_ai.operation.name = "invoke_agent",
+        gen_ai.provider.name = provider,
         gen_ai.agent.name = AGENT_NAME,
         gen_ai.request.model = model_name,
     );
-    let extractor = ExtractorBuilder::<Verdict>::from_agent_builder(
-        AgentBuilder::new(model)
-            .name(AGENT_NAME)
-            .temperature(TEMPERATURE),
-    )
-    .append_preamble(SYSTEM_PROMPT)
-    .retries(RETRIES)
-    .build();
-    let response = async { extractor.extract(question(action, candidate)).await }
-        .instrument(span)
-        .await
-        .map_err(failure)?;
+    let (verdict, usage) = match engine {
+        Engine::Chat(model) => {
+            let extractor = ExtractorBuilder::<Verdict>::from_agent_builder(
+                AgentBuilder::new(model)
+                    .name(AGENT_NAME)
+                    .temperature(TEMPERATURE),
+            )
+            .append_preamble(SYSTEM_PROMPT)
+            .retries(RETRIES)
+            .build();
+            let response = async { extractor.extract(question(action, candidate)).await }
+                .instrument(span)
+                .await
+                .map_err(failure)?;
+            (response.output, usage_of(model_name, &response.usage))
+        }
+        Engine::Anthropic(api) => {
+            api.structured::<Verdict>(
+                model_name,
+                SYSTEM_PROMPT,
+                &question(action, candidate),
+                &schema(),
+                MAX_TOKENS,
+                RETRIES,
+            )
+            .instrument(span)
+            .await?
+        }
+    };
     Ok(Judgement {
-        same_task: response.output.same_task,
-        reason: response.output.reason,
-        usage: usage_of(model_name, &response.usage),
+        same_task: verdict.same_task,
+        reason: verdict.reason,
+        usage,
     })
 }
 

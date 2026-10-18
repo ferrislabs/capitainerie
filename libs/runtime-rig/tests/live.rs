@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used)]
 
 use capitainerie_core::domain::{
-    agent::{ExtractedAction, LocatedAction, ports::AgentRuntime},
+    agent::{ExtractedAction, LocatedAction, SecretToken, ports::AgentRuntime},
+    provider::{ModelRef, ModelTarget, ProviderAccess, ProviderKind},
     similarity::{DEFAULT_DEDUP_THRESHOLD, Embedding, SimilarCard, ports::Embedder},
 };
-use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, OpenAiEmbedder, RigAgentRuntime};
+use capitainerie_runtime_rig::{EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder};
 use clap::Parser;
 
 #[derive(Parser)]
@@ -13,6 +14,16 @@ struct Cli {
     llm: LlmArgs,
     #[command(flatten)]
     embedding: EmbeddingArgs,
+}
+
+fn local(model: &str) -> ModelTarget {
+    ModelTarget {
+        model: ModelRef {
+            provider: ProviderKind::OpenAiCompatible,
+            model: model.to_owned(),
+        },
+        access: None,
+    }
 }
 
 const TRANSCRIPT: &str = "Réunion du lundi.\nMarie doit relancer le client Acme avant vendredi.\nPaul enverra le devis révisé demain matin.";
@@ -27,7 +38,10 @@ async fn live_extraction_quotes_the_transcript_verbatim() {
     let cli = Cli::parse_from(["live"]);
     let runtime = RigAgentRuntime::new(&cli.llm).unwrap();
 
-    let extraction = runtime.extract(TRANSCRIPT).await.unwrap();
+    let extraction = runtime
+        .extract(&local(&cli.llm.model), TRANSCRIPT)
+        .await
+        .unwrap();
 
     assert!(!extraction.actions.is_empty(), "{extraction:?}");
     for action in &extraction.actions {
@@ -91,12 +105,12 @@ fn cosine(a: &Embedding, b: &Embedding) -> f32 {
     dot / (norm(a) * norm(b))
 }
 
-async fn scores(embedder: &OpenAiEmbedder, pairs: &[(&str, &str)]) -> Vec<f32> {
+async fn scores(embedder: &RigEmbedder, target: &ModelTarget, pairs: &[(&str, &str)]) -> Vec<f32> {
     let texts: Vec<String> = pairs
         .iter()
         .flat_map(|(a, b)| [(*a).to_owned(), (*b).to_owned()])
         .collect();
-    let (embeddings, _) = embedder.embed(&texts).await.unwrap();
+    let (embeddings, _) = embedder.embed(target, &texts).await.unwrap();
     embeddings
         .chunks(2)
         .map(|pair| cosine(&pair[0], &pair[1]))
@@ -111,10 +125,11 @@ async fn live_threshold_separates_paraphrases_from_related_tasks() {
         return;
     }
     let cli = Cli::parse_from(["live"]);
-    let embedder = OpenAiEmbedder::new(&cli.llm, &cli.embedding).unwrap();
+    let embedder = RigEmbedder::new(&cli.llm).unwrap();
+    let target = local(&cli.embedding.model);
 
-    let same = scores(&embedder, &SAME_TASK).await;
-    let related = scores(&embedder, &RELATED_TASK).await;
+    let same = scores(&embedder, &target, &SAME_TASK).await;
+    let related = scores(&embedder, &target, &RELATED_TASK).await;
 
     eprintln!("same task:      {same:.3?}");
     eprintln!("related tasks:  {related:.3?}");
@@ -226,7 +241,10 @@ async fn live_judge_separates_the_same_task_from_a_related_one() {
             text: format!("{card_title}\n{card_description}"),
         };
         let started = std::time::Instant::now();
-        let judgement = runtime.judge_duplicate(&action, &card).await.unwrap();
+        let judgement = runtime
+            .judge_duplicate(&local(&cli.llm.model), &action, &card)
+            .await
+            .unwrap();
         eprintln!(
             "{title:?} vs {card_title:?}: same={} (expected {expected}) in {} ms, {}+{} tokens, reason: {}",
             judgement.same_task,
@@ -240,4 +258,43 @@ async fn live_judge_separates_the_same_task_from_a_related_one() {
         }
     }
     assert_eq!(wrong, 0, "{wrong} wrong judgement(s)");
+}
+
+const FRENCH_STANDUP: &str = "Claire : il faut migrer la CI vers les runners ARM avant fin octobre.\nMalik : je m'en charge.\nClaire : et on oublie le sujet des badges.";
+
+#[tokio::test]
+#[ignore = "calls the Anthropic API with a real key; run with ANTHROPIC_LIVE=1 and ANTHROPIC_API_KEY, --ignored --nocapture"]
+async fn live_claude_extracts_the_actions_of_a_french_transcript() {
+    if std::env::var("ANTHROPIC_LIVE").as_deref() != Ok("1") {
+        eprintln!("skipped: ANTHROPIC_LIVE is not 1");
+        return;
+    }
+    let key = std::env::var("ANTHROPIC_API_KEY").unwrap();
+    let cli = Cli::parse_from(["live"]);
+    let runtime = RigAgentRuntime::new(&cli.llm).unwrap();
+    let target = ModelTarget {
+        model: ModelRef {
+            provider: ProviderKind::Anthropic,
+            model: "claude-haiku-5-5".into(),
+        },
+        access: Some(ProviderAccess {
+            kind: ProviderKind::Anthropic,
+            secret: SecretToken::new(key),
+            base_url: None,
+        }),
+    };
+
+    let extraction = runtime.extract(&target, FRENCH_STANDUP).await.unwrap();
+
+    eprintln!("{extraction:#?}");
+    assert!(!extraction.actions.is_empty(), "{extraction:?}");
+    for action in &extraction.actions {
+        assert!(
+            FRENCH_STANDUP.contains(&action.quote),
+            "quote is not verbatim: {action:?}"
+        );
+    }
+    assert_eq!(extraction.usage.model, "claude-haiku-5-5");
+    assert!(extraction.usage.input_tokens > 0);
+    assert!(extraction.usage.output_tokens > 0);
 }

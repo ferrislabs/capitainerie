@@ -1,6 +1,7 @@
 mod card;
 mod organization;
 mod pipeline;
+mod provider;
 mod run;
 
 use std::sync::Arc;
@@ -15,6 +16,7 @@ use crate::infrastructure::{
 };
 
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};
+pub use provider::{ModelListing, ProviderFailure};
 pub use run::{AgentDelegation, RunTimeline, SubmittedTranscript};
 
 pub type CapitainerieAuthorizer = AuditedAuthorizer<LocalPolicyEngine>;
@@ -28,6 +30,10 @@ pub struct CapitainerieUseCase {
     /// `None` without `DELEGATION_KEY`: submissions that need a delegation
     /// are then refused rather than stored in clear.
     pub(crate) cipher: Option<Arc<SecretCipher>>,
+    /// Seals the organizations' provider API keys, with a key distinct from
+    /// the delegation one. `None` without `SECRETS_KEY`: no key can then be
+    /// stored or read, and the rest of the API is unaffected.
+    pub(crate) secrets: Option<Arc<SecretCipher>>,
 }
 
 impl CapitainerieUseCase {
@@ -36,11 +42,17 @@ impl CapitainerieUseCase {
             pool,
             authz,
             cipher: None,
+            secrets: None,
         }
     }
 
     pub fn with_cipher(mut self, cipher: SecretCipher) -> Self {
         self.cipher = Some(Arc::new(cipher));
+        self
+    }
+
+    pub fn with_secrets_cipher(mut self, cipher: SecretCipher) -> Self {
+        self.secrets = Some(Arc::new(cipher));
         self
     }
 

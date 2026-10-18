@@ -30,11 +30,17 @@ impl RunRepository for PgRunRepository<'_> {
             .iter()
             .map(|step| step.as_str().to_owned())
             .collect();
+        let models = run
+            .models
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|error| CoreError::Internal(format!("encoding run models: {error}")))?;
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO runs (id, organization_id, transcript_id, initiated_by, status, pipeline, failure, created_at, started_at, finished_at, trace_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO runs (id, organization_id, transcript_id, initiated_by, status, pipeline, failure, created_at, started_at, finished_at, trace_id, models)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#,
             run.id.0,
             run.organization_id.0,
@@ -47,6 +53,7 @@ impl RunRepository for PgRunRepository<'_> {
             run.started_at,
             run.finished_at,
             run.trace_id,
+            models,
         )
         .execute(&mut ***tx)
         .await
@@ -65,7 +72,7 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
             FROM runs r
             JOIN transcripts t ON t.id = r.transcript_id
             WHERE r.organization_id = $1
@@ -104,7 +111,7 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
             FROM runs r
             JOIN transcripts t ON t.id = r.transcript_id
             WHERE r.organization_id = $1 AND r.id = $2
@@ -125,7 +132,7 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, t.title AS transcript_title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, t.title AS transcript_title
             FROM runs r
             JOIN transcripts t ON t.id = r.transcript_id
             WHERE r.id = $1

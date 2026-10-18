@@ -12,6 +12,7 @@ pub struct Identity {
     pub email: Option<String>,
     pub display_name: Option<String>,
     pub actor: Option<Actor>,
+    pub roles: Vec<String>,
 }
 
 impl TryFrom<Claims> for Identity {
@@ -31,6 +32,10 @@ impl TryFrom<Claims> for Identity {
             email: claims.email,
             display_name,
             actor: claims.act,
+            roles: claims
+                .realm_access
+                .map(|access| access.roles)
+                .unwrap_or_default(),
         })
     }
 }
@@ -61,6 +66,7 @@ impl AcceptedClients {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::claims::RealmAccess;
 
     fn claims() -> Claims {
         Claims {
@@ -74,6 +80,7 @@ mod tests {
             given_name: Some("Jane".into()),
             family_name: Some("Doe".into()),
             act: None,
+            realm_access: None,
         }
     }
 
@@ -97,6 +104,32 @@ mod tests {
         none.family_name = None;
         let identity = Identity::try_from(none).unwrap();
         assert_eq!(identity.display_name, None);
+    }
+
+    #[test]
+    fn roles_come_from_the_realm_access_claim() {
+        let mut with_roles = claims();
+        with_roles.realm_access = Some(RealmAccess {
+            roles: vec!["capitainerie-admin".into(), "offline_access".into()],
+        });
+        let identity = Identity::try_from(with_roles).unwrap();
+        assert_eq!(identity.roles, ["capitainerie-admin", "offline_access"]);
+    }
+
+    #[test]
+    fn absent_realm_access_means_no_roles() {
+        let identity = Identity::try_from(claims()).unwrap();
+        assert!(identity.roles.is_empty());
+    }
+
+    #[test]
+    fn realm_access_parses_from_token_json() {
+        let json = r#"{"sub":"u","iss":"i","azp":"web","exp":1,"realm_access":{"roles":["a"]}}"#;
+        let parsed: Claims = serde_json::from_str(json).unwrap();
+        assert_eq!(Identity::try_from(parsed).unwrap().roles, ["a"]);
+        let bare = r#"{"sub":"u","iss":"i","azp":"web","exp":1,"realm_access":{}}"#;
+        let parsed: Claims = serde_json::from_str(bare).unwrap();
+        assert!(Identity::try_from(parsed).unwrap().roles.is_empty());
     }
 
     #[test]

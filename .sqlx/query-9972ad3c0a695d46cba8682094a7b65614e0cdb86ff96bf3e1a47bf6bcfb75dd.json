@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM provider_credentials WHERE organization_id = $1 AND kind = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9972ad3c0a695d46cba8682094a7b65614e0cdb86ff96bf3e1a47bf6bcfb75dd"
+}

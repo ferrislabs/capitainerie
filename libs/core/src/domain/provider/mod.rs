@@ -1,0 +1,228 @@
+pub mod ports;
+pub mod service;
+
+use capitainerie_common::{CoreError, OrganizationId};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::domain::agent::SecretToken;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderKind {
+    Anthropic,
+    Mistral,
+    #[serde(rename = "openai_compatible")]
+    OpenAiCompatible,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRole {
+    Extractor,
+    Judge,
+    Writer,
+    Embeddings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ModelRef {
+    pub provider: ProviderKind,
+    pub model: String,
+}
+
+/// Which model serves each agent role. Written into a run when it is queued,
+/// so a configuration change never affects a run already waiting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelAssignments {
+    pub extractor: ModelRef,
+    pub judge: ModelRef,
+    pub writer: ModelRef,
+    pub embeddings: ModelRef,
+}
+
+/// An organization's key for one provider. The secret never leaves the
+/// backend: the API only ever shows `preview`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderCredential {
+    pub organization_id: OrganizationId,
+    pub kind: ProviderKind,
+    pub secret: SecretToken,
+    /// Required for `OpenAiCompatible`, ignored otherwise.
+    pub base_url: Option<String>,
+    pub preview: String,
+    pub created_by: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A configured provider as every member sees it: no secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderSummary {
+    pub kind: ProviderKind,
+    pub base_url: Option<String>,
+    pub preview: String,
+    pub created_by: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// What an adapter needs to call a provider on an organization's behalf.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderAccess {
+    pub kind: ProviderKind,
+    pub secret: SecretToken,
+    pub base_url: Option<String>,
+}
+
+/// The model of a role and how to reach it. `access` is `None` for the
+/// worker's own default endpoint (environment configuration).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelTarget {
+    pub model: ModelRef,
+    pub access: Option<ProviderAccess>,
+}
+
+impl From<&ProviderCredential> for ProviderSummary {
+    fn from(credential: &ProviderCredential) -> Self {
+        Self {
+            kind: credential.kind,
+            base_url: credential.base_url.clone(),
+            preview: credential.preview.clone(),
+            created_by: credential.created_by.clone(),
+            updated_at: credential.updated_at,
+        }
+    }
+}
+
+impl From<ProviderCredential> for ProviderAccess {
+    fn from(credential: ProviderCredential) -> Self {
+        Self {
+            kind: credential.kind,
+            secret: credential.secret,
+            base_url: credential.base_url,
+        }
+    }
+}
+
+impl ProviderKind {
+    pub const ALL: [ProviderKind; 3] = [Self::Anthropic, Self::Mistral, Self::OpenAiCompatible];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Anthropic => "anthropic",
+            Self::Mistral => "mistral",
+            Self::OpenAiCompatible => "openai_compatible",
+        }
+    }
+}
+
+impl TryFrom<&str> for ProviderKind {
+    type Error = CoreError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == value)
+            .ok_or_else(|| CoreError::Invalid(format!("unknown provider {value}")))
+    }
+}
+
+impl AgentRole {
+    pub const ALL: [AgentRole; 4] = [Self::Extractor, Self::Judge, Self::Writer, Self::Embeddings];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Extractor => "extractor",
+            Self::Judge => "judge",
+            Self::Writer => "writer",
+            Self::Embeddings => "embeddings",
+        }
+    }
+}
+
+impl ModelAssignments {
+    pub fn for_role(&self, role: AgentRole) -> &ModelRef {
+        match role {
+            AgentRole::Extractor => &self.extractor,
+            AgentRole::Judge => &self.judge,
+            AgentRole::Writer => &self.writer,
+            AgentRole::Embeddings => &self.embeddings,
+        }
+    }
+
+    /// Every role on the worker's default OpenAI-compatible endpoint.
+    pub fn defaults(chat_model: &str, embedding_model: &str) -> Self {
+        let chat = ModelRef {
+            provider: ProviderKind::OpenAiCompatible,
+            model: chat_model.to_owned(),
+        };
+        Self {
+            extractor: chat.clone(),
+            judge: chat.clone(),
+            writer: chat,
+            embeddings: ModelRef {
+                provider: ProviderKind::OpenAiCompatible,
+                model: embedding_model.to_owned(),
+            },
+        }
+    }
+}
+
+/// `sk-…a1b2`: enough to recognise a key, never enough to use it.
+pub fn preview(secret: &str) -> String {
+    let tail: String = secret
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if secret.chars().count() <= 8 {
+        return "…".to_owned();
+    }
+    format!("…{tail}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kinds_round_trip_through_text() {
+        for kind in ProviderKind::ALL {
+            assert_eq!(ProviderKind::try_from(kind.as_str()).unwrap(), kind);
+        }
+        assert!(ProviderKind::try_from("openai").is_err());
+    }
+
+    #[test]
+    fn kinds_serialize_as_their_text_form() {
+        for kind in ProviderKind::ALL {
+            assert_eq!(
+                serde_json::to_value(kind).unwrap(),
+                serde_json::Value::String(kind.as_str().to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn a_preview_shows_only_the_last_four_characters() {
+        assert_eq!(preview("sk-ant-api03-abcdefghij1234"), "…1234");
+        assert_eq!(preview("short"), "…");
+    }
+
+    #[test]
+    fn defaults_put_every_role_on_the_local_endpoint() {
+        let defaults = ModelAssignments::defaults("qwen2.5:7b-instruct", "bge-m3");
+        assert_eq!(
+            defaults.for_role(AgentRole::Writer).model,
+            "qwen2.5:7b-instruct"
+        );
+        assert_eq!(defaults.for_role(AgentRole::Embeddings).model, "bge-m3");
+        assert!(
+            AgentRole::ALL
+                .iter()
+                .all(|role| defaults.for_role(*role).provider == ProviderKind::OpenAiCompatible)
+        );
+    }
+}

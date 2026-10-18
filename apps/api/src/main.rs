@@ -1,10 +1,11 @@
+mod catalog;
 mod openapi;
 mod router;
 
 use anyhow::Context;
 use capitainerie_analytics::{AnalyticsArgs, DataFusionAnalytics, Dataset};
 use capitainerie_args::{
-    AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, ServerArgs,
+    AuthArgs, DatabaseArgs, DelegationArgs, LogArgs, ObservabilityArgs, SecretsArgs, ServerArgs,
 };
 use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
 use capitainerie_bus_iggy::IggyArgs;
@@ -33,6 +34,8 @@ struct Args {
     #[command(flatten)]
     delegation: DelegationArgs,
     #[command(flatten)]
+    secrets: SecretsArgs,
+    #[command(flatten)]
     iggy: IggyArgs,
     #[command(flatten)]
     analytics: AnalyticsArgs,
@@ -53,6 +56,16 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to postgres")?;
     let mut usecase = CapitainerieUseCase::with_local_policies(pool);
+    match &args.secrets.key {
+        Some(key) => {
+            usecase = usecase.with_secrets_cipher(
+                SecretCipher::from_base64(key).context("SECRETS_KEY is unusable")?,
+            );
+        }
+        None => tracing::warn!(
+            "SECRETS_KEY is unset: provider API keys cannot be stored; runs use the worker's default endpoint"
+        ),
+    }
     let delegation = match (&args.delegation.key, &args.exchange.client_id) {
         (Some(key), Some(_)) => {
             usecase = usecase.with_cipher(SecretCipher::from_base64(key)?);
@@ -83,7 +96,13 @@ async fn main() -> anyhow::Result<()> {
         consumer::spawn_until(args.iggy, hub.clone(), stopped_signal(stopped.clone()));
     let realtime = Gateway::new(state.clone(), hub);
     let analytics = DataFusionAnalytics::new(Dataset::parse(&args.analytics.uri)?);
-    let app = router::router(state, realtime, analytics, &args.server.allowed_origins)?;
+    let app = router::router(
+        state,
+        realtime,
+        analytics,
+        catalog::build()?,
+        &args.server.allowed_origins,
+    )?;
 
     let addr = format!("{}:{}", args.server.host, args.server.port);
     let listener = TcpListener::bind(&addr)
@@ -113,5 +132,17 @@ fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
             tracing::warn!("AUTH_AUDIENCE is unset: tokens are accepted whatever their audience");
             FerrisKeyVerifier::new(accepted)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Args;
+
+    #[test]
+    fn the_command_line_definition_is_valid() {
+        Args::command().debug_assert();
     }
 }

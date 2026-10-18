@@ -4,6 +4,7 @@ pub mod card;
 pub mod delegation;
 pub mod event;
 pub mod organization;
+pub mod provider;
 pub mod run;
 pub mod similarity;
 pub mod transcript;

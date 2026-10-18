@@ -6,7 +6,7 @@ use std::{
 
 use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{
-    DuplicateAction, LocatedAction, ToolCall, WriteReport, WriteRequest,
+    DuplicateAction, ExtractedAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
 };
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
@@ -17,8 +17,11 @@ use rig_core::{
 use rmcp::{RoleClient, service::Peer};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tracing::{Instrument, field, info_span};
 
+use crate::anthropic::{Api, Request};
+use crate::client::Engine;
 use crate::mcp::{
     COMMENT, CREATE_CARD, McpSession, call_create_card, call_tool, comment_arguments,
     create_card_arguments,
@@ -27,13 +30,14 @@ use crate::usage::{truncate_chars, usage_of};
 
 pub(crate) const AGENT_NAME: &str = "writer";
 const TOOL_NAME: &str = "propose_card";
+const MAX_TOKENS: u32 = 4096;
 
 pub(crate) const SYSTEM_PROMPT: &str = "\
 You are the writer of a meeting assistant. You receive a numbered list of action items found in a meeting.
 For each numbered action, call the propose_card tool exactly once with:
 - action_index: the number of the action in the list;
 - title: a clear title in French, imperative mood, at most 80 characters;
-- description: a description in French that keeps the owner and the deadline when they are given.
+- description: a short, clean description in French. Do not mention or repeat the owner, the deadline or any label such as \"owner:\" or \"due:\": they are added automatically.
 Do not invent actions and do not call propose_card twice for the same action.
 If propose_card returns an error, read it and fix your call.
 When every action has been handled, answer \"done\".";
@@ -44,7 +48,7 @@ pub(crate) struct ProposeCardArgs {
     action_index: u32,
     #[schemars(description = "Clear French title, imperative mood, at most 80 characters.")]
     title: String,
-    #[schemars(description = "French description that keeps the owner and the deadline.")]
+    #[schemars(description = "Clean French description. Never repeat the owner or the deadline.")]
     description: String,
 }
 
@@ -137,7 +141,7 @@ impl ProposeCard {
             self.shared.transcript_id,
             located,
             &args.title,
-            &args.description,
+            &card_description(&args.description, &located.action),
         );
         let started = Instant::now();
         let outcome = call_create_card(&self.shared.peer, arguments).await;
@@ -217,6 +221,72 @@ pub(crate) fn out_of_range_message(index: u32, count: usize) -> String {
     )
 }
 
+const METADATA_MARKERS: [&str; 8] = [
+    "_owner:",
+    "owner:",
+    "_due:",
+    "due:",
+    "responsable :",
+    "responsable:",
+    "échéance :",
+    "échéance:",
+];
+
+fn starts_with_ci(text: &str, marker: &str) -> bool {
+    let mut chars = text.chars().flat_map(char::to_lowercase);
+    marker
+        .chars()
+        .all(|expected| chars.next() == Some(expected))
+}
+
+fn strip_metadata_line(line: &str) -> &str {
+    let mut previous_is_word = false;
+    for (index, character) in line.char_indices() {
+        if !previous_is_word
+            && METADATA_MARKERS
+                .iter()
+                .any(|marker| starts_with_ci(&line[index..], marker))
+        {
+            return line[..index]
+                .trim_end_matches(|c: char| c.is_whitespace() || c == '|' || c == '_');
+        }
+        previous_is_word = character.is_alphanumeric();
+    }
+    line
+}
+
+pub(crate) fn strip_metadata(description: &str) -> String {
+    description
+        .lines()
+        .map(strip_metadata_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_owned()
+}
+
+pub(crate) fn card_description(description: &str, action: &ExtractedAction) -> String {
+    let mut text = strip_metadata(description);
+    let footer = [
+        action
+            .owner
+            .as_deref()
+            .map(|owner| format!("Responsable : {owner}")),
+        action.due.as_deref().map(|due| format!("Échéance : {due}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n");
+    if !footer.is_empty() {
+        if !text.is_empty() {
+            text.push_str("\n\n");
+        }
+        text.push_str(&footer);
+    }
+    text
+}
+
 pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
     let mut listing = String::from("Actions to turn into cards:\n");
     for (index, located) in actions.iter().enumerate() {
@@ -225,12 +295,6 @@ pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
             "{index}. title: {} | description: {}",
             action.title, action.description
         ));
-        if let Some(owner) = &action.owner {
-            listing.push_str(&format!(" | owner: {owner}"));
-        }
-        if let Some(due) = &action.due {
-            listing.push_str(&format!(" | due: {due}"));
-        }
         listing.push('\n');
     }
     listing
@@ -276,8 +340,124 @@ async fn comment_duplicates(peer: &Peer<RoleClient>, request: &WriteRequest) -> 
     calls
 }
 
-pub(crate) async fn run(
+fn tool_definition() -> Value {
+    json!({
+        "name": TOOL_NAME,
+        "description": "Propose one Kanban card for one numbered action. Call it exactly once per action.",
+        "strict": true,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action_index": {
+                    "type": "integer",
+                    "description": "The number of the action in the list you were given.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Clear French title, imperative mood, at most 80 characters.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Clean French description. Never repeat the owner or the deadline.",
+                },
+            },
+            "required": ["action_index", "title", "description"],
+            "additionalProperties": false,
+        },
+    })
+}
+
+async fn tool_result(tool: &ProposeCard, call: &Value) -> Value {
+    let name = call["name"].as_str().unwrap_or_default();
+    let (content, is_error) = if name == TOOL_NAME {
+        match serde_json::from_value::<ProposeCardArgs>(call["input"].clone()) {
+            Ok(args) => match PortableTool::call(tool, args).await {
+                Ok(summary) => (summary, false),
+                Err(failure) => (failure.0, true),
+            },
+            Err(error) => (format!("invalid arguments: {error}"), true),
+        }
+    } else {
+        (format!("unknown tool {name}"), true)
+    };
+    json!({
+        "type": "tool_result",
+        "tool_use_id": call["id"],
+        "content": content,
+        "is_error": is_error,
+    })
+}
+
+async fn tool_loop(
+    api: &Api,
+    model_name: &str,
+    tool: &ProposeCard,
+    listing: String,
+    max_turns: usize,
+) -> Result<Usage, CoreError> {
+    let tools = [tool_definition()];
+    let mut messages = vec![json!({ "role": "user", "content": listing })];
+    let mut usage = Usage {
+        model: model_name.to_owned(),
+        ..Usage::default()
+    };
+    for _ in 0..max_turns {
+        let reply = api
+            .send(&Request {
+                model: model_name,
+                max_tokens: MAX_TOKENS,
+                system: SYSTEM_PROMPT,
+                messages: &messages,
+                tools: Some(&tools),
+                schema: None,
+            })
+            .await?;
+        usage.absorb(&reply.usage);
+        if reply.stop_reason != "tool_use" {
+            return Ok(usage);
+        }
+        let mut results = Vec::new();
+        for call in reply.tool_uses() {
+            results.push(tool_result(tool, call).await);
+        }
+        if results.is_empty() {
+            return Ok(usage);
+        }
+        messages.push(json!({ "role": "assistant", "content": reply.content }));
+        messages.push(json!({ "role": "user", "content": results }));
+    }
+    tracing::warn!(max_turns, "the writer ran out of turns");
+    Ok(usage)
+}
+
+async fn rig_loop(
     model: DynModel<Completion>,
+    model_name: &str,
+    tool: &ProposeCard,
+    listing: String,
+    max_turns: usize,
+) -> Result<Usage, CoreError> {
+    let agent = AgentBuilder::new(model)
+        .name(AGENT_NAME)
+        .preamble(SYSTEM_PROMPT)
+        .tool(tool.clone())
+        .default_max_turns(max_turns)
+        .build();
+    match agent.prompt(listing).max_turns(max_turns).await {
+        Ok(response) => Ok(usage_of(model_name, &response.usage)),
+        Err(PromptError::MaxTurns { .. }) => {
+            tracing::warn!(max_turns, "the writer ran out of turns");
+            Ok(usage_of(model_name, &Default::default()))
+        }
+        Err(error) => Err(CoreError::Internal(format!(
+            "the language model call failed: {error}"
+        ))),
+    }
+}
+
+pub(crate) async fn run(
+    engine: Engine,
+    provider: &str,
     model_name: &str,
     mcp_url: &str,
     request: WriteRequest,
@@ -292,6 +472,7 @@ pub(crate) async fn run(
         "invoke_agent",
         otel.name = format!("invoke_agent {AGENT_NAME}"),
         gen_ai.operation.name = "invoke_agent",
+        gen_ai.provider.name = provider,
         gen_ai.agent.name = AGENT_NAME,
         gen_ai.request.model = model_name,
     );
@@ -315,26 +496,12 @@ pub(crate) async fn run(
             request.transcript_id,
             request.actions,
         );
-        let agent = AgentBuilder::new(model)
-            .name(AGENT_NAME)
-            .preamble(SYSTEM_PROMPT)
-            .tool(tool.clone())
-            .default_max_turns(max_turns)
-            .build();
-        let outcome = agent.prompt(listing).max_turns(max_turns).await;
-        session.close().await;
-        let usage = match outcome {
-            Ok(response) => usage_of(model_name, &response.usage),
-            Err(PromptError::MaxTurns { .. }) => {
-                tracing::warn!(max_turns, "the writer ran out of turns");
-                usage_of(model_name, &Default::default())
-            }
-            Err(error) => {
-                return Err(CoreError::Internal(format!(
-                    "the language model call failed: {error}"
-                )));
-            }
+        let outcome = match engine {
+            Engine::Chat(model) => rig_loop(model, model_name, &tool, listing, max_turns).await,
+            Engine::Anthropic(api) => tool_loop(&api, model_name, &tool, listing, max_turns).await,
         };
+        session.close().await;
+        let usage = outcome?;
         comments.extend(tool.recorded());
         Ok(WriteReport {
             tool_calls: comments,
@@ -347,8 +514,6 @@ pub(crate) async fn run(
 
 #[cfg(test)]
 mod tests {
-    use capitainerie_core::domain::agent::ExtractedAction;
-
     use super::*;
 
     fn located(title: &str, owner: Option<&str>, due: Option<&str>) -> LocatedAction {
@@ -366,13 +531,66 @@ mod tests {
     }
 
     #[test]
-    fn listing_numbers_actions_and_keeps_owner_and_due() {
+    fn listing_numbers_actions_without_owner_and_due() {
         let listing = actions_listing(&[
             located("A", Some("Marie"), Some("vendredi")),
             located("B", None, None),
         ]);
-        assert!(listing.contains("0. title: A | description: ctx | owner: Marie | due: vendredi"));
+        assert!(listing.contains("0. title: A | description: ctx\n"));
+        assert!(!listing.contains("Marie"));
         assert!(listing.contains("1. title: B | description: ctx\n"));
+    }
+
+    #[test]
+    fn the_footer_carries_only_the_known_lines() {
+        let both = located("A", Some("Lina"), Some("lundi")).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &both),
+            "Envoyer l'email.\n\nResponsable : Lina\nÉchéance : lundi"
+        );
+        let owner = located("A", Some("Lina"), None).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &owner),
+            "Envoyer l'email.\n\nResponsable : Lina"
+        );
+        let due = located("A", None, Some("lundi")).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &due),
+            "Envoyer l'email.\n\nÉchéance : lundi"
+        );
+        let none = located("A", None, None).action;
+        assert_eq!(
+            card_description("Envoyer l'email.", &none),
+            "Envoyer l'email."
+        );
+    }
+
+    #[test]
+    fn metadata_fragments_are_stripped_from_the_model_description() {
+        for (input, expected) in [
+            (
+                "Rédiger l'email._owner: Lina _due: lundi",
+                "Rédiger l'email.",
+            ),
+            ("Rédiger l'email | Owner: Sophie", "Rédiger l'email"),
+            ("Rédiger l'email. owner: Sophie", "Rédiger l'email."),
+            ("Rédiger l'email. Due: lundi", "Rédiger l'email."),
+            (
+                "Rédiger l'email.\nResponsable : Lina\nÉchéance : lundi",
+                "Rédiger l'email.",
+            ),
+            (
+                "Premier point.\nSecond | due: demain\nTroisième",
+                "Premier point.\nSecond\nTroisième",
+            ),
+            (
+                "Prévoir le budget overdue: oui",
+                "Prévoir le budget overdue: oui",
+            ),
+            ("Relancer le fournisseur", "Relancer le fournisseur"),
+        ] {
+            assert_eq!(strip_metadata(input), expected, "{input}");
+        }
     }
 
     #[test]

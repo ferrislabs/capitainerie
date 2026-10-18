@@ -25,6 +25,8 @@ pub struct Subject {
     pub organization_id: OrganizationId,
     /// Client id of the agent acting for that human, when one is.
     pub actor: Option<String>,
+    /// Holds the organization's `capitainerie-admin` realm role.
+    pub is_admin: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +38,9 @@ pub enum Action {
     CardUpdate { column: Column },
     CardComment,
     CardMove { from: Column, to: Column },
+    ProviderRead,
+    ProviderManage,
+    ModelsAssign,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +55,8 @@ pub enum ResourceKind {
     Transcript,
     Run,
     Card,
+    Provider,
+    ModelAssignments,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +65,13 @@ pub enum Decision {
     Deny { reason: String },
 }
 
+pub const READ_ACTIONS: [&str; 3] = ["run.read", "card.read", "provider.read"];
+
 impl Action {
+    pub fn is_read(self) -> bool {
+        READ_ACTIONS.contains(&self.as_str())
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TranscriptCreate => "transcript.create",
@@ -68,6 +81,9 @@ impl Action {
             Self::CardUpdate { .. } => "card.update",
             Self::CardComment => "card.comment",
             Self::CardMove { .. } => "card.move",
+            Self::ProviderRead => "provider.read",
+            Self::ProviderManage => "provider.manage",
+            Self::ModelsAssign => "models.assign",
         }
     }
 }
@@ -78,6 +94,8 @@ impl ResourceKind {
             Self::Transcript => "transcript",
             Self::Run => "run",
             Self::Card => "card",
+            Self::Provider => "provider",
+            Self::ModelAssignments => "model_assignments",
         }
     }
 }

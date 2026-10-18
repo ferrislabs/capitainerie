@@ -1,7 +1,7 @@
 use capitainerie_common::CoreError;
 
 use crate::domain::{
-    authorization::{AccessRequest, Action, Decision, ports::Authorizer},
+    authorization::{AccessRequest, Action, Decision, Subject, ports::Authorizer},
     card::Column,
 };
 
@@ -22,8 +22,17 @@ fn decide(request: &AccessRequest) -> Decision {
         return deny("the resource belongs to another organization");
     }
     match &request.subject.actor {
-        None => Decision::Allow,
+        None => decide_for_human(&request.subject, request.action),
         Some(actor) => decide_for_agent(actor, request.action),
+    }
+}
+
+fn decide_for_human(subject: &Subject, action: Action) -> Decision {
+    match action {
+        Action::ProviderManage | Action::ModelsAssign if !subject.is_admin => {
+            deny("only an organization admin may do this")
+        }
+        _ => Decision::Allow,
     }
 }
 
@@ -73,6 +82,7 @@ mod tests {
                 id: "user-1".into(),
                 organization_id,
                 actor: actor.map(str::to_owned),
+                is_admin: false,
             },
             action,
             ResourceKind::Card,
@@ -100,6 +110,45 @@ mod tests {
             },
             None
         ));
+    }
+
+    fn admin_request(action: Action, actor: Option<&str>, is_admin: bool) -> AccessRequest {
+        let mut request = request(action, actor, true);
+        request.subject.is_admin = is_admin;
+        request
+    }
+
+    #[test]
+    fn only_admins_manage_providers_and_assign_models() {
+        for action in [Action::ProviderManage, Action::ModelsAssign] {
+            assert_eq!(decide(&admin_request(action, None, true)), Decision::Allow);
+            assert!(matches!(
+                decide(&admin_request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn every_member_reads_providers() {
+        assert_eq!(
+            decide(&admin_request(Action::ProviderRead, None, false)),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn agents_get_no_provider_action_even_for_an_admin() {
+        for action in [
+            Action::ProviderRead,
+            Action::ProviderManage,
+            Action::ModelsAssign,
+        ] {
+            assert!(matches!(
+                decide(&admin_request(action, AGENT, true)),
+                Decision::Deny { .. }
+            ));
+        }
     }
 
     #[test]

@@ -18,6 +18,10 @@ use capitainerie_core::{
         },
         authorization::Subject,
         delegation::{DelegatedToken, ports::TokenExchanger},
+        provider::{
+            ModelAssignments, ModelRef, ModelTarget, ProviderAccess, ProviderKind,
+            service::PutProvider,
+        },
         run::{service::SubmitTranscript, step::Pricing},
         similarity::{
             CardVector, Embedding, SimilarCard,
@@ -50,6 +54,8 @@ struct FakeRuntime {
     two_actions: bool,
     judge: Option<bool>,
     judged: Arc<AtomicUsize>,
+    targets: Arc<std::sync::Mutex<Vec<(&'static str, ModelTarget)>>>,
+    echo_model: bool,
 }
 
 impl FakeRuntime {
@@ -88,13 +94,26 @@ fn two_located() -> Vec<ExtractedAction> {
 }
 
 impl AgentRuntime for FakeRuntime {
-    async fn extract(&self, _transcript: &str) -> Result<Extraction, CoreError> {
+    async fn extract(
+        &self,
+        target: &ModelTarget,
+        _transcript: &str,
+    ) -> Result<Extraction, CoreError> {
         self.extractions.fetch_add(1, Ordering::SeqCst);
+        self.targets
+            .lock()
+            .unwrap()
+            .push(("extractor", target.clone()));
+        let model = if self.echo_model {
+            target.model.model.clone()
+        } else {
+            "fake".into()
+        };
         if self.two_actions {
             return Ok(Extraction {
                 actions: two_located(),
                 usage: Usage {
-                    model: "fake".into(),
+                    model,
                     input_tokens: 1_000,
                     output_tokens: 200,
                 },
@@ -118,7 +137,7 @@ impl AgentRuntime for FakeRuntime {
                 },
             ],
             usage: Usage {
-                model: "fake".into(),
+                model,
                 input_tokens: 1_000,
                 output_tokens: 200,
             },
@@ -127,10 +146,12 @@ impl AgentRuntime for FakeRuntime {
 
     async fn judge_duplicate(
         &self,
+        target: &ModelTarget,
         _action: &LocatedAction,
         _candidate: &SimilarCard,
     ) -> Result<Judgement, CoreError> {
         self.judged.fetch_add(1, Ordering::SeqCst);
+        self.targets.lock().unwrap().push(("judge", target.clone()));
         match self.judge {
             Some(same_task) => Ok(Judgement {
                 same_task,
@@ -145,7 +166,15 @@ impl AgentRuntime for FakeRuntime {
         }
     }
 
-    async fn write(&self, request: WriteRequest) -> Result<WriteReport, CoreError> {
+    async fn write(
+        &self,
+        target: &ModelTarget,
+        request: WriteRequest,
+    ) -> Result<WriteReport, CoreError> {
+        self.targets
+            .lock()
+            .unwrap()
+            .push(("writer", target.clone()));
         let calls = request
             .duplicates
             .iter()
@@ -187,11 +216,17 @@ impl AgentRuntime for FakeRuntime {
 #[derive(Clone, Default)]
 struct FakeEmbedder {
     calls: Arc<AtomicUsize>,
+    targets: Arc<std::sync::Mutex<Vec<ModelTarget>>>,
 }
 
 impl Embedder for FakeEmbedder {
-    async fn embed(&self, texts: &[String]) -> Result<(Vec<Embedding>, Usage), CoreError> {
+    async fn embed(
+        &self,
+        target: &ModelTarget,
+        texts: &[String],
+    ) -> Result<(Vec<Embedding>, Usage), CoreError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        self.targets.lock().unwrap().push(target.clone());
         let embeddings = texts
             .iter()
             .map(|text| Embedding(vec![if text.contains("CI") { 1.0 } else { 0.0 }]))
@@ -212,6 +247,7 @@ impl Embedder for FakeEmbedder {
 struct FakeVectors {
     known: SimilarCard,
     asked: Arc<std::sync::Mutex<Vec<OrganizationId>>>,
+    models: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl FakeVectors {
@@ -223,22 +259,33 @@ impl FakeVectors {
                 text: "Migrer la CI".into(),
             },
             asked: Arc::default(),
+            models: Arc::default(),
         }
     }
 }
 
 impl VectorStore for FakeVectors {
-    async fn upsert(&self, _card: CardVector) -> Result<(), CoreError> {
+    async fn upsert(&self, _model: &str, _card: CardVector) -> Result<(), CoreError> {
         Ok(())
+    }
+
+    async fn holds_cards(
+        &self,
+        _model: &str,
+        _organization_id: OrganizationId,
+    ) -> Result<bool, CoreError> {
+        Ok(true)
     }
 
     async fn nearest(
         &self,
+        model: &str,
         organization_id: OrganizationId,
         embedding: &Embedding,
         _limit: usize,
     ) -> Result<Vec<SimilarCard>, CoreError> {
         self.asked.lock().unwrap().push(organization_id);
+        self.models.lock().unwrap().push(model.to_owned());
         Ok(if embedding.0[0] > 0.5 {
             vec![self.known.clone()]
         } else {
@@ -319,6 +366,7 @@ fn config() -> PipelineConfig {
         stale_after: Duration::from_secs(600),
         dedup_threshold: 0.86,
         dedup_gray_floor: 0.65,
+        default_models: ModelAssignments::defaults("env-chat", "env-embedding"),
     }
 }
 
@@ -333,6 +381,7 @@ async fn submit(
                     id: "user-1".into(),
                     organization_id,
                     actor: None,
+                    is_admin: false,
                 },
                 title: "Rétro".into(),
                 body: BODY.into(),
@@ -488,6 +537,7 @@ async fn without_a_delegation_the_run_fails_and_says_why() {
                 id: "user-1".into(),
                 organization_id,
                 actor: None,
+                is_admin: false,
             },
             title: "Rétro".into(),
             body: BODY.into(),
@@ -806,4 +856,190 @@ async fn outside_the_gray_zone_the_judge_is_never_asked() {
         assert_eq!(runtime.judged.load(Ordering::SeqCst), 0, "score {score}");
         assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
     }
+}
+
+fn model(provider: ProviderKind, name: &str) -> ModelRef {
+    ModelRef {
+        provider,
+        model: name.into(),
+    }
+}
+
+fn claude_for_the_agents() -> ModelAssignments {
+    ModelAssignments {
+        extractor: model(ProviderKind::Anthropic, "claude-haiku-5-5"),
+        judge: model(ProviderKind::Anthropic, "claude-sonnet-5-5"),
+        writer: model(ProviderKind::Anthropic, "claude-haiku-5-5"),
+        embeddings: model(ProviderKind::OpenAiCompatible, "bge-m3"),
+    }
+}
+
+async fn freeze_models(pool: &PgPool, run_id: Uuid, assignments: &ModelAssignments) {
+    sqlx::query("UPDATE runs SET models = $2 WHERE id = $1")
+        .bind(run_id)
+        .bind(serde_json::to_value(assignments).unwrap())
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+fn run_with(
+    usecase: &CapitainerieUseCase,
+    runtime: &FakeRuntime,
+    embedder: &FakeEmbedder,
+    vectors: &FakeVectors,
+) -> MeetingPipeline<FakeRuntime, FakeExchanger, FakeEmbedder, FakeVectors> {
+    MeetingPipeline::new(
+        usecase.clone(),
+        runtime.clone(),
+        FakeExchanger,
+        embedder.clone(),
+        vectors.clone(),
+        config(),
+    )
+}
+
+#[tokio::test]
+async fn a_run_without_models_uses_the_worker_defaults_on_its_own_endpoint() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    let runtime = FakeRuntime::judging(false);
+    let embedder = FakeEmbedder::default();
+    let vectors = FakeVectors::knowing(CardId::new(), 0.7);
+
+    run_with(&usecase, &runtime, &embedder, &vectors)
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    let seen = runtime.targets.lock().unwrap().clone();
+    let roles: Vec<_> = seen.iter().map(|(role, _)| *role).collect();
+    assert_eq!(roles, ["extractor", "judge", "writer"]);
+    for (_, target) in &seen {
+        assert_eq!(
+            target.model,
+            model(ProviderKind::OpenAiCompatible, "env-chat")
+        );
+        assert_eq!(target.access, None);
+    }
+    let embedded = embedder.targets.lock().unwrap().clone();
+    assert_eq!(
+        embedded[0].model,
+        model(ProviderKind::OpenAiCompatible, "env-embedding")
+    );
+    assert_eq!(embedded[0].access, None);
+    assert_eq!(*vectors.models.lock().unwrap(), ["env-embedding"]);
+}
+
+#[tokio::test]
+async fn a_run_with_claude_models_gets_the_key_of_its_organization() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let usecase = usecase.with_secrets_cipher(SecretCipher::new(&[7u8; 32]).unwrap());
+    usecase
+        .put_provider(PutProvider {
+            subject: Subject {
+                id: "admin".into(),
+                organization_id,
+                actor: None,
+                is_admin: true,
+            },
+            kind: ProviderKind::Anthropic,
+            secret: SecretToken::new("sk-ant-test-1234"),
+            base_url: None,
+        })
+        .await
+        .unwrap();
+    let submitted = submit(&usecase, organization_id).await;
+    freeze_models(&pool, submitted.run_id.0, &claude_for_the_agents()).await;
+    let runtime = FakeRuntime {
+        echo_model: true,
+        ..FakeRuntime::judging(false)
+    };
+    let embedder = FakeEmbedder::default();
+    let vectors = FakeVectors::knowing(CardId::new(), 0.7);
+
+    run_with(&usecase, &runtime, &embedder, &vectors)
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    let access = ProviderAccess {
+        kind: ProviderKind::Anthropic,
+        secret: SecretToken::new("sk-ant-test-1234"),
+        base_url: None,
+    };
+    let seen = runtime.targets.lock().unwrap().clone();
+    let by_role = |role: &str| {
+        seen.iter()
+            .find(|(name, _)| *name == role)
+            .map(|(_, target)| target.clone())
+            .unwrap()
+    };
+    assert_eq!(
+        by_role("extractor").model,
+        model(ProviderKind::Anthropic, "claude-haiku-5-5")
+    );
+    assert_eq!(by_role("extractor").access, Some(access.clone()));
+    assert_eq!(
+        by_role("judge").model,
+        model(ProviderKind::Anthropic, "claude-sonnet-5-5")
+    );
+    assert_eq!(by_role("judge").access, Some(access.clone()));
+    assert_eq!(by_role("writer").access, Some(access));
+    let embedded = embedder.targets.lock().unwrap().clone();
+    assert_eq!(embedded[0].model.model, "bge-m3");
+    assert_eq!(
+        embedded[0].access, None,
+        "no key for this provider: the worker's endpoint"
+    );
+    assert_eq!(*vectors.models.lock().unwrap(), ["bge-m3"]);
+    let extract_model: Option<String> =
+        sqlx::query_scalar("SELECT model FROM run_steps WHERE run_id = $1 AND kind = 'extract'")
+            .bind(submitted.run_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(extract_model.as_deref(), Some("claude-haiku-5-5"));
+}
+
+#[tokio::test]
+async fn a_model_of_a_provider_without_a_key_fails_the_step_with_a_clear_message() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let submitted = submit(&usecase, organization_id).await;
+    freeze_models(&pool, submitted.run_id.0, &claude_for_the_agents()).await;
+    let runtime = FakeRuntime::default();
+
+    run_with(
+        &usecase,
+        &runtime,
+        &FakeEmbedder::default(),
+        &FakeVectors::knowing(CardId::new(), 0.5),
+    )
+    .execute(submitted.run_id, None)
+    .await
+    .unwrap();
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "failed");
+    assert_eq!(runtime.extractions.load(Ordering::SeqCst), 0);
+    let failure: String = sqlx::query_scalar("SELECT failure FROM runs WHERE id = $1")
+        .bind(submitted.run_id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        failure.contains("no anthropic key configured for this organization"),
+        "{failure}"
+    );
+    assert_eq!(
+        steps(&pool, submitted.run_id.0).await,
+        [("extract".to_owned(), "failed".to_owned(), 0)]
+    );
 }

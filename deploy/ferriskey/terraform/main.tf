@@ -99,3 +99,13 @@ resource "ferriskey_client" "agent" {
   service_account_enabled      = true
   direct_access_grants_enabled = false
 }
+
+# Marks a member as an admin of the organization: only they manage the
+# providers' API keys and choose the models. It reaches the API as
+# `realm_access.roles` in the access token.
+resource "ferriskey_role" "admin" {
+  realm       = ferriskey_realm.organization.name
+  name        = "capitainerie-admin"
+  description = "Manages the organization's model providers and model choices."
+  permissions = []
+}

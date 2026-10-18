@@ -7,6 +7,7 @@ use crate::{
         agent::SecretToken,
         authorization::{DecisionRecord, Subject, ports::DecisionLogRepository},
         delegation::ports::{DelegationVault, TokenExchanger},
+        provider::ports::ModelAssignmentRepository,
         run::{
             RunOverview,
             ports::StepRepository,
@@ -60,16 +61,20 @@ impl CapitainerieUseCase {
         self.submit_and_store(command, tokens, cipher).await
     }
 
-    #[transactional(transcript, run, emitter, authz)]
+    #[transactional(transcript, run, model_assignment, emitter, authz)]
     async fn submit_and_store(
         &self,
         command: SubmitTranscript,
         tokens: Vec<(String, crate::domain::delegation::DelegatedToken)>,
         cipher: &crate::infrastructure::crypto::SecretCipher,
     ) -> Result<SubmittedTranscript, CoreError> {
+        let mut model_assignment_repository = model_assignment_repository;
+        let models = model_assignment_repository
+            .get(command.subject.organization_id)
+            .await?;
         let (transcript, run) =
             RunService::new(transcript_repository, run_repository, emitter, authz)
-                .submit(command)
+                .submit_with_models(command, models)
                 .await?;
         let mut vault = PgDelegationVault::new(&tx, cipher);
         for (agent, token) in &tokens {
@@ -81,14 +86,18 @@ impl CapitainerieUseCase {
         })
     }
 
-    #[transactional(transcript, run, emitter, authz)]
+    #[transactional(transcript, run, model_assignment, emitter, authz)]
     pub async fn submit_transcript(
         &self,
         command: SubmitTranscript,
     ) -> Result<SubmittedTranscript, CoreError> {
+        let mut model_assignment_repository = model_assignment_repository;
+        let models = model_assignment_repository
+            .get(command.subject.organization_id)
+            .await?;
         let (transcript, run) =
             RunService::new(transcript_repository, run_repository, emitter, authz)
-                .submit(command)
+                .submit_with_models(command, models)
                 .await?;
         Ok(SubmittedTranscript {
             transcript_id: transcript.id,

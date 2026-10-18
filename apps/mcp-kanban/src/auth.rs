@@ -121,6 +121,7 @@ pub fn delegated_subject(
         id: identity.subject.clone(),
         organization_id,
         actor: Some(agent),
+        is_admin: false,
     })
 }
 
@@ -177,6 +178,7 @@ mod tests {
             email: None,
             display_name: None,
             actor,
+            roles: Vec::new(),
         }
     }
 

@@ -5,6 +5,7 @@ use super::{Run, RunOverview, ports::RunRepository};
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     event::ports::EventEmitter,
+    provider::ModelAssignments,
     transcript::{Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository},
 };
 
@@ -39,9 +40,16 @@ where
     }
 
     /// Stores the transcript and queues the meeting pipeline on it.
-    pub async fn submit(
+    pub async fn submit(self, command: SubmitTranscript) -> Result<(Transcript, Run), CoreError> {
+        self.submit_with_models(command, None).await
+    }
+
+    /// Like [`Self::submit`], freezing the organization's model choice into
+    /// the run so a later change never affects it.
+    pub async fn submit_with_models(
         mut self,
         command: SubmitTranscript,
+        models: Option<ModelAssignments>,
     ) -> Result<(Transcript, Run), CoreError> {
         let organization_id = command.subject.organization_id;
         require(
@@ -64,7 +72,7 @@ where
             body: TranscriptBody::try_from(command.body)?,
             created_at: now,
         };
-        let (run, queued) = Run::queue(
+        let (mut run, queued) = Run::queue(
             organization_id,
             transcript.id,
             command.subject.id,
@@ -72,6 +80,7 @@ where
             now,
         );
 
+        run.models = models;
         self.transcripts.insert(&transcript).await?;
         self.runs.insert(&run).await?;
         self.emitter.emit(&queued)?;
@@ -144,6 +153,7 @@ mod tests {
             id: "user-1".into(),
             organization_id: OrganizationId::new(),
             actor: None,
+            is_admin: false,
         }
     }
 

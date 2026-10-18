@@ -83,6 +83,7 @@ api:
   secretEnv:
     - DATABASE_URL
     - DELEGATION_KEY
+    - SECRETS_KEY
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS
@@ -161,7 +162,6 @@ worker:
     # -- OpenAI-compatible embeddings model on the same endpoint (EMBEDDING_MODEL). Pull it
     # next to the chat model.
     model: bge-m3
-    dimensions: 1024
   # -- Cosine similarity from which an action is a duplicate of an existing card
   # (calibrated on French paraphrases with bge-m3).
   dedupThreshold: 0.75
@@ -185,6 +185,7 @@ worker:
   secretEnv:
     - DATABASE_URL
     - DELEGATION_KEY
+    - SECRETS_KEY
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS

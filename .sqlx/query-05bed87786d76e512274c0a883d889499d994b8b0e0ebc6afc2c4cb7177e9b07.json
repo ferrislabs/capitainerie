@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO provider_credentials\n                (organization_id, kind, nonce, ciphertext, base_url, preview, created_by, updated_at)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            ON CONFLICT (organization_id, kind) DO UPDATE\n            SET nonce = EXCLUDED.nonce, ciphertext = EXCLUDED.ciphertext,\n                base_url = EXCLUDED.base_url, preview = EXCLUDED.preview,\n                created_by = EXCLUDED.created_by, updated_at = EXCLUDED.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "05bed87786d76e512274c0a883d889499d994b8b0e0ebc6afc2c4cb7177e9b07"
+}
