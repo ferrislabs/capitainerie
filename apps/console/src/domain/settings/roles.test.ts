@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
 	compatibleModels,
 	completeAssignments,
+	executorModels,
 	groupByProvider,
 	modelRefKey,
 	parseModelRefKey,
 } from '#/domain/settings/roles'
 import {
+	ANTHROPIC_OTHER,
 	BGE,
+	CLAUDE_HAIKU,
+	CLAUDE_LOOKALIKE,
 	MISTRAL_EMBED,
 	QWEN,
 	SONNET,
@@ -68,5 +72,35 @@ describe('completeAssignments', () => {
 				embeddings: ref,
 			}),
 		).toEqual({ extractor: ref, judge: ref, writer: ref, embeddings: ref })
+	})
+})
+
+describe('executorModels', () => {
+	it('keeps only Anthropic chat models whose id starts with claude-', () => {
+		expect(
+			executorModels([
+				QWEN,
+				BGE,
+				SONNET,
+				CLAUDE_HAIKU,
+				ANTHROPIC_OTHER,
+				CLAUDE_LOOKALIKE,
+				MISTRAL_EMBED,
+			]),
+		).toEqual([SONNET, CLAUDE_HAIKU])
+	})
+})
+
+describe('completeAssignments with an executor', () => {
+	const ref = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
+	const roles = { extractor: ref, judge: ref, writer: ref, embeddings: ref }
+
+	it('carries the executor only when one is chosen', () => {
+		expect(
+			completeAssignments({ ...roles, executor: 'claude-haiku-5' }),
+		).toEqual({ ...roles, executor: 'claude-haiku-5' })
+		expect(
+			completeAssignments({ ...roles, executor: null }),
+		).not.toHaveProperty('executor')
 	})
 })

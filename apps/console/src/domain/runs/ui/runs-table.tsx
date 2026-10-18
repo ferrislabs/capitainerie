@@ -3,6 +3,7 @@ import { Play } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { EmptyState } from '#/components/layout/empty-state'
 import { StatusBadge } from '#/components/layout/status-badge'
+import { Badge } from '#/components/ui/badge'
 import {
 	Table,
 	TableBody,
@@ -11,6 +12,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '#/components/ui/table'
+import { isCardRun, runTitle } from '#/domain/runs/run-title'
 import { STATUS_LABELS, STATUS_TONES } from '#/domain/runs/status'
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {
@@ -53,7 +55,7 @@ export function RunsTable({ runs }: Props) {
 									params={{ runId: run.id }}
 									className="truncate font-medium text-foreground hover:text-link hover:underline"
 								>
-									{run.transcript_title}
+									{runTitle(run)}
 								</Link>
 								<span
 									className="shrink-0 font-mono text-[11px] text-muted-foreground"
@@ -62,6 +64,16 @@ export function RunsTable({ runs }: Props) {
 									{run.id.slice(0, 8)}
 								</span>
 							</div>
+							{isCardRun(run) ? (
+								<div className="mt-1 flex min-w-0 items-center gap-2">
+									<Badge variant="neutral">Exécution</Badge>
+									{run.repository ? (
+										<span className="truncate font-mono text-xs text-muted-foreground">
+											{run.repository}
+										</span>
+									) : null}
+								</div>
+							) : null}
 						</TableCell>
 						<TableCell>
 							<StatusBadge

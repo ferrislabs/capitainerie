@@ -3,7 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ADMIN_ONLY_MODELS } from '#/domain/settings/providers'
 import {
+	ANTHROPIC_OTHER,
 	BGE,
+	CLAUDE_HAIKU,
+	CLAUDE_LOOKALIKE,
 	MISTRAL_EMBED,
 	QWEN,
 	SONNET,
@@ -16,7 +19,11 @@ const BGE_REF = { provider: 'openai_compatible', model: BGE.id } as const
 function setup(
 	overrides: Partial<Parameters<typeof ModelAssignmentsForm>[0]> = {},
 ) {
-	const handlers = { onChange: vi.fn(), onSubmit: vi.fn() }
+	const handlers = {
+		onChange: vi.fn(),
+		onExecutorChange: vi.fn(),
+		onSubmit: vi.fn(),
+	}
 	render(
 		<ModelAssignmentsForm
 			models={[QWEN, BGE, SONNET, MISTRAL_EMBED]}
@@ -148,5 +155,44 @@ describe('ModelAssignmentsForm', () => {
 		const embeddings = screen.getByLabelText('Embeddings') as HTMLSelectElement
 		expect(embeddings.disabled).toBe(true)
 		expect(embeddings.textContent).toContain('Aucun modèle d’embeddings')
+	})
+
+	it('offers only Claude models to the executor and reports the choice', async () => {
+		const handlers = setup({
+			models: [
+				QWEN,
+				BGE,
+				SONNET,
+				CLAUDE_HAIKU,
+				ANTHROPIC_OTHER,
+				CLAUDE_LOOKALIKE,
+			],
+		})
+		const select = screen.getByLabelText('Exécutant')
+
+		expect(optionValues(select)).toEqual(['claude-sonnet-5', 'claude-haiku-5'])
+		expect(
+			screen.getByText(
+				'Claude Code, sur les cartes confiées. Modèles Claude uniquement.',
+			),
+		).toBeTruthy()
+
+		await userEvent.selectOptions(select, 'claude-haiku-5')
+		expect(handlers.onExecutorChange).toHaveBeenCalledWith('claude-haiku-5')
+	})
+
+	it('shows the saved executor, even when the catalog dropped it', () => {
+		setup({ values: { executor: 'claude-old' } })
+
+		const executor = screen.getByLabelText('Exécutant') as HTMLSelectElement
+		expect(executor.value).toBe('claude-old')
+		expect(executor.selectedOptions[0].textContent).toContain('indisponible')
+	})
+
+	it('says when the catalog has no Claude model, and locks members out', () => {
+		setup({ models: [QWEN, BGE] })
+		const executor = screen.getByLabelText('Exécutant') as HTMLSelectElement
+		expect(executor.disabled).toBe(true)
+		expect(executor.textContent).toContain('Aucun modèle Claude')
 	})
 })

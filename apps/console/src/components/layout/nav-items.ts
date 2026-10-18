@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Bot, Cpu, KeyRound, Play, SquareKanban } from 'lucide-react'
+import { Bot, Cpu, Github, KeyRound, Play, SquareKanban } from 'lucide-react'
 
 export interface NavItem {
 	to:
@@ -8,6 +8,7 @@ export interface NavItem {
 		| '/agents'
 		| '/settings/providers'
 		| '/settings/models'
+		| '/settings/integrations'
 	label: string
 	icon: LucideIcon
 }
@@ -34,6 +35,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 		items: [
 			{ to: '/settings/providers', label: 'Fournisseurs', icon: KeyRound },
 			{ to: '/settings/models', label: 'Modèles', icon: Cpu },
+			{ to: '/settings/integrations', label: 'Intégrations', icon: Github },
 		],
 	},
 ]

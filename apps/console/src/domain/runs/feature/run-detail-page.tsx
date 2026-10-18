@@ -5,6 +5,7 @@ import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { StatusBadge } from '#/components/layout/status-badge'
+import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import {
@@ -14,6 +15,7 @@ import {
 	runDurationMs,
 } from '#/domain/runs/format'
 import { useRunTimeline } from '#/domain/runs/hooks/use-run-timeline'
+import { isCardRun, runTitle } from '#/domain/runs/run-title'
 import { STATUS_LABELS, STATUS_TONES } from '#/domain/runs/status'
 import { RunTimeline } from '#/domain/runs/ui/run-timeline'
 import { ApiRequestError } from '#/lib/api-error'
@@ -125,18 +127,35 @@ export function RunDetailPage({ runId }: { runId: string }) {
 		<Page>
 			<PageHeader
 				leading={<BackLink />}
-				title={run.transcript_title}
+				title={runTitle(run)}
 				meta={
-					<StatusBadge
-						tone={STATUS_TONES[run.status]}
-						label={STATUS_LABELS[run.status]}
-					/>
+					<>
+						<StatusBadge
+							tone={STATUS_TONES[run.status]}
+							label={STATUS_LABELS[run.status]}
+						/>
+						{isCardRun(run) ? <Badge variant="neutral">Exécution</Badge> : null}
+					</>
 				}
 				description={
 					<span className="figures">
 						Lancé le {dateFormat.format(new Date(run.created_at))}
 						{duration === null ? '' : ` · Durée ${formatLatency(duration)}`}
 						<span className="ml-2 font-mono text-[11px]">{run.id}</span>
+						{run.repository ? (
+							<span className="ml-2 font-mono text-[11px]">
+								{run.repository}
+							</span>
+						) : null}
+						{run.card_id ? (
+							<Link
+								to="/kanban"
+								hash={`card-${run.card_id}`}
+								className="ml-2 text-link hover:underline"
+							>
+								Voir la carte
+							</Link>
+						) : null}
 					</span>
 				}
 				actions={

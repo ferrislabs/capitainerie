@@ -17,6 +17,7 @@ import {
 	AGENT_ROLES,
 	type AssignmentDraft,
 	completeAssignments,
+	sameExecutor,
 	sameModelRef,
 } from '#/domain/settings/roles'
 import { ModelAssignmentsForm } from '#/domain/settings/ui/model-assignments-form'
@@ -33,9 +34,9 @@ export function ModelsPage() {
 	const saved = assignments.data?.assignments ?? null
 	const values: AssignmentDraft = { ...(saved ?? {}), ...edits }
 	const complete = completeAssignments(values)
-	const isDirty = AGENT_ROLES.some(
-		(role) => !sameModelRef(values[role], saved?.[role]),
-	)
+	const isDirty =
+		AGENT_ROLES.some((role) => !sameModelRef(values[role], saved?.[role])) ||
+		!sameExecutor(values.executor, saved?.executor)
 	const embeddingsChanged =
 		saved !== null &&
 		values.embeddings !== undefined &&
@@ -57,7 +58,7 @@ export function ModelsPage() {
 			/>
 			<SectionCard
 				title="Modèle par rôle"
-				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings."
+				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings ; l’Exécutant, les modèles Claude."
 				flush
 			>
 				{assignments.isError ? (
@@ -87,6 +88,12 @@ export function ModelsPage() {
 								saveAssignments.reset()
 							}
 							setEdits((previous) => ({ ...previous, [role]: ref }))
+						}}
+						onExecutorChange={(model) => {
+							if (saveAssignments.isSuccess || saveAssignments.errorMessage) {
+								saveAssignments.reset()
+							}
+							setEdits((previous) => ({ ...previous, executor: model }))
 						}}
 						onSubmit={submit}
 					/>

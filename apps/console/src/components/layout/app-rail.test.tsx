@@ -44,6 +44,7 @@ describe('AppRail', () => {
 			'Agents',
 			'Fournisseurs',
 			'Modèles',
+			'Intégrations',
 		]) {
 			expect(screen.getByRole('link', { name: label })).toBeTruthy()
 		}
@@ -68,6 +69,16 @@ describe('AppRail', () => {
 				.getByRole('link', { name: 'Fournisseurs' })
 				.getAttribute('aria-current'),
 		).toBeNull()
+	})
+
+	it('marks the integrations page as current', async () => {
+		await renderRail('/settings/integrations')
+
+		expect(
+			screen
+				.getByRole('link', { name: 'Intégrations' })
+				.getAttribute('aria-current'),
+		).toBe('page')
 	})
 
 	it('names icon-only links when collapsed', async () => {
@@ -127,7 +138,7 @@ describe('AppRail', () => {
 
 		fireEvent.keyDown(nav, { key: 'End' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Modèles' }),
+			screen.getByRole('link', { name: 'Intégrations' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })

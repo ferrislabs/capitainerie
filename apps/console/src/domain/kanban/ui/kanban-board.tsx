@@ -12,6 +12,7 @@ interface Props {
 	expandedIds: ReadonlySet<string>
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
+	onExecute?: (card: Schemas.CardResponse) => void
 }
 
 export function KanbanBoard({
@@ -20,6 +21,7 @@ export function KanbanBoard({
 	expandedIds,
 	onToggleExpanded,
 	onMove,
+	onExecute,
 }: Props) {
 	if (cards.length === 0) {
 		return (
@@ -94,6 +96,7 @@ export function KanbanBoard({
 									expanded={expandedIds.has(card.id)}
 									onToggleExpanded={onToggleExpanded}
 									onMove={onMove}
+									onExecute={onExecute}
 								/>
 							))}
 						</div>

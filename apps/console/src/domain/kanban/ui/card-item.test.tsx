@@ -31,6 +31,7 @@ function card(
 function setup(c: Schemas.CardResponse, isPending = false) {
 	const onMove = vi.fn()
 	const onToggleExpanded = vi.fn()
+	const onExecute = vi.fn()
 	render(
 		<CardItem
 			card={c}
@@ -38,9 +39,10 @@ function setup(c: Schemas.CardResponse, isPending = false) {
 			expanded={false}
 			onToggleExpanded={onToggleExpanded}
 			onMove={onMove}
+			onExecute={onExecute}
 		/>,
 	)
-	return { onMove, onToggleExpanded }
+	return { onMove, onToggleExpanded, onExecute }
 }
 
 describe('CardItem', () => {
@@ -96,5 +98,40 @@ describe('CardItem', () => {
 		await userEvent.click(screen.getByRole('button', { name: 'Développer' }))
 
 		expect(onToggleExpanded).toHaveBeenCalledWith('c1')
+	})
+
+	it('offers to hand a todo card to Claude Code', async () => {
+		const todo = card({ column: 'todo' })
+		const { onExecute } = setup(todo)
+
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Confier à Claude Code' }),
+		)
+
+		expect(onExecute).toHaveBeenCalledWith(todo)
+	})
+
+	it('offers it on todo cards only', () => {
+		for (const column of [
+			'proposed',
+			'in_progress',
+			'done',
+			'rejected',
+		] as const) {
+			const { unmount } = render(
+				<CardItem
+					card={card({ column })}
+					isPending={false}
+					expanded={false}
+					onToggleExpanded={vi.fn()}
+					onMove={vi.fn()}
+					onExecute={vi.fn()}
+				/>,
+			)
+			expect(
+				screen.queryByRole('button', { name: 'Confier à Claude Code' }),
+			).toBeNull()
+			unmount()
+		}
 	})
 })

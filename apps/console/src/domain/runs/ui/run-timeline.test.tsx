@@ -1,14 +1,14 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { Schemas } from '#/api/api.client'
-import { RunTimeline } from '#/domain/runs/ui/run-timeline'
+import { RunTimeline, type TimelineStep } from '#/domain/runs/ui/run-timeline'
 
 function step(
 	seq: number,
 	kind: string,
 	status: Schemas.StepStatusResponse,
-	extra: Partial<Schemas.StepResponse> = {},
-): Schemas.StepResponse {
+	extra: Partial<TimelineStep> = {},
+): TimelineStep {
 	return {
 		seq,
 		kind,
@@ -102,5 +102,65 @@ describe('RunTimeline', () => {
 		expect(
 			screen.getByText('card.delete — writer — refusé (rôle insuffisant)'),
 		).toBeTruthy()
+	})
+
+	it('renders an execute step with its tool calls, pull request and branch', () => {
+		render(
+			<RunTimeline
+				steps={[
+					step(0, 'execute', 'succeeded', {
+						agent: 'capitainerie-agent-executor',
+						model: 'claude-sonnet-5',
+						tool_calls: [
+							{
+								tool: 'Edit',
+								succeeded: true,
+								latency_ms: 30,
+								summary: 'src/main.rs',
+							},
+						],
+						execution: {
+							branch: 'capitainerie/0123456789ab',
+							pull_request: 'https://github.com/acme/web/pull/7',
+							no_changes: false,
+							dropped_tool_calls: 2,
+						},
+					}),
+				]}
+				decisions={[]}
+			/>,
+		)
+
+		expect(screen.getByText('Exécution')).toBeTruthy()
+		expect(screen.getByText(/executor/)).toBeTruthy()
+		expect(screen.getByText(/claude-sonnet-5/)).toBeTruthy()
+		expect(screen.getByText('Edit').className).toContain('font-mono')
+		expect(screen.getByText('src/main.rs')).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'Pull request en brouillon' })
+				.getAttribute('href'),
+		).toBe('https://github.com/acme/web/pull/7')
+		expect(screen.getByText('capitainerie/0123456789ab')).toBeTruthy()
+		expect(screen.getByText("2 appels d'outils non affichés")).toBeTruthy()
+	})
+
+	it('shows no change and a failed execution reason', () => {
+		render(
+			<RunTimeline
+				steps={[
+					step(0, 'execute', 'succeeded', {
+						execution: { no_changes: true },
+					}),
+					step(1, 'execute', 'failed', {
+						execution: { error: 'le push a été refusé' },
+					}),
+				]}
+				decisions={[]}
+			/>,
+		)
+
+		expect(screen.getByText('Aucun changement')).toBeTruthy()
+		expect(screen.getByText('le push a été refusé')).toBeTruthy()
 	})
 })

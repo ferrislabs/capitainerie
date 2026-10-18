@@ -10,6 +10,8 @@ import {
 	type AssignmentDraft,
 	catalogRef,
 	compatibleModels,
+	EXECUTOR_INFO,
+	executorModels,
 	groupByProvider,
 	type ModelRef,
 	modelRefKey,
@@ -29,6 +31,7 @@ interface Props {
 	errorMessage?: string
 	successMessage?: string
 	onChange: (role: AgentRole, value: ModelRef) => void
+	onExecutorChange: (model: string) => void
 	onSubmit: () => void
 }
 
@@ -50,8 +53,14 @@ export function ModelAssignmentsForm({
 	errorMessage,
 	successMessage,
 	onChange,
+	onExecutorChange,
 	onSubmit,
 }: Props) {
+	const executorOptions = executorModels(models)
+	const executor = values.executor ?? ''
+	const executorKnown = executorOptions.some((model) => model.id === executor)
+	const executorEmpty = executorOptions.length === 0 && executor === ''
+
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
 		if (canSubmit) onSubmit()
@@ -153,6 +162,52 @@ export function ModelAssignmentsForm({
 						</li>
 					)
 				})}
+				<li className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-center md:gap-6">
+					<div className="flex min-w-0 flex-col gap-0.5">
+						<label
+							htmlFor="assignment-executor"
+							className="text-[13px] font-semibold"
+						>
+							{EXECUTOR_INFO.label}
+						</label>
+						<p
+							id="assignment-executor-description"
+							className="text-xs text-muted-foreground"
+						>
+							{EXECUTOR_INFO.description}
+						</p>
+					</div>
+					<div className="relative">
+						<select
+							id="assignment-executor"
+							aria-describedby="assignment-executor-description"
+							className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+							disabled={!isAdmin || isPending || executorEmpty}
+							value={executor}
+							onChange={(event) => {
+								if (event.target.value) onExecutorChange(event.target.value)
+							}}
+						>
+							{executor === '' ? (
+								<option value="" disabled>
+									{executorEmpty ? 'Aucun modèle Claude' : 'Choisir un modèle…'}
+								</option>
+							) : null}
+							{executor !== '' && !executorKnown ? (
+								<option value={executor}>{executor} (indisponible)</option>
+							) : null}
+							{executorOptions.map((model) => (
+								<option key={model.id} value={model.id}>
+									{optionLabel(model)}
+								</option>
+							))}
+						</select>
+						<ChevronDown
+							aria-hidden="true"
+							className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+						/>
+					</div>
+				</li>
 			</ul>
 			{embeddingsChanged || errorMessage || successMessage || isAdmin ? (
 				<div className="flex flex-col gap-3 border-t p-4">

@@ -8,9 +8,13 @@ import {
 } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { SectionCard } from '#/components/layout/section-card'
+import { parseExecuteOutput } from '#/domain/runs/execute-output'
 import { formatCost, formatLatency, formatTokens } from '#/domain/runs/format'
 import { stepDetailText, toolSummaryText } from '#/domain/runs/step-text'
+import { ExecuteOutcome } from '#/domain/runs/ui/execute-outcome'
 import { cn } from '#/lib/utils'
+
+export type TimelineStep = Schemas.StepResponse
 
 type StepStatus = Schemas.StepStatusResponse
 
@@ -18,6 +22,7 @@ const KIND_LABELS: Record<string, string> = {
 	extract: 'Extraction',
 	deduplicate: 'Dédoublonnage',
 	write: 'Rédaction',
+	execute: 'Exécution',
 }
 
 const STEP_STATUS_LABELS: Record<StepStatus, string> = {
@@ -85,13 +90,9 @@ function StatusIcon({ status }: { status: StepStatus }) {
  * hauteur (la latence, sur une échelle commune au run) au centre, durée
  * alignée à droite.
  */
-function StepItem({
-	step,
-	scaleMs,
-}: {
-	step: Schemas.StepResponse
-	scaleMs: number
-}) {
+function StepItem({ step, scaleMs }: { step: TimelineStep; scaleMs: number }) {
+	const outcome =
+		step.kind === 'execute' ? parseExecuteOutput(step.execution) : undefined
 	const meta = [
 		step.agent ? agentName(step.agent) : null,
 		step.model ?? null,
@@ -135,6 +136,13 @@ function StepItem({
 					>
 						{step.error}
 					</p>
+				) : null}
+				{outcome ? (
+					<ExecuteOutcome
+						output={outcome}
+						failed={step.status === 'failed'}
+						stepError={step.error}
+					/>
 				) : null}
 				{step.tool_calls.length > 0 ? (
 					<ul className="mt-1 flex flex-col gap-1 border-l border-border pl-3">
@@ -213,7 +221,7 @@ function DecisionItem({ decision }: { decision: Schemas.DecisionResponse }) {
 }
 
 interface Props {
-	steps: ReadonlyArray<Schemas.StepResponse>
+	steps: ReadonlyArray<TimelineStep>
 	decisions: ReadonlyArray<Schemas.DecisionResponse>
 }
 
