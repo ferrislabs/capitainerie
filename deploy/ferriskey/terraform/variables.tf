@@ -54,9 +54,9 @@ variable "allow_password_grant" {
 }
 
 variable "agents" {
-  description = "Agents of the meeting pipeline; each becomes the client capitainerie-agent-<name>."
+  description = "Agents of the organization; each becomes the client capitainerie-agent-<name>. The writer runs the meeting pipeline, the executor hands a card to Claude Code."
   type        = list(string)
-  default     = ["writer"]
+  default     = ["writer", "executor"]
 }
 
 variable "api_resource" {

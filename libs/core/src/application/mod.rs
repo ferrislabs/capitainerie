@@ -1,4 +1,6 @@
 mod card;
+mod execute_pipeline;
+mod execute_stream;
 mod execution;
 mod organization;
 mod pipeline;
@@ -16,6 +18,11 @@ use crate::infrastructure::{
     postgres,
 };
 
+#[cfg(any(test, feature = "mock"))]
+pub use execute_pipeline::MockCardCommenter;
+pub use execute_pipeline::{
+    CardCommenter, ExecuteConfig, ExecutePipeline, ExecutionContext, Executor,
+};
 pub use execution::StartedExecution;
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};
 pub use provider::{ModelListing, ProviderFailure};

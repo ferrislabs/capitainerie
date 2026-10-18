@@ -77,35 +77,19 @@ impl CapitainerieUseCase {
             return Ok(None);
         };
         let now = Utc::now();
-        let resumed = match run.status {
-            RunStatus::Queued => {
-                run.start(now)?;
-                false
-            }
-            RunStatus::Running => {
-                let heartbeat = run_repository.heartbeat_at(id).await?;
-                if heartbeat.is_some_and(|at| at >= stale_before) {
-                    return Ok(None);
-                }
-                true
-            }
-            RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled => return Ok(None),
-        };
         let Some(transcript_id) = run.subject.transcript_id() else {
-            run.fail(
-                "the meeting pipeline cannot process a card execution".into(),
-                now,
-            )?;
-            run_repository.save(&run, Some(now)).await?;
-            purge_delegations(&tx, run.id).await?;
-            emitter.emit(&RunFinished {
-                run_id: id.0,
-                organization_id: run.organization_id.0,
-                status: run.status.as_str().to_owned(),
-                failure: run.failure.clone(),
-            })?;
             return Ok(None);
         };
+        let heartbeat = match run.status {
+            RunStatus::Running => run_repository.heartbeat_at(id).await?,
+            _ => None,
+        };
+        let Some(resumed) = claim_decision(run.status, heartbeat, stale_before) else {
+            return Ok(None);
+        };
+        if !resumed {
+            run.start(now)?;
+        }
         if trace_id.is_some() {
             run.trace_id = trace_id;
         }
@@ -307,6 +291,69 @@ impl CapitainerieUseCase {
     }
 }
 
+pub(super) fn claim_decision(
+    status: RunStatus,
+    heartbeat: Option<DateTime<Utc>>,
+    stale_before: DateTime<Utc>,
+) -> Option<bool> {
+    match status {
+        RunStatus::Queued => Some(false),
+        RunStatus::Running if heartbeat.is_some_and(|at| at >= stale_before) => None,
+        RunStatus::Running => Some(true),
+        RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled => None,
+    }
+}
+
+pub(super) async fn retry_transient<T, F, Fut>(
+    max_attempts: u32,
+    base_delay: Duration,
+    mut attempt_fn: F,
+) -> Result<T, CoreError>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: Future<Output = Result<T, CoreError>>,
+{
+    let mut attempt = 1;
+    loop {
+        match attempt_fn(attempt).await {
+            Ok(value) => return Ok(value),
+            Err(CoreError::Internal(message)) if attempt < max_attempts => {
+                let delay = base_delay.saturating_mul(2u32.pow(attempt));
+                tracing::warn!(attempt, %message, ?delay, "step attempt failed, retrying");
+                tokio::time::sleep(delay).await;
+                attempt += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+pub(super) fn new_step(
+    run: &Run,
+    seq: i32,
+    kind: StepKind,
+    agent: Option<String>,
+    attempt: i32,
+) -> Step {
+    Step {
+        id: StepId::new(),
+        run_id: run.id,
+        organization_id: run.organization_id,
+        seq,
+        kind,
+        agent,
+        status: StepStatus::Running,
+        attempt,
+        output: None,
+        usage: Default::default(),
+        cost_micros: 0,
+        latency_ms: None,
+        error: None,
+        started_at: Utc::now(),
+        finished_at: None,
+    }
+}
+
 pub fn target_of(
     model: &ModelRef,
     access: Option<ProviderAccess>,
@@ -484,23 +531,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         agent: Option<String>,
         attempt: i32,
     ) -> Step {
-        Step {
-            id: StepId::new(),
-            run_id: context.run.id,
-            organization_id: context.run.organization_id,
-            seq,
-            kind,
-            agent,
-            status: StepStatus::Running,
-            attempt,
-            output: None,
-            usage: Default::default(),
-            cost_micros: 0,
-            latency_ms: None,
-            error: None,
-            started_at: Utc::now(),
-            finished_at: None,
-        }
+        new_step(&context.run, seq, kind, agent, attempt)
     }
 
     async fn finish_step(
@@ -532,24 +563,12 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
 
     /// Retries what may be transient (the model or the identity provider
     /// unreachable); a refusal or invalid output fails at once.
-    async fn with_retries<T, F, Fut>(&self, mut attempt_fn: F) -> Result<T, CoreError>
+    async fn with_retries<T, F, Fut>(&self, attempt_fn: F) -> Result<T, CoreError>
     where
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = Result<T, CoreError>>,
     {
-        let mut attempt = 1;
-        loop {
-            match attempt_fn(attempt).await {
-                Ok(value) => return Ok(value),
-                Err(CoreError::Internal(message)) if attempt < self.config.max_attempts => {
-                    let delay = Duration::from_secs(2u64.pow(attempt));
-                    tracing::warn!(attempt, %message, ?delay, "step attempt failed, retrying");
-                    tokio::time::sleep(delay).await;
-                    attempt += 1;
-                }
-                Err(error) => return Err(error),
-            }
-        }
+        retry_transient(self.config.max_attempts, Duration::from_secs(1), attempt_fn).await
     }
 
     #[tracing::instrument(name = "step extract", skip_all, fields(seq))]

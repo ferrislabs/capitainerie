@@ -1016,10 +1016,12 @@ dependencies = [
  "capitainerie-bus-iggy",
  "capitainerie-common",
  "capitainerie-core",
+ "capitainerie-github",
  "capitainerie-handlers",
  "capitainerie-handlers-analytics",
  "capitainerie-handlers-cards",
  "capitainerie-handlers-identity",
+ "capitainerie-handlers-integrations",
  "capitainerie-handlers-providers",
  "capitainerie-handlers-realtime",
  "capitainerie-handlers-runs",
@@ -1113,9 +1115,23 @@ name = "capitainerie-egress-proxy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
+ "axum",
+ "base64 0.22.1",
+ "capitainerie-args",
  "capitainerie-common",
  "capitainerie-core",
+ "capitainerie-github",
+ "capitainerie-telemetry",
+ "chrono",
+ "clap",
+ "dotenvy",
+ "futures-util",
+ "reqwest 0.12.28",
+ "thiserror 2.0.21",
  "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1204,12 +1220,19 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-extra",
+ "capitainerie-auth",
  "capitainerie-common",
  "capitainerie-core",
+ "capitainerie-github",
  "capitainerie-handlers",
  "chrono",
+ "reqwest 0.12.28",
  "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
  "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -1227,8 +1250,24 @@ dependencies = [
 name = "capitainerie-handlers-integrations"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "capitainerie-auth",
  "capitainerie-common",
  "capitainerie-core",
+ "capitainerie-github",
+ "capitainerie-handlers",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -1402,12 +1441,17 @@ dependencies = [
  "capitainerie-common",
  "capitainerie-core",
  "capitainerie-events",
+ "capitainerie-github",
+ "capitainerie-runner-kube",
  "capitainerie-runtime-rig",
  "capitainerie-telemetry",
  "capitainerie-vector-lancedb",
  "chrono",
  "clap",
  "dotenvy",
+ "rmcp",
+ "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
  "uuid",
