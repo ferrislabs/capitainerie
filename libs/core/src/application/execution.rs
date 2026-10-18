@@ -1,6 +1,6 @@
 use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::transactional;
-use chrono::Utc;
+use chrono::{SubsecRound, Utc};
 use uuid::Uuid;
 
 use super::CapitainerieUseCase;
@@ -265,7 +265,8 @@ impl CapitainerieUseCase {
             installation_id,
             account_login,
             created_by: subject.id,
-            created_at: Utc::now(),
+            // Postgres keeps microseconds: the value returned must equal the stored one.
+            created_at: Utc::now().trunc_subsecs(6),
         };
         github_installation_repository
             .save(&installation)
