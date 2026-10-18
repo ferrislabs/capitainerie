@@ -88,6 +88,109 @@ pub struct ObservabilityArgs {
     pub otlp_endpoint: Option<String>,
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct GithubAppArgs {
+    #[arg(id = "github_app_id", long = "github-app-id", env = "GITHUB_APP_ID")]
+    pub app_id: Option<u64>,
+
+    /// PEM of the App's private key (RS256).
+    #[arg(
+        id = "github_app_private_key",
+        long = "github-app-private-key",
+        env = "GITHUB_APP_PRIVATE_KEY"
+    )]
+    pub private_key: Option<String>,
+
+    /// The App's URL name, for `https://github.com/apps/<slug>/installations/new`.
+    #[arg(
+        id = "github_app_slug",
+        long = "github-app-slug",
+        env = "GITHUB_APP_SLUG"
+    )]
+    pub slug: Option<String>,
+
+    #[arg(
+        id = "github_api_base",
+        long = "github-api-base",
+        env = "GITHUB_API_BASE",
+        default_value = "https://api.github.com"
+    )]
+    pub api_base: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ExecutorArgs {
+    /// Kubernetes namespace the task jobs run in. Unset, executions are off.
+    #[arg(
+        id = "executor_namespace",
+        long = "executor-namespace",
+        env = "EXECUTOR_NAMESPACE"
+    )]
+    pub namespace: Option<String>,
+
+    #[arg(id = "executor_image", long = "executor-image", env = "EXECUTOR_IMAGE")]
+    pub image: Option<String>,
+
+    /// Base URL of the credentials proxy as the task pods reach it.
+    #[arg(
+        id = "executor_proxy_url",
+        long = "executor-proxy-url",
+        env = "EXECUTOR_PROXY_URL"
+    )]
+    pub proxy_url: Option<String>,
+
+    #[arg(
+        id = "executor_max_turns",
+        long = "executor-max-turns",
+        env = "EXECUTOR_MAX_TURNS",
+        default_value_t = 50
+    )]
+    pub max_turns: u32,
+
+    #[arg(
+        id = "executor_deadline_secs",
+        long = "executor-deadline-secs",
+        env = "EXECUTOR_DEADLINE_SECS",
+        default_value_t = 1800
+    )]
+    pub deadline_secs: u64,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EgressProxyArgs {
+    #[arg(
+        id = "egress_proxy_host",
+        long = "egress-proxy-host",
+        env = "EGRESS_PROXY_HOST",
+        default_value = "0.0.0.0"
+    )]
+    pub host: String,
+
+    #[arg(
+        id = "egress_proxy_port",
+        long = "egress-proxy-port",
+        env = "EGRESS_PROXY_PORT",
+        default_value_t = 4130
+    )]
+    pub port: u16,
+
+    #[arg(
+        id = "egress_anthropic_base",
+        long = "egress-anthropic-base",
+        env = "EGRESS_ANTHROPIC_BASE",
+        default_value = "https://api.anthropic.com"
+    )]
+    pub anthropic_base: String,
+
+    #[arg(
+        id = "egress_github_base",
+        long = "egress-github-base",
+        env = "EGRESS_GITHUB_BASE",
+        default_value = "https://github.com"
+    )]
+    pub github_base: String,
+}
+
 #[cfg(test)]
 mod tests {
     use clap::Parser;
