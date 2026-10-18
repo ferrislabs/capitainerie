@@ -27,10 +27,10 @@ export function AgentsPage() {
 			<SectionCard
 				title="Agents actifs"
 				description="Runs, dernière activité, tokens et coût cumulés."
-				flush
+				bare
 			>
 				{agents.isError ? (
-					<InlineAlert tone="danger" className="m-4">
+					<InlineAlert tone="danger">
 						Impossible de charger les agents.
 					</InlineAlert>
 				) : agents.isPending ? (

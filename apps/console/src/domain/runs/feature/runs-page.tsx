@@ -63,7 +63,7 @@ export function RunsPage() {
 				title="Runs"
 				description="Déposez le transcript d'une réunion : les agents en extraient les actions, les dédoublonnent et les proposent au Kanban."
 			/>
-			<div className="grid items-start gap-5 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
+			<div className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
 				<SectionCard
 					title="Déposer un transcript"
 					description="Texte brut ou fichier .txt, 200 000 caractères au plus."
@@ -91,10 +91,10 @@ export function RunsPage() {
 							? 'Les 20 runs les plus récents.'
 							: `${runCount} run${runCount > 1 ? 's' : ''} parmi les plus récents.`
 					}
-					flush
+					bare
 				>
 					{runs.isError ? (
-						<InlineAlert tone="danger" className="m-4">
+						<InlineAlert tone="danger">
 							Impossible de charger les runs.
 						</InlineAlert>
 					) : runs.isPending ? (

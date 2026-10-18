@@ -10,7 +10,7 @@ import { KanbanBoard } from '#/domain/kanban/ui/kanban-board'
 
 function BoardSkeleton() {
 	return (
-		<output className="grid gap-3 lg:grid-flow-col lg:auto-cols-[minmax(12rem,1fr)]">
+		<output className="grid gap-3 lg:grid-flow-col lg:auto-cols-[minmax(11rem,1fr)]">
 			<span className="sr-only">Chargement…</span>
 			{COLUMNS.map((column) => (
 				<div

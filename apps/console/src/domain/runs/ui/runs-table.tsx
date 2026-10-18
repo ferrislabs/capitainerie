@@ -29,7 +29,6 @@ export function RunsTable({ runs }: Props) {
 				icon={Play}
 				title="Aucun run"
 				description="Déposez un transcript pour lancer un premier run."
-				className="m-4"
 			/>
 		)
 	}
