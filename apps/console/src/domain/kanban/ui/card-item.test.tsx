@@ -46,6 +46,46 @@ function setup(c: Schemas.CardResponse, isPending = false) {
 }
 
 describe('CardItem', () => {
+	it('lays the card out in title, meta and footer zones', () => {
+		const { container } = render(
+			<CardItem
+				card={card()}
+				isPending={false}
+				expanded={false}
+				onToggleExpanded={vi.fn()}
+				onMove={vi.fn()}
+			/>,
+		)
+
+		const zones = [...container.querySelectorAll('[data-zone]')].map((zone) =>
+			zone.getAttribute('data-zone'),
+		)
+		expect(zones).toEqual(['title', 'meta', 'footer'])
+		const title = container.querySelector('[data-zone="title"]')
+		expect(title?.querySelector('h3')?.textContent).toBe(
+			'Écrire le compte rendu',
+		)
+		const meta = container.querySelector('[data-zone="meta"]')
+		expect(meta?.textContent).toContain('il faut écrire')
+		expect(meta?.textContent).toContain('writer')
+		const footer = container.querySelector('[data-zone="footer"]')
+		expect(footer?.textContent).toContain('Valider')
+	})
+
+	it('leaves the footer out when a card has no action', () => {
+		const { container } = render(
+			<CardItem
+				card={card({ column: 'done' })}
+				isPending={false}
+				expanded={false}
+				onToggleExpanded={vi.fn()}
+				onMove={vi.fn()}
+			/>,
+		)
+
+		expect(container.querySelector('[data-zone="footer"]')).toBeNull()
+	})
+
 	it('shows agent badge without prefix and the quote', () => {
 		setup(card())
 

@@ -29,6 +29,23 @@ async function renderRail(path: string, props = rail()) {
 }
 
 describe('AppRail', () => {
+	it('links the brand and the first entry to the home page', async () => {
+		await renderRail('/')
+
+		const brand = screen.getByRole('link', { name: 'Capitainerie, accueil' })
+		expect(brand.getAttribute('href')).toBe('/')
+		const home = screen.getByRole('link', { name: 'Accueil' })
+		expect(home.getAttribute('href')).toBe('/')
+		expect(home.getAttribute('aria-current')).toBe('page')
+	})
+
+	it('does not mark Accueil current on other pages', async () => {
+		await renderRail('/runs')
+
+		const home = screen.getByRole('link', { name: 'Accueil' })
+		expect(home.getAttribute('aria-current')).toBeNull()
+	})
+
 	it('shows the number of active runs in the running blue', async () => {
 		await renderRail('/live', rail({ badges: { '/live': 3 } }))
 
@@ -171,6 +188,8 @@ describe('AppRail', () => {
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(runs)
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Accueil' }),
+		)
 	})
 })

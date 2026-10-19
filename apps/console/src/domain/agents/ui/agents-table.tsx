@@ -1,6 +1,4 @@
-import { Bot } from 'lucide-react'
-import type { Schemas } from '#/api/api.client'
-import { EmptyState } from '#/components/layout/empty-state'
+import { Badge } from '#/components/ui/badge'
 import {
 	Table,
 	TableBody,
@@ -9,7 +7,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '#/components/ui/table'
-import { formatCost, formatTokens } from '#/domain/runs/format'
+import type { AgentRow } from '#/domain/agents/filters'
+import { CopyIdButton } from '#/domain/agents/ui/copy-id-button'
+import { formatCost } from '#/domain/runs/format'
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {
 	dateStyle: 'short',
@@ -17,47 +17,69 @@ const dateFormat = new Intl.DateTimeFormat('fr-FR', {
 })
 
 interface Props {
-	agents: ReadonlyArray<Schemas.AgentResponse>
+	rows: ReadonlyArray<AgentRow>
+	onOpen: (row: AgentRow) => void
 }
 
-export function AgentsTable({ agents }: Props) {
-	if (agents.length === 0) {
-		return (
-			<EmptyState
-				icon={Bot}
-				title="Aucun agent"
-				description="Les agents apparaîtront ici après leur premier run."
-			/>
-		)
-	}
-
+export function AgentsTable({ rows, onOpen }: Props) {
 	return (
 		<Table>
 			<TableHeader>
 				<TableRow>
 					<TableHead>Agent</TableHead>
+					<TableHead>Description</TableHead>
+					<TableHead>Source</TableHead>
+					<TableHead>Modèle</TableHead>
 					<TableHead className="text-right">Runs</TableHead>
 					<TableHead>Dernière activité</TableHead>
-					<TableHead className="text-right">Tokens entrée/sortie</TableHead>
 					<TableHead className="text-right">Coût</TableHead>
+					<TableHead>Identifiant</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
-				{agents.map((agent) => (
-					<TableRow key={agent.agent}>
-						<TableCell className="font-mono text-xs font-medium">
-							{agent.agent}
+				{rows.map((row) => (
+					<TableRow
+						key={row.agent.agent}
+						onClick={() => onOpen(row)}
+						className="cursor-pointer"
+					>
+						<TableCell className="whitespace-nowrap">
+							<button
+								type="button"
+								onClick={(event) => {
+									event.stopPropagation()
+									onOpen(row)
+								}}
+								className="rounded-sm text-left font-medium hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+							>
+								{row.name}
+							</button>
 						</TableCell>
-						<TableCell className="text-right figures">{agent.runs}</TableCell>
+						<TableCell className="max-w-80 min-w-56 text-muted-foreground">
+							{row.description ?? '—'}
+						</TableCell>
+						<TableCell>
+							{row.source ? <Badge variant="neutral">{row.source}</Badge> : '—'}
+						</TableCell>
+						<TableCell className="whitespace-nowrap font-mono text-xs">
+							{row.model ?? '—'}
+						</TableCell>
+						<TableCell className="text-right figures">
+							{row.agent.runs}
+						</TableCell>
 						<TableCell className="whitespace-nowrap text-muted-foreground figures">
-							{dateFormat.format(new Date(agent.last_seen))}
+							{dateFormat.format(new Date(row.agent.last_seen))}
 						</TableCell>
-						<TableCell className="text-right figures">
-							{formatTokens(agent.input_tokens)} /{' '}
-							{formatTokens(agent.output_tokens)}
+						<TableCell className="whitespace-nowrap text-right figures">
+							{formatCost(row.agent.cost_micros)}
 						</TableCell>
-						<TableCell className="text-right figures">
-							{formatCost(agent.cost_micros)}
+						<TableCell>
+							<div className="flex items-center gap-1">
+								<span className="font-mono text-xs whitespace-nowrap">
+									{row.agent.agent}
+								</span>
+								<CopyIdButton value={row.agent.agent} />
+							</div>
 						</TableCell>
 					</TableRow>
 				))}

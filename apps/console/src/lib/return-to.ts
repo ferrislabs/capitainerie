@@ -1,4 +1,4 @@
-export const DEFAULT_RETURN_TO = '/runs'
+export const DEFAULT_RETURN_TO = '/'
 
 interface ReturnToState {
 	returnTo?: unknown
