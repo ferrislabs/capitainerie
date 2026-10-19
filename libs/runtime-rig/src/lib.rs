@@ -1,5 +1,6 @@
 mod anthropic;
 mod args;
+mod captain;
 mod catalog;
 mod client;
 mod embeddings;
@@ -16,6 +17,7 @@ mod usage;
 mod write;
 
 pub use args::{EmbeddingArgs, LlmArgs};
+pub use captain::RigCaptain;
 pub use catalog::RigModelCatalog;
 pub use embeddings::RigEmbedder;
 pub use error::RuntimeError;

@@ -84,6 +84,11 @@ impl Api {
         }
     }
 
+    pub(crate) fn messages_request(&self) -> reqwest::RequestBuilder {
+        let request = self.http.post(format!("{}/v1/messages", self.base_url));
+        authenticate(request, self.key.expose()).header("anthropic-version", VERSION)
+    }
+
     pub(crate) async fn send(&self, request: &Request<'_>) -> Result<Reply, CoreError> {
         let span = info_span!(
             "chat",
@@ -214,7 +219,7 @@ fn refusal(value: &Value) -> CoreError {
     CoreError::Invalid(message)
 }
 
-fn http_failure(status: u16, body: &str) -> CoreError {
+pub(crate) fn http_failure(status: u16, body: &str) -> CoreError {
     let detail = serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|value| value["error"]["message"].as_str().map(str::to_owned))
