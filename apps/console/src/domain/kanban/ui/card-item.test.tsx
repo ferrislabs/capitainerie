@@ -170,4 +170,30 @@ describe('CardItem', () => {
 			unmount()
 		}
 	})
+
+	it('shows the client and the project in the meta zone', () => {
+		const { container } = render(
+			<CardItem
+				card={card({
+					client: { id: 'cl1', name: 'Acme' },
+					project: { id: 'p1', name: 'Site' },
+				})}
+				isPending={false}
+				expanded={false}
+				onToggleExpanded={vi.fn()}
+				onMove={vi.fn()}
+			/>,
+		)
+
+		const meta = container.querySelector('[data-zone="meta"]')
+		expect(meta?.textContent).toContain('Acme')
+		expect(meta?.textContent).toContain('Site')
+	})
+
+	it('shows no chip for an unlinked card', () => {
+		setup(card())
+
+		expect(screen.queryByText('Client :')).toBeNull()
+		expect(screen.queryByText('Projet :')).toBeNull()
+	})
 })

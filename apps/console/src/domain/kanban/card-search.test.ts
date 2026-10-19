@@ -11,4 +11,11 @@ describe('parseCardSearch', () => {
 		expect(parseCardSearch({ card: '  ' })).toEqual({ card: undefined })
 		expect(parseCardSearch({ card: 12 })).toEqual({ card: undefined })
 	})
+
+	it('keeps client and project names, one or several, and drops the rest', () => {
+		expect(
+			parseCardSearch({ client: ['Acme', 'Acme', ' ', 3], project: 'Site' }),
+		).toEqual({ client: ['Acme'], project: ['Site'] })
+		expect(parseCardSearch({ client: [], project: 4 })).toEqual({})
+	})
 })

@@ -1,15 +1,26 @@
 import { Link } from '@tanstack/react-router'
+import { SearchX } from 'lucide-react'
 import { useState } from 'react'
+import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
+import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import {
+	type CardFilters,
+	filterCards,
+	filterOptions,
+	hasFilters,
+	NO_FILTERS,
+} from '#/domain/kanban/card-filters'
 import { COLUMNS } from '#/domain/kanban/columns'
 import { CardPanel } from '#/domain/kanban/feature/card-panel'
 import { ExecuteCardFlow } from '#/domain/kanban/feature/execute-card-flow'
 import { useCards } from '#/domain/kanban/hooks/use-cards'
 import { useMoveCard } from '#/domain/kanban/hooks/use-move-card'
 import { KanbanBoard } from '#/domain/kanban/ui/kanban-board'
+import { KanbanToolbar } from '#/domain/kanban/ui/kanban-toolbar'
 
 function BoardSkeleton() {
 	return (
@@ -32,14 +43,25 @@ function BoardSkeleton() {
 interface Props {
 	openCardId: string | undefined
 	onOpenCard: (cardId: string | undefined) => void
+	filters?: CardFilters
+	onFiltersChange?: (filters: CardFilters) => void
 }
 
-export function KanbanPage({ openCardId, onOpenCard }: Props) {
+export function KanbanPage({
+	openCardId,
+	onOpenCard,
+	filters = NO_FILTERS,
+	onFiltersChange = () => undefined,
+}: Props) {
 	const cards = useCards()
 	const move = useMoveCard()
 	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
 	const [executingId, setExecutingId] = useState<string>()
 	const [startedRunId, setStartedRunId] = useState<string>()
+
+	const all = cards.data?.items ?? []
+	const visible = filterCards(all, filters)
+	const options = filterOptions(all, filters)
 
 	function toggleExpanded(cardId: string) {
 		setExpandedIds((current) => {
@@ -67,6 +89,12 @@ export function KanbanPage({ openCardId, onOpenCard }: Props) {
 					</Link>
 				</InlineAlert>
 			) : null}
+			<KanbanToolbar
+				filters={filters}
+				clients={options.clients}
+				projects={options.projects}
+				onChange={onFiltersChange}
+			/>
 			{move.errorMessage ? (
 				<InlineAlert tone="danger">{move.errorMessage}</InlineAlert>
 			) : null}
@@ -76,9 +104,24 @@ export function KanbanPage({ openCardId, onOpenCard }: Props) {
 				</InlineAlert>
 			) : cards.isPending ? (
 				<BoardSkeleton />
+			) : visible.length === 0 && hasFilters(filters) ? (
+				<EmptyState
+					icon={SearchX}
+					title="Aucune carte"
+					description="Aucune carte ne correspond à ces filtres."
+					action={
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => onFiltersChange(NO_FILTERS)}
+						>
+							Réinitialiser les filtres
+						</Button>
+					}
+				/>
 			) : (
 				<KanbanBoard
-					cards={cards.data.items}
+					cards={visible}
 					pendingCardId={move.pendingCardId}
 					expandedIds={expandedIds}
 					onToggleExpanded={toggleExpanded}

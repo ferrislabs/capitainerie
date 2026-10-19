@@ -21,8 +21,11 @@ import {
 	COLUMNS,
 	type Column,
 } from '#/domain/kanban/columns'
+import type { LinkPatch } from '#/domain/kanban/link-patch'
 import { CardComments } from '#/domain/kanban/ui/card-comments'
+import { CardLinks } from '#/domain/kanban/ui/card-links'
 import { CardRuns } from '#/domain/kanban/ui/card-runs'
+import { LinkChips } from '#/domain/kanban/ui/link-chips'
 
 export type CardSheetStatus = 'loading' | 'ready' | 'not_found' | 'error'
 
@@ -39,6 +42,11 @@ interface Props {
 	isCommenting: boolean
 	commentError: string | undefined
 	runExtra: (run: Schemas.RunResponse) => ReactNode
+	clients?: ReadonlyArray<Schemas.ClientResponse>
+	projects?: ReadonlyArray<Schemas.ProjectResponse>
+	isLinking?: boolean
+	linkError?: string | undefined
+	onLink?: (patch: LinkPatch) => void
 	onClose: () => void
 	onMove: (to: Column) => void
 	onExecute: (card: Schemas.CardResponse) => void
@@ -81,6 +89,11 @@ export function CardSheet({
 	isCommenting,
 	commentError,
 	runExtra,
+	clients = [],
+	projects = [],
+	isLinking = false,
+	linkError,
+	onLink,
 	onClose,
 	onMove,
 	onExecute,
@@ -111,6 +124,7 @@ export function CardSheet({
 									{agentName(agent)}
 								</Badge>
 							) : null}
+							<LinkChips client={card.client} project={card.project} />
 							<label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
 								<span className="sr-only sm:not-sr-only">Déplacer vers…</span>
 								<select
@@ -187,6 +201,16 @@ export function CardSheet({
 									</Link>
 								) : null}
 							</figure>
+						) : null}
+						{onLink ? (
+							<CardLinks
+								card={card}
+								clients={clients}
+								projects={projects}
+								isPending={isLinking}
+								errorMessage={linkError}
+								onLink={onLink}
+							/>
 						) : null}
 						{card.column === 'todo' ? (
 							<Button
