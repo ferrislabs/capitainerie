@@ -44,7 +44,7 @@ where
         let organization_id = subject.organization_id;
         let card = self
             .cards
-            .find(organization_id, id)
+            .get(organization_id, id)
             .await?
             .ok_or(CoreError::NotFound)?;
         require(
@@ -58,7 +58,14 @@ where
         if let Some(run_id) = card.created_by_run {
             runs.extend(self.runs.find(organization_id, run_id).await?);
         }
-        runs.extend(self.runs.list_for_card(organization_id, id).await?);
+        let proposing = card.created_by_run;
+        runs.extend(
+            self.runs
+                .list_for_card(organization_id, id)
+                .await?
+                .into_iter()
+                .filter(|overview| Some(overview.run.id) != proposing),
+        );
         Ok(CardDetail {
             card,
             comments,
@@ -135,7 +142,7 @@ mod tests {
     async fn a_card_of_another_organization_is_not_found() {
         let mut cards = MockCardRepository::new();
         cards
-            .expect_find()
+            .expect_get()
             .returning(|_, _| Box::pin(async { Ok(None) }));
         let authorizer = allow();
 
@@ -160,7 +167,7 @@ mod tests {
         let oldest = RunId::new();
         let stored = card(organization_id, Some(proposing));
         let mut cards = MockCardRepository::new();
-        cards.expect_find().returning(move |_, _| {
+        cards.expect_get().returning(move |_, _| {
             let stored = stored.clone();
             Box::pin(async move { Ok(Some(stored)) })
         });
@@ -204,11 +211,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_proposing_run_is_listed_once() {
+        let organization_id = OrganizationId::new();
+        let proposing = RunId::new();
+        let stored = card(organization_id, Some(proposing));
+        let mut cards = MockCardRepository::new();
+        cards.expect_get().returning(move |_, _| {
+            let stored = stored.clone();
+            Box::pin(async move { Ok(Some(stored)) })
+        });
+        let mut comments = MockCardCommentRepository::new();
+        comments
+            .expect_list()
+            .returning(|_, _| Box::pin(async { Ok(vec![]) }));
+        let mut runs = MockRunRepository::new();
+        runs.expect_find().returning(move |_, id| {
+            let found = overview(organization_id, id);
+            Box::pin(async move { Ok(Some(found)) })
+        });
+        runs.expect_list_for_card().returning(move |_, _| {
+            let listed = vec![overview(organization_id, proposing)];
+            Box::pin(async move { Ok(listed) })
+        });
+        let authorizer = allow();
+
+        let detail = CardDetailService::new(cards, comments, runs, &authorizer)
+            .get(subject(organization_id), CardId::new())
+            .await
+            .unwrap();
+
+        assert_eq!(detail.runs.len(), 1);
+    }
+
+    #[tokio::test]
     async fn reading_asks_the_pdp_for_card_read() {
         let organization_id = OrganizationId::new();
         let stored = card(organization_id, None);
         let mut cards = MockCardRepository::new();
-        cards.expect_find().returning(move |_, _| {
+        cards.expect_get().returning(move |_, _| {
             let stored = stored.clone();
             Box::pin(async move { Ok(Some(stored)) })
         });

@@ -12,6 +12,13 @@ pub trait CardRepository: Send {
         id: CardId,
     ) -> impl Future<Output = Result<Option<Card>, CoreError>> + Send;
 
+    /// Like [`Self::find`], without locking the row: for reads.
+    fn get(
+        &mut self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> impl Future<Output = Result<Option<Card>, CoreError>> + Send;
+
     /// Saves `card`, whose version was already incremented, only if the stored
     /// version is still `card.version - 1`; `Conflict` otherwise.
     fn update(&mut self, card: &Card) -> impl Future<Output = Result<(), CoreError>> + Send;

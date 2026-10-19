@@ -598,6 +598,7 @@ async fn a_human_comment_carries_the_subject_and_no_actor() {
 
     assert_eq!(response.status(), 201);
     let body: Value = response.json().await.unwrap();
+    assert_eq!(body["body"], "À relire");
     assert_eq!(body["author_subject"], "user-1");
     assert!(body["author_actor"].is_null());
     assert!(body["id"].is_string());

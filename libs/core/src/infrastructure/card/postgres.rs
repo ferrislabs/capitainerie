@@ -84,6 +84,31 @@ impl CardRepository for PgCardRepository<'_> {
         .transpose()
     }
 
+    async fn get(
+        &mut self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> Result<Option<Card>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            CardRow,
+            r#"
+            SELECT id, organization_id, title, description, "column",
+                   provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
+                   created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at
+            FROM cards
+            WHERE organization_id = $1 AND id = $2
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .map(Card::try_from)
+        .transpose()
+    }
+
     async fn update(&mut self, card: &Card) -> Result<(), CoreError> {
         let mut tx = self.tx.lock().await;
         let updated = sqlx::query!(
