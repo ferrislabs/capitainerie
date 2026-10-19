@@ -141,7 +141,7 @@ export function MeetingDetails({
 			<div className="flex flex-col gap-4 border-t px-3 py-3">
 				<Field label="Date de la réunion" id="meeting-date">
 					<DateInput
-						className="w-44"
+						wrapperClassName="w-44"
 						value={meetingDate}
 						onChange={(event) => onMeetingDateChange(event.target.value)}
 						disabled={disabled}

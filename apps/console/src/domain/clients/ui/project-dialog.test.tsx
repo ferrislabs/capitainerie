@@ -48,6 +48,6 @@ describe('ProjectDialog', () => {
 		await user.click(screen.getByRole('button', { name: 'Créer' }))
 		const name = screen.getByLabelText('Nom')
 		expect(name.getAttribute('aria-invalid')).toBe('true')
-		expect(screen.getAllByRole('alert').length).toBeGreaterThan(0)
+		expect(document.querySelector('[data-slot="field-error"]')).not.toBeNull()
 	})
 })

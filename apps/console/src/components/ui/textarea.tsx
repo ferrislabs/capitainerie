@@ -1,6 +1,7 @@
 import {
 	type ChangeEvent,
 	type ComponentProps,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -74,6 +75,19 @@ function Textarea({
 		const element = inner.current
 		if (element && grows) fitHeight(element, maxRows)
 	}, [current, grows, maxRows])
+
+	useEffect(() => {
+		const element = inner.current
+		if (!element || !grows || typeof ResizeObserver === 'undefined') return
+		let width = element.clientWidth
+		const observer = new ResizeObserver(() => {
+			if (element.clientWidth === width) return
+			width = element.clientWidth
+			fitHeight(element, maxRows)
+		})
+		observer.observe(element)
+		return () => observer.disconnect()
+	}, [grows, maxRows])
 
 	const setRefs = (node: HTMLTextAreaElement | null) => {
 		inner.current = node

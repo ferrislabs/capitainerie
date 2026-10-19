@@ -79,7 +79,12 @@ function TextInputs() {
 				/>
 			</Field>
 			<Field label="Petit format" optional>
-				<TextInput size="sm" placeholder="28 px de haut" />
+				<TextInput
+					size="sm"
+					placeholder="28 px de haut"
+					wrapperClassName="max-w-xs"
+					className="font-mono"
+				/>
 			</Field>
 			<Field label="Recherche">
 				<TextInput
@@ -330,6 +335,13 @@ function Choices() {
 					/>
 					<RadioGroupItem value="low" label="Basse" />
 				</RadioGroup>
+			</Field>
+			<Field label="Domaines" group hint="Plusieurs valeurs">
+				<div className="flex flex-col gap-2">
+					<Checkbox label="Code" defaultChecked />
+					<Checkbox label="Documentation" />
+					<Checkbox label="Infrastructure" />
+				</div>
 			</Field>
 			<Field label="Statut" group error="Choisissez un statut">
 				<RadioGroup>

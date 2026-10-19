@@ -254,6 +254,17 @@ describe('Combobox', () => {
 	})
 })
 
+describe('Combobox keys', () => {
+	it('leaves Home and End to the caret while the list is closed', async () => {
+		const user = userEvent.setup()
+		render(<Single />)
+		const input = screen.getByRole('combobox')
+		input.focus()
+		await user.keyboard('{End}')
+		expect(screen.queryByRole('listbox')).toBeNull()
+	})
+})
+
 describe('Combobox multiple', () => {
 	it('keeps the list open, shows chips and removes them', async () => {
 		const user = userEvent.setup()
@@ -295,6 +306,39 @@ describe('Combobox multiple', () => {
 		expect(onChange).toHaveBeenLastCalledWith(['ete'])
 		await user.keyboard('{Enter}')
 		expect(onChange).toHaveBeenLastCalledWith(['ete', 'ecu'])
+	})
+
+	it('moves between chips with arrows and removes the focused one', async () => {
+		const user = userEvent.setup()
+		const onChange = vi.fn()
+		function Chips() {
+			const [value, setValue] = useState(['ete', 'ancre', 'cap'])
+			return (
+				<Combobox
+					multiple
+					aria-label="Étiquettes"
+					items={ITEMS}
+					value={value}
+					onValueChange={(next) => {
+						setValue(next)
+						onChange(next)
+					}}
+				/>
+			)
+		}
+		render(<Chips />)
+		const input = screen.getByRole('combobox')
+		input.focus()
+		await user.keyboard('{ArrowLeft}')
+		expect(document.activeElement?.getAttribute('aria-label')).toBe('Cap')
+		await user.keyboard('{ArrowLeft}')
+		expect(document.activeElement?.getAttribute('aria-label')).toBe('Ancre')
+		await user.keyboard('{Backspace}')
+		expect(onChange).toHaveBeenLastCalledWith(['ete', 'cap'])
+		expect(document.activeElement?.getAttribute('aria-label')).toBe('Été')
+		await user.keyboard('{ArrowRight}{Delete}')
+		expect(onChange).toHaveBeenLastCalledWith(['ete'])
+		expect(document.activeElement).toBe(input)
 	})
 
 	it('clears all chips', async () => {

@@ -1,5 +1,12 @@
 import { CircleAlert } from 'lucide-react'
-import { createContext, type ReactNode, useContext, useId } from 'react'
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useId,
+	useState,
+} from 'react'
 
 import { Label } from '#/components/ui/label'
 import { cn } from '#/lib/utils'
@@ -41,7 +48,7 @@ function useFieldControl(props: ControlProps = {}) {
 	const field = useContext(FieldContext)
 	const own = props['aria-invalid']
 	return {
-		id: field?.id ?? props.id,
+		id: props.id ?? field?.id,
 		labelId: field?.labelId,
 		describedBy: joinIds(props['aria-describedby'], field?.describedBy),
 		invalid: own === true || own === 'true' || field?.invalid === true,
@@ -94,6 +101,23 @@ function Counter({
 	)
 }
 
+const ERROR_SETTLE_MS = 700
+
+function useSettled(error: ReactNode): ReactNode {
+	const [shown, setShown] = useState<ReactNode>(error)
+	const present = Boolean(error)
+	const first = Boolean(shown) === false
+	useEffect(() => {
+		if (!present || first) {
+			setShown(error)
+			return
+		}
+		const timer = window.setTimeout(() => setShown(error), ERROR_SETTLE_MS)
+		return () => window.clearTimeout(timer)
+	}, [error, present, first])
+	return present ? shown : undefined
+}
+
 function Field({
 	label,
 	id,
@@ -116,14 +140,16 @@ function Field({
 	const hintId = `${generated}-hint`
 	const errorId = `${generated}-error`
 	const counterId = `${generated}-counter`
+	const settled = useSettled(error)
 	const hasError = Boolean(error)
+	const showError = Boolean(settled)
 	const hasCounter = count !== undefined
 
 	const value: FieldControl = {
 		id: controlId,
 		labelId,
 		describedBy: joinIds(
-			hasError ? errorId : undefined,
+			showError ? errorId : undefined,
 			hint ? hintId : undefined,
 			hasCounter ? counterId : undefined,
 		),
@@ -144,6 +170,8 @@ function Field({
 		<span className="font-normal text-muted-foreground">(facultatif)</span>
 	) : null
 
+	const Wrapper = group ? 'fieldset' : 'div'
+
 	const caption = (
 		<>
 			{label}
@@ -153,26 +181,28 @@ function Field({
 
 	return (
 		<FieldContext.Provider value={value}>
-			<div
+			<Wrapper
 				data-slot="field"
 				data-invalid={hasError}
-				role={group ? 'group' : undefined}
-				aria-labelledby={group ? labelId : undefined}
 				aria-describedby={group ? value.describedBy : undefined}
-				className={cn('flex flex-col gap-1.5', className)}
+				className={cn(
+					'flex min-w-0 flex-col gap-1.5',
+					group && 'm-0 border-0 p-0',
+					className,
+				)}
 			>
 				<div className="flex items-baseline justify-between gap-2">
 					{group ? (
-						<span
+						<legend
 							id={labelId}
 							className={cn(
-								'flex items-center gap-1 text-sm leading-none font-medium',
+								'flex items-center gap-1 p-0 text-sm leading-none font-medium',
 								hideLabel && 'sr-only',
 								labelClassName,
 							)}
 						>
 							{caption}
-						</span>
+						</legend>
 					) : (
 						<Label
 							id={labelId}
@@ -192,21 +222,22 @@ function Field({
 						{hint}
 					</p>
 				) : null}
-				{hasError ? (
-					<p
-						id={errorId}
-						role="alert"
-						data-slot="field-error"
-						className="flex items-start gap-1.5 text-xs font-medium text-destructive"
-					>
-						<CircleAlert
-							aria-hidden="true"
-							className="mt-px size-3.5 shrink-0"
-						/>
-						<span>{error}</span>
-					</p>
-				) : null}
-			</div>
+				<div aria-live="polite" data-slot="field-error-region">
+					{showError ? (
+						<p
+							id={errorId}
+							data-slot="field-error"
+							className="flex items-start gap-1.5 text-xs font-medium text-destructive"
+						>
+							<CircleAlert
+								aria-hidden="true"
+								className="mt-px size-3.5 shrink-0"
+							/>
+							<span>{settled}</span>
+						</p>
+					) : null}
+				</div>
+			</Wrapper>
 		</FieldContext.Provider>
 	)
 }

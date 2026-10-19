@@ -74,7 +74,9 @@ describe('MeetingDetails', () => {
 		await user.type(screen.getByLabelText('Dépôt par défaut'), 'a')
 
 		expect(props.onRepositoryChange).toHaveBeenCalledWith('a')
-		expect(screen.getByRole('alert').textContent).toMatch(/propriétaire\/nom/)
+		expect(screen.getByText(/propriétaire\/nom/).textContent).toMatch(
+			/propriétaire\/nom/,
+		)
 	})
 
 	it('forwards the date', async () => {

@@ -38,7 +38,7 @@ export function AgentsToolbar({ filters, sources, models, onChange }: Props) {
 				}
 				leading={<Search aria-hidden="true" />}
 				clearable
-				className="min-w-48 flex-1"
+				wrapperClassName="min-w-48 flex-1"
 			/>
 		</search>
 	)

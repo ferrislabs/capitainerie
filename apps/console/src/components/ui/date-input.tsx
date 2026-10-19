@@ -9,7 +9,7 @@ type DateInputProps = Omit<TextInputProps, 'type' | 'leading' | 'trailing'> & {
 function DateInput({
 	clearable = true,
 	clearLabel = 'Effacer la date',
-	inputClassName,
+	className,
 	...props
 }: DateInputProps) {
 	return (
@@ -18,9 +18,9 @@ function DateInput({
 			type="date"
 			clearable={clearable}
 			clearLabel={clearLabel}
-			inputClassName={cn(
+			className={cn(
 				'figures [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:hover:opacity-100',
-				inputClassName,
+				className,
 			)}
 		/>
 	)

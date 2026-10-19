@@ -27,7 +27,7 @@ export function DirectoryToolbar({
 				onChange={(event) => onQueryChange(event.target.value)}
 				leading={<Search aria-hidden="true" />}
 				clearable
-				className="min-w-48 flex-1"
+				wrapperClassName="min-w-48 flex-1"
 			/>
 			<Checkbox
 				label="Archivés"

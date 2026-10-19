@@ -44,6 +44,28 @@ describe('Textarea', () => {
 		expect(area.style.height).toBe('120px')
 	})
 
+	it('recomputes the height when the width changes', () => {
+		const callbacks: Array<() => void> = []
+		const original = window.ResizeObserver
+		window.ResizeObserver = class {
+			constructor(callback: () => void) {
+				callbacks.push(callback)
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver
+		mockScrollHeight(40)
+		render(<Textarea autoGrow aria-label="Note" />)
+		const area = screen.getByLabelText('Note')
+		expect(area.style.height).toBe('40px')
+		mockScrollHeight(100)
+		vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(200)
+		for (const callback of callbacks) callback()
+		expect(area.style.height).toBe('100px')
+		window.ResizeObserver = original
+	})
+
 	it('does not manage height by default', () => {
 		mockScrollHeight(300)
 		render(<Textarea aria-label="Note" />)

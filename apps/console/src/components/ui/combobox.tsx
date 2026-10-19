@@ -103,6 +103,7 @@ function Combobox(props: ComboboxProps) {
 	const [open, setOpen] = useState(false)
 	const [query, setQuery] = useState<string | null>(null)
 	const [activeValue, setActiveValue] = useState<string | null>(null)
+	const pendingFocus = useRef<number | 'input' | null>(null)
 
 	const selectedValues: ReadonlyArray<string> = props.multiple
 		? props.value
@@ -144,6 +145,20 @@ function Combobox(props: ComboboxProps) {
 	useEffect(() => {
 		return () => window.clearTimeout(typeTimer.current)
 	}, [])
+
+	const chipValues = props.multiple ? props.value : null
+	useEffect(() => {
+		const target = pendingFocus.current
+		if (target === null) return
+		pendingFocus.current = null
+		const chips = Array.from(
+			anchorRef.current?.querySelectorAll<HTMLElement>(
+				'[data-slot="combobox-chip"]',
+			) ?? [],
+		)
+		const next = target === 'input' ? undefined : chips[target]
+		;(next ?? inputRef.current)?.focus()
+	}, [chipValues])
 
 	useEffect(() => {
 		if (open && activeIndex >= 0) {
@@ -193,10 +208,46 @@ function Combobox(props: ComboboxProps) {
 		}
 	}
 
-	const removeValue = (value: string) => {
+	const chipElements = () =>
+		Array.from(
+			anchorRef.current?.querySelectorAll<HTMLElement>(
+				'[data-slot="combobox-chip"]',
+			) ?? [],
+		)
+
+	const removeValue = (value: string, refocus: number | 'input' = 'input') => {
 		if (props.multiple) {
+			pendingFocus.current = refocus
 			props.onValueChange(props.value.filter((item) => item !== value))
-			inputRef.current?.focus()
+		}
+	}
+
+	const onChipKeyDown = (
+		event: KeyboardEvent<HTMLElement>,
+		index: number,
+		value: string,
+	) => {
+		if (disabled) return
+		const chips = chipElements()
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault()
+			chips[Math.max(index - 1, 0)]?.focus()
+		} else if (event.key === 'ArrowRight') {
+			event.preventDefault()
+			if (index < chips.length - 1) chips[index + 1]?.focus()
+			else inputRef.current?.focus()
+		} else if (event.key === 'Home') {
+			event.preventDefault()
+			chips[0]?.focus()
+		} else if (event.key === 'End') {
+			event.preventDefault()
+			chips.at(-1)?.focus()
+		} else if (event.key === 'Backspace') {
+			event.preventDefault()
+			removeValue(value, index > 0 ? index - 1 : 'input')
+		} else if (event.key === 'Delete') {
+			event.preventDefault()
+			removeValue(value, index < chips.length - 1 ? index : 'input')
 		}
 	}
 
@@ -243,10 +294,19 @@ function Combobox(props: ComboboxProps) {
 			else move(key === 'ArrowDown' ? 1 : -1)
 			return
 		}
-		if (key === 'Home' || key === 'End') {
-			if (editable && (query ?? '') !== '') return
+		if (
+			key === 'ArrowLeft' &&
+			props.multiple &&
+			props.value.length > 0 &&
+			inputValue === ''
+		) {
 			event.preventDefault()
-			if (!open) setOpen(true)
+			chipElements().at(-1)?.focus()
+			return
+		}
+		if (key === 'Home' || key === 'End') {
+			if (!open || (editable && (query ?? '') !== '')) return
+			event.preventDefault()
 			const index = edgeIndex(flat, key === 'Home' ? 'first' : 'last')
 			setActiveValue(flat[index]?.value ?? null)
 			return
@@ -376,9 +436,13 @@ function Combobox(props: ComboboxProps) {
 			)}
 		>
 			{props.multiple
-				? props.value.map((value) => (
+				? props.value.map((value, index) => (
 						<span
 							key={value}
+							role="group"
+							tabIndex={-1}
+							aria-label={labelOf(value)}
+							onKeyDown={(event) => onChipKeyDown(event, index, value)}
 							data-slot="combobox-chip"
 							className="inline-flex h-5 max-w-full items-center gap-1 rounded-sm bg-secondary pr-0.5 pl-1.5 text-xs text-secondary-foreground"
 						>
@@ -389,7 +453,9 @@ function Combobox(props: ComboboxProps) {
 								disabled={disabled}
 								aria-label={`Retirer ${labelOf(value)}`}
 								onMouseDown={keepFocus}
-								onClick={() => removeValue(value)}
+								onClick={() => {
+									removeValue(value)
+								}}
 								className="flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none"
 							>
 								<X aria-hidden="true" className="size-3" />

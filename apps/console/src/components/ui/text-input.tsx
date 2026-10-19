@@ -29,7 +29,7 @@ interface TextInputProps extends Omit<ComponentProps<'input'>, 'size'> {
 	clearLabel?: string
 	loading?: boolean
 	invalid?: boolean
-	inputClassName?: string
+	wrapperClassName?: string
 }
 
 function clearNativeValue(input: HTMLInputElement) {
@@ -50,7 +50,7 @@ function TextInput({
 	loading = false,
 	invalid,
 	className,
-	inputClassName,
+	wrapperClassName,
 	id,
 	value,
 	defaultValue,
@@ -113,7 +113,7 @@ function TextInput({
 				FIELD_BOX,
 				FIELD_PADDING[size],
 				FIELD_TEXT[size],
-				className,
+				wrapperClassName,
 			)}
 		>
 			{leading ? <span className={FIELD_SLOT}>{leading}</span> : null}
@@ -134,7 +134,7 @@ function TextInput({
 					'h-full min-h-0 min-w-0 flex-1 self-stretch bg-transparent py-1 outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed',
 					props.type === 'search' &&
 						'[&::-webkit-search-cancel-button]:appearance-none',
-					inputClassName,
+					className,
 				)}
 				{...props}
 			/>
