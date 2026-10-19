@@ -133,7 +133,7 @@ pub struct ActiveStepResponse {
   - Un bloc par step, placé selon `started_at` et `finished_at`. Couleur selon l'état (DESIGN.md, signaux) et une icône en plus de la couleur. Un step en cours s'étire jusqu'à maintenant.
   - Sous la frise, deux volets :
     - à gauche, la liste des steps ;
-    - à droite, l'inspecteur du step sélectionné, avec les onglets « Sortie » (`detail`, `execution` ou `error`, en JSON coloré, avec un bouton copier), « Outils » (`tool_calls`) et « Métadonnées » (agent, modèle, tokens, coût, latence, horodatages).
+    - à droite, l'inspecteur du step sélectionné, avec les onglets « Sortie » (`detail`, `execution` ou `error`, en JSON indenté, sans couleur d'état, avec un bouton copier), « Outils » (`tool_calls`) et « Métadonnées » (agent, modèle, tokens, coût, latence, horodatages).
   - Les décisions du PDP restent sous la frise, comme aujourd'hui.
   - Le clavier sélectionne un step (flèches haut et bas dans la liste) ; la frise suit la sélection.
 
