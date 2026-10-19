@@ -28,22 +28,18 @@ export function AgentsToolbar({ filters, sources, models, onChange }: Props) {
 				selected={filters.models}
 				onChange={(values) => onChange({ ...filters, models: values })}
 			/>
-			<div className="relative min-w-48 flex-1">
-				<Search
-					aria-hidden="true"
-					className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-				/>
-				<Input
-					type="search"
-					aria-label="Rechercher un agent"
-					placeholder="Rechercher un agent"
-					value={filters.query}
-					onChange={(event) =>
-						onChange({ ...filters, query: event.target.value })
-					}
-					className="pl-8"
-				/>
-			</div>
+			<Input
+				type="search"
+				aria-label="Rechercher un agent"
+				placeholder="Rechercher un agent"
+				value={filters.query}
+				onChange={(event) =>
+					onChange({ ...filters, query: event.target.value })
+				}
+				leading={<Search aria-hidden="true" />}
+				clearable
+				className="min-w-48 flex-1"
+			/>
 		</search>
 	)
 }
