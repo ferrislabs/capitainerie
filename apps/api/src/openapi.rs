@@ -33,6 +33,7 @@ use capitainerie_handlers_providers::{
 };
 use capitainerie_handlers_runs::{
     self as runs,
+    list_active_runs::{ActiveRunListResponse, ActiveRunResponse, ActiveStepResponse},
     list_runs::RunListResponse,
     response::{RunResponse, RunStatusResponse},
     submit_transcript::{SubmitTranscriptRequest, SubmitTranscriptResponse},
@@ -55,6 +56,7 @@ use utoipa::{
         identity::me::handler,
         runs::submit_transcript::handler,
         runs::list_runs::handler,
+        runs::list_active_runs::handler,
         runs::get_run::handler,
         runs::timeline::handler,
         cards::list_cards::handler,
@@ -87,6 +89,9 @@ use utoipa::{
         SubmitTranscriptRequest,
         SubmitTranscriptResponse,
         RunListResponse,
+        ActiveRunListResponse,
+        ActiveRunResponse,
+        ActiveStepResponse,
         RunResponse,
         RunStatusResponse,
         RunTimelineResponse,

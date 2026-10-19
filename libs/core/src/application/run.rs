@@ -10,6 +10,7 @@ use crate::{
         provider::ports::ModelAssignmentRepository,
         run::{
             RunOverview,
+            active::ActiveRun,
             ports::StepRepository,
             service::{RunService, SubmitTranscript},
             step::Step,
@@ -122,6 +123,34 @@ impl CapitainerieUseCase {
         RunService::new(transcript_repository, run_repository, emitter, authz)
             .get(subject, id)
             .await
+    }
+
+    #[transactional(transcript, run, step, emitter, authz)]
+    pub async fn list_active_runs(&self, subject: Subject) -> Result<Vec<ActiveRun>, CoreError> {
+        let overviews = RunService::new(transcript_repository, run_repository, emitter, authz)
+            .active(subject)
+            .await?;
+        let ids: Vec<RunId> = overviews.iter().map(|overview| overview.run.id).collect();
+        let mut step_repository = step_repository;
+        let steps = step_repository.list_for_runs(&ids).await?;
+        let groups: Vec<&[Step]> = steps
+            .chunk_by(|left, right| left.run_id == right.run_id)
+            .collect();
+        Ok(overviews
+            .into_iter()
+            .map(|overview| {
+                let own = groups
+                    .iter()
+                    .find(|group| {
+                        group
+                            .first()
+                            .is_some_and(|step| step.run_id == overview.run.id)
+                    })
+                    .copied()
+                    .unwrap_or_default();
+                ActiveRun::assemble(overview, own)
+            })
+            .collect())
     }
 
     #[transactional(transcript, run, step, decision_log, emitter, authz)]

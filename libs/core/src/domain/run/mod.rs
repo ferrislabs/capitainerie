@@ -1,3 +1,4 @@
+pub mod active;
 pub mod locate;
 pub mod ports;
 pub mod service;

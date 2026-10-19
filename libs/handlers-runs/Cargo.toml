@@ -17,5 +17,11 @@ serde_json.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 
+[dev-dependencies]
+capitainerie-auth.workspace = true
+reqwest.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+
 [lints]
 workspace = true
