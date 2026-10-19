@@ -10,6 +10,8 @@ import {
 	MISTRAL_EMBED,
 	QWEN,
 	SONNET,
+	VOXTRAL,
+	WHISPER,
 } from '#/domain/settings/test-fixtures'
 import { ModelAssignmentsForm } from '#/domain/settings/ui/model-assignments-form'
 
@@ -21,6 +23,7 @@ function setup(
 ) {
 	const handlers = {
 		onChange: vi.fn(),
+		onTranscriberChange: vi.fn(),
 		onExecutorChange: vi.fn(),
 		onSubmit: vi.fn(),
 	}
@@ -194,5 +197,62 @@ describe('ModelAssignmentsForm', () => {
 		const executor = screen.getByLabelText('Exécutant') as HTMLSelectElement
 		expect(executor.disabled).toBe(true)
 		expect(executor.textContent).toContain('Aucun modèle Claude')
+	})
+
+	it('offers the transcriber only transcription models of mistral or openai_compatible', async () => {
+		const anthropicTranscriber = {
+			...SONNET,
+			id: 'claude-whisper',
+			capabilities: { chat: false, embeddings: false, transcription: true },
+		}
+		const handlers = setup({
+			models: [QWEN, BGE, SONNET, VOXTRAL, WHISPER, anthropicTranscriber],
+		})
+		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+
+		expect(optionValues(select)).toEqual([
+			'mistral:voxtral-mini-latest',
+			'openai_compatible:whisper-large-v3',
+		])
+		expect(select.value).toBe('')
+		expect(select.selectedOptions[0].textContent).toBe('Aucun transcripteur')
+
+		await userEvent.selectOptions(select, 'mistral:voxtral-mini-latest')
+		expect(handlers.onTranscriberChange).toHaveBeenCalledWith({
+			provider: 'mistral',
+			model: 'voxtral-mini-latest',
+		})
+	})
+
+	it('clears the transcriber with the empty choice', async () => {
+		const handlers = setup({
+			models: [VOXTRAL],
+			values: { transcriber: { provider: 'mistral', model: VOXTRAL.id } },
+		})
+		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+		expect(select.value).toBe('mistral:voxtral-mini-latest')
+
+		await userEvent.selectOptions(select, '')
+
+		expect(handlers.onTranscriberChange).toHaveBeenCalledWith(undefined)
+	})
+
+	it('says when no model can transcribe', () => {
+		setup({ models: [QWEN, BGE] })
+		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+		expect(select.disabled).toBe(true)
+		expect(select.textContent).toContain('Aucun modèle de transcription')
+		expect(screen.getByText(/Facultatif/)).toBeTruthy()
+	})
+
+	it('shows a saved transcriber the catalog dropped', () => {
+		setup({
+			models: [QWEN],
+			values: { transcriber: { provider: 'mistral', model: 'voxtral-old' } },
+		})
+
+		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+		expect(select.value).toBe('mistral:voxtral-old')
+		expect(select.selectedOptions[0].textContent).toContain('indisponible')
 	})
 })

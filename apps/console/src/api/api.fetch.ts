@@ -12,7 +12,7 @@ function isRawBody(body: unknown): body is BodyInit {
 	)
 }
 
-async function toApiError(response: Response): Promise<ApiRequestError> {
+export async function toApiError(response: Response): Promise<ApiRequestError> {
 	let body: { code?: unknown; message?: unknown } | undefined
 	try {
 		body = await response.json()
@@ -28,9 +28,17 @@ async function toApiError(response: Response): Promise<ApiRequestError> {
 	return new ApiRequestError(response.status, code, message)
 }
 
-export const fetcher: Fetcher['fetch'] = async (input) => {
+export function authHeaders(): Headers {
 	const headers = new Headers()
 	const accessToken = authStore.state.accessToken
+	if (accessToken) {
+		headers.set('Authorization', `Bearer ${accessToken}`)
+	}
+	return headers
+}
+
+export const fetcher: Fetcher['fetch'] = async (input) => {
+	const headers = authHeaders()
 
 	if (input.urlSearchParams) {
 		input.url.search = input.urlSearchParams.toString()
@@ -52,10 +60,6 @@ export const fetcher: Fetcher['fetch'] = async (input) => {
 			body = JSON.stringify(bodyData)
 			headers.set('Content-Type', 'application/json')
 		}
-	}
-
-	if (accessToken) {
-		headers.set('Authorization', `Bearer ${accessToken}`)
 	}
 
 	if (input.parameters?.header) {

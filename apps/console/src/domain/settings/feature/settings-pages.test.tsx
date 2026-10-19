@@ -12,6 +12,8 @@ import {
 	COMPATIBLE_PROVIDER,
 	QWEN,
 	SONNET,
+	VOXTRAL,
+	WHISPER,
 } from '#/domain/settings/test-fixtures'
 import { clearAuth, setAuth } from '#/store/auth.store'
 
@@ -212,5 +214,60 @@ describe('settings pages', () => {
 
 		expect(await screen.findByText(/Modèles enregistrés/)).toBeTruthy()
 		expect(saved).toMatchObject({ executor: 'claude-sonnet-5' })
+	})
+
+	it('assigns, then clears, the optional transcriber', async () => {
+		setAuth({ accessToken: tokenWithRoles([ADMIN_ROLE]) })
+		const ref = { provider: 'openai_compatible', model: QWEN.id }
+		let saved: unknown = {
+			extractor: ref,
+			judge: ref,
+			writer: ref,
+			embeddings: { provider: 'openai_compatible', model: BGE.id },
+		}
+		const puts: Array<unknown> = []
+		fetchMock.mockImplementation(
+			routes({
+				'GET /api/v1/providers': () =>
+					json(200, { providers: [COMPATIBLE_PROVIDER] }),
+				'GET /api/v1/models': () =>
+					json(200, {
+						models: [QWEN, BGE, SONNET, VOXTRAL, WHISPER],
+						errors: [],
+					}),
+				'GET /api/v1/model-assignments': () =>
+					json(200, { assignments: saved }),
+				'PUT /api/v1/model-assignments': (init) => {
+					saved = JSON.parse(String(init.body))
+					puts.push(saved)
+					return json(200, { assignments: saved })
+				},
+			}),
+		)
+		const user = userEvent.setup()
+		render(<ModelsPage />, { wrapper: harness.wrapper })
+
+		const transcriber = (await screen.findByLabelText(
+			'Transcripteur',
+		)) as HTMLSelectElement
+		expect(transcriber.value).toBe('')
+		await user.selectOptions(transcriber, 'mistral:voxtral-mini-latest')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		await waitFor(() => expect(puts).toHaveLength(1))
+		expect(puts[0]).toMatchObject({
+			transcriber: { provider: 'mistral', model: VOXTRAL.id },
+		})
+		await waitFor(() =>
+			expect(
+				(screen.getByLabelText('Transcripteur') as HTMLSelectElement).value,
+			).toBe('mistral:voxtral-mini-latest'),
+		)
+
+		await user.selectOptions(screen.getByLabelText('Transcripteur'), '')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		await waitFor(() => expect(puts).toHaveLength(2))
+		expect(puts[1]).not.toHaveProperty('transcriber')
 	})
 })

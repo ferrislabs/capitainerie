@@ -17,8 +17,10 @@ import {
 	AGENT_ROLES,
 	type AssignmentDraft,
 	completeAssignments,
+	draftFrom,
 	sameExecutor,
 	sameModelRef,
+	TRANSCRIBER_ROLE,
 } from '#/domain/settings/roles'
 import { ModelAssignmentsForm } from '#/domain/settings/ui/model-assignments-form'
 import { ModelsCatalog } from '#/domain/settings/ui/models-catalog'
@@ -32,10 +34,14 @@ export function ModelsPage() {
 	const [edits, setEdits] = useState<AssignmentDraft>({})
 
 	const saved = assignments.data?.assignments ?? null
-	const values: AssignmentDraft = { ...(saved ?? {}), ...edits }
+	const values: AssignmentDraft = { ...draftFrom(saved), ...edits }
 	const complete = completeAssignments(values)
 	const isDirty =
 		AGENT_ROLES.some((role) => !sameModelRef(values[role], saved?.[role])) ||
+		!sameModelRef(
+			values[TRANSCRIBER_ROLE],
+			saved?.[TRANSCRIBER_ROLE] ?? undefined,
+		) ||
 		!sameExecutor(values.executor, saved?.executor)
 	const embeddingsChanged =
 		saved !== null &&
@@ -58,7 +64,7 @@ export function ModelsPage() {
 			/>
 			<SectionCard
 				title="Modèle par rôle"
-				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings ; l’Exécutant, les modèles Claude."
+				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings ; le Transcripteur (facultatif), les modèles de transcription de Mistral ou d’un serveur compatible OpenAI ; l’Exécutant, les modèles Claude."
 				flush
 			>
 				{assignments.isError ? (
@@ -88,6 +94,12 @@ export function ModelsPage() {
 								saveAssignments.reset()
 							}
 							setEdits((previous) => ({ ...previous, [role]: ref }))
+						}}
+						onTranscriberChange={(ref) => {
+							if (saveAssignments.isSuccess || saveAssignments.errorMessage) {
+								saveAssignments.reset()
+							}
+							setEdits((previous) => ({ ...previous, transcriber: ref }))
 						}}
 						onExecutorChange={(model) => {
 							if (saveAssignments.isSuccess || saveAssignments.errorMessage) {

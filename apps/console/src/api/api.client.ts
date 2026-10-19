@@ -46,7 +46,7 @@ export namespace Schemas {
     runs: number;
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
-  export type CapabilitiesResponse = { chat: boolean; embeddings: boolean };
+  export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; transcription: boolean };
   export type CardCommentId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
@@ -89,6 +89,7 @@ export namespace Schemas {
   export type CreateGithubAppRequest = { code: string; state: string };
   export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
   export type CreateManifestRequest = { owner: ManifestOwner };
+  export type CreateTranscriptionRequest = { file: string };
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -145,6 +146,7 @@ export namespace Schemas {
     executor?: (string | null) | undefined;
     extractor: ModelRefDto;
     judge: ModelRefDto;
+    transcriber?: (null | ModelRefDto) | undefined;
     writer: ModelRefDto;
   };
   export type ModelAssignmentsResponse = Partial<{ assignments: null | ModelAssignmentsDto }>;
@@ -207,6 +209,7 @@ export namespace Schemas {
   };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
   export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
+  export type TranscriptionResponse = { model: string; text: string };
 
   // </Schemas>
 }
@@ -518,6 +521,24 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunTimelineResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
   };
+  export type post_CreateTranscription = {
+    method: "POST";
+    path: "/api/v1/transcriptions";
+    requestFormat: "form-data";
+    parameters: {
+      body: Schemas.CreateTranscriptionRequest;
+    };
+    responses: {
+      200: Schemas.TranscriptionResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      413: Schemas.ApiErrorResponse;
+      415: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      502: Schemas.ApiErrorResponse;
+    };
+  };
   export type post_SubmitTranscript = {
     method: "POST";
     path: "/api/v1/transcripts";
@@ -579,6 +600,7 @@ export type EndpointByMethod = {
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
     "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
+    "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
   };
   delete: {

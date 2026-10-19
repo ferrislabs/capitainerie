@@ -9,7 +9,7 @@ export function model(
 		provider,
 		id,
 		display_name: id,
-		capabilities: { chat: true, embeddings: false },
+		capabilities: { chat: true, embeddings: false, transcription: false },
 		context_window: null,
 		price: null,
 		...overrides,
@@ -20,7 +20,7 @@ export const QWEN = model('openai_compatible', 'qwen2.5:7b-instruct', {
 	context_window: 32_768,
 })
 export const BGE = model('openai_compatible', 'bge-m3:latest', {
-	capabilities: { chat: false, embeddings: true },
+	capabilities: { chat: false, embeddings: true, transcription: false },
 })
 export const SONNET = model('anthropic', 'claude-sonnet-5', {
 	display_name: 'Claude Sonnet 5',
@@ -36,7 +36,14 @@ export const CLAUDE_HAIKU = model('anthropic', 'claude-haiku-5', {
 export const ANTHROPIC_OTHER = model('anthropic', 'legacy-model')
 export const CLAUDE_LOOKALIKE = model('openai_compatible', 'claude-proxy')
 export const MISTRAL_EMBED = model('mistral', 'mistral-embed', {
-	capabilities: { chat: false, embeddings: true },
+	capabilities: { chat: false, embeddings: true, transcription: false },
+})
+
+export const VOXTRAL = model('mistral', 'voxtral-mini-latest', {
+	capabilities: { chat: false, embeddings: false, transcription: true },
+})
+export const WHISPER = model('openai_compatible', 'whisper-large-v3', {
+	capabilities: { chat: false, embeddings: false, transcription: true },
 })
 
 export const COMPATIBLE_PROVIDER: Schemas.ProviderResponse = {

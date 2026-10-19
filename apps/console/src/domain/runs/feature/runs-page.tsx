@@ -1,4 +1,5 @@
 import { useForm, useStore } from '@tanstack/react-form'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
@@ -12,8 +13,10 @@ import {
 import { useFileDrop } from '#/domain/runs/hooks/use-file-drop'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
 import { useSubmitTranscript } from '#/domain/runs/hooks/use-submit-transcript'
+import { useTranscribe } from '#/domain/runs/hooks/use-transcribe'
 import {
 	importTranscript,
+	isAudioFile,
 	titleFromFileName,
 	validateTranscriptFile,
 } from '#/domain/runs/transcript-import'
@@ -27,8 +30,10 @@ import {
 	validateRepository,
 	validateTitle,
 } from '#/domain/runs/transcript-rules'
+import { TRANSCRIBER_MISSING_MESSAGE } from '#/domain/runs/transcription-errors'
 import { RunsTable } from '#/domain/runs/ui/runs-table'
 import { SubmitTranscriptForm } from '#/domain/runs/ui/submit-transcript-form'
+import { useModelAssignments } from '#/domain/settings/hooks/use-settings-queries'
 
 interface ImportedState {
 	name: string
@@ -36,11 +41,16 @@ interface ImportedState {
 	detected: number
 	previousBody: string
 	added: string[]
+	transcribedBy?: string
 }
 
 export function RunsPage() {
 	const runs = useRuns()
 	const submit = useSubmitTranscript()
+	const transcription = useTranscribe()
+	const assignments = useModelAssignments()
+	const transcriberMissing =
+		assignments.isSuccess && !assignments.data.assignments?.transcriber
 	const integration = useGithubIntegration(true)
 	const repositories = useGithubRepositories(
 		Boolean(integration.data?.installation),
@@ -104,6 +114,10 @@ export function RunsPage() {
 			setFileError(problem)
 			return
 		}
+		if (isAudioFile(file.name)) {
+			await handleAudio(file)
+			return
+		}
 		let content: string
 		try {
 			content = new TextDecoder('utf-8', { fatal: true }).decode(
@@ -114,11 +128,39 @@ export function RunsPage() {
 			return
 		}
 		const result = importTranscript(file.name, content)
-		if (result.text.trim() === '') {
-			setFileError('Ce fichier ne contient aucun texte exploitable.')
+		applyText(file.name, result.text, result.participants)
+	}
+
+	async function handleAudio(file: File) {
+		if (transcriberMissing) {
+			setFileError(TRANSCRIBER_MISSING_MESSAGE)
 			return
 		}
-		const characters = [...result.text].length
+		setFileError(undefined)
+		const outcome = await transcription.run(file)
+		if (outcome.kind === 'cancelled') return
+		if (outcome.kind === 'failed') {
+			setFileError(outcome.message)
+			return
+		}
+		applyText(file.name, outcome.text, [], outcome.model)
+	}
+
+	function applyText(
+		name: string,
+		text: string,
+		detected: string[],
+		transcribedBy?: string,
+	) {
+		if (text.trim() === '') {
+			setFileError(
+				transcribedBy
+					? 'Cet audio ne contient aucune parole exploitable.'
+					: 'Ce fichier ne contient aucun texte exploitable.',
+			)
+			return
+		}
+		const characters = [...text].length
 		if (characters > BODY_MAX_LENGTH) {
 			setFileError(
 				`Le transcript ne doit pas dépasser ${BODY_MAX_LENGTH} caractères.`,
@@ -127,24 +169,25 @@ export function RunsPage() {
 		}
 		setFileError(undefined)
 		const before = form.getFieldValue('participants')
-		const merged = mergeParticipants(before, result.participants)
-		const known = new Set(before.map((name) => name.toLowerCase()))
+		const merged = mergeParticipants(before, detected)
+		const known = new Set(before.map((person) => person.toLowerCase()))
 		const added = [
 			...(imported?.added ?? []),
-			...merged.filter((name) => !known.has(name.toLowerCase())),
+			...merged.filter((person) => !known.has(person.toLowerCase())),
 		]
 		setImported({
-			name: file.name,
+			name,
 			characters,
-			detected: result.participants.length,
+			detected: detected.length,
 			previousBody: imported
 				? imported.previousBody
 				: form.getFieldValue('body'),
 			added,
+			...(transcribedBy ? { transcribedBy } : {}),
 		})
-		form.setFieldValue('body', result.text)
+		form.setFieldValue('body', text)
 		if (form.getFieldValue('title').trim() === '') {
-			form.setFieldValue('title', titleFromFileName(file.name))
+			form.setFieldValue('title', titleFromFileName(name))
 		}
 		form.setFieldValue('participants', merged)
 	}
@@ -188,7 +231,11 @@ export function RunsPage() {
 		setParticipantDraft(value.slice(comma + 1))
 	}
 
-	const drop = useFileDrop(handleFile, setFileError, submit.isPending)
+	const drop = useFileDrop(
+		handleFile,
+		setFileError,
+		submit.isPending || transcription.isPending,
+	)
 
 	function handleSubmit() {
 		form.handleSubmit().catch(() => undefined)
@@ -217,6 +264,7 @@ export function RunsPage() {
 						serverError={submit.error?.message}
 						successMessage={submit.isSuccess ? 'Run lancé' : undefined}
 						isPending={submit.isPending}
+						isTranscribing={transcription.isPending}
 						onTitleChange={(value) => form.setFieldValue('title', value)}
 						onBodyChange={(value) => form.setFieldValue('body', value)}
 						dropzone={{
@@ -224,8 +272,20 @@ export function RunsPage() {
 								name: imported.name,
 								characters: imported.characters,
 								participants: imported.detected,
+								transcribedBy: imported.transcribedBy,
 							},
 							error: fileError,
+							transcribingFile: transcription.fileName,
+							transcriberMissing,
+							modelsLink: (
+								<Link
+									to="/settings/models"
+									className="font-medium text-foreground underline underline-offset-2"
+								>
+									Choisir un transcripteur
+								</Link>
+							),
+							onCancel: transcription.cancel,
 							isDragging: drop.isDragging,
 							dropHandlers: drop.handlers,
 							onFileSelected: handleFile,

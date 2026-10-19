@@ -17,6 +17,7 @@ import {
 	modelRefKey,
 	parseModelRefKey,
 	ROLE_INFO,
+	TRANSCRIBER_ROLE,
 } from '#/domain/settings/roles'
 
 interface Props {
@@ -31,6 +32,7 @@ interface Props {
 	errorMessage?: string
 	successMessage?: string
 	onChange: (role: AgentRole, value: ModelRef) => void
+	onTranscriberChange: (value: ModelRef | undefined) => void
 	onExecutorChange: (model: string) => void
 	onSubmit: () => void
 }
@@ -53,6 +55,7 @@ export function ModelAssignmentsForm({
 	errorMessage,
 	successMessage,
 	onChange,
+	onTranscriberChange,
 	onExecutorChange,
 	onSubmit,
 }: Props) {
@@ -60,6 +63,14 @@ export function ModelAssignmentsForm({
 	const executor = values.executor ?? ''
 	const executorKnown = executorOptions.some((model) => model.id === executor)
 	const executorEmpty = executorOptions.length === 0 && executor === ''
+	const transcriberInfo = ROLE_INFO[TRANSCRIBER_ROLE]
+	const transcriberOptions = compatibleModels(models, TRANSCRIBER_ROLE)
+	const transcriber = values[TRANSCRIBER_ROLE]
+	const transcriberKey = transcriber ? modelRefKey(transcriber) : ''
+	const transcriberKnown = transcriberOptions.some(
+		(model) => modelRefKey(catalogRef(model)) === transcriberKey,
+	)
+	const transcriberEmpty = transcriberOptions.length === 0 && !transcriber
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -162,6 +173,65 @@ export function ModelAssignmentsForm({
 						</li>
 					)
 				})}
+				<li className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-center md:gap-6">
+					<div className="flex min-w-0 flex-col gap-0.5">
+						<label
+							htmlFor="assignment-transcriber"
+							className="text-[13px] font-semibold"
+						>
+							{transcriberInfo.label}
+						</label>
+						<p
+							id="assignment-transcriber-description"
+							className="text-xs text-muted-foreground"
+						>
+							{transcriberInfo.description}
+						</p>
+					</div>
+					<div className="relative">
+						<select
+							id="assignment-transcriber"
+							aria-describedby="assignment-transcriber-description"
+							className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+							disabled={!isAdmin || isPending || transcriberEmpty}
+							value={transcriberKey}
+							onChange={(event) =>
+								onTranscriberChange(parseModelRefKey(event.target.value))
+							}
+						>
+							<option value="">
+								{transcriberEmpty
+									? 'Aucun modèle de transcription'
+									: 'Aucun transcripteur'}
+							</option>
+							{transcriber && !transcriberKnown ? (
+								<option value={transcriberKey}>
+									{transcriber.model} (
+									{PROVIDER_INFO[transcriber.provider].label}, indisponible)
+								</option>
+							) : null}
+							{groupByProvider(transcriberOptions).map((group) => (
+								<optgroup
+									key={group.provider}
+									label={PROVIDER_INFO[group.provider].label}
+								>
+									{group.items.map((model) => (
+										<option
+											key={modelRefKey(catalogRef(model))}
+											value={modelRefKey(catalogRef(model))}
+										>
+											{optionLabel(model)}
+										</option>
+									))}
+								</optgroup>
+							))}
+						</select>
+						<ChevronDown
+							aria-hidden="true"
+							className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+						/>
+					</div>
+				</li>
 				<li className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-center md:gap-6">
 					<div className="flex min-w-0 flex-col gap-0.5">
 						<label

@@ -26,6 +26,7 @@ interface Props {
 	serverError?: string
 	successMessage?: string
 	isPending: boolean
+	isTranscribing?: boolean
 	onTitleChange: (value: string) => void
 	onBodyChange: (value: string) => void
 	dropzone: DropzoneProps
@@ -43,6 +44,7 @@ export function SubmitTranscriptForm({
 	serverError,
 	successMessage,
 	isPending,
+	isTranscribing = false,
 	onTitleChange,
 	onBodyChange,
 	dropzone,
@@ -85,7 +87,7 @@ export function SubmitTranscriptForm({
 					className="max-h-80 min-h-40 font-mono text-[13px] leading-relaxed"
 					value={body}
 					onChange={(event) => onBodyChange(event.target.value)}
-					disabled={isPending}
+					disabled={isPending || isTranscribing}
 					aria-invalid={Boolean(bodyError)}
 				/>
 				<div className="flex min-h-4 justify-between gap-2 text-xs">
@@ -108,7 +110,7 @@ export function SubmitTranscriptForm({
 				<InlineAlert tone="success">{successMessage}</InlineAlert>
 			) : null}
 			<div className="flex items-center justify-end border-t pt-4">
-				<Button type="submit" disabled={isPending}>
+				<Button type="submit" disabled={isPending || isTranscribing}>
 					{isPending ? 'Envoi…' : 'Lancer le run'}
 				</Button>
 			</div>

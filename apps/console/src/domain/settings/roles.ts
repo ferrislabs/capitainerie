@@ -8,18 +8,27 @@ export type AssignmentDraft = Partial<Record<AgentRole, ModelRef>> & {
 	executor?: string | null
 }
 
+export const TRANSCRIBER_PROVIDERS: ReadonlyArray<ProviderKind> = [
+	'mistral',
+	'openai_compatible',
+]
+
 export interface RoleInfo {
 	label: string
 	description: string
 	capability: keyof Schemas.CapabilitiesResponse
 }
 
-export const AGENT_ROLES: ReadonlyArray<AgentRole> = [
+export type RequiredRole = Exclude<AgentRole, 'transcriber'>
+
+export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
 	'extractor',
 	'judge',
 	'writer',
 	'embeddings',
 ]
+
+export const TRANSCRIBER_ROLE = 'transcriber' satisfies AgentRole
 
 export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 	extractor: {
@@ -42,6 +51,12 @@ export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 		label: 'Embeddings',
 		description: 'Vectorise les cartes pour retrouver les doublons proches.',
 		capability: 'embeddings',
+	},
+	transcriber: {
+		label: 'Transcripteur',
+		description:
+			'Transforme un audio déposé en texte, que vous relisez avant de lancer le run. Facultatif : sans lui, seuls les fichiers texte sont acceptés.',
+		capability: 'transcription',
 	},
 }
 
@@ -76,7 +91,12 @@ export function compatibleModels(
 	role: AgentRole,
 ): Array<Schemas.ModelResponse> {
 	const capability = ROLE_INFO[role].capability
-	return models.filter((model) => model.capabilities[capability])
+	return models.filter(
+		(model) =>
+			model.capabilities[capability] &&
+			(role !== TRANSCRIBER_ROLE ||
+				TRANSCRIBER_PROVIDERS.includes(model.provider)),
+	)
 }
 
 export interface ProviderGroup<T> {
@@ -118,15 +138,24 @@ export function sameModelRef(
 export function completeAssignments(
 	draft: AssignmentDraft,
 ): ModelAssignments | undefined {
-	const { extractor, judge, writer, embeddings, executor } = draft
+	const { extractor, judge, writer, embeddings, transcriber, executor } = draft
 	if (!extractor || !judge || !writer || !embeddings) return undefined
 	return {
 		extractor,
 		judge,
 		writer,
 		embeddings,
+		...(transcriber ? { transcriber } : {}),
 		...(executor ? { executor } : {}),
 	}
+}
+
+export function draftFrom(
+	saved: Schemas.ModelAssignmentsDto | null,
+): AssignmentDraft {
+	if (saved === null) return {}
+	const { transcriber, ...rest } = saved
+	return { ...rest, ...(transcriber ? { transcriber } : {}) }
 }
 
 export function catalogRef(model: Schemas.ModelResponse): ModelRef {

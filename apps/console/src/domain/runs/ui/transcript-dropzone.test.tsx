@@ -29,7 +29,9 @@ describe('TranscriptDropzone', () => {
 		const user = userEvent.setup()
 		const input = screen.getByLabelText(/Glissez un fichier ici/)
 
-		expect(input.getAttribute('accept')).toBe('.txt,.md,.vtt,.srt')
+		expect(input.getAttribute('accept')).toBe(
+			'.txt,.md,.vtt,.srt,.mp3,.m4a,.wav,.webm,.ogg',
+		)
 		const file = new File(['x'], 'a.vtt')
 		await user.upload(input, file)
 
@@ -75,5 +77,59 @@ describe('TranscriptDropzone', () => {
 		expect(screen.getByRole('alert').textContent).toBe(
 			'Le fichier dépasse 5 Mo.',
 		)
+	})
+
+	it('announces the audio formats and their 25 Mo limit', () => {
+		setup()
+
+		expect(
+			screen.getByText(/\.mp3, \.m4a, \.wav, \.webm ou \.ogg, 25 Mo au plus/),
+		).toBeTruthy()
+		expect(screen.queryByText(/Aucun transcripteur/)).toBeNull()
+	})
+
+	it('says a transcriber is missing and links to the Models page', () => {
+		setup({
+			transcriberMissing: true,
+			modelsLink: <a href="/settings/models">Choisir un transcripteur</a>,
+		})
+
+		expect(screen.getByText(/Aucun transcripteur n’est configuré/)).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'Choisir un transcripteur' })
+				.getAttribute('href'),
+		).toBe('/settings/models')
+	})
+
+	it('shows the transcription in progress with the file name and a cancel button', async () => {
+		const onCancel = vi.fn()
+		setup({ transcribingFile: 'réunion.m4a', onCancel })
+		const user = userEvent.setup()
+
+		const status = screen.getByRole('status')
+		expect(status.textContent).toContain('Transcription en cours…')
+		expect(status.textContent).toContain('réunion.m4a')
+		expect(
+			(screen.getByLabelText(/Glissez un fichier ici/) as HTMLInputElement)
+				.disabled,
+		).toBe(true)
+		await user.click(screen.getByRole('button', { name: 'Annuler' }))
+
+		expect(onCancel).toHaveBeenCalledOnce()
+	})
+
+	it('names the transcriber in the preview of a transcribed audio', () => {
+		setup({
+			imported: {
+				name: 'a.mp3',
+				characters: 20,
+				participants: 0,
+				transcribedBy: 'voxtral-mini-latest',
+			},
+		})
+
+		expect(screen.getByText(/transcrit par voxtral-mini-latest/)).toBeTruthy()
+		expect(screen.queryByText(/participant/)).toBeNull()
 	})
 })
