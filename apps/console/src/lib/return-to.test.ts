@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_RETURN_TO, safeReturnTo } from '#/lib/return-to'
 
 describe('safeReturnTo', () => {
+	it('lands on the home page by default', () => {
+		expect(DEFAULT_RETURN_TO).toBe('/')
+	})
+
 	it('keeps a local path with its query', () => {
 		expect(safeReturnTo({ returnTo: '/kanban?card=1' })).toBe('/kanban?card=1')
 	})
