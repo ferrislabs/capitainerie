@@ -58,7 +58,11 @@ mod tests {
             pipeline,
             Utc::now(),
         );
-        RunOverview { run, title: None }
+        RunOverview {
+            run,
+            title: None,
+            repository_hint: None,
+        }
     }
 
     fn step(run: &Run, seq: i32, status: StepStatus, tokens: (u64, u64), cost_micros: i64) -> Step {
