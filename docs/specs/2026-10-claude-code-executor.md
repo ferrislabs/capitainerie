@@ -41,7 +41,7 @@ Sur une carte validée par un humain, un membre clique « Confier à Claude Code
 2. Une carte a au plus une exécution active. [index unique partiel en base + test]
 3. Le conteneur ne reçoit jamais la clé Anthropic de l'organisation, un jeton GitHub ni un jeton de l'utilisateur. [test : la spec du Job ne contient que `CAPITAINERIE_TASK_TOKEN` comme secret ; aucune ligne `run_delegations` pour une exécution]
 4. Le proxy n'accepte un jeton de tâche que pour une exécution `running` et non expirée ; il est révoqué à la fin de l'exécution, quel que soit le résultat. [test]
-5. Côté Anthropic, le proxy ne laisse passer que `POST /v1/messages` et `POST /v1/messages/count_tokens`, avec le modèle de l'exécution (`task_grants.model`), `max_tokens` ≤ 32 000, un corps JSON ≤ 10 MiB, sans `mcp_servers` ni `container`, avec des outils côté client seulement (aucun `web_search_*`, `web_fetch_*`, `code_execution_*`, `bash_*`, `computer_*`, `text_editor_*`, `mcp_toolset`), les seuls en-têtes `anthropic-beta` de la liste fermée (`prompt-caching-*`, `interleaved-thinking-*`, `fine-grained-tool-streaming-*`, `context-management-*`, `token-efficient-tools-*`) et la seule requête `beta=true`. Les octets d'origine sont transmis tels quels après validation. [tests]
+5. Côté Anthropic, le proxy ne laisse passer que `POST /v1/messages` et `POST /v1/messages/count_tokens`, avec le modèle de l'exécution (`task_grants.model`), `max_tokens` ≤ 128 000, un corps JSON ≤ 10 MiB, sans `mcp_servers` ni `container`, avec des outils côté client seulement (aucun `web_search_*`, `web_fetch_*`, `code_execution_*`, `bash_*`, `computer_*`, `text_editor_*`, `mcp_toolset`), les seuls en-têtes `anthropic-beta` de la liste fermée (`prompt-caching-*`, `interleaved-thinking-*`, `fine-grained-tool-streaming-*`, `context-management-*`, `token-efficient-tools-*`) et la seule requête `beta=true`. Les octets d'origine sont transmis tels quels après validation. [tests]
 6. Côté GitHub, le proxy ne laisse passer que la lecture du dépôt de l'exécution et un push sur sa branche `capitainerie/<12 derniers hex de l'id de l'exécution>` (la queue aléatoire d'un UUIDv7 : ses 8 premiers hex sont un horodatage, deux exécutions rapprochées partageraient la branche) : ni autre dépôt, ni autre branche, ni suppression de ref. [test sur les commandes `git-receive-pack`]
 7. L'agent ne déplace jamais la carte. C'est le clic humain qui la passe en « En cours », dans la même transaction que la création de l'exécution. [test]
 8. Le modèle de l'Exécutant est un modèle Anthropic. [type : `ExecutorModel(String)`, dont le constructeur refuse tout nom qui ne commence pas par `claude-` (la désérialisation aussi) ; le PUT des assignations répond 422]
@@ -207,7 +207,7 @@ Sur une carte validée par un humain, un membre clique « Confier à Claude Code
   Then elle échoue « tâche introuvable à la reprise » et aucun Job n'est lancé
 
 @spec-exec-13 Scenario: le proxy borne le modèle et les outils
-  When le conteneur demande un autre modèle, plus de 32 000 tokens, ou un outil serveur (web_search, code_execution…)
+  When le conteneur demande un autre modèle, plus de 128 000 tokens, ou un outil serveur (web_search, code_execution…)
   Then le proxy répond 403 et rien n'est transmis à Anthropic
 
 @spec-exec-14 Scenario: une installation d'une organisation que l'admin n'administre pas est refusée
@@ -305,3 +305,4 @@ Amended: 2026-10-20 le proxy valide le corps Anthropic (modèle de la grant, `ma
 Amended: 2026-10-21 X3 : chaque organisation crée sa GitHub App depuis la console (manifeste GitHub) ; plus de variable `GITHUB_APP_*` côté opérateur, seulement `GITHUB_API_BASE`, `GITHUB_WEB_BASE` et `CONSOLE_URL` ; table `github_apps` aux secrets scellés (invariant 12) ; `CodeHost` prend l'organisation ; le proxy lit aussi `github_apps`.
 Amended: 2026-10-19 le manifest ne déclare plus de webhook : GitHub refusait `localhost`.
 Amended: 2026-10-19 l'App demande `members: read` (organisation) : sans elle, GitHub refuse de dire si l'admin qui connecte administre l'organisation (403 `github_app_members_permission_missing`).
+Amended: 2026-10-19 plafond `max_tokens` du proxy porté à 128 000 : Claude Code en demande davantage que 32 000 ; le run reste borné par ses tours et sa durée.

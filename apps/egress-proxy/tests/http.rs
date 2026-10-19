@@ -788,13 +788,13 @@ async fn s1_a_model_other_than_the_grants_is_403() {
 }
 
 #[tokio::test]
-async fn s1_max_tokens_is_capped_at_32000() {
+async fn s1_max_tokens_is_capped_at_128000() {
     let h = harness().await;
     let over = h
-        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_001}))
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 128_001}))
         .await;
     let at = h
-        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_000}))
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 128_000}))
         .await;
     assert_eq!(over.status(), 403);
     assert_eq!(at.status(), 200);
