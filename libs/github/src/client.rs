@@ -420,9 +420,10 @@ impl GithubClient {
                         let membership: Membership = Self::decode(response).await?;
                         Ok(membership.role == "admin" && membership.state == "active")
                     }
-                    Err(GithubError::Status {
-                        status: 403 | 404, ..
-                    }) => Ok(false),
+                    Err(GithubError::Status { status: 404, .. }) => Ok(false),
+                    Err(GithubError::Status { status: 403, .. }) => {
+                        Err(GithubError::MissingPermission("members: read"))
+                    }
                     Err(error) => Err(error),
                 }
             }
@@ -715,6 +716,7 @@ mod tests {
         listed_pulls: Vec<Value>,
         account_kind: Option<String>,
         membership: Option<Value>,
+        membership_forbidden: bool,
         user_login: Option<String>,
         branch_sha: Option<String>,
         list_queries: Vec<HashMap<String, String>>,
@@ -825,6 +827,13 @@ mod tests {
     }
 
     async fn membership(State(shared): State<Shared>) -> impl IntoResponse {
+        if shared.lock().unwrap().membership_forbidden {
+            return (
+                AxumStatus::FORBIDDEN,
+                Json(json!({"message": "Resource not accessible by integration"})),
+            )
+                .into_response();
+        }
         match shared.lock().unwrap().membership.clone() {
             Some(body) => Json(body).into_response(),
             None => (AxumStatus::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response(),
@@ -1170,6 +1179,26 @@ mod tests {
 
         let outsider = Shared::default();
         assert!(!owns(&outsider, "Organization").await);
+    }
+
+    #[tokio::test]
+    async fn an_app_without_the_members_permission_is_told_so_not_refused() {
+        let shared = Shared::default();
+        shared.lock().unwrap().membership_forbidden = true;
+        shared.lock().unwrap().account_kind = Some("Organization".into());
+        let client = serve(Arc::clone(&shared)).await;
+        let token = client.exchange_user_code("c").await.unwrap();
+        let account = client.installation_account(5).await.unwrap();
+
+        let error = client
+            .user_owns_installation(&token, &account)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            GithubError::MissingPermission("members: read")
+        ));
     }
 
     #[tokio::test]

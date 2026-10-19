@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { AuthProvider } from 'react-oidc-context'
 import { syncApiBaseUrl } from '#/api'
 import { AuthTokenSync } from '#/components/auth-token-sync'
-import { getUserManager } from '#/lib/oidc'
+import { getUserManager, isSigninCallback } from '#/lib/oidc'
 import { loadRuntimeConfig } from '#/lib/runtime-config'
 
 interface Props {
@@ -43,7 +43,13 @@ export function ConfigGate({ children }: Props) {
 	}
 
 	return (
-		<AuthProvider userManager={userManager} onSigninCallback={onSigninCallback}>
+		<AuthProvider
+			userManager={userManager}
+			onSigninCallback={onSigninCallback}
+			skipSigninCallback={
+				!isSigninCallback(window.location, userManager.settings.redirect_uri)
+			}
+		>
 			<AuthTokenSync />
 			{children}
 		</AuthProvider>

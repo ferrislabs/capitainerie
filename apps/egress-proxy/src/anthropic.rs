@@ -32,7 +32,9 @@ const BETA_PREFIXES: [&str; 5] = [
     "token-efficient-tools-",
 ];
 pub const MAX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
-pub const MAX_TOKENS_CAP: u64 = 32_000;
+/// Claude Code asks for long outputs (64k and more on current models); the
+/// run stays bounded by its turns and its deadline.
+pub const MAX_TOKENS_CAP: u64 = 128_000;
 const REFUSED_FIELDS: [&str; 2] = ["mcp_servers", "container"];
 
 pub async fn handle<C: Credentials>(
@@ -200,7 +202,7 @@ mod tests {
         assert_eq!(
             check(json!({
                 "model": MODEL,
-                "max_tokens": 32_000,
+                "max_tokens": 128_000,
                 "messages": [],
                 "tools": [
                     {"name": "Bash", "description": "d", "input_schema": {"type": "object"}},
@@ -221,7 +223,7 @@ mod tests {
 
     #[test]
     fn the_output_is_capped() {
-        assert!(check(json!({"model": MODEL, "max_tokens": 32_001})).is_err());
+        assert!(check(json!({"model": MODEL, "max_tokens": 128_001})).is_err());
         assert!(check(json!({"model": MODEL, "max_tokens": "10"})).is_err());
         assert!(check(json!({"model": MODEL, "max_tokens": -1})).is_err());
     }

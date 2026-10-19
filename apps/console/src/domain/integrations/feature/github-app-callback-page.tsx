@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { useCreateGithubApp } from '#/domain/integrations/hooks/use-github-mutations'
@@ -15,25 +15,29 @@ interface Props {
 
 export function GithubAppCallbackPage({ code, state }: Props) {
 	const navigate = useNavigate()
-	const creation = useCreateGithubApp()
+	const { create } = useCreateGithubApp()
 	const started = useRef(false)
+	const [errorMessage, setErrorMessage] = useState<string>()
 	const complete = Boolean(code) && Boolean(state)
 
+	// The request is awaited here rather than watched through the mutation
+	// state: React's development remount detaches the mutation observer, and
+	// the page then never leaves « en cours ».
 	useEffect(() => {
 		if (started.current || !code || !state) return
 		started.current = true
-		creation.create({ code, state })
-	}, [code, state, creation.create])
-
-	useEffect(() => {
-		if (creation.isSuccess) {
+		void create({ code, state }).then((error) => {
+			if (error) {
+				setErrorMessage(error)
+				return
+			}
 			void navigate({
 				to: '/settings/integrations',
 				search: { app: 'created' },
 				replace: true,
 			})
-		}
-	}, [creation.isSuccess, navigate])
+		})
+	}, [code, state, create, navigate])
 
 	return (
 		<>
@@ -42,7 +46,7 @@ export function GithubAppCallbackPage({ code, state }: Props) {
 				<GithubCallbackView
 					pendingLabel="Création de l’application GitHub en cours…"
 					errorMessage={
-						complete ? creation.errorMessage : INCOMPLETE_APP_CALLBACK_MESSAGE
+						complete ? errorMessage : INCOMPLETE_APP_CALLBACK_MESSAGE
 					}
 				/>
 			</SectionCard>

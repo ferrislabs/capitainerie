@@ -17,6 +17,11 @@ pub enum GithubError {
 
     #[error("unexpected github response: {0}")]
     Decode(String),
+
+    /// The App lacks a permission the call needs; GitHub answers 403
+    /// « Resource not accessible by integration ».
+    #[error("the GitHub App lacks the {0} permission")]
+    MissingPermission(&'static str),
 }
 
 impl GithubError {
@@ -27,7 +32,7 @@ impl GithubError {
     pub(crate) fn is_transient(&self) -> bool {
         match self {
             Self::Transport(_) | Self::Jwt(_) | Self::Decode(_) => true,
-            Self::InvalidApp(_) => false,
+            Self::InvalidApp(_) | Self::MissingPermission(_) => false,
             Self::Status { status, .. } => {
                 *status == StatusCode::TOO_MANY_REQUESTS.as_u16() || *status >= 500
             }

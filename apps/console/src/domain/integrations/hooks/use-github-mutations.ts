@@ -82,10 +82,12 @@ export function useConnectGithub() {
 	})
 
 	return {
-		connect: mutation.mutate,
-		isPending: mutation.isPending,
-		isSuccess: mutation.isSuccess,
-		errorMessage: connectErrorMessage(mutation.error),
+		/** Resolves to the error message, or `undefined` once connected. */
+		connect: (params: GithubCallbackParams) =>
+			mutation.mutateAsync(params).then(
+				() => undefined,
+				(error: unknown) => connectErrorMessage(error),
+			),
 	}
 }
 
@@ -130,10 +132,12 @@ export function useCreateGithubApp() {
 	})
 
 	return {
-		create: mutation.mutate,
-		isPending: mutation.isPending,
-		isSuccess: mutation.isSuccess,
-		errorMessage: createAppErrorMessage(mutation.error),
+		/** Resolves to the error message, or `undefined` once created. */
+		create: (params: GithubAppCallbackParams) =>
+			mutation.mutateAsync(params).then(
+				() => undefined,
+				(error: unknown) => createAppErrorMessage(error),
+			),
 	}
 }
 

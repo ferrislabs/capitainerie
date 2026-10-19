@@ -311,6 +311,27 @@ async fn an_unknown_token_is_401_with_the_same_body_as_a_revoked_one() {
 }
 
 #[tokio::test]
+async fn git_without_credentials_gets_a_basic_challenge() {
+    let h = harness().await;
+
+    let response = h
+        .client
+        .get(format!(
+            "{}/git/acme/web.git/info/refs?service=git-upload-pack",
+            h.url
+        ))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 401);
+    assert_eq!(
+        response.headers()["www-authenticate"],
+        r#"Basic realm="capitainerie""#
+    );
+}
+
+#[tokio::test]
 async fn a_request_without_credentials_is_401() {
     let h = harness().await;
     let anthropic = h
@@ -767,13 +788,13 @@ async fn s1_a_model_other_than_the_grants_is_403() {
 }
 
 #[tokio::test]
-async fn s1_max_tokens_is_capped_at_32000() {
+async fn s1_max_tokens_is_capped_at_128000() {
     let h = harness().await;
     let over = h
-        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_001}))
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 128_001}))
         .await;
     let at = h
-        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 32_000}))
+        .messages_with(serde_json::json!({"model": MODEL, "max_tokens": 128_000}))
         .await;
     assert_eq!(over.status(), 403);
     assert_eq!(at.status(), 200);
