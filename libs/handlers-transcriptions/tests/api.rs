@@ -9,6 +9,10 @@ use capitainerie_core::{
     CapitainerieUseCase, Organization, OrganizationSlug,
     domain::{
         agent::SecretToken,
+        document::{
+            DocumentText, MAX_PDF_BYTES, PdfDocument,
+            ports::{DocumentReader, DocumentReaderFactory},
+        },
         provider::{
             ModelAssignments, ModelRef, ProviderAccess, ProviderKind,
             ports::{CatalogModel, ModelCatalog},
@@ -100,6 +104,74 @@ impl Transcriber for FakeTranscriber {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Read {
+    secret: String,
+    model: String,
+    file_name: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Clone, Default)]
+struct FakeReaders {
+    reply: Arc<Mutex<Option<Result<(String, usize), String>>>>,
+    reads: Arc<Mutex<Vec<Read>>>,
+}
+
+struct FakeReader {
+    access: ProviderAccess,
+    readers: FakeReaders,
+}
+
+impl FakeReaders {
+    fn answering(text: &str, pages: usize) -> Self {
+        let readers = Self::default();
+        *readers.reply.lock().unwrap() = Some(Ok((text.to_owned(), pages)));
+        readers
+    }
+
+    fn failing(message: &str) -> Self {
+        let readers = Self::default();
+        *readers.reply.lock().unwrap() = Some(Err(message.to_owned()));
+        readers
+    }
+
+    fn reads(&self) -> Vec<Read> {
+        self.reads.lock().unwrap().clone()
+    }
+}
+
+impl DocumentReaderFactory for FakeReaders {
+    type Bound = FakeReader;
+
+    fn bind(&self, access: &ProviderAccess) -> FakeReader {
+        FakeReader {
+            access: access.clone(),
+            readers: self.clone(),
+        }
+    }
+}
+
+impl DocumentReader for FakeReader {
+    async fn read(
+        &self,
+        model: &ModelRef,
+        document: PdfDocument,
+    ) -> Result<DocumentText, CoreError> {
+        self.readers.reads.lock().unwrap().push(Read {
+            secret: self.access.secret.expose().to_owned(),
+            model: model.model.clone(),
+            file_name: document.file_name,
+            bytes: document.bytes.to_vec(),
+        });
+        match self.readers.reply.lock().unwrap().clone() {
+            Some(Ok((text, pages))) => Ok(DocumentText { text, pages }),
+            Some(Err(message)) => Err(CoreError::Internal(message)),
+            None => Err(CoreError::Internal("no reply".into())),
+        }
+    }
+}
+
 struct FakeCatalog;
 
 impl ModelCatalog for FakeCatalog {
@@ -111,6 +183,7 @@ impl ModelCatalog for FakeCatalog {
             chat,
             embeddings,
             transcription,
+            ocr: id.contains("ocr"),
             context_window: None,
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
@@ -119,6 +192,7 @@ impl ModelCatalog for FakeCatalog {
             model("mistral-small", true, false, false),
             model("mistral-embed", false, true, false),
             model("voxtral-mini-latest", false, false, true),
+            model("mistral-ocr-latest", false, false, false),
         ])
     }
 }
@@ -220,9 +294,44 @@ async fn configure_transcriber(pool: &PgPool, organization: &Organization) {
         .unwrap();
 }
 
+async fn configure_reader(pool: &PgPool, organization: &Organization) {
+    configure_transcriber(pool, organization).await;
+    let usecase = usecase(pool);
+    let subject = caller(organization, None).subject();
+    let mut assignments = usecase
+        .get_model_assignments(subject.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assignments.reader = Some(ModelRef {
+        provider: ProviderKind::Mistral,
+        model: "mistral-ocr-latest".into(),
+    });
+    usecase
+        .put_model_assignments(subject, assignments, &FakeCatalog)
+        .await
+        .unwrap();
+}
+
 async fn serve(pool: &PgPool, caller: Caller, factory: FakeFactory) -> String {
-    let app: Router = capitainerie_handlers_transcriptions::router::<(), _>(usecase(pool), factory)
-        .layer(Extension(caller));
+    serve_all(pool, caller, factory, FakeReaders::default()).await
+}
+
+async fn serve_documents(pool: &PgPool, caller: Caller, readers: FakeReaders) -> String {
+    serve_all(pool, caller, FakeFactory::default(), readers)
+        .await
+        .replace("/transcriptions", "/documents/text")
+}
+
+async fn serve_all(
+    pool: &PgPool,
+    caller: Caller,
+    factory: FakeFactory,
+    readers: FakeReaders,
+) -> String {
+    let app: Router =
+        capitainerie_handlers_transcriptions::router::<(), _, _>(usecase(pool), factory, readers)
+            .layer(Extension(caller));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await });
@@ -452,6 +561,237 @@ async fn a_provider_failure_is_a_502_that_carries_its_message() {
             .as_str()
             .unwrap()
             .contains("check the API key")
+    );
+    assert!(!body.to_string().contains("mistral-secret-key"));
+}
+
+fn pdf_bytes(total: usize) -> Vec<u8> {
+    let mut bytes = b"%PDF-1.7\n".to_vec();
+    bytes.resize(total, b'0');
+    bytes
+}
+
+#[tokio::test]
+async fn a_member_gets_the_text_the_pages_and_the_model_and_the_reader_sees_the_org_key() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let readers = FakeReaders::answering("# Titre\n\nTexte", 2);
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+
+    let (status, body) = post(
+        &url,
+        file("rapport.pdf", "application/pdf", pdf_bytes(2048)),
+    )
+    .await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["text"], "# Titre\n\nTexte");
+    assert_eq!(body["model"], "mistral-ocr-latest");
+    assert_eq!(body["pages"], 2);
+    let reads = readers.reads();
+    assert_eq!(reads.len(), 1);
+    assert_eq!(reads[0].secret, "mistral-secret-key");
+    assert_eq!(reads[0].model, "mistral-ocr-latest");
+    assert_eq!(reads[0].file_name, "rapport.pdf");
+    assert_eq!(reads[0].bytes.len(), 2048);
+}
+
+#[tokio::test]
+async fn a_pdf_declared_by_its_content_type_only_is_read() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let readers = FakeReaders::answering("ok", 1);
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+
+    let (status, _) = post(&url, file("scan", "application/pdf", pdf_bytes(64))).await;
+
+    assert_eq!(status, 200);
+    assert_eq!(readers.reads().len(), 1);
+}
+
+#[tokio::test]
+async fn nothing_of_the_pdf_is_written_to_the_database() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let url = serve_documents(
+        &pool,
+        caller(&organization, None),
+        FakeReaders::answering("ok", 1),
+    )
+    .await;
+    let mut marker = b"%PDF-1.4 PDF-MARKER-0123456789".to_vec();
+    marker.extend_from_slice(&[0; 32]);
+
+    let (status, _) = post(&url, file("a.pdf", "application/pdf", marker)).await;
+
+    let counts: (i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM transcripts WHERE organization_id = $1), (SELECT count(*) FROM runs WHERE organization_id = $1), (SELECT count(*) FROM authorization_decisions WHERE organization_id = $1 AND reason LIKE '%PDF-MARKER%')",
+    )
+    .bind(organization.id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(counts, (0, 0, 0));
+}
+
+#[tokio::test]
+async fn without_a_reader_the_answer_is_a_409_before_the_body_is_judged() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_transcriber(&pool, &organization).await;
+    let readers = FakeReaders::answering("never", 1);
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+
+    let (valid, body) = post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await;
+    let (not_even_a_pdf, _) = post(&url, file("a.txt", "text/plain", vec![1; 10])).await;
+
+    assert_eq!(valid, 409);
+    assert_eq!(body["code"], "reader_not_configured");
+    assert_eq!(not_even_a_pdf, 409);
+    assert!(readers.reads().is_empty());
+}
+
+#[tokio::test]
+async fn a_file_over_25_mib_is_a_413_and_never_reaches_the_reader() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let readers = FakeReaders::answering("ok", 1);
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+
+    let (just_over, _) = post(
+        &url,
+        file("a.pdf", "application/pdf", pdf_bytes(MAX_PDF_BYTES + 1)),
+    )
+    .await;
+    let (far_over, body) = post(
+        &url,
+        file(
+            "a.pdf",
+            "application/pdf",
+            pdf_bytes(MAX_PDF_BYTES + 256 * 1024),
+        ),
+    )
+    .await;
+    let (exactly, _) = post(
+        &url,
+        file("a.pdf", "application/pdf", pdf_bytes(MAX_PDF_BYTES)),
+    )
+    .await;
+
+    assert_eq!(just_over, 413);
+    assert_eq!(far_over, 413, "{body}");
+    assert_eq!(exactly, 200, "the exact limit passes");
+    assert_eq!(readers.reads().len(), 1);
+}
+
+#[tokio::test]
+async fn a_file_that_is_not_a_pdf_is_a_415() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let readers = FakeReaders::answering("ok", 1);
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+
+    let (fake_pdf, body) = post(
+        &url,
+        file("faux.pdf", "application/pdf", b"just text".to_vec()),
+    )
+    .await;
+    let (almost, _) = post(&url, file("faux.pdf", "application/pdf", b"%PDF".to_vec())).await;
+    let (text, _) = post(&url, file("notes.txt", "text/plain", pdf_bytes(64))).await;
+    let (audio, _) = post(&url, file("a.mp3", "audio/mpeg", vec![1; 10])).await;
+    let (bare, _) = post(
+        &url,
+        file("notes", "application/octet-stream", pdf_bytes(64)),
+    )
+    .await;
+
+    assert_eq!(fake_pdf, 415);
+    assert_eq!(body["code"], "unsupported_media_type");
+    assert_eq!((almost, text, audio, bare), (415, 415, 415, 415));
+    assert!(readers.reads().is_empty());
+}
+
+#[tokio::test]
+async fn a_pdf_body_that_is_not_a_single_file_part_is_a_422() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let url = serve_documents(
+        &pool,
+        caller(&organization, None),
+        FakeReaders::answering("never", 1),
+    )
+    .await;
+
+    let (no_file, _) = post(&url, Form::new().text("other", "x")).await;
+    let (two, _) = post(
+        &url,
+        file("a.pdf", "application/pdf", pdf_bytes(64)).part(
+            "file",
+            Part::bytes(pdf_bytes(64))
+                .file_name("b.pdf")
+                .mime_str("application/pdf")
+                .unwrap(),
+        ),
+    )
+    .await;
+    let (empty, _) = post(&url, file("a.pdf", "application/pdf", Vec::new())).await;
+
+    assert_eq!((no_file, two, empty), (422, 422, 422));
+}
+
+#[tokio::test]
+async fn an_agent_is_refused_and_the_denial_is_audited_before_the_body_is_read() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let readers = FakeReaders::answering("never", 1);
+    let url = serve_documents(
+        &pool,
+        caller(&organization, Some("capitainerie-agent-writer")),
+        readers.clone(),
+    )
+    .await;
+
+    let (status, _) = post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await;
+
+    assert_eq!(status, 403);
+    assert!(readers.reads().is_empty());
+    let denied: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_decisions WHERE organization_id = $1 AND action = 'document.read' AND NOT allowed",
+    )
+    .bind(organization.id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(denied, 1);
+}
+
+#[tokio::test]
+async fn a_reader_failure_is_a_502_that_carries_its_message() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let url = serve_documents(
+        &pool,
+        caller(&organization, None),
+        FakeReaders::failing("Le service de lecture des PDF est injoignable."),
+    )
+    .await;
+
+    let (status, body) = post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await;
+
+    assert_eq!(status, 502);
+    assert_eq!(body["code"], "bad_gateway");
+    assert_eq!(
+        body["message"],
+        "Le service de lecture des PDF est injoignable."
     );
     assert!(!body.to_string().contains("mistral-secret-key"));
 }
