@@ -39,6 +39,7 @@ function RailLink({
 }) {
 	const Icon = item.icon
 	const showCount = count !== undefined && count > 0
+	const shown = count !== undefined && count >= 100 ? '100+' : count
 	const link = (
 		<Link
 			to={item.to}
@@ -46,7 +47,7 @@ function RailLink({
 				expanded
 					? undefined
 					: showCount
-						? `${item.label}, ${count} runs actifs`
+						? `${item.label}, ${shown} runs actifs`
 						: item.label
 			}
 			className={cn(
@@ -73,9 +74,9 @@ function RailLink({
 						aria-hidden="true"
 						className="figures ml-auto rounded-sm bg-signal-running-soft px-1.5 text-xs leading-5 font-medium text-signal-running"
 					>
-						{count}
+						{shown}
 					</span>
-					<span className="sr-only">{`, ${count} runs actifs`}</span>
+					<span className="sr-only">{`, ${shown} runs actifs`}</span>
 				</>
 			) : null}
 		</Link>

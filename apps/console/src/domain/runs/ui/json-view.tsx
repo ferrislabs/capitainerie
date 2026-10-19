@@ -9,9 +9,9 @@ import { cn } from '#/lib/utils'
 
 const TOKEN_CLASSES: Record<JsonTokenKind, string> = {
 	key: 'font-medium text-foreground',
-	string: 'text-signal-success',
-	number: 'text-signal-running',
-	literal: 'text-muted-foreground italic',
+	string: 'text-foreground',
+	number: 'text-muted-foreground',
+	literal: 'text-muted-foreground',
 	punct: 'text-muted-foreground',
 	space: '',
 }

@@ -217,9 +217,7 @@ describe('RunTimeline', () => {
 			'{\n  "detail": "3 actions",\n  "error": "quota dépassé"\n}',
 		)
 		expect(screen.getByText('"detail"').className).toContain('text-foreground')
-		expect(screen.getByText('"3 actions"').className).toContain(
-			'text-signal-success',
-		)
+		expect(screen.getByText('"3 actions"').className).not.toContain('signal')
 		expect(screen.getByRole('alert').textContent).toBe('quota dépassé')
 
 		await userEvent.click(screen.getByRole('button', { name: 'Copier' }))

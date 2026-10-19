@@ -3,6 +3,7 @@ export const MIN_TOTAL_MS = 1000
 const SECOND = 1000
 const MINUTE = 60 * SECOND
 const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
 
 const TICK_STEPS_MS = [
 	SECOND,
@@ -23,6 +24,8 @@ const TICK_STEPS_MS = [
 	6 * HOUR,
 	12 * HOUR,
 	24 * HOUR,
+	7 * DAY,
+	30 * DAY,
 ]
 
 const MAX_TICKS = 8
@@ -79,6 +82,11 @@ export function formatTick(ms: number): string {
 		const seconds = totalSeconds % 60
 		return seconds === 0 ? `${minutes} min` : `${minutes} min ${seconds} s`
 	}
+	if (totalSeconds >= DAY / SECOND) {
+		const days = Math.floor(totalSeconds / (DAY / SECOND))
+		const hours = Math.floor((totalSeconds % (DAY / SECOND)) / 3600)
+		return hours === 0 ? `${days} j` : `${days} j ${hours} h`
+	}
 	const hours = Math.floor(totalSeconds / 3600)
 	const minutes = Math.floor((totalSeconds % 3600) / 60)
 	return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
@@ -99,18 +107,34 @@ export function buildTicks(totalMs: number): Tick[] {
 	return ticks
 }
 
+export function effectiveNow(
+	run: AxisRun,
+	steps: ReadonlyArray<AxisStep>,
+	nowMs: number,
+	active: boolean,
+): number {
+	if (active) return nowMs
+	const known = [
+		parse(run.finished_at),
+		...steps.map((step) => parse(step.finished_at) ?? stepStartMs(step)),
+		parse(run.started_at) ?? parse(run.created_at),
+	].filter((value): value is number => value !== undefined)
+	return parse(run.finished_at) ?? Math.max(...known)
+}
+
 export function computeAxis(
 	run: AxisRun,
 	steps: ReadonlyArray<AxisStep>,
 	nowMs: number,
 	active: boolean,
 ): Axis {
+	const clock = effectiveNow(run, steps, nowMs, active)
 	const runStart = parse(run.started_at) ?? parse(run.created_at) ?? nowMs
 	const stepStarts = steps.flatMap((step) => stepStartMs(step) ?? [])
 	const startMs = Math.min(runStart, ...stepStarts)
 
 	const runEnd = parse(run.finished_at) ?? (active ? nowMs : runStart)
-	const stepEnds = steps.flatMap((step) => stepEndMs(step, nowMs) ?? [])
+	const stepEnds = steps.flatMap((step) => stepEndMs(step, clock) ?? [])
 	const endMs = Math.max(runEnd, ...stepEnds)
 
 	return { startMs, totalMs: Math.max(endMs - startMs, MIN_TOTAL_MS) }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_macros::transactional;
 
@@ -133,22 +135,15 @@ impl CapitainerieUseCase {
         let ids: Vec<RunId> = overviews.iter().map(|overview| overview.run.id).collect();
         let mut step_repository = step_repository;
         let steps = step_repository.list_for_runs(&ids).await?;
-        let groups: Vec<&[Step]> = steps
-            .chunk_by(|left, right| left.run_id == right.run_id)
-            .collect();
+        let mut by_run: HashMap<RunId, Vec<Step>> = HashMap::new();
+        for step in steps {
+            by_run.entry(step.run_id).or_default().push(step);
+        }
         Ok(overviews
             .into_iter()
             .map(|overview| {
-                let own = groups
-                    .iter()
-                    .find(|group| {
-                        group
-                            .first()
-                            .is_some_and(|step| step.run_id == overview.run.id)
-                    })
-                    .copied()
-                    .unwrap_or_default();
-                ActiveRun::assemble(overview, own)
+                let own = by_run.remove(&overview.run.id).unwrap_or_default();
+                ActiveRun::assemble(overview, &own)
             })
             .collect())
     }

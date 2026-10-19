@@ -39,6 +39,12 @@ describe('AppRail', () => {
 		expect(count.className).not.toContain('attention')
 	})
 
+	it('caps the count at 100+', async () => {
+		await renderRail('/live', rail({ badges: { '/live': 100 } }))
+
+		expect(screen.getByText('100+')).toBeTruthy()
+	})
+
 	it('shows no count when nothing runs', async () => {
 		await renderRail('/live', rail({ badges: { '/live': 0 } }))
 

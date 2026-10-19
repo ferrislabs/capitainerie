@@ -3,6 +3,7 @@ import {
 	blockPosition,
 	buildTicks,
 	computeAxis,
+	effectiveNow,
 	formatTick,
 	MIN_TOTAL_MS,
 	tickStepMs,
@@ -23,6 +24,9 @@ describe('formatTick', () => {
 		expect(formatTick(600_000)).toBe('10 min')
 		expect(formatTick(3_600_000)).toBe('1 h')
 		expect(formatTick(5_400_000)).toBe('1 h 30 min')
+		expect(formatTick(86_400_000)).toBe('1 j')
+		expect(formatTick(7 * 86_400_000)).toBe('7 j')
+		expect(formatTick(90_000_000)).toBe('1 j 1 h')
 	})
 })
 
@@ -33,6 +37,8 @@ describe('tickStepMs', () => {
 		expect(tickStepMs(100_000)).toBe(15_000)
 		expect(tickStepMs(10 * 60_000)).toBe(2 * 60_000)
 		expect(tickStepMs(5 * 3_600_000)).toBe(3_600_000)
+		expect(tickStepMs(40 * 86_400_000)).toBe(7 * 86_400_000)
+		expect(tickStepMs(200 * 86_400_000)).toBe(30 * 86_400_000)
 	})
 
 	it('never goes below one second, whatever the span', () => {
@@ -111,6 +117,36 @@ describe('computeAxis', () => {
 		)
 
 		expect(axis.totalMs).toBe(MIN_TOTAL_MS)
+	})
+})
+
+describe('a running step in a settled run', () => {
+	const run = { created_at: at(-2), started_at: at(0), finished_at: at(30) }
+	const stale = [
+		{ started_at: at(10), finished_at: null, status: 'running' as const },
+	]
+
+	it('stops at the run end instead of following the clock', () => {
+		const nowMs = T0 + 999_000
+		const clock = effectiveNow(run, stale, nowMs, false)
+		const axis = computeAxis(run, stale, nowMs, false)
+
+		expect(clock).toBe(T0 + 30_000)
+		expect(axis.totalMs).toBe(30_000)
+		expect(blockPosition(stale[0], axis, clock)).toEqual({
+			leftPct: (10 / 30) * 100,
+			widthPct: (20 / 30) * 100,
+		})
+	})
+
+	it('falls back to the last known time when the run has no end', () => {
+		const open = { created_at: at(-2), started_at: at(0), finished_at: null }
+		const steps = [
+			{ started_at: at(0), finished_at: at(8), status: 'succeeded' as const },
+			...stale,
+		]
+
+		expect(effectiveNow(open, steps, T0 + 999_000, false)).toBe(T0 + 10_000)
 	})
 })
 

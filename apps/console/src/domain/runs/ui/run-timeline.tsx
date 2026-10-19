@@ -2,7 +2,7 @@ import { ShieldCheck, ShieldX } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { SectionCard } from '#/components/layout/section-card'
 import { moveSelection } from '#/domain/runs/step-selection'
-import { computeAxis } from '#/domain/runs/timeline-axis'
+import { computeAxis, effectiveNow } from '#/domain/runs/timeline-axis'
 import { RunFrise } from '#/domain/runs/ui/run-frise'
 import { StepInspector } from '#/domain/runs/ui/step-inspector'
 import { StepList, stepOptionId } from '#/domain/runs/ui/step-list'
@@ -76,6 +76,7 @@ export function RunTimeline({
 	const ordered = [...steps].sort((a, b) => a.seq - b.seq)
 	const active =
 		(run.status === 'queued' || run.status === 'running') && !run.finished_at
+	const clockMs = effectiveNow(run, ordered, nowMs, active)
 	const axis = computeAxis(run, ordered, nowMs, active)
 	const selected = ordered.find((step) => step.seq === selectedSeq)
 	const refused = decisions.filter((decision) => !decision.allowed).length
@@ -107,7 +108,7 @@ export function RunTimeline({
 					<RunFrise
 						steps={ordered}
 						axis={axis}
-						nowMs={nowMs}
+						nowMs={clockMs}
 						selectedSeq={selectedSeq}
 						onSelect={onSelect}
 					/>
