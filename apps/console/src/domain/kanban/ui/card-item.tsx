@@ -1,8 +1,10 @@
 import type { Schemas } from '#/api/api.client'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
+import { assigneeName } from '#/domain/kanban/card-details'
 import { agentName, type Column } from '#/domain/kanban/columns'
 import { relativeDate } from '#/domain/kanban/relative-date'
+import { CardSignals } from '#/domain/kanban/ui/card-signals'
 import { LinkChips } from '#/domain/kanban/ui/link-chips'
 import { cn } from '#/lib/utils'
 
@@ -14,7 +16,10 @@ interface Props {
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
 	dragging?: 'origin' | 'overlay'
+	memberNames?: ReadonlyMap<string, string>
 }
+
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
 
 export function CardItem({
 	card,
@@ -24,6 +29,7 @@ export function CardItem({
 	onMove,
 	onExecute,
 	dragging,
+	memberNames,
 }: Props) {
 	const agent = card.created_by_agent
 
@@ -76,6 +82,13 @@ export function CardItem({
 						</blockquote>
 					</figure>
 				) : null}
+				<CardSignals
+					card={card}
+					assigneeName={assigneeName(
+						card.assignee_subject,
+						memberNames ?? NO_NAMES,
+					)}
+				/>
 				<div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5">
 					<LinkChips client={card.client} project={card.project} />
 					{agent ? (

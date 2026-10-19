@@ -97,49 +97,66 @@ where
     }
 
     async fn target(&mut self, card: &Card, command: &LinkCard) -> Result<Links, CoreError> {
-        let organization_id = card.organization_id;
-        let project: Option<Project> = match command.project {
-            Change::Keep => match card.links.project() {
-                Some(current) => Some(
-                    self.projects
-                        .find(organization_id, current.id)
-                        .await?
-                        .ok_or_else(|| {
-                            CoreError::Internal(format!("project {} vanished", current.id))
-                        })?,
-                ),
-                None => None,
-            },
-            Change::Clear => None,
-            Change::Set(id) if card.links.project_id() == Some(id) => self
-                .projects
-                .find(organization_id, id)
-                .await?
-                .ok_or_else(|| CoreError::Invalid(format!("unknown project {id}")))
-                .map(Some)?,
-            Change::Set(id) => Some(active_project(&mut self.projects, organization_id, id).await?),
-        };
-        let project_changed = command.project != Change::Keep;
-        let client: Option<ClientRef> = match command.client {
-            Change::Set(id) if card.links.client_id() == Some(id) => card.links.client().cloned(),
-            Change::Set(id) => Some(active_client(&mut self.clients, organization_id, id).await?),
-            Change::Clear => {
-                if project
-                    .as_ref()
-                    .is_some_and(|project| project.client.is_some())
-                {
-                    return Err(CoreError::Invalid(
-                        "the project belongs to a client: clear the project to clear the client"
-                            .into(),
-                    ));
-                }
-                None
-            }
-            Change::Keep if project_changed && project.is_some() => None,
-            Change::Keep => card.links.client().cloned(),
-        };
-        Links::of(client, project.as_ref())
+        resolve_links(
+            &mut self.clients,
+            &mut self.projects,
+            card,
+            command.client,
+            command.project,
+        )
+        .await
     }
+}
+
+/// The links `card` would have once `client` and `project` are applied,
+/// checked against the active clients and projects of its organization.
+pub(super) async fn resolve_links<K: ClientRepository, P: ProjectRepository>(
+    clients: &mut K,
+    projects: &mut P,
+    card: &Card,
+    client_change: Change<ClientId>,
+    project_change: Change<ProjectId>,
+) -> Result<Links, CoreError> {
+    let organization_id = card.organization_id;
+    let project: Option<Project> = match project_change {
+        Change::Keep => match card.links.project() {
+            Some(current) => Some(
+                projects
+                    .find(organization_id, current.id)
+                    .await?
+                    .ok_or_else(|| {
+                        CoreError::Internal(format!("project {} vanished", current.id))
+                    })?,
+            ),
+            None => None,
+        },
+        Change::Clear => None,
+        Change::Set(id) if card.links.project_id() == Some(id) => projects
+            .find(organization_id, id)
+            .await?
+            .ok_or_else(|| CoreError::Invalid(format!("unknown project {id}")))
+            .map(Some)?,
+        Change::Set(id) => Some(active_project(projects, organization_id, id).await?),
+    };
+    let project_changed = project_change != Change::Keep;
+    let client: Option<ClientRef> = match client_change {
+        Change::Set(id) if card.links.client_id() == Some(id) => card.links.client().cloned(),
+        Change::Set(id) => Some(active_client(clients, organization_id, id).await?),
+        Change::Clear => {
+            if project
+                .as_ref()
+                .is_some_and(|project| project.client.is_some())
+            {
+                return Err(CoreError::Invalid(
+                    "the project belongs to a client: clear the project to clear the client".into(),
+                ));
+            }
+            None
+        }
+        Change::Keep if project_changed && project.is_some() => None,
+        Change::Keep => card.links.client().cloned(),
+    };
+    Links::of(client, project.as_ref())
 }
 
 #[cfg(test)]
@@ -206,6 +223,7 @@ mod tests {
             updated_at: Utc::now(),
             repository_hint: None,
             links,
+            attributes: Default::default(),
         }
     }
 

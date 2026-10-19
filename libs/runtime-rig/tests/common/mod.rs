@@ -142,6 +142,10 @@ pub struct CreateCardInput {
     pub description: String,
     pub run_id: Option<String>,
     pub provenance: Option<Value>,
+    pub acceptance_criteria: Option<Vec<String>>,
+    pub priority: Option<String>,
+    pub estimate: Option<String>,
+    pub due_date: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -180,6 +184,10 @@ impl FakeMcp {
                 "description": input.description,
                 "run_id": input.run_id,
                 "provenance": input.provenance,
+                "acceptance_criteria": input.acceptance_criteria,
+                "priority": input.priority,
+                "estimate": input.estimate,
+                "due_date": input.due_date,
             }),
             authorization: header("authorization"),
             traceparent: header("traceparent"),

@@ -54,9 +54,14 @@ export namespace Schemas {
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
   export type CardCommentId = string;
+  export type CriterionDto = { done: boolean; text: string };
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
+  export type EstimateDto = "xs" | "s" | "m" | "l" | "xl";
+  export type PriorityDto = "low" | "normal" | "high" | "urgent";
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
   export type CardResponse = {
+    acceptance_criteria: Array<CriterionDto>;
+    assignee_subject?: (string | null) | undefined;
     client?: (null | ClientRefResponse) | undefined;
     column: ColumnDto;
     created_at: string;
@@ -64,7 +69,11 @@ export namespace Schemas {
     created_by_run?: (null | RunId) | undefined;
     created_by_subject: string;
     description: string;
+    due_date?: (string | null) | undefined;
+    estimate?: (null | EstimateDto) | undefined;
     id: CardId;
+    labels: Array<string>;
+    priority: PriorityDto;
     project?: (null | ProjectRefResponse) | undefined;
     provenance?: (null | ProvenanceResponse) | undefined;
     repository_hint?: (string | null) | undefined;
@@ -190,6 +199,13 @@ export namespace Schemas {
     subject: string;
     username?: (string | null) | undefined;
   };
+  export type MemberResponse = {
+    email?: (string | null) | undefined;
+    last_seen_at: string;
+    name: string;
+    subject: string;
+  };
+  export type MemberListResponse = { items: Array<MemberResponse> };
   export type ProviderKindDto = "anthropic" | "mistral" | "openai_compatible";
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
@@ -215,9 +231,17 @@ export namespace Schemas {
   export type ModelCatalogResponse = { errors: Array<ProviderErrorResponse>; models: Array<ModelResponse> };
   export type MoveCardRequest = { expected_version: number; to: ColumnDto };
   export type PatchCardRequest = {
+    acceptance_criteria?: (Array<CriterionDto> | null) | undefined;
+    assignee_subject?: (string | null) | undefined;
     client_id?: (null | ClientId) | undefined;
+    description?: (string | null) | undefined;
+    due_date?: (string | null) | undefined;
+    estimate?: (null | EstimateDto) | undefined;
     expected_version: number;
+    labels?: (Array<string> | null) | undefined;
+    priority?: (null | PriorityDto) | undefined;
     project_id?: (null | ProjectId) | undefined;
+    title?: (string | null) | undefined;
   };
   export type ProjectDetailResponse = { cards: Array<ColumnCountResponse>; project: ProjectResponse };
   export type ProjectListItemResponse = { open_cards: number; project: ProjectResponse };
@@ -319,8 +343,10 @@ export namespace Endpoints {
     method: "GET";
     path: "/api/v1/cards";
     requestFormat: "json";
-    parameters: never;
-    responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse };
+    parameters: {
+      query: Partial<{ client_id: string; project_id: string; priority: string; assignee: string; label: string }>;
+    };
+    responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse; 422: Schemas.ApiErrorResponse };
   };
   export type get_GetCard = {
     method: "GET";
@@ -578,6 +604,13 @@ export namespace Endpoints {
     parameters: never;
     responses: { 200: Schemas.MeResponse; 401: Schemas.ApiErrorResponse };
   };
+  export type get_ListMembers = {
+    method: "GET";
+    path: "/api/v1/members";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.MemberListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
   export type get_GetModelAssignments = {
     method: "GET";
     path: "/api/v1/model-assignments";
@@ -811,6 +844,7 @@ export type EndpointByMethod = {
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
     "/api/v1/me": Endpoints.get_GetMe;
+    "/api/v1/members": Endpoints.get_ListMembers;
     "/api/v1/model-assignments": Endpoints.get_GetModelAssignments;
     "/api/v1/models": Endpoints.get_ListModels;
     "/api/v1/projects": Endpoints.get_ListProjects;

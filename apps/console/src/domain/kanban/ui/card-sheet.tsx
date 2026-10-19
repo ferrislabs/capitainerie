@@ -15,6 +15,7 @@ import {
 } from '#/components/ui/sheet'
 import { Skeleton } from '#/components/ui/skeleton'
 import { canDrop } from '#/domain/kanban/can-drop'
+import type { CardPatch } from '#/domain/kanban/card-patch'
 import {
 	agentName,
 	COLUMN_LABELS,
@@ -23,6 +24,11 @@ import {
 } from '#/domain/kanban/columns'
 import type { LinkPatch } from '#/domain/kanban/link-patch'
 import { CardComments } from '#/domain/kanban/ui/card-comments'
+import {
+	CardFields,
+	EditableDescription,
+	EditableTitle,
+} from '#/domain/kanban/ui/card-fields'
 import { CardLinks } from '#/domain/kanban/ui/card-links'
 import { CardRuns } from '#/domain/kanban/ui/card-runs'
 import { LinkChips } from '#/domain/kanban/ui/link-chips'
@@ -48,6 +54,11 @@ interface Props {
 	linksReady?: boolean
 	linkError?: string | undefined
 	onLink?: (patch: LinkPatch) => void
+	members?: ReadonlyArray<Schemas.MemberResponse>
+	membersReady?: boolean
+	isEditing?: boolean
+	editError?: string | undefined
+	onEdit?: (patch: CardPatch) => void
 	onClose: () => void
 	onMove: (to: Column) => void
 	onExecute: (card: Schemas.CardResponse) => void
@@ -96,6 +107,11 @@ export function CardSheet({
 	linksReady = false,
 	linkError,
 	onLink,
+	members = [],
+	membersReady = false,
+	isEditing = false,
+	editError,
+	onEdit,
 	onClose,
 	onMove,
 	onExecute,
@@ -113,7 +129,17 @@ export function CardSheet({
 		>
 			<SheetContent aria-describedby={undefined}>
 				<SheetHeader>
-					<SheetTitle>{card?.title ?? 'Carte'}</SheetTitle>
+					{card && onEdit ? (
+						<EditableTitle
+							title={card.title}
+							disabled={isEditing}
+							onSave={(title) => onEdit({ title })}
+						>
+							{(title) => <SheetTitle>{title}</SheetTitle>}
+						</EditableTitle>
+					) : (
+						<SheetTitle>{card?.title ?? 'Carte'}</SheetTitle>
+					)}
 					{card ? (
 						<div className="flex flex-wrap items-center gap-2">
 							<Badge
@@ -173,18 +199,38 @@ export function CardSheet({
 				) : null}
 				{card ? (
 					<SheetBody>
-						<section className="flex flex-col gap-2">
-							<h3 className="text-[15px] font-semibold">Description</h3>
-							{card.description ? (
-								<p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap">
-									{card.description}
-								</p>
-							) : (
-								<p className="text-[13px] text-muted-foreground">
-									Aucune description.
-								</p>
-							)}
-						</section>
+						{editError ? (
+							<InlineAlert tone="danger">{editError}</InlineAlert>
+						) : null}
+						{onEdit ? (
+							<EditableDescription
+								description={card.description}
+								disabled={isEditing}
+								onSave={(description) => onEdit({ description })}
+							/>
+						) : (
+							<section className="flex flex-col gap-2">
+								<h3 className="text-[15px] font-semibold">Description</h3>
+								{card.description ? (
+									<p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap">
+										{card.description}
+									</p>
+								) : (
+									<p className="text-[13px] text-muted-foreground">
+										Aucune description.
+									</p>
+								)}
+							</section>
+						)}
+						{onEdit ? (
+							<CardFields
+								card={card}
+								members={members}
+								membersReady={membersReady}
+								disabled={isEditing}
+								onEdit={onEdit}
+							/>
+						) : null}
 						{card.provenance ? (
 							<figure className="flex flex-col gap-1 rounded-md bg-muted/70 px-3 py-2">
 								<figcaption className="text-[11px] font-medium text-muted-foreground">

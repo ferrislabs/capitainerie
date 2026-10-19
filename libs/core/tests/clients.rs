@@ -120,6 +120,7 @@ async fn card(usecase: &CapitainerieUseCase, org: OrganizationId) -> Card {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await
@@ -767,6 +768,7 @@ async fn cards_a_run_created_are_linked_unless_a_human_already_chose() {
                             quote: quote.into(),
                         }),
                         run_id: Some(submitted.run_id),
+                        attributes: Default::default(),
                     },
                 )
                 .await

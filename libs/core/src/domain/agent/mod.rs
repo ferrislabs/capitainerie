@@ -89,6 +89,9 @@ pub struct DuplicateAction {
 pub struct WriteRequest {
     pub run_id: RunId,
     pub transcript_id: TranscriptId,
+    /// When the meeting took place, if known: the reference to turn a stated
+    /// deadline such as "vendredi" into a calendar date.
+    pub meeting_date: Option<chrono::NaiveDate>,
     /// Only the new actions: the writer turns these into cards.
     pub actions: Vec<LocatedAction>,
     /// Actions that already are a card: the code comments on that card, the

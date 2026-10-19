@@ -7,6 +7,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { memberLabels } from '#/domain/kanban/card-details'
 import {
 	type CardFilters,
 	filterCards,
@@ -18,6 +19,7 @@ import { COLUMNS } from '#/domain/kanban/columns'
 import { CardPanel } from '#/domain/kanban/feature/card-panel'
 import { ExecuteCardFlow } from '#/domain/kanban/feature/execute-card-flow'
 import { useCards } from '#/domain/kanban/hooks/use-cards'
+import { memberNames, useMembers } from '#/domain/kanban/hooks/use-members'
 import { useMoveCard } from '#/domain/kanban/hooks/use-move-card'
 import { KanbanBoard } from '#/domain/kanban/ui/kanban-board'
 import { KanbanToolbar } from '#/domain/kanban/ui/kanban-toolbar'
@@ -55,13 +57,16 @@ export function KanbanPage({
 }: Props) {
 	const cards = useCards()
 	const move = useMoveCard()
+	const members = useMembers()
 	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
 	const [executingId, setExecutingId] = useState<string>()
 	const [startedRunId, setStartedRunId] = useState<string>()
 
 	const all = cards.data?.items ?? []
+	const names = memberNames(members.data?.items ?? [])
+	const assigneeLabels = memberLabels(members.data?.items ?? [])
 	const visible = filterCards(all, filters)
-	const options = filterOptions(all, filters)
+	const options = filterOptions(all, filters, assigneeLabels)
 
 	function toggleExpanded(cardId: string) {
 		setExpandedIds((current) => {
@@ -91,8 +96,8 @@ export function KanbanPage({
 			) : null}
 			<KanbanToolbar
 				filters={filters}
-				clients={options.clients}
-				projects={options.projects}
+				options={options}
+				assigneeLabels={assigneeLabels}
 				onChange={onFiltersChange}
 			/>
 			{move.errorMessage ? (
@@ -122,6 +127,7 @@ export function KanbanPage({
 			) : (
 				<KanbanBoard
 					cards={visible}
+					memberNames={names}
 					pendingCardId={move.pendingCardId}
 					expandedIds={expandedIds}
 					onToggleExpanded={toggleExpanded}

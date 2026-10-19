@@ -373,3 +373,57 @@ async fn an_agent_proposes_a_card_and_cannot_move_it_out_of_proposed() {
     assert_eq!(invalid.is_error, Some(true));
     client.cancel().await.unwrap();
 }
+
+#[tokio::test]
+async fn an_agent_card_carries_its_details_and_an_out_of_window_deadline_is_refused() {
+    let Some(h) = harness().await else { return };
+    let transcript = h.transcript("Elodie : je relance Acme demain.").await;
+    let client = h.client(h.token(AUDIENCE, true)).await;
+    let create = |extra: Value| {
+        let mut arguments = json!({
+            "title": "Relancer Acme",
+            "description": "x",
+            "provenance": {
+                "transcript_id": transcript,
+                "start": 9,
+                "end": 31,
+                "quote": "je relance Acme demain"
+            }
+        });
+        arguments
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap());
+        call("create_card", arguments)
+    };
+
+    let created = client
+        .call_tool(create(json!({
+            "acceptance_criteria": ["Le mail est parti"],
+            "priority": "urgent",
+            "estimate": "s"
+        })))
+        .await
+        .unwrap();
+    assert_ne!(created.is_error, Some(true), "{created:?}");
+    let card = payload(&created);
+    assert_eq!(card["priority"], "urgent");
+    assert_eq!(card["estimate"], "s");
+    assert_eq!(card["acceptance_criteria"][0]["text"], "Le mail est parti");
+
+    for date in ["2001-01-01", "2999-01-01"] {
+        let refused = client
+            .call_tool(create(json!({ "due_date": date })))
+            .await
+            .unwrap();
+        assert_eq!(refused.is_error, Some(true), "{date}");
+        assert!(
+            payload(&refused)
+                .as_str()
+                .unwrap_or_default()
+                .contains("omit it"),
+            "{refused:?}"
+        );
+    }
+    client.cancel().await.unwrap();
+}

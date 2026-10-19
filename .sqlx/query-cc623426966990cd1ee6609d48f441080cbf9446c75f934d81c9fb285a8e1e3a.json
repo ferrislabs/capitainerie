@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT c.id, c.organization_id, c.title, c.description, c.\"column\",\n                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,\n                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   c.client_id, cl.name AS \"client_name?\", c.project_id, p.name AS \"project_name?\"\n            FROM cards c\n            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id\n            LEFT JOIN clients cl ON cl.id = c.client_id\n            LEFT JOIN projects p ON p.id = c.project_id\n            WHERE c.organization_id = $1 AND c.id = $2\n            FOR UPDATE OF c\n            ",
+  "query": "\n            SELECT c.id, c.organization_id, c.title, c.description, c.\"column\",\n                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,\n                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   c.client_id, cl.name AS \"client_name?\", c.project_id, p.name AS \"project_name?\",\n                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate\n            FROM cards c\n            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id\n            LEFT JOIN clients cl ON cl.id = c.client_id\n            LEFT JOIN projects p ON p.id = c.project_id\n            WHERE c.organization_id = $1\n              AND ($2::uuid IS NULL OR c.client_id = $2)\n              AND ($3::uuid IS NULL OR c.project_id = $3)\n              AND ($4::text IS NULL OR c.priority = $4)\n              AND ($5::text IS NULL OR c.assignee_subject = $5)\n              AND ($6::text IS NULL\n                   OR EXISTS (SELECT 1 FROM unnest(c.labels) AS label WHERE lower(label) = lower($6)))\n            ORDER BY c.updated_at DESC, c.id DESC\n            LIMIT 500\n            ",
   "describe": {
     "columns": [
       {
@@ -102,12 +102,46 @@
         "ordinal": 19,
         "name": "project_name?",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "acceptance_criteria",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 21,
+        "name": "priority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "due_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 23,
+        "name": "assignee_subject",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 24,
+        "name": "labels",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 25,
+        "name": "estimate",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
@@ -130,8 +164,14 @@
       true,
       false,
       true,
-      false
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
     ]
   },
-  "hash": "f55744981370a220aadcce644d70a636b4407d7bfa7a670da22a1c8179b8314c"
+  "hash": "cc623426966990cd1ee6609d48f441080cbf9446c75f934d81c9fb285a8e1e3a"
 }

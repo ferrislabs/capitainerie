@@ -2,6 +2,9 @@ export interface CardSearch {
 	card?: string | undefined
 	client?: string[] | undefined
 	project?: string[] | undefined
+	priority?: string[] | undefined
+	assignee?: string[] | undefined
+	label?: string[] | undefined
 }
 
 function names(value: unknown): string[] | undefined {
@@ -18,5 +21,8 @@ export function parseCardSearch(search: Record<string, unknown>): CardSearch {
 		card: typeof card === 'string' && card.trim() !== '' ? card : undefined,
 		client: names(search.client),
 		project: names(search.project),
+		priority: names(search.priority),
+		assignee: names(search.assignee),
+		label: names(search.label),
 	}
 }

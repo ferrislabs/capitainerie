@@ -9,6 +9,7 @@ license.workspace = true
 aws-lc-rs.workspace = true
 capitainerie-common.workspace = true
 capitainerie-core.workspace = true
+chrono.workspace = true
 clap.workspace = true
 http.workspace = true
 rig-agent.workspace = true

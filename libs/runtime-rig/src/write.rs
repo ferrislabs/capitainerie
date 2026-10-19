@@ -8,6 +8,10 @@ use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{
     DuplicateAction, ExtractedAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
 };
+use capitainerie_core::domain::card::attributes::{
+    Estimate, Priority, agent_due_date, parse_due_date,
+};
+use chrono::NaiveDate;
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
     DynModel,
@@ -23,7 +27,7 @@ use tracing::{Instrument, field, info_span};
 use crate::anthropic::{Api, Request};
 use crate::client::Engine;
 use crate::mcp::{
-    COMMENT, CREATE_CARD, McpSession, call_create_card, call_tool, comment_arguments,
+    COMMENT, CREATE_CARD, CardExtras, McpSession, call_create_card, call_tool, comment_arguments,
     create_card_arguments,
 };
 use crate::usage::{truncate_chars, usage_of};
@@ -37,7 +41,11 @@ You are the writer of a meeting assistant. You receive a numbered list of action
 For each numbered action, call the propose_card tool exactly once with:
 - action_index: the number of the action in the list;
 - title: a clear title in French, imperative mood, at most 80 characters;
-- description: a short, clean description in French. Do not mention or repeat the owner, the deadline or any label such as \"owner:\" or \"due:\": they are added automatically.
+- description: a short, clean description in French. Do not mention or repeat the owner, the deadline or any label such as \"owner:\" or \"due:\": they are added automatically;
+- acceptance_criteria: 2 to 5 short French sentences, each a verifiable condition that must be true when the work is done (omit when the action is too vague to say);
+- priority: low, normal, high or urgent, only from what was said (urgency, blocking, customer impact); omit for normal;
+- estimate: xs, s, m, l or xl, the rough size of the work; omit when you cannot tell;
+- due_date: YYYY-MM-DD, only when the action line gives a stated deadline. Turn it into a calendar date using the meeting date; if the deadline is vague (\"bientôt\", \"un jour\") or no meeting date is given for a relative one, omit it. Never invent a date.
 Do not invent actions and do not call propose_card twice for the same action.
 If propose_card returns an error, read it and fix your call.
 When every action has been handled, answer \"done\".";
@@ -50,6 +58,56 @@ pub(crate) struct ProposeCardArgs {
     title: String,
     #[schemars(description = "Clean French description. Never repeat the owner or the deadline.")]
     description: String,
+    #[serde(default)]
+    #[schemars(
+        description = "2 to 5 short French sentences, each a verifiable condition for the work to be done. Omit when too vague."
+    )]
+    acceptance_criteria: Option<Vec<String>>,
+    #[serde(default)]
+    #[schemars(description = "low, normal, high or urgent. Omit for normal.")]
+    priority: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "xs, s, m, l or xl. Omit when unknown.")]
+    estimate: Option<String>,
+    #[serde(default)]
+    #[schemars(
+        description = "YYYY-MM-DD, only when the action has a stated deadline. Never invent one."
+    )]
+    due_date: Option<String>,
+}
+
+struct SoundDetails {
+    priority: Option<&'static str>,
+    estimate: Option<&'static str>,
+    due_date: Option<String>,
+}
+
+/// What the model gave that MCP would accept; the rest is dropped so the card
+/// is still created.
+fn sound_details(
+    args: &ProposeCardArgs,
+    deadline_stated: bool,
+    meeting_date: Option<NaiveDate>,
+) -> SoundDetails {
+    SoundDetails {
+        priority: args
+            .priority
+            .as_deref()
+            .and_then(|value| Priority::try_from(value.trim()).ok())
+            .map(Priority::as_str),
+        estimate: args
+            .estimate
+            .as_deref()
+            .and_then(|value| Estimate::try_from(value.trim()).ok())
+            .map(Estimate::as_str),
+        due_date: args
+            .due_date
+            .as_deref()
+            .filter(|_| deadline_stated)
+            .and_then(|value| parse_due_date(value).ok())
+            .and_then(|date| agent_due_date(date, meeting_date).ok())
+            .map(|date| date.to_string()),
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,6 +118,7 @@ struct Shared {
     peer: Peer<RoleClient>,
     run_id: RunId,
     transcript_id: TranscriptId,
+    meeting_date: Option<NaiveDate>,
     actions: Vec<LocatedAction>,
     calls: Mutex<Vec<ToolCall>>,
     /// Indexes already turned into a card, or being: a model that calls the
@@ -77,6 +136,7 @@ impl ProposeCard {
         peer: Peer<RoleClient>,
         run_id: RunId,
         transcript_id: TranscriptId,
+        meeting_date: Option<NaiveDate>,
         actions: Vec<LocatedAction>,
     ) -> Self {
         Self {
@@ -84,6 +144,7 @@ impl ProposeCard {
                 peer,
                 run_id,
                 transcript_id,
+                meeting_date,
                 actions,
                 calls: Mutex::new(Vec::new()),
                 proposed: Mutex::new(HashSet::new()),
@@ -136,12 +197,24 @@ impl ProposeCard {
         if !self.reserve(index) {
             return Err(ToolFailure(already_proposed_message(args.action_index)));
         }
+        let details = sound_details(
+            &args,
+            located.action.due.is_some(),
+            self.shared.meeting_date,
+        );
+        let criteria = args.acceptance_criteria.unwrap_or_default();
         let arguments = create_card_arguments(
             self.shared.run_id,
             self.shared.transcript_id,
             located,
             &args.title,
             &card_description(&args.description, &located.action),
+            &CardExtras {
+                acceptance_criteria: &criteria,
+                priority: details.priority,
+                estimate: details.estimate,
+                due_date: details.due_date.as_deref(),
+            },
         );
         let started = Instant::now();
         let outcome = call_create_card(&self.shared.peer, arguments).await;
@@ -287,14 +360,21 @@ pub(crate) fn card_description(description: &str, action: &ExtractedAction) -> S
     text
 }
 
-pub(crate) fn actions_listing(actions: &[LocatedAction]) -> String {
-    let mut listing = String::from("Actions to turn into cards:\n");
+pub(crate) fn actions_listing(actions: &[LocatedAction], meeting_date: Option<&str>) -> String {
+    let mut listing = String::new();
+    if let Some(date) = meeting_date {
+        listing.push_str(&format!("Meeting date: {date}\n"));
+    }
+    listing.push_str("Actions to turn into cards:\n");
     for (index, located) in actions.iter().enumerate() {
         let action = &located.action;
         listing.push_str(&format!(
             "{index}. title: {} | description: {}",
             action.title, action.description
         ));
+        if let Some(due) = &action.due {
+            listing.push_str(&format!(" | stated deadline: {due}"));
+        }
         listing.push('\n');
     }
     listing
@@ -359,6 +439,25 @@ fn tool_definition() -> Value {
                 "description": {
                     "type": "string",
                     "description": "Clean French description. Never repeat the owner or the deadline.",
+                },
+                "acceptance_criteria": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "2 to 5 short French sentences, each a verifiable condition for the work to be done. Omit when too vague.",
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "normal", "high", "urgent"],
+                    "description": "Omit for normal.",
+                },
+                "estimate": {
+                    "type": "string",
+                    "enum": ["xs", "s", "m", "l", "xl"],
+                    "description": "Omit when unknown.",
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD, only when the action has a stated deadline. Never invent one.",
                 },
             },
             "required": ["action_index", "title", "description"],
@@ -489,11 +588,15 @@ pub(crate) async fn run(
             });
         }
         let max_turns = request.actions.len() + 3;
-        let listing = actions_listing(&request.actions);
+        let listing = actions_listing(
+            &request.actions,
+            request.meeting_date.map(|date| date.to_string()).as_deref(),
+        );
         let tool = ProposeCard::new(
             session.peer(),
             request.run_id,
             request.transcript_id,
+            request.meeting_date,
             request.actions,
         );
         let outcome = match engine {
@@ -534,13 +637,34 @@ mod tests {
 
     #[test]
     fn listing_numbers_actions_without_owner_and_due() {
-        let listing = actions_listing(&[
-            located("A", Some("Marie"), Some("vendredi")),
-            located("B", None, None),
-        ]);
-        assert!(listing.contains("0. title: A | description: ctx\n"));
+        let listing = actions_listing(
+            &[
+                located("A", Some("Marie"), Some("vendredi")),
+                located("B", None, None),
+            ],
+            None,
+        );
+        assert!(listing.contains("0. title: A | description: ctx | stated deadline: vendredi\n"));
         assert!(!listing.contains("Marie"));
         assert!(listing.contains("1. title: B | description: ctx\n"));
+        assert!(!listing.contains("Meeting date"));
+    }
+
+    #[test]
+    fn the_listing_gives_the_meeting_date_when_known() {
+        let listing = actions_listing(&[located("A", None, None)], Some("2026-10-19"));
+        assert!(listing.starts_with("Meeting date: 2026-10-19\n"));
+    }
+
+    #[test]
+    fn the_prompt_and_tool_ask_for_the_details_and_forbid_invented_dates() {
+        for word in ["acceptance_criteria", "priority", "estimate", "due_date"] {
+            assert!(SYSTEM_PROMPT.contains(word), "{word}");
+            assert!(tool_definition()["input_schema"]["properties"][word].is_object());
+        }
+        assert!(SYSTEM_PROMPT.contains("Never invent a date"));
+        let required = tool_definition()["input_schema"]["required"].clone();
+        assert_eq!(required, json!(["action_index", "title", "description"]));
     }
 
     #[test]

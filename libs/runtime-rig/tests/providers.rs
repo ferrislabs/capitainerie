@@ -52,6 +52,7 @@ fn write_request(mcp_token: &str, actions: Vec<LocatedAction>) -> WriteRequest {
     WriteRequest {
         run_id: RunId(Uuid::from_u128(11)),
         transcript_id: TranscriptId(Uuid::from_u128(22)),
+        meeting_date: None,
         actions,
         duplicates: Vec::new(),
         mcp_token: SecretToken::new(mcp_token),

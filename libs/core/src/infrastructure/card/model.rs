@@ -1,11 +1,16 @@
 use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId, TranscriptId};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::Deserialize;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use capitainerie_common::{ClientId, ProjectId};
 
 use crate::domain::{
-    card::{Author, Card, CardComment, CardTitle, Column, Provenance},
+    card::{
+        Author, Card, CardComment, CardTitle, Column, Provenance,
+        attributes::{AcceptanceCriteria, Attributes, Criterion, Estimate, Labels, Priority},
+    },
     client::{ClientRef, links::Links},
     project::ProjectRef,
 };
@@ -31,12 +36,65 @@ pub(super) struct CardRow {
     pub client_name: Option<String>,
     pub project_id: Option<Uuid>,
     pub project_name: Option<String>,
+    pub acceptance_criteria: Value,
+    pub priority: String,
+    pub due_date: Option<NaiveDate>,
+    pub assignee_subject: Option<String>,
+    pub labels: Vec<String>,
+    pub estimate: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StoredCriterion {
+    text: String,
+    done: bool,
+}
+
+pub(super) fn criteria_json(attributes: &Attributes) -> Value {
+    Value::Array(
+        attributes
+            .acceptance_criteria
+            .as_slice()
+            .iter()
+            .map(|criterion| json!({ "text": criterion.text, "done": criterion.done }))
+            .collect(),
+    )
+}
+
+fn stored_attributes(row: &CardRow) -> Result<Attributes, CoreError> {
+    let stored = |what: &str, error: CoreError| {
+        CoreError::Internal(format!("stored card {} {what}: {error}", row.id))
+    };
+    let criteria: Vec<Criterion> = Vec::<StoredCriterion>::deserialize(&row.acceptance_criteria)
+        .map_err(|error| CoreError::Internal(format!("stored acceptance criteria: {error}")))?
+        .into_iter()
+        .map(|criterion| Criterion {
+            text: criterion.text,
+            done: criterion.done,
+        })
+        .collect();
+    Ok(Attributes {
+        acceptance_criteria: AcceptanceCriteria::try_from(criteria)
+            .map_err(|error| stored("criteria", error))?,
+        priority: Priority::try_from(row.priority.as_str())
+            .map_err(|error| stored("priority", error))?,
+        due_date: row.due_date,
+        assignee_subject: row.assignee_subject.clone(),
+        labels: Labels::try_from(row.labels.clone()).map_err(|error| stored("labels", error))?,
+        estimate: row
+            .estimate
+            .as_deref()
+            .map(Estimate::try_from)
+            .transpose()
+            .map_err(|error| stored("estimate", error))?,
+    })
 }
 
 impl TryFrom<CardRow> for Card {
     type Error = CoreError;
 
     fn try_from(row: CardRow) -> Result<Self, Self::Error> {
+        let attributes = stored_attributes(&row)?;
         let provenance = match (
             row.provenance_transcript_id,
             row.provenance_start,
@@ -93,6 +151,7 @@ impl TryFrom<CardRow> for Card {
                         name,
                     }),
             ),
+            attributes,
         })
     }
 }

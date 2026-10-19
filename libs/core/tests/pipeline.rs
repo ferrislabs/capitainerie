@@ -270,6 +270,7 @@ impl AgentRuntime for FakeRuntime {
                                 quote: located.action.quote.clone(),
                             }),
                             run_id: Some(request.run_id),
+                            attributes: Default::default(),
                         },
                     )
                     .await?;

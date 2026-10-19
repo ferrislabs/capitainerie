@@ -6,9 +6,12 @@ use crate::domain::{
     authorization::Subject,
     card::{
         Card, CardComment,
+        attributes::CardFilter,
         detail::{CardDetail, CardDetailService},
+        edit::{CardEditService, EditCard},
         service::{CardService, CreateCard, MoveCard, UpdateCard},
     },
+    member::{Member, service::MemberService},
 };
 
 impl CapitainerieUseCase {
@@ -85,7 +88,11 @@ impl CapitainerieUseCase {
     }
 
     #[transactional(card, card_comment, transcript, emitter, authz)]
-    pub async fn list_cards(&self, subject: Subject) -> Result<Vec<Card>, CoreError> {
+    pub async fn list_cards(
+        &self,
+        subject: Subject,
+        filter: CardFilter,
+    ) -> Result<Vec<Card>, CoreError> {
         CardService::new(
             card_repository,
             card_comment_repository,
@@ -93,7 +100,7 @@ impl CapitainerieUseCase {
             emitter,
             authz,
         )
-        .list(subject)
+        .list(subject, &filter)
         .await
     }
 
@@ -107,5 +114,40 @@ impl CapitainerieUseCase {
         )
         .get(subject, id)
         .await
+    }
+}
+
+impl CapitainerieUseCase {
+    #[transactional(card, client, project, member, emitter, authz)]
+    pub async fn edit_card(
+        &self,
+        subject: Subject,
+        id: CardId,
+        command: EditCard,
+    ) -> Result<Card, CoreError> {
+        CardEditService::new(
+            card_repository,
+            client_repository,
+            project_repository,
+            member_repository,
+            emitter,
+            authz,
+        )
+        .edit(subject, id, command)
+        .await
+    }
+
+    #[transactional(member, authz)]
+    pub async fn record_member(&self, member: Member) -> Result<(), CoreError> {
+        MemberService::new(member_repository, authz)
+            .record(member)
+            .await
+    }
+
+    #[transactional(member, authz)]
+    pub async fn list_members(&self, subject: Subject) -> Result<Vec<Member>, CoreError> {
+        MemberService::new(member_repository, authz)
+            .list(subject)
+            .await
     }
 }

@@ -16,6 +16,9 @@ function card(id: string, column: Schemas.ColumnDto): Schemas.CardResponse {
 		version: 1,
 		created_at: '2026-10-16T09:30:00Z',
 		updated_at: '2026-10-16T09:30:00Z',
+		acceptance_criteria: [],
+		priority: 'normal',
+		labels: [],
 	}
 }
 

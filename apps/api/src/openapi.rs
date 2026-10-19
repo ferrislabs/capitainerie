@@ -11,7 +11,10 @@ use capitainerie_handlers_cards::{
     list_cards::CardListResponse,
     move_card::MoveCardRequest,
     patch_card::PatchCardRequest,
-    response::{CardDetailResponse, CardResponse, ColumnDto, CommentResponse, ProvenanceResponse},
+    response::{
+        CardDetailResponse, CardResponse, ColumnDto, CommentResponse, CriterionDto, EstimateDto,
+        PriorityDto, ProvenanceResponse,
+    },
 };
 use capitainerie_handlers_clients::{
     self as clients,
@@ -27,6 +30,7 @@ use capitainerie_handlers_clients::{
 };
 use capitainerie_handlers_identity::{
     self as identity,
+    list_members::{MemberListResponse, MemberResponse},
     me::{MeOrganization, MeResponse},
 };
 use capitainerie_handlers_integrations::{
@@ -72,6 +76,7 @@ use utoipa::{
         health::live,
         health::ready,
         identity::me::handler,
+        identity::list_members::handler,
         runs::submit_transcript::handler,
         runs::list_runs::handler,
         runs::list_active_runs::handler,
@@ -115,6 +120,8 @@ use utoipa::{
         ApiErrorResponse,
         MeResponse,
         MeOrganization,
+        MemberListResponse,
+        MemberResponse,
         SubmitTranscriptRequest,
         SubmitTranscriptResponse,
         RunListResponse,
@@ -132,6 +139,9 @@ use utoipa::{
         CardListResponse,
         CardResponse,
         ColumnDto,
+        PriorityDto,
+        EstimateDto,
+        CriterionDto,
         ProvenanceResponse,
         MoveCardRequest,
         PatchCardRequest,

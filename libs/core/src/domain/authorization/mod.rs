@@ -39,6 +39,7 @@ pub enum Action {
     CardRead,
     CardUpdate { column: Column },
     CardLink,
+    CardEdit,
     CardComment,
     CardMove { from: Column, to: Column },
     ProviderRead,
@@ -48,6 +49,7 @@ pub enum Action {
     GithubManage,
     ClientRead,
     ClientManage,
+    MemberRead,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +72,7 @@ pub enum ResourceKind {
     GithubApp,
     Client,
     Project,
+    Member,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,7 +96,7 @@ impl Action {
             Self::RunRead => "run.read",
             Self::CardCreate => "card.create",
             Self::CardRead => "card.read",
-            Self::CardUpdate { .. } | Self::CardLink => "card.update",
+            Self::CardUpdate { .. } | Self::CardLink | Self::CardEdit => "card.update",
             Self::CardComment => "card.comment",
             Self::CardMove { .. } => "card.move",
             Self::ProviderRead => "provider.read",
@@ -103,6 +106,7 @@ impl Action {
             Self::GithubManage => "github.manage",
             Self::ClientRead => "client.read",
             Self::ClientManage => "client.manage",
+            Self::MemberRead => "member.read",
         }
     }
 }
@@ -121,6 +125,7 @@ impl ResourceKind {
             Self::GithubApp => "github_app",
             Self::Client => "client",
             Self::Project => "project",
+            Self::Member => "member",
         }
     }
 }

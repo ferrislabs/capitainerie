@@ -19,6 +19,9 @@ function card(
 		version,
 		created_at: '2026-10-16T09:30:00Z',
 		updated_at: '2026-10-16T09:30:00Z',
+		acceptance_criteria: [],
+		priority: 'normal',
+		labels: [],
 	}
 }
 

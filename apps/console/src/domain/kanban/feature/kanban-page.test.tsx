@@ -31,6 +31,9 @@ const CARD: Schemas.CardResponse = {
 	version: 4,
 	created_at: '2026-10-16T09:30:00Z',
 	updated_at: '2026-10-16T09:30:00Z',
+	acceptance_criteria: [],
+	priority: 'normal',
+	labels: [],
 }
 
 const ORIGIN_RUN: Schemas.RunResponse = {
@@ -277,5 +280,91 @@ describe('KanbanPage card panel', () => {
 		await waitFor(() =>
 			expect(bodies).toEqual([{ to: 'done', expected_version: 4 }]),
 		)
+	})
+
+	it('saves each field on its own through PATCH with the expected version', async () => {
+		const bodies: Array<unknown> = []
+		serve(
+			base({
+				'GET /api/v1/members': () =>
+					json(200, {
+						items: [
+							{
+								subject: 'u1',
+								name: 'Claire Martin',
+								email: null,
+								last_seen_at: '2026-10-19T08:00:00Z',
+							},
+						],
+					}),
+				'PATCH /api/v1/cards/c1': (init) => {
+					bodies.push(JSON.parse(String(init.body)))
+					return json(200, { ...CARD, version: 5 })
+				},
+			}),
+		)
+		const user = userEvent.setup()
+		render(<KanbanPage openCardId="c1" onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+		const panel = await screen.findByRole('dialog')
+
+		await user.selectOptions(
+			await within(panel).findByLabelText('Priorité'),
+			'urgent',
+		)
+		await waitFor(() => expect(bodies).toHaveLength(1))
+		await waitFor(() =>
+			expect(
+				(within(panel).getByLabelText('Priorité') as HTMLSelectElement)
+					.disabled,
+			).toBe(false),
+		)
+		await user.click(
+			within(panel).getByRole('button', { name: 'Modifier le titre' }),
+		)
+		const title = within(panel).getByLabelText('Titre')
+		await user.clear(title)
+		await user.type(title, 'Corriger le gros bug')
+		await user.click(within(panel).getByRole('button', { name: 'Enregistrer' }))
+		await waitFor(() => expect(bodies).toHaveLength(2))
+		const responsable = await within(panel).findByRole('option', {
+			name: 'Claire Martin',
+		})
+		expect(responsable).toBeTruthy()
+
+		expect(bodies[0]).toEqual({ expected_version: 4, priority: 'urgent' })
+		expect(bodies[1]).toEqual({
+			expected_version: 4,
+			title: 'Corriger le gros bug',
+		})
+	})
+
+	it('reloads the card and says so when a field save meets a stale version', async () => {
+		let boards = 0
+		serve(
+			base({
+				'GET /api/v1/cards': () => {
+					boards += 1
+					return json(200, { items: [CARD] })
+				},
+				'PATCH /api/v1/cards/c1': () =>
+					json(409, { code: 'conflict', status: 409, message: 'stale' }),
+			}),
+		)
+		const user = userEvent.setup()
+		render(<KanbanPage openCardId="c1" onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+		const panel = await screen.findByRole('dialog')
+		await within(panel).findByText('Le détail complet de la carte')
+		const before = boards
+
+		await user.selectOptions(within(panel).getByLabelText('Priorité'), 'high')
+
+		expect(
+			await within(panel).findByText('La carte a changé, rechargée.'),
+		).toBeTruthy()
+		await waitFor(() => expect(boards).toBeGreaterThan(before))
 	})
 })

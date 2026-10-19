@@ -41,6 +41,7 @@ fn write_request(actions: Vec<LocatedAction>) -> WriteRequest {
     WriteRequest {
         run_id: RunId(Uuid::from_u128(11)),
         transcript_id: TranscriptId(Uuid::from_u128(22)),
+        meeting_date: None,
         actions,
         duplicates: Vec::new(),
         mcp_token: SecretToken::new("secret-token"),
@@ -271,6 +272,90 @@ async fn extract_reports_an_unreachable_model_as_internal() {
     let error = runtime.extract(&local(), "transcript").await.unwrap_err();
 
     assert!(matches!(&error, CoreError::Internal(message) if message.contains("language model")));
+}
+
+async fn write_with_details(due: Option<&str>, extras: serde_json::Value) -> serde_json::Value {
+    let (mcp, mcp_url) = FakeMcp::serve().await;
+    let mut input = json!({
+        "action_index": 0,
+        "title": "Relancer Acme",
+        "description": "ctx",
+        "acceptance_criteria": ["Le mail est parti", "  "],
+    });
+    input
+        .as_object_mut()
+        .unwrap()
+        .extend(extras.as_object().cloned().unwrap());
+    let llm = FakeLlm::with(vec![
+        tool_call_response("propose_card", &input, 200, 40),
+        text_response("done", 260, 2),
+    ]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, &mcp_url)).unwrap();
+    let mut action = located("Relancer Acme", "relancer Acme", 5, 18);
+    action.action.due = due.map(str::to_owned);
+    let mut request = write_request(vec![action]);
+    request.meeting_date = "2099-01-01".parse().ok();
+
+    runtime.write(&local(), request).await.unwrap();
+
+    let recorded = mcp.recorded();
+    assert_eq!(recorded.len(), 1);
+    let first_request = llm.request_bodies()[0].clone();
+    assert!(first_request.contains("Meeting date: 2099-01-01"));
+    recorded[0].arguments.clone()
+}
+
+#[tokio::test]
+async fn write_passes_criteria_priority_estimate_and_a_stated_due_date_to_create_card() {
+    let arguments = write_with_details(
+        Some("vendredi"),
+        json!({"priority": "urgent", "estimate": "s", "due_date": "2099-01-05"}),
+    )
+    .await;
+    assert_eq!(
+        arguments["acceptance_criteria"],
+        json!(["Le mail est parti"])
+    );
+    assert_eq!(arguments["priority"], "urgent");
+    assert_eq!(arguments["estimate"], "s");
+    assert_eq!(arguments["due_date"], "2099-01-05");
+}
+
+#[tokio::test]
+async fn write_drops_a_due_date_the_transcript_never_stated() {
+    let arguments = write_with_details(
+        None,
+        json!({"priority": "urgent", "due_date": "2099-01-05"}),
+    )
+    .await;
+    assert!(arguments["due_date"].is_null());
+    assert_eq!(arguments["priority"], "urgent");
+}
+
+#[tokio::test]
+async fn write_drops_invalid_fields_but_keeps_the_card() {
+    let arguments = write_with_details(
+        Some("vendredi"),
+        json!({"priority": "critique", "estimate": "xxl", "due_date": "vendredi"}),
+    )
+    .await;
+    assert_eq!(arguments["title"], "Relancer Acme");
+    assert_eq!(
+        arguments["acceptance_criteria"],
+        json!(["Le mail est parti"])
+    );
+    for field in ["priority", "estimate", "due_date"] {
+        assert!(arguments[field].is_null(), "{field}");
+    }
+}
+
+#[tokio::test]
+async fn write_drops_a_due_date_outside_the_window() {
+    for date in ["2098-12-31", "2102-01-01", "2099-02-30"] {
+        let arguments = write_with_details(Some("bientôt"), json!({"due_date": date})).await;
+        assert!(arguments["due_date"].is_null(), "{date}");
+    }
 }
 
 #[tokio::test]

@@ -6,6 +6,10 @@ use capitainerie_core::{
         authorization::Subject,
         card::{
             Card, CardComment, Column, Provenance,
+            attributes::{
+                AcceptanceCriteria, Attributes, Criterion, Estimate, Priority, agent_due_date,
+                parse_due_date,
+            },
             service::{CreateCard, MoveCard, ProvenanceInput, UpdateCard},
         },
     },
@@ -53,6 +57,62 @@ pub struct CreateCardInput {
         description = "Where in the transcript this card comes from. Strongly recommended: a card without provenance cannot be traced back to what was said."
     )]
     pub provenance: Option<ProvenanceParam>,
+    #[schemars(
+        description = "Verifiable conditions that must be true when the card is done, one short sentence each (at most 20, 300 characters each). Give them when the transcript implies what \"done\" looks like."
+    )]
+    pub acceptance_criteria: Option<Vec<String>>,
+    #[schemars(description = "Priority of the card. Omit for normal.")]
+    pub priority: Option<PriorityParam>,
+    #[schemars(description = "Rough size of the work. Omit when you cannot tell.")]
+    pub estimate: Option<EstimateParam>,
+    #[schemars(
+        description = "Deadline as YYYY-MM-DD. Only when the transcript states one; never invent a date."
+    )]
+    pub due_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "snake_case")]
+pub enum PriorityParam {
+    Low,
+    Normal,
+    High,
+    Urgent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "snake_case")]
+pub enum EstimateParam {
+    Xs,
+    S,
+    M,
+    L,
+    Xl,
+}
+
+impl From<PriorityParam> for Priority {
+    fn from(param: PriorityParam) -> Self {
+        match param {
+            PriorityParam::Low => Self::Low,
+            PriorityParam::Normal => Self::Normal,
+            PriorityParam::High => Self::High,
+            PriorityParam::Urgent => Self::Urgent,
+        }
+    }
+}
+
+impl From<EstimateParam> for Estimate {
+    fn from(param: EstimateParam) -> Self {
+        match param {
+            EstimateParam::Xs => Self::Xs,
+            EstimateParam::S => Self::S,
+            EstimateParam::M => Self::M,
+            EstimateParam::L => Self::L,
+            EstimateParam::Xl => Self::Xl,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -161,6 +221,20 @@ impl TryFrom<CreateCardInput> for CreateCard {
                 .transpose()?,
             title: input.title,
             description: input.description,
+            attributes: Attributes {
+                acceptance_criteria: AcceptanceCriteria::try_from(
+                    input
+                        .acceptance_criteria
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|text| Criterion { text, done: false })
+                        .collect::<Vec<_>>(),
+                )?,
+                priority: input.priority.map(Priority::from).unwrap_or_default(),
+                due_date: input.due_date.as_deref().map(parse_due_date).transpose()?,
+                estimate: input.estimate.map(Estimate::from),
+                ..Attributes::default()
+            },
         })
     }
 }
@@ -207,6 +281,16 @@ pub struct CardView {
     pub version: i32,
     pub provenance: Option<ProvenanceView>,
     pub created_by_run: Option<Uuid>,
+    pub acceptance_criteria: Vec<CriterionView>,
+    pub priority: &'static str,
+    pub due_date: Option<String>,
+    pub estimate: Option<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CriterionView {
+    pub text: String,
+    pub done: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -238,6 +322,19 @@ impl From<&Card> for CardView {
             version: card.version,
             provenance: card.provenance.as_ref().map(ProvenanceView::from),
             created_by_run: card.created_by_run.map(|run| run.0),
+            acceptance_criteria: card
+                .attributes
+                .acceptance_criteria
+                .as_slice()
+                .iter()
+                .map(|criterion| CriterionView {
+                    text: criterion.text.clone(),
+                    done: criterion.done,
+                })
+                .collect(),
+            priority: card.attributes.priority.as_str(),
+            due_date: card.attributes.due_date.map(|date| date.to_string()),
+            estimate: card.attributes.estimate.map(Estimate::as_str),
         }
     }
 }
@@ -289,7 +386,7 @@ fn subject_of(parts: &Parts) -> Result<Subject, ErrorData> {
 #[tool_router(router = tool_router)]
 impl KanbanTools {
     #[tool(
-        description = "Propose a new card on the Kanban board. Whatever you ask, an agent-created card always lands in the \"proposed\" column: only a human can accept it into \"todo\" or reject it. Give a short actionable title and a description saying what to do and why. Pass provenance (transcript_id, character offsets start/end, and the exact quote) whenever the card comes from a transcript: the quote is verified against the transcript and a mismatch is refused. Returns the card with its id and its version."
+        description = "Propose a new card on the Kanban board. Whatever you ask, an agent-created card always lands in the \"proposed\" column: only a human can accept it into \"todo\" or reject it. Give a short actionable title and a description saying what to do and why. Optionally give acceptance_criteria (what must be true when it is done), a priority, an estimate, and a due_date only when the transcript states one. Pass provenance (transcript_id, character offsets start/end, and the exact quote) whenever the card comes from a transcript: the quote is verified against the transcript and a mismatch is refused. Returns the card with its id and its version."
     )]
     #[tracing::instrument(
         skip_all,
@@ -301,7 +398,14 @@ impl KanbanTools {
         Extension(parts): Extension<Parts>,
     ) -> Result<CallToolResult, ErrorData> {
         let subject = subject_of(&parts)?;
-        let command = match CreateCard::try_from(input) {
+        let command = match CreateCard::try_from(input).and_then(|command| {
+            if subject.actor.is_some()
+                && let Some(date) = command.attributes.due_date
+            {
+                agent_due_date(date, None)?;
+            }
+            Ok(command)
+        }) {
             Ok(command) => command,
             Err(error) => return into_tool_result::<()>(Err(error)),
         };
@@ -409,6 +513,10 @@ mod tests {
             description: "Avant vendredi".into(),
             run_id: run.map(str::to_owned),
             provenance,
+            acceptance_criteria: None,
+            priority: None,
+            estimate: None,
+            due_date: None,
         }
     }
 
@@ -429,6 +537,65 @@ mod tests {
         assert_eq!((provenance.start, provenance.end), (3, 9));
         assert_eq!(command.run_id.unwrap().0.to_string(), ID);
         assert_eq!(command.title, "Relancer Acme");
+    }
+
+    #[test]
+    fn create_input_carries_criteria_priority_estimate_and_due_date() {
+        let mut input = create(None, None);
+        input.acceptance_criteria =
+            Some(vec!["  Les builds ARM passent ".into(), "Documenté".into()]);
+        input.priority = Some(PriorityParam::Urgent);
+        input.estimate = Some(EstimateParam::Xl);
+        input.due_date = Some("2026-10-31".into());
+        let attributes = CreateCard::try_from(input).unwrap().attributes;
+        let criteria = attributes.acceptance_criteria.as_slice();
+        assert_eq!(criteria.len(), 2);
+        assert_eq!(criteria[0].text, "Les builds ARM passent");
+        assert!(!criteria[0].done);
+        assert_eq!(attributes.priority, Priority::Urgent);
+        assert_eq!(attributes.estimate, Some(Estimate::Xl));
+        assert_eq!(
+            attributes.due_date.map(|date| date.to_string()).as_deref(),
+            Some("2026-10-31")
+        );
+    }
+
+    #[test]
+    fn create_input_defaults_to_normal_priority_and_no_details() {
+        let attributes = CreateCard::try_from(create(None, None)).unwrap().attributes;
+        assert_eq!(attributes, Attributes::default());
+    }
+
+    #[test]
+    fn an_agent_deadline_in_the_past_or_too_far_ahead_is_refused_with_the_window() {
+        for date in ["2001-01-01", "2999-01-01"] {
+            let mut input = create(None, None);
+            input.due_date = Some(date.into());
+            let due = CreateCard::try_from(input)
+                .unwrap()
+                .attributes
+                .due_date
+                .unwrap();
+            assert!(
+                matches!(agent_due_date(due, None), Err(CoreError::Invalid(m)) if m.contains("omit it")),
+                "{date}"
+            );
+        }
+    }
+
+    #[test]
+    fn create_input_rejects_bad_details() {
+        let with = |edit: fn(&mut CreateCardInput)| {
+            let mut input = create(None, None);
+            edit(&mut input);
+            CreateCard::try_from(input)
+        };
+        assert!(with(|i| i.due_date = Some("vendredi".into())).is_err());
+        assert!(with(|i| i.due_date = Some("2026-13-40".into())).is_err());
+        assert!(with(|i| i.acceptance_criteria = Some(vec!["  ".into()])).is_err());
+        assert!(with(|i| i.acceptance_criteria = Some(vec!["x".into(); 21])).is_err());
+        assert!(serde_json::from_value::<PriorityParam>(serde_json::json!("critical")).is_err());
+        assert!(serde_json::from_value::<EstimateParam>(serde_json::json!("xxl")).is_err());
     }
 
     #[test]

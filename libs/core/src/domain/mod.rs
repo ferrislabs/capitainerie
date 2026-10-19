@@ -7,6 +7,7 @@ pub mod document;
 pub mod event;
 pub mod execution;
 pub mod label;
+pub mod member;
 pub mod organization;
 pub mod project;
 pub mod provider;

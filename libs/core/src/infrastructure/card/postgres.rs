@@ -1,11 +1,12 @@
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::repository;
 
-use super::model::{CardCommentRow, CardRow, stored_offset};
+use super::model::{CardCommentRow, CardRow, criteria_json, stored_offset};
 use crate::{
     domain::{
         card::{
             Card, CardComment,
+            attributes::{CardFilter, Estimate, Priority},
             ports::{CardCommentRepository, CardRepository},
         },
         client::links::Links,
@@ -36,9 +37,11 @@ impl CardRepository for PgCardRepository<'_> {
                 id, organization_id, title, description, "column",
                 provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
                 created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at,
-                client_id, project_id
+                client_id, project_id,
+                acceptance_criteria, priority, due_date, assignee_subject, labels, estimate
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                    $18, $19, $20, $21, $22, $23)
             "#,
             card.id.0,
             card.organization_id.0,
@@ -57,6 +60,12 @@ impl CardRepository for PgCardRepository<'_> {
             card.updated_at,
             card.links.client_id().map(|id| id.0),
             card.links.project_id().map(|id| id.0),
+            criteria_json(&card.attributes),
+            card.attributes.priority.as_str(),
+            card.attributes.due_date,
+            card.attributes.assignee_subject,
+            card.attributes.labels.as_slice(),
+            card.attributes.estimate.map(Estimate::as_str),
         )
         .execute(&mut ***tx)
         .await
@@ -77,7 +86,8 @@ impl CardRepository for PgCardRepository<'_> {
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
-                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id
@@ -108,7 +118,8 @@ impl CardRepository for PgCardRepository<'_> {
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
-                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id
@@ -131,7 +142,9 @@ impl CardRepository for PgCardRepository<'_> {
             r#"
             UPDATE cards
             SET title = $3, description = $4, "column" = $5, version = $6, updated_at = $7,
-                client_id = $8, project_id = $9
+                client_id = $8, project_id = $9,
+                acceptance_criteria = $10, priority = $11, due_date = $12, assignee_subject = $13,
+                labels = $14, estimate = $15
             WHERE organization_id = $1 AND id = $2 AND version = $6 - 1
             "#,
             card.organization_id.0,
@@ -143,6 +156,12 @@ impl CardRepository for PgCardRepository<'_> {
             card.updated_at,
             card.links.client_id().map(|id| id.0),
             card.links.project_id().map(|id| id.0),
+            criteria_json(&card.attributes),
+            card.attributes.priority.as_str(),
+            card.attributes.due_date,
+            card.attributes.assignee_subject,
+            card.attributes.labels.as_slice(),
+            card.attributes.estimate.map(Estimate::as_str),
         )
         .execute(&mut ***tx)
         .await
@@ -193,7 +212,11 @@ impl CardRepository for PgCardRepository<'_> {
             .collect())
     }
 
-    async fn list(&mut self, organization_id: OrganizationId) -> Result<Vec<Card>, CoreError> {
+    async fn list(
+        &mut self,
+        organization_id: OrganizationId,
+        filter: &CardFilter,
+    ) -> Result<Vec<Card>, CoreError> {
         let mut tx = self.tx.lock().await;
         sqlx::query_as!(
             CardRow,
@@ -202,16 +225,28 @@ impl CardRepository for PgCardRepository<'_> {
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
-                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id
             LEFT JOIN projects p ON p.id = c.project_id
             WHERE c.organization_id = $1
+              AND ($2::uuid IS NULL OR c.client_id = $2)
+              AND ($3::uuid IS NULL OR c.project_id = $3)
+              AND ($4::text IS NULL OR c.priority = $4)
+              AND ($5::text IS NULL OR c.assignee_subject = $5)
+              AND ($6::text IS NULL
+                   OR EXISTS (SELECT 1 FROM unnest(c.labels) AS label WHERE lower(label) = lower($6)))
             ORDER BY c.updated_at DESC, c.id DESC
             LIMIT 500
             "#,
             organization_id.0,
+            filter.client_id.map(|id| id.0),
+            filter.project_id.map(|id| id.0),
+            filter.priority.map(Priority::as_str),
+            filter.assignee,
+            filter.label,
         )
         .fetch_all(&mut ***tx)
         .await
