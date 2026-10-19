@@ -192,6 +192,7 @@ function Field({
 				{hasError ? (
 					<p
 						id={errorId}
+						role="alert"
 						data-slot="field-error"
 						className="flex items-start gap-1.5 text-xs font-medium text-destructive"
 					>
@@ -199,10 +200,7 @@ function Field({
 							aria-hidden="true"
 							className="mt-px size-3.5 shrink-0"
 						/>
-						<span>
-							<span className="sr-only">Erreur : </span>
-							{error}
-						</span>
+						<span>{error}</span>
 					</p>
 				) : null}
 			</div>

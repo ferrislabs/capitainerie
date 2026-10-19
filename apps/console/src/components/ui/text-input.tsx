@@ -132,6 +132,8 @@ function TextInput({
 				aria-busy={loading || undefined}
 				className={cn(
 					'h-full min-h-0 min-w-0 flex-1 self-stretch bg-transparent py-1 outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed',
+					props.type === 'search' &&
+						'[&::-webkit-search-cancel-button]:appearance-none',
 					inputClassName,
 				)}
 				{...props}

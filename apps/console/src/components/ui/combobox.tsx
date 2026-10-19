@@ -601,6 +601,7 @@ function OptionRow({
 			aria-selected={selected}
 			aria-disabled={option.disabled || undefined}
 			data-slot="combobox-option"
+			data-value={option.value}
 			data-active={active}
 			data-disabled={option.disabled === true}
 			onMouseMove={onActivate}
