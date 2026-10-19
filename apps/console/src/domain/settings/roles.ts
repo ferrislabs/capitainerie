@@ -13,13 +13,15 @@ export const TRANSCRIBER_PROVIDERS: ReadonlyArray<ProviderKind> = [
 	'openai_compatible',
 ]
 
+export const READER_PROVIDERS: ReadonlyArray<ProviderKind> = ['mistral']
+
 export interface RoleInfo {
 	label: string
 	description: string
 	capability: keyof Schemas.CapabilitiesResponse
 }
 
-export type RequiredRole = Exclude<AgentRole, 'transcriber'>
+export type RequiredRole = Exclude<AgentRole, 'transcriber' | 'reader'>
 
 export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
 	'extractor',
@@ -29,6 +31,8 @@ export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
 ]
 
 export const TRANSCRIBER_ROLE = 'transcriber' satisfies AgentRole
+
+export const READER_ROLE = 'reader' satisfies AgentRole
 
 export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 	extractor: {
@@ -57,6 +61,12 @@ export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 		description:
 			'Transforme un audio déposé en texte, que vous relisez avant de lancer le run. Facultatif : sans lui, seuls les fichiers texte sont acceptés.',
 		capability: 'transcription',
+	},
+	reader: {
+		label: 'Lecteur de PDF',
+		description:
+			'Extrait le texte d’un PDF déposé (OCR Mistral), que vous relisez avant de lancer le run. Facultatif : sans lui, les PDF sont refusés.',
+		capability: 'ocr',
 	},
 }
 
@@ -95,7 +105,8 @@ export function compatibleModels(
 		(model) =>
 			model.capabilities[capability] &&
 			(role !== TRANSCRIBER_ROLE ||
-				TRANSCRIBER_PROVIDERS.includes(model.provider)),
+				TRANSCRIBER_PROVIDERS.includes(model.provider)) &&
+			(role !== READER_ROLE || READER_PROVIDERS.includes(model.provider)),
 	)
 }
 
@@ -138,7 +149,15 @@ export function sameModelRef(
 export function completeAssignments(
 	draft: AssignmentDraft,
 ): ModelAssignments | undefined {
-	const { extractor, judge, writer, embeddings, transcriber, executor } = draft
+	const {
+		extractor,
+		judge,
+		writer,
+		embeddings,
+		transcriber,
+		reader,
+		executor,
+	} = draft
 	if (!extractor || !judge || !writer || !embeddings) return undefined
 	return {
 		extractor,
@@ -146,6 +165,7 @@ export function completeAssignments(
 		writer,
 		embeddings,
 		transcriber: transcriber ?? null,
+		reader: reader ?? null,
 		...(executor ? { executor } : {}),
 	}
 }
@@ -154,8 +174,12 @@ export function draftFrom(
 	saved: Schemas.ModelAssignmentsDto | null,
 ): AssignmentDraft {
 	if (saved === null) return {}
-	const { transcriber, ...rest } = saved
-	return { ...rest, ...(transcriber ? { transcriber } : {}) }
+	const { transcriber, reader, ...rest } = saved
+	return {
+		...rest,
+		...(transcriber ? { transcriber } : {}),
+		...(reader ? { reader } : {}),
+	}
 }
 
 export function catalogRef(model: Schemas.ModelResponse): ModelRef {

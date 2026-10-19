@@ -3,8 +3,10 @@ import {
 	fileExtension,
 	importTranscript,
 	isAudioFile,
+	isPdfFile,
 	MAX_AUDIO_BYTES,
 	MAX_FILE_BYTES,
+	MAX_PDF_BYTES,
 	titleFromFileName,
 	validateTranscriptFile,
 } from '#/domain/runs/transcript-import'
@@ -136,7 +138,7 @@ describe('file helpers', () => {
 	})
 
 	it('refuses other formats and larger files', () => {
-		expect(validateTranscriptFile({ name: 'a.pdf', size: 10 })).toMatch(
+		expect(validateTranscriptFile({ name: 'a.docx', size: 10 })).toMatch(
 			/Format non pris en charge/,
 		)
 		expect(
@@ -162,6 +164,20 @@ describe('file helpers', () => {
 			)
 		}
 		expect(isAudioFile('a.vtt')).toBe(false)
+	})
+
+	it('accepts a pdf up to 25 Mo and names the pdf among the formats', () => {
+		expect(isPdfFile('Rapport.PDF')).toBe(true)
+		expect(isPdfFile('a.txt')).toBe(false)
+		expect(validateTranscriptFile({ name: 'a.pdf', size: MAX_PDF_BYTES })).toBe(
+			undefined,
+		)
+		expect(
+			validateTranscriptFile({ name: 'a.pdf', size: MAX_PDF_BYTES + 1 }),
+		).toBe('Le fichier dépasse 25 Mo.')
+		expect(validateTranscriptFile({ name: 'a.docx', size: 1 })).toContain(
+			'.srt, .pdf, .mp3',
+		)
 	})
 
 	it('keeps the 5 Mo limit for text even when audio is larger', () => {

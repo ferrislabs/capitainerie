@@ -9,6 +9,7 @@ export interface ImportedFile {
 	characters: number
 	participants: number
 	transcribedBy?: string
+	readBy?: string
 }
 
 interface DropHandlers {
@@ -26,7 +27,10 @@ interface Props {
 	dropHandlers: DropHandlers
 	transcribingFile?: string
 	transcriberMissing?: boolean
+	readingFile?: string
+	readerMissing?: boolean
 	modelsLink?: ReactNode
+	readerLink?: ReactNode
 	onFileSelected: (file: File) => void
 	onRemove: () => void
 	onCancel?: () => void
@@ -44,12 +48,17 @@ export function TranscriptDropzone({
 	dropHandlers,
 	transcribingFile,
 	transcriberMissing,
+	readingFile,
+	readerMissing,
 	modelsLink,
+	readerLink,
 	onFileSelected,
 	onRemove,
 	onCancel,
 }: Props) {
 	const transcribing = transcribingFile !== undefined
+	const reading = readingFile !== undefined
+	const busy = transcribing || reading
 
 	function handleChange(event: ChangeEvent<HTMLInputElement>) {
 		const file = event.target.files?.[0]
@@ -65,7 +74,7 @@ export function TranscriptDropzone({
 				className="peer sr-only"
 				accept={ACCEPTED_FILE_EXTENSIONS.join(',')}
 				onChange={handleChange}
-				disabled={disabled || transcribing}
+				disabled={disabled || busy}
 			/>
 			<label
 				htmlFor="transcript-file"
@@ -84,6 +93,10 @@ export function TranscriptDropzone({
 					transcript.
 				</span>
 				<span className="text-xs text-muted-foreground">
+					PDF : .pdf, 25 Mo au plus. Il est lu par OCR puis jeté, jamais
+					conservé.
+				</span>
+				<span className="text-xs text-muted-foreground">
 					Audio : .mp3, .m4a, .wav, .webm, .ogg ou .aac, 25 Mo au plus. Il est
 					transcrit puis jeté, jamais conservé.
 				</span>
@@ -93,6 +106,31 @@ export function TranscriptDropzone({
 					Aucun transcripteur n’est configuré : sans lui, un audio ne peut pas
 					être déposé. {modelsLink}
 				</p>
+			) : null}
+			{readerMissing ? (
+				<p className="text-xs text-muted-foreground">
+					Aucun lecteur de PDF n’est configuré : sans lui, un PDF ne peut pas
+					être déposé. {readerLink}
+				</p>
+			) : null}
+			{reading ? (
+				<output className="flex items-center justify-between gap-2 rounded-md border bg-signal-running-soft px-3 py-1.5 text-xs">
+					<span className="flex min-w-0 items-center gap-2">
+						<span
+							aria-hidden="true"
+							className="size-2 shrink-0 rounded-full bg-signal-running motion-safe:animate-signal"
+						/>
+						<span className="shrink-0 font-medium">
+							Lecture du PDF en cours…
+						</span>
+						<span className="truncate text-muted-foreground">
+							{readingFile}
+						</span>
+					</span>
+					<Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+						Annuler
+					</Button>
+				</output>
 			) : null}
 			{transcribing ? (
 				<output className="flex items-center justify-between gap-2 rounded-md border bg-signal-running-soft px-3 py-1.5 text-xs">
@@ -128,13 +166,15 @@ export function TranscriptDropzone({
 						<span className="truncate font-medium">{imported.name}</span>
 						<span className="shrink-0 text-muted-foreground figures">
 							{plural(imported.characters, 'caractère', 'caractères')} ·{' '}
-							{imported.transcribedBy
-								? `transcrit par ${imported.transcribedBy}`
-								: plural(
-										imported.participants,
-										'participant détecté',
-										'participants détectés',
-									)}
+							{imported.readBy
+								? `lu par ${imported.readBy}`
+								: imported.transcribedBy
+									? `transcrit par ${imported.transcribedBy}`
+									: plural(
+											imported.participants,
+											'participant détecté',
+											'participants détectés',
+										)}
 						</span>
 					</span>
 					<Button
