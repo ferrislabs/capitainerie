@@ -1,7 +1,6 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { SettingsIndexPage } from '#/domain/settings/feature/settings-index-page'
 
 export const Route = createFileRoute('/_app/settings/')({
-	beforeLoad: () => {
-		throw redirect({ to: '/settings/providers', replace: true })
-	},
+	component: SettingsIndexPage,
 })
