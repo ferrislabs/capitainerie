@@ -111,6 +111,7 @@ async fn submitting_a_transcript_queues_a_run_and_its_event_atomically() {
             title: "Point hebdo".into(),
             body: "Alice : je relance le fournisseur.".into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -144,6 +145,7 @@ async fn meeting_metadata_survives_a_round_trip() {
             title: "Point hebdo".into(),
             body: "Alice : je relance le fournisseur.".into(),
             metadata: metadata.clone(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -184,6 +186,7 @@ async fn a_transcript_without_metadata_has_no_repository_hint() {
             title: "Point hebdo".into(),
             body: "Alice : je relance le fournisseur.".into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -214,6 +217,7 @@ async fn a_rejected_submission_leaves_no_trace() {
             title: "Point hebdo".into(),
             body: "   ".into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap_err();
@@ -239,6 +243,7 @@ async fn runs_are_listed_newest_first_and_never_across_organizations() {
                 title: title.into(),
                 body: "contenu".into(),
                 metadata: Default::default(),
+                choice: Default::default(),
             })
             .await
             .unwrap();
@@ -299,6 +304,7 @@ async fn the_relay_publishes_committed_events_once_the_bus_accepts_them() {
             title: "Relais".into(),
             body: "contenu".into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -334,6 +340,7 @@ async fn the_timeline_lists_what_the_run_did_not_its_reads() {
             title: "Point".into(),
             body: "Claire : Malik migre la CI.".into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -421,6 +428,7 @@ mod cards {
                 title: "Point".into(),
                 body: BODY.into(),
                 metadata,
+                choice: Default::default(),
             })
         };
         let with_hint = submit(Some("acme/web")).await.unwrap();
@@ -481,6 +489,7 @@ mod cards {
                 title: "Point".into(),
                 body: BODY.into(),
                 metadata: Default::default(),
+                choice: Default::default(),
             })
             .await
             .unwrap();
@@ -586,6 +595,7 @@ mod cards {
                 title: "Point".into(),
                 body: BODY.into(),
                 metadata: Default::default(),
+                choice: Default::default(),
             })
             .await
             .unwrap();

@@ -1,11 +1,14 @@
-use capitainerie_common::{CardId, CoreError, OrganizationId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::repository;
 
 use super::model::{CardCommentRow, CardRow, stored_offset};
 use crate::{
-    domain::card::{
-        Card, CardComment,
-        ports::{CardCommentRepository, CardRepository},
+    domain::{
+        card::{
+            Card, CardComment,
+            ports::{CardCommentRepository, CardRepository},
+        },
+        client::links::Links,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
@@ -32,9 +35,10 @@ impl CardRepository for PgCardRepository<'_> {
             INSERT INTO cards (
                 id, organization_id, title, description, "column",
                 provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
-                created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at
+                created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at,
+                client_id, project_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             "#,
             card.id.0,
             card.organization_id.0,
@@ -51,6 +55,8 @@ impl CardRepository for PgCardRepository<'_> {
             card.version,
             card.created_at,
             card.updated_at,
+            card.links.client_id().map(|id| id.0),
+            card.links.project_id().map(|id| id.0),
         )
         .execute(&mut ***tx)
         .await
@@ -70,9 +76,12 @@ impl CardRepository for PgCardRepository<'_> {
             SELECT c.id, c.organization_id, c.title, c.description, c."column",
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
+            LEFT JOIN clients cl ON cl.id = c.client_id
+            LEFT JOIN projects p ON p.id = c.project_id
             WHERE c.organization_id = $1 AND c.id = $2
             FOR UPDATE OF c
             "#,
@@ -98,9 +107,12 @@ impl CardRepository for PgCardRepository<'_> {
             SELECT c.id, c.organization_id, c.title, c.description, c."column",
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
+            LEFT JOIN clients cl ON cl.id = c.client_id
+            LEFT JOIN projects p ON p.id = c.project_id
             WHERE c.organization_id = $1 AND c.id = $2
             "#,
             organization_id.0,
@@ -118,7 +130,8 @@ impl CardRepository for PgCardRepository<'_> {
         let updated = sqlx::query!(
             r#"
             UPDATE cards
-            SET title = $3, description = $4, "column" = $5, version = $6, updated_at = $7
+            SET title = $3, description = $4, "column" = $5, version = $6, updated_at = $7,
+                client_id = $8, project_id = $9
             WHERE organization_id = $1 AND id = $2 AND version = $6 - 1
             "#,
             card.organization_id.0,
@@ -128,6 +141,8 @@ impl CardRepository for PgCardRepository<'_> {
             card.column.as_str(),
             card.version,
             card.updated_at,
+            card.links.client_id().map(|id| id.0),
+            card.links.project_id().map(|id| id.0),
         )
         .execute(&mut ***tx)
         .await
@@ -141,6 +156,43 @@ impl CardRepository for PgCardRepository<'_> {
         Ok(())
     }
 
+    async fn link_run_cards(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+        span: Option<(u32, u32)>,
+        links: &Links,
+    ) -> Result<Vec<(CardId, i32)>, CoreError> {
+        let (start, end) = match span {
+            Some((start, end)) => (Some(stored_offset(start)?), Some(stored_offset(end)?)),
+            None => (None, None),
+        };
+        let mut tx = self.tx.lock().await;
+        let linked = sqlx::query!(
+            r#"
+            UPDATE cards
+            SET client_id = $5, project_id = $6, version = version + 1, updated_at = now()
+            WHERE organization_id = $1 AND created_by_run = $2
+              AND client_id IS NULL AND project_id IS NULL
+              AND ($3::int IS NULL OR (provenance_start = $3 AND provenance_end = $4))
+            RETURNING id, version
+            "#,
+            organization_id.0,
+            run_id.0,
+            start,
+            end,
+            links.client_id().map(|id| id.0),
+            links.project_id().map(|id| id.0),
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(linked
+            .into_iter()
+            .map(|row| (CardId(row.id), row.version))
+            .collect())
+    }
+
     async fn list(&mut self, organization_id: OrganizationId) -> Result<Vec<Card>, CoreError> {
         let mut tx = self.tx.lock().await;
         sqlx::query_as!(
@@ -149,9 +201,12 @@ impl CardRepository for PgCardRepository<'_> {
             SELECT c.id, c.organization_id, c.title, c.description, c."column",
                    c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?"
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
+            LEFT JOIN clients cl ON cl.id = c.client_id
+            LEFT JOIN projects p ON p.id = c.project_id
             WHERE c.organization_id = $1
             ORDER BY c.updated_at DESC, c.id DESC
             LIMIT 500

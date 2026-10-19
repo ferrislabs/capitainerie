@@ -1,11 +1,13 @@
 pub mod authorization;
 pub mod card;
+pub mod client;
 pub mod crypto;
 pub mod delegation;
 pub mod event;
 pub mod execution;
 pub mod organization;
 pub mod postgres;
+pub mod project;
 pub mod provider;
 pub mod registry;
 pub mod run;

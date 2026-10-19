@@ -1,5 +1,8 @@
-use capitainerie_common::{CardId, RunId, TranscriptId};
-use capitainerie_core::domain::run::{RunOverview, RunSubject};
+use capitainerie_common::{CardId, ClientId, ProjectId, RunId, TranscriptId};
+use capitainerie_core::domain::{
+    client::links::Links,
+    run::{RunOverview, RunSubject},
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -14,6 +17,31 @@ pub enum RunStatusResponse {
     Cancelled,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ClientRefResponse {
+    pub id: ClientId,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProjectRefResponse {
+    pub id: ProjectId,
+    pub name: String,
+}
+
+pub fn link_refs(links: &Links) -> (Option<ClientRefResponse>, Option<ProjectRefResponse>) {
+    (
+        links.client().map(|client| ClientRefResponse {
+            id: client.id,
+            name: client.name.clone(),
+        }),
+        links.project().map(|project| ProjectRefResponse {
+            id: project.id,
+            name: project.name.clone(),
+        }),
+    )
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RunResponse {
     pub id: RunId,
@@ -24,6 +52,8 @@ pub struct RunResponse {
     pub card_id: Option<CardId>,
     pub repository: Option<String>,
     pub repository_hint: Option<String>,
+    pub client: Option<ClientRefResponse>,
+    pub project: Option<ProjectRefResponse>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
     pub failure: Option<String>,
@@ -40,6 +70,7 @@ impl From<RunOverview> for RunResponse {
             run,
             title,
             repository_hint,
+            links,
         }: RunOverview,
     ) -> Self {
         use capitainerie_core::domain::run::RunStatus;
@@ -52,6 +83,7 @@ impl From<RunOverview> for RunResponse {
             } => (None, Some(*card_id), Some(repository.to_string())),
         };
         let transcript_title = transcript_id.and(title.clone());
+        let (client, project) = link_refs(&links);
         Self {
             id: run.id,
             status: match run.status {
@@ -67,6 +99,8 @@ impl From<RunOverview> for RunResponse {
             card_id,
             repository,
             repository_hint: repository_hint.map(|hint| hint.to_string()),
+            client,
+            project,
             initiated_by: run.initiated_by,
             pipeline: run
                 .pipeline

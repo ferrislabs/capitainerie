@@ -1,9 +1,11 @@
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
-use capitainerie_common::{RunId, TranscriptId};
+use capitainerie_common::{ClientId, ProjectId, RunId, TranscriptId};
 use capitainerie_core::{
     AgentDelegation,
-    domain::{run::service::SubmitTranscript, transcript::MeetingMetadata},
+    domain::{
+        client::links::LinkChoice, run::service::SubmitTranscript, transcript::MeetingMetadata,
+    },
 };
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use chrono::NaiveDate;
@@ -21,6 +23,8 @@ pub struct SubmitTranscriptRequest {
     pub meeting_date: Option<NaiveDate>,
     pub participants: Option<Vec<String>>,
     pub repository: Option<String>,
+    pub client_id: Option<ClientId>,
+    pub project_id: Option<ProjectId>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -39,7 +43,7 @@ pub struct SubmitTranscriptResponse {
         (status = 202, description = "Stored; a run is queued on it", body = SubmitTranscriptResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "Not allowed", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "Empty or oversized title or transcript, invalid participants or repository", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "Empty or oversized title or transcript, invalid participants or repository, unknown or archived client or project, or a client that is not the project's", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -59,6 +63,10 @@ pub async fn handler(
         title: request.title,
         body: request.body,
         metadata,
+        choice: LinkChoice {
+            client_id: request.client_id,
+            project_id: request.project_id,
+        },
     };
     let submitted = match &state.delegation {
         Some(delegation) => {

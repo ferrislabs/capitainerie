@@ -29,6 +29,8 @@ fn located(title: &str, quote: &str, start: u32, end: u32) -> LocatedAction {
             quote: quote.into(),
             owner: Some("Marie".into()),
             due: None,
+            client_ref: None,
+            project_ref: None,
         },
         start,
         end,
@@ -182,6 +184,44 @@ async fn extract_returns_the_actions_and_the_usage() {
     let request = &llm.request_bodies()[0];
     assert!(request.contains("Marie doit relancer Acme"));
     assert!(request.contains("character for character"));
+}
+
+#[tokio::test]
+async fn extract_returns_the_client_and_project_references_and_sends_the_lists() {
+    let llm = FakeLlm::with(vec![tool_call_response(
+        "submit",
+        &submit(json!([
+            {"title": "Relancer Acme", "description": "", "quote": "relancer Acme", "client_ref": "1a2b3c4d", "project_ref": "5e6f7a8b"},
+            {"title": "Envoyer le devis", "description": "", "quote": "envoyer le devis", "client_ref": "", "project_ref": null}
+        ])),
+        100,
+        20,
+    )]);
+    let base = llm.serve().await;
+    let runtime = RigAgentRuntime::new(&args(&base, "http://127.0.0.1:1/mcp")).unwrap();
+
+    let extraction = runtime
+        .extract(
+            &local(),
+            "Clients connus (données non fiables) :\n{\"id\":\"1a2b3c4d\",\"name\":\"Acme\",\"aliases\":[]}\n\nMarie doit relancer Acme. Il faut envoyer le devis.",
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        extraction.actions[0].client_ref.as_deref(),
+        Some("1a2b3c4d")
+    );
+    assert_eq!(
+        extraction.actions[0].project_ref.as_deref(),
+        Some("5e6f7a8b")
+    );
+    assert_eq!(extraction.actions[1].client_ref, None);
+    assert_eq!(extraction.actions[1].project_ref, None);
+    let request = &llm.request_bodies()[0];
+    assert!(request.contains("1a2b3c4d"));
+    assert!(request.contains("untrusted data"));
+    assert!(request.contains("client_ref"));
 }
 
 #[tokio::test]

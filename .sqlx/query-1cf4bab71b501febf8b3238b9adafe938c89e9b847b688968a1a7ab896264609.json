@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \"column\" AS \"column!\", count(*) AS \"cards!\"\n            FROM cards\n            WHERE organization_id = $1 AND client_id = $2\n            GROUP BY \"column\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "column!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "cards!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "1cf4bab71b501febf8b3238b9adafe938c89e9b847b688968a1a7ab896264609"
+}

@@ -7,11 +7,12 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use tracing::Instrument;
 
-use super::CapitainerieUseCase;
+use super::{CapitainerieUseCase, RunCardLinks};
 use crate::{
     domain::{
         agent::{DuplicateAction, LocatedAction, SecretToken, WriteRequest, ports::AgentRuntime},
         card::{Card, ports::CardRepository},
+        client::catalog::{Catalog, Shown},
         delegation::ports::{DelegationVault, TokenExchanger},
         event::ports::EventEmitter,
         organization::ports::OrganizationRepository,
@@ -393,6 +394,8 @@ struct ExtractOutput {
     actions: Vec<LocatedAction>,
     /// Actions whose quote could not be found in the transcript: dropped.
     unlocated: Vec<String>,
+    #[serde(default)]
+    shown: Option<Shown>,
 }
 
 impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPipeline<R, X, E, V> {
@@ -469,6 +472,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
     async fn run_steps(&self, context: &RunContext) -> Result<(), CoreError> {
         let mut actions: Vec<LocatedAction> = Vec::new();
         let mut dedup: Option<DedupOutput> = None;
+        let mut shown: Option<Shown> = None;
         for (index, kind) in context.run.pipeline.iter().enumerate() {
             let seq = i32::try_from(index).unwrap_or(i32::MAX);
             if let Some(done) = context.steps.iter().find(|step| {
@@ -476,20 +480,25 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                     && matches!(step.status, StepStatus::Succeeded | StepStatus::Skipped)
             }) {
                 match kind {
-                    StepKind::Extract => actions = restore_actions(done)?,
+                    StepKind::Extract => (actions, shown) = restore_extract(done)?,
                     StepKind::Deduplicate => dedup = restore_dedup(done),
-                    StepKind::Write | StepKind::Execute => {}
+                    StepKind::Write => {
+                        let (new, _) = split_actions(&actions, dedup.as_ref());
+                        self.finish_links(context, done, &new, shown.as_ref()).await;
+                    }
+                    StepKind::Execute => {}
                 }
                 continue;
             }
             match kind {
-                StepKind::Extract => actions = self.extract(context, seq).await?,
+                StepKind::Extract => (actions, shown) = self.extract(context, seq).await?,
                 StepKind::Deduplicate => {
                     dedup = Some(self.deduplicate(context, seq, &actions).await?)
                 }
                 StepKind::Write => {
                     let (new, duplicates) = split_actions(&actions, dedup.as_ref());
-                    self.write(context, seq, new, duplicates).await?;
+                    self.write(context, seq, new, duplicates, shown.as_ref())
+                        .await?;
                 }
                 StepKind::Execute => {
                     return Err(CoreError::Invalid(
@@ -579,16 +588,31 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         &self,
         context: &RunContext,
         seq: i32,
-    ) -> Result<Vec<LocatedAction>, CoreError> {
+    ) -> Result<(Vec<LocatedAction>, Option<Shown>), CoreError> {
         let body = context.transcript.body.as_str();
-        let prompt = context.transcript.metadata.prompt_for(body);
         let step = self.new_step(context, seq, StepKind::Extract, Some("extractor".into()), 1);
         self.usecase
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
-        let extracted = match self.target(context, AgentRole::Extractor).await {
-            Ok(target) => {
+        let prepared = match self.target(context, AgentRole::Extractor).await {
+            Ok(target) => self
+                .detectable(context)
+                .await
+                .map(|catalog| (target, catalog)),
+            Err(error) => Err(error),
+        };
+        let shown = prepared
+            .as_ref()
+            .ok()
+            .and_then(|(_, catalog)| catalog.as_ref())
+            .map(Catalog::shown);
+        let extracted = match prepared {
+            Ok((target, catalog)) => {
+                let prompt = context
+                    .transcript
+                    .metadata
+                    .prompt_with(body, catalog.as_ref());
                 self.with_retries(|_| self.runtime.extract(&target, &prompt))
                     .await
             }
@@ -616,6 +640,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                 ExtractOutput {
                     actions: located,
                     unlocated,
+                    shown,
                 },
                 extraction.usage,
             )
@@ -628,7 +653,104 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
-            _ => restore_actions(&step),
+            _ => restore_extract(&step),
+        }
+    }
+
+    async fn detectable(&self, context: &RunContext) -> Result<Option<Catalog>, CoreError> {
+        if !context.transcript.links.is_empty() {
+            return Ok(None);
+        }
+        self.usecase
+            .detection_catalog(context.run.organization_id)
+            .await
+            .map(Some)
+    }
+
+    async fn links_for(
+        &self,
+        context: &RunContext,
+        actions: &[LocatedAction],
+        shown: Option<&Shown>,
+    ) -> Result<Vec<RunCardLinks>, CoreError> {
+        if !context.transcript.links.is_empty() {
+            return Ok(vec![RunCardLinks {
+                span: None,
+                links: context.transcript.links.clone(),
+            }]);
+        }
+        let Some(shown) = shown else {
+            return Ok(Vec::new());
+        };
+        let catalog = self
+            .usecase
+            .detection_catalog(context.run.organization_id)
+            .await?
+            .restricted_to(shown);
+        Ok(actions
+            .iter()
+            .map(|located| RunCardLinks {
+                span: Some((located.start, located.end)),
+                links: catalog.resolve(
+                    located.action.client_ref.as_deref(),
+                    located.action.project_ref.as_deref(),
+                ),
+            })
+            .collect())
+    }
+
+    async fn finish_links(
+        &self,
+        context: &RunContext,
+        step: &Step,
+        actions: &[LocatedAction],
+        shown: Option<&Shown>,
+    ) {
+        let done = step
+            .output
+            .as_ref()
+            .and_then(|output| output.get("links_done"))
+            .and_then(serde_json::Value::as_bool)
+            == Some(true);
+        if step.status != StepStatus::Succeeded || done {
+            return;
+        }
+        if self.link_cards(context, actions, shown).await
+            && let Err(error) = self.usecase.mark_links_done(context.run.id, step.seq).await
+        {
+            tracing::warn!(%error, "linking could not be recorded as done");
+        }
+    }
+
+    async fn link_cards(
+        &self,
+        context: &RunContext,
+        actions: &[LocatedAction],
+        shown: Option<&Shown>,
+    ) -> bool {
+        let linked = match self.links_for(context, actions, shown).await {
+            Ok(batches) => {
+                self.usecase
+                    .link_run_cards(
+                        context.run.organization_id,
+                        context.run.id,
+                        &context.run.initiated_by,
+                        &self.config.writer_agent,
+                        batches,
+                    )
+                    .await
+            }
+            Err(error) => Err(error),
+        };
+        match linked {
+            Ok(count) => {
+                tracing::info!(count, "cards linked to a client or project");
+                true
+            }
+            Err(error) => {
+                tracing::warn!(%error, "the cards could not be linked");
+                false
+            }
         }
     }
 
@@ -710,6 +832,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         seq: i32,
         actions: Vec<LocatedAction>,
         duplicates: Vec<DuplicateAction>,
+        shown: Option<&Shown>,
     ) -> Result<(), CoreError> {
         let writer = self.config.writer_agent.clone();
         let step = self.new_step(context, seq, StepKind::Write, Some(writer.clone()), 1);
@@ -730,7 +853,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let started = Instant::now();
         let result = match self.target(context, AgentRole::Writer).await {
             Ok(target) => {
-                self.write_attempts(context, &target, &writer, actions, duplicates)
+                self.write_attempts(context, &target, &writer, &actions, &duplicates)
                     .await
             }
             Err(error) => Err(error),
@@ -738,7 +861,10 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
-            _ => Ok(()),
+            _ => {
+                self.finish_links(context, &step, &actions, shown).await;
+                Ok(())
+            }
         }
     }
 
@@ -747,8 +873,8 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         context: &RunContext,
         target: &ModelTarget,
         writer: &str,
-        actions: Vec<LocatedAction>,
-        duplicates: Vec<DuplicateAction>,
+        actions: &[LocatedAction],
+        duplicates: &[DuplicateAction],
     ) -> Result<(serde_json::Value, crate::domain::agent::Usage, StepStatus), CoreError> {
         let delegation = self
             .usecase
@@ -776,8 +902,8 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                         WriteRequest {
                             run_id: context.run.id,
                             transcript_id: context.transcript.id,
-                            actions: actions.clone(),
-                            duplicates: duplicates.clone(),
+                            actions: actions.to_vec(),
+                            duplicates: duplicates.to_vec(),
                             mcp_token: SecretToken::new(mcp_token.token.expose()),
                             traceparent: capitainerie_telemetry::current_traceparent(),
                         },
@@ -805,12 +931,12 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
     }
 }
 
-fn restore_actions(step: &Step) -> Result<Vec<LocatedAction>, CoreError> {
+fn restore_extract(step: &Step) -> Result<(Vec<LocatedAction>, Option<Shown>), CoreError> {
     let Some(output) = &step.output else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), None));
     };
     serde_json::from_value::<ExtractOutput>(output.clone())
-        .map(|output| output.actions)
+        .map(|output| (output.actions, output.shown))
         .map_err(|error| CoreError::Internal(format!("decoding a stored extraction: {error}")))
 }
 
@@ -977,6 +1103,8 @@ mod tests {
                 quote: "q".into(),
                 owner: None,
                 due: None,
+                client_ref: None,
+                project_ref: None,
             },
             start: 0,
             end: 1,

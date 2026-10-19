@@ -42,6 +42,7 @@ const createQueryKey = <TOptions extends EndpointParameters>(
 
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
+export type PatchEndpoints = EndpointByMethod["patch"];
 export type PostEndpoints = EndpointByMethod["post"];
 export type DeleteEndpoints = EndpointByMethod["delete"];
 export type PutEndpoints = EndpointByMethod["put"];
@@ -101,6 +102,36 @@ export class TanstackQueryApiClient {
     return query;
   }
   // </ApiClient.get>
+
+  // <ApiClient.patch>
+  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<TEndpoint["parameters"]>
+  ) {
+    const queryKey = createQueryKey(path as string, params[0]);
+    const query = {
+      /** type-only property if you need easy access to the endpoint params */
+      "~endpoint": {} as TEndpoint,
+      queryKey,
+      queryFn: {} as "You need to pass .queryOptions to the useQuery hook",
+      queryOptions: queryOptions({
+        queryFn: async ({ queryKey, signal }) => {
+          const requestParams = {
+            ...(params[0] || {}),
+            ...(queryKey[0] || {}),
+            overrides: { signal },
+            withResponse: false as const,
+          };
+          const res = await this.client.patch(path, requestParams as never);
+          return res as InferResponseData<TEndpoint, SuccessStatusCode>;
+        },
+        queryKey: queryKey,
+      }),
+    };
+
+    return query;
+  }
+  // </ApiClient.patch>
 
   // <ApiClient.post>
   post<Path extends keyof PostEndpoints, TEndpoint extends PostEndpoints[Path]>(

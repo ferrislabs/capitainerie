@@ -524,6 +524,8 @@ mod tests {
                 quote: "q".into(),
                 owner: owner.map(str::to_owned),
                 due: due.map(str::to_owned),
+                client_ref: None,
+                project_ref: None,
             },
             start: 0,
             end: 1,

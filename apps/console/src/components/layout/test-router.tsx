@@ -14,6 +14,8 @@ const PATHS = [
 	'/runs',
 	'/live',
 	'/kanban',
+	'/clients',
+	'/projects',
 	'/agents',
 	'/settings',
 	'/settings/providers',

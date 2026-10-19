@@ -170,6 +170,8 @@ mod tests {
                 quote: "Q".into(),
                 owner: None,
                 due: None,
+                client_ref: None,
+                project_ref: None,
             },
             start: 0,
             end: 1,

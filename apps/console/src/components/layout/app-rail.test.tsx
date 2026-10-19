@@ -174,6 +174,16 @@ describe('AppRail', () => {
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Clients' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Projets' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
 			screen.getByRole('link', { name: 'En cours' }),
 		)
 

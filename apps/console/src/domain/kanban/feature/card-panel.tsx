@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { Schemas } from '#/api/api.client'
+import { useClients, useProjects } from '#/domain/clients/hooks/use-directory'
 import { useMe } from '#/domain/identity/hooks/use-me'
 import type { Column } from '#/domain/kanban/columns'
 import { executionPullRequest } from '#/domain/kanban/feature/execution-pull-request'
 import { useCardDetail } from '#/domain/kanban/hooks/use-card-detail'
 import { useCommentCard } from '#/domain/kanban/hooks/use-comment-card'
+import { usePatchCard } from '#/domain/kanban/hooks/use-patch-card'
 import { CardSheet, type CardSheetStatus } from '#/domain/kanban/ui/card-sheet'
 import { isApiRequestError } from '#/lib/api-error'
 
@@ -30,6 +32,10 @@ export function CardPanel({
 	const detail = useCardDetail(cardId)
 	const me = useMe()
 	const comment = useCommentCard()
+	const patch = usePatchCard()
+	const open = cardId !== undefined
+	const clients = useClients({ enabled: open })
+	const projects = useProjects({ enabled: open })
 	const [draft, setDraft] = useState('')
 
 	const card = listedCard ?? detail.data?.card
@@ -53,7 +59,7 @@ export function CardPanel({
 
 	return (
 		<CardSheet
-			open={cardId !== undefined}
+			open={open}
 			status={status()}
 			card={card}
 			comments={detail.data?.comments ?? []}
@@ -65,6 +71,18 @@ export function CardPanel({
 			isCommenting={comment.isPending}
 			commentError={comment.errorMessage}
 			runExtra={executionPullRequest}
+			clients={clients.data?.items.map((item) => item.client) ?? []}
+			projects={projects.data?.items.map((item) => item.project) ?? []}
+			isLinking={patch.isPending}
+			linksReady={clients.isSuccess && projects.isSuccess}
+			linkError={patch.errorMessage}
+			onLink={(links) => {
+				if (!card) return
+				patch.mutate({
+					path: { card_id: card.id },
+					body: { expected_version: card.version, ...links },
+				})
+			}}
 			onClose={onClose}
 			onMove={(to) => {
 				if (card) onMove(card.id, to, card.version)

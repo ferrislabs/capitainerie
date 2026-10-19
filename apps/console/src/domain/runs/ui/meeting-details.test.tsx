@@ -83,4 +83,34 @@ describe('MeetingDetails', () => {
 
 		expect(props.onMeetingDateChange).toHaveBeenCalled()
 	})
+
+	it('offers the client and the project when the lists are given', async () => {
+		const onClientChange = vi.fn()
+		const onProjectChange = vi.fn()
+		setup({
+			clients: [{ id: 'cl1', name: 'Acme' }] as never,
+			projects: [
+				{ id: 'p1', name: 'Site', client: { id: 'cl1', name: 'Acme' } },
+				{ id: 'p2', name: 'App', client: { id: 'cl2', name: 'Globex' } },
+			] as never,
+			clientId: 'cl1',
+			projectId: '',
+			onClientChange,
+			onProjectChange,
+		})
+		const user = userEvent.setup()
+
+		await user.selectOptions(screen.getByLabelText('Projet'), 'p1')
+		await user.selectOptions(screen.getByLabelText('Client'), 'cl1')
+
+		expect(onProjectChange).toHaveBeenCalledWith('p1')
+		expect(onClientChange).toHaveBeenCalledWith('cl1')
+		expect(screen.queryByRole('option', { name: 'App' })).toBeNull()
+	})
+
+	it('hides the pickers without handlers', () => {
+		setup()
+
+		expect(screen.queryByLabelText('Client')).toBeNull()
+	})
 })

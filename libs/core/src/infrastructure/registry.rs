@@ -7,11 +7,13 @@ use crate::infrastructure::postgres::SharedTx;
 pub mod domain {
     pub struct Card;
     pub struct CardComment;
+    pub struct Client;
     pub struct DecisionLog;
     pub struct GithubApp;
     pub struct GithubInstallation;
     pub struct ModelAssignment;
     pub struct Organization;
+    pub struct Project;
     pub struct Run;
     pub struct Step;
     pub struct TaskGrant;

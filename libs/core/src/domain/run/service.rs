@@ -4,6 +4,7 @@ use chrono::Utc;
 use super::{Run, RunOverview, ports::RunRepository};
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
+    client::links::{Chosen, LinkChoice},
     event::ports::EventEmitter,
     provider::ModelAssignments,
     transcript::{
@@ -17,6 +18,7 @@ pub struct SubmitTranscript {
     pub title: String,
     pub body: String,
     pub metadata: MeetingMetadata,
+    pub choice: LinkChoice,
 }
 
 pub struct RunService<'a, T, R, E, A> {
@@ -52,9 +54,18 @@ where
     /// Like [`Self::submit`], freezing the organization's model choice into
     /// the run so a later change never affects it.
     pub async fn submit_with_models(
+        self,
+        command: SubmitTranscript,
+        models: Option<ModelAssignments>,
+    ) -> Result<(Transcript, Run), CoreError> {
+        self.submit_linked(command, models, Chosen::default()).await
+    }
+
+    pub async fn submit_linked(
         mut self,
         command: SubmitTranscript,
         models: Option<ModelAssignments>,
+        chosen: Chosen,
     ) -> Result<(Transcript, Run), CoreError> {
         let organization_id = command.subject.organization_id;
         require(
@@ -75,7 +86,11 @@ where
             submitted_by: command.subject.id.clone(),
             title: TranscriptTitle::try_from(command.title)?,
             body: TranscriptBody::try_from(command.body)?,
-            metadata: command.metadata,
+            metadata: MeetingMetadata {
+                repository: command.metadata.repository.or(chosen.repository),
+                ..command.metadata
+            },
+            links: chosen.links,
             created_at: now,
         };
         let (mut run, queued) = Run::queue(
@@ -185,6 +200,7 @@ mod tests {
             title: title.into(),
             body: "Alice : je m'occupe du devis.".into(),
             metadata: MeetingMetadata::default(),
+            choice: Default::default(),
         }
     }
 

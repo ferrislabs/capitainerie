@@ -16,6 +16,7 @@ members = [
     "libs/handlers",
     "libs/handlers-analytics",
     "libs/handlers-cards",
+    "libs/handlers-clients",
     "libs/handlers-identity",
     "libs/handlers-integrations",
     "libs/handlers-providers",
@@ -98,6 +99,7 @@ capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-analytics = { path = "libs/handlers-analytics" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
+capitainerie-handlers-clients = { path = "libs/handlers-clients" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
 capitainerie-handlers-integrations = { path = "libs/handlers-integrations" }
 capitainerie-handlers-providers = { path = "libs/handlers-providers" }

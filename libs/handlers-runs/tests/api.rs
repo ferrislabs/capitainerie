@@ -108,6 +108,7 @@ impl Fixture {
                 title: title.into(),
                 body: "Alice : je m'occupe du devis.".into(),
                 metadata: Default::default(),
+                choice: Default::default(),
             })
             .await
             .unwrap()
@@ -345,6 +346,84 @@ async fn invalid_metadata_is_refused_with_a_422_and_stores_nothing() {
     ];
 
     for case in cases {
+        let response = fixture.submit_over_http(case.clone()).await;
+        assert_eq!(response.status(), 422, "{case}");
+    }
+
+    assert_eq!(fixture.transcripts().await, 0);
+}
+
+#[tokio::test]
+async fn a_chosen_project_links_the_run_and_lends_its_repository() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    let subject = Subject {
+        id: "user-1".into(),
+        organization_id: fixture.organization.id,
+        actor: None,
+        is_admin: false,
+    };
+    let acme = fixture
+        .usecase
+        .create_client(
+            subject.clone(),
+            capitainerie_core::domain::client::service::CreateClient {
+                name: "Acme".into(),
+                aliases: vec![],
+                notes: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let site = fixture
+        .usecase
+        .create_project(
+            subject,
+            capitainerie_core::domain::project::service::CreateProject {
+                client_id: Some(acme.id),
+                name: "Site".into(),
+                aliases: vec![],
+                repository: Some("acme/web".into()),
+                description: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let response = fixture
+        .submit_over_http(json!({"project_id": site.id.0}))
+        .await;
+
+    assert_eq!(response.status(), 202);
+    let accepted: Value = response.json().await.unwrap();
+    let run = fixture
+        .run_over_http(accepted["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(run["repository_hint"], "acme/web");
+    assert_eq!(run["client"], json!({"id": acme.id.0, "name": "Acme"}));
+    assert_eq!(run["project"], json!({"id": site.id.0, "name": "Site"}));
+
+    let explicit = fixture
+        .submit_over_http(json!({"project_id": site.id.0, "repository": "other/repo"}))
+        .await;
+    let accepted: Value = explicit.json().await.unwrap();
+    let run = fixture
+        .run_over_http(accepted["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(run["repository_hint"], "other/repo");
+}
+
+#[tokio::test]
+async fn an_unknown_client_or_project_is_a_422_and_stores_nothing() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+
+    for case in [
+        json!({"client_id": Uuid::now_v7()}),
+        json!({"project_id": Uuid::now_v7()}),
+    ] {
         let response = fixture.submit_over_http(case.clone()).await;
         assert_eq!(response.status(), 422, "{case}");
     }

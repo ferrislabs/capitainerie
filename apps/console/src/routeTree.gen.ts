@@ -14,13 +14,17 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
+import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLiveRouteImport } from './routes/_app.live'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
+import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppAgentsRouteImport } from './routes/_app.agents'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
+import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects_.$projectId'
+import { Route as AppClientsClientIdRouteImport } from './routes/_app.clients_.$clientId'
 import { Route as AppSettingsIntegrationsIndexRouteImport } from './routes/_app.settings.integrations.index'
 import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
 import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
@@ -49,6 +53,11 @@ const AppRunsRoute = AppRunsRouteImport.update({
   path: '/runs',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProjectsRoute = AppProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppLiveRoute = AppLiveRouteImport.update({
   id: '/live',
   path: '/live',
@@ -57,6 +66,11 @@ const AppLiveRoute = AppLiveRouteImport.update({
 const AppKanbanRoute = AppKanbanRouteImport.update({
   id: '/kanban',
   path: '/kanban',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientsRoute = AppClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAgentsRoute = AppAgentsRouteImport.update({
@@ -84,6 +98,16 @@ const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
+  id: '/projects_/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientsClientIdRoute = AppClientsClientIdRouteImport.update({
+  id: '/clients_/$clientId',
+  path: '/clients/$clientId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsIntegrationsIndexRoute =
   AppSettingsIntegrationsIndexRouteImport.update({
     id: '/integrations/',
@@ -107,10 +131,14 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/callback': typeof CallbackRoute
   '/agents': typeof AppAgentsRoute
+  '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
+  '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/clients/$clientId': typeof AppClientsClientIdRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
@@ -122,10 +150,14 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/agents': typeof AppAgentsRoute
+  '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
+  '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/': typeof AppIndexRoute
+  '/clients/$clientId': typeof AppClientsClientIdRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
@@ -139,11 +171,15 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/callback': typeof CallbackRoute
   '/_app/agents': typeof AppAgentsRoute
+  '/_app/clients': typeof AppClientsRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/live': typeof AppLiveRoute
+  '/_app/projects': typeof AppProjectsRoute
   '/_app/runs': typeof AppRunsRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
+  '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
+  '/_app/projects_/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/runs_/$runId': typeof AppRunsRunIdRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
@@ -158,10 +194,14 @@ export interface FileRouteTypes {
     | '/'
     | '/callback'
     | '/agents'
+    | '/clients'
     | '/kanban'
     | '/live'
+    | '/projects'
     | '/runs'
     | '/settings'
+    | '/clients/$clientId'
+    | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
@@ -173,10 +213,14 @@ export interface FileRouteTypes {
   to:
     | '/callback'
     | '/agents'
+    | '/clients'
     | '/kanban'
     | '/live'
+    | '/projects'
     | '/runs'
     | '/'
+    | '/clients/$clientId'
+    | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
@@ -189,11 +233,15 @@ export interface FileRouteTypes {
     | '/_app'
     | '/callback'
     | '/_app/agents'
+    | '/_app/clients'
     | '/_app/kanban'
     | '/_app/live'
+    | '/_app/projects'
     | '/_app/runs'
     | '/_app/settings'
     | '/_app/'
+    | '/_app/clients_/$clientId'
+    | '/_app/projects_/$projectId'
     | '/_app/runs_/$runId'
     | '/_app/settings/models'
     | '/_app/settings/providers'
@@ -245,6 +293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRunsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/projects': {
+      id: '/_app/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AppProjectsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/live': {
       id: '/_app/live'
       path: '/live'
@@ -257,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/kanban'
       fullPath: '/kanban'
       preLoaderRoute: typeof AppKanbanRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clients': {
+      id: '/_app/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof AppClientsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/agents': {
@@ -292,6 +354,20 @@ declare module '@tanstack/react-router' {
       path: '/runs/$runId'
       fullPath: '/runs/$runId'
       preLoaderRoute: typeof AppRunsRunIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projects_/$projectId': {
+      id: '/_app/projects_/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clients_/$clientId': {
+      id: '/_app/clients_/$clientId'
+      path: '/clients/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof AppClientsClientIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/integrations/': {
@@ -344,21 +420,29 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
+  AppClientsRoute: typeof AppClientsRoute
   AppKanbanRoute: typeof AppKanbanRoute
   AppLiveRoute: typeof AppLiveRoute
+  AppProjectsRoute: typeof AppProjectsRoute
   AppRunsRoute: typeof AppRunsRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
+  AppClientsClientIdRoute: typeof AppClientsClientIdRoute
+  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAgentsRoute: AppAgentsRoute,
+  AppClientsRoute: AppClientsRoute,
   AppKanbanRoute: AppKanbanRoute,
   AppLiveRoute: AppLiveRoute,
+  AppProjectsRoute: AppProjectsRoute,
   AppRunsRoute: AppRunsRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
+  AppClientsClientIdRoute: AppClientsClientIdRoute,
+  AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
 }
 

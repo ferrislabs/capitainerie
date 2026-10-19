@@ -1,4 +1,5 @@
 mod card;
+mod client;
 mod document;
 mod execute_pipeline;
 mod execute_stream;
@@ -20,6 +21,7 @@ use crate::infrastructure::{
     postgres,
 };
 
+pub use client::RunCardLinks;
 pub use document::PreparedDocumentReading;
 pub use execute_pipeline::{ExecuteConfig, ExecutePipeline, ExecutionContext, Executor};
 pub use execution::StartedExecution;

@@ -10,7 +10,20 @@ use capitainerie_handlers_cards::{
     execute_card::{ExecuteCardRequest, ExecuteCardResponse},
     list_cards::CardListResponse,
     move_card::MoveCardRequest,
+    patch_card::PatchCardRequest,
     response::{CardDetailResponse, CardResponse, ColumnDto, CommentResponse, ProvenanceResponse},
+};
+use capitainerie_handlers_clients::{
+    self as clients,
+    create_client::CreateClientRequest,
+    create_project::CreateProjectRequest,
+    response::{
+        ClientDetailResponse, ClientListItemResponse, ClientListResponse, ClientResponse,
+        ColumnCountResponse, ProjectDetailResponse, ProjectListItemResponse, ProjectListResponse,
+        ProjectResponse,
+    },
+    update_client::UpdateClientRequest,
+    update_project::UpdateProjectRequest,
 };
 use capitainerie_handlers_identity::{
     self as identity,
@@ -35,7 +48,7 @@ use capitainerie_handlers_runs::{
     self as runs,
     list_active_runs::{ActiveRunListResponse, ActiveRunResponse, ActiveStepResponse},
     list_runs::RunListResponse,
-    response::{RunResponse, RunStatusResponse},
+    response::{ClientRefResponse, ProjectRefResponse, RunResponse, RunStatusResponse},
     submit_transcript::{SubmitTranscriptRequest, SubmitTranscriptResponse},
     timeline::{
         DecisionResponse, RunTimelineResponse, StepResponse, StepStatusResponse, ToolCallResponse,
@@ -67,8 +80,17 @@ use utoipa::{
         cards::list_cards::handler,
         cards::get_card::handler,
         cards::move_card::handler,
+        cards::patch_card::handler,
         cards::comment_card::handler,
         cards::execute_card::handler,
+        clients::list_clients::handler,
+        clients::create_client::handler,
+        clients::get_client::handler,
+        clients::update_client::handler,
+        clients::list_projects::handler,
+        clients::create_project::handler,
+        clients::get_project::handler,
+        clients::update_project::handler,
         analytics::costs::handler,
         analytics::agents::handler,
         transcriptions::create_transcription::handler,
@@ -112,6 +134,22 @@ use utoipa::{
         ColumnDto,
         ProvenanceResponse,
         MoveCardRequest,
+        PatchCardRequest,
+        ClientRefResponse,
+        ProjectRefResponse,
+        ClientResponse,
+        ClientListItemResponse,
+        ClientListResponse,
+        ClientDetailResponse,
+        ColumnCountResponse,
+        CreateClientRequest,
+        UpdateClientRequest,
+        ProjectResponse,
+        ProjectListItemResponse,
+        ProjectListResponse,
+        ProjectDetailResponse,
+        CreateProjectRequest,
+        UpdateProjectRequest,
         CardDetailResponse,
         CommentResponse,
         CommentCardRequest,
@@ -157,6 +195,7 @@ use utoipa::{
         (name = identity::TAG, description = "The authenticated caller"),
         (name = runs::TAG, description = "Transcripts and the runs processing them"),
         (name = cards::TAG, description = "The Kanban board and its human validation"),
+        (name = clients::TAG, description = "The clients the team works for, their projects, and the link of a card to them"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
         (name = transcriptions::TAG, description = "Audio and PDF files turned into text for the transcript form; the file is never kept"),
@@ -242,6 +281,55 @@ mod tests {
         let comment = &spec["components"]["schemas"]["CommentResponse"]["properties"];
         for field in ["id", "body", "author_subject", "author_actor", "created_at"] {
             assert!(comment[field].is_object(), "{field}");
+        }
+    }
+
+    #[test]
+    fn the_client_and_project_endpoints_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/clients"]["get"].is_object());
+        assert!(paths["/api/v1/clients"]["post"].is_object());
+        assert!(paths["/api/v1/clients/{client_id}"]["get"].is_object());
+        assert!(paths["/api/v1/clients/{client_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/projects"]["get"].is_object());
+        assert!(paths["/api/v1/projects"]["post"].is_object());
+        assert!(paths["/api/v1/projects/{project_id}"]["get"].is_object());
+        assert!(paths["/api/v1/projects/{project_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/cards/{card_id}"]["patch"].is_object());
+        let queries = |path: &str| -> Vec<String> {
+            paths[path]["get"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|p| p["in"] == "query")
+                .map(|p| p["name"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        assert_eq!(queries("/api/v1/clients"), ["q", "archived"]);
+        assert_eq!(queries("/api/v1/projects"), ["q", "archived", "client_id"]);
+        let schemas = &spec["components"]["schemas"];
+        for schema in ["CardResponse", "RunResponse"] {
+            for field in ["client", "project"] {
+                assert!(
+                    schemas[schema]["properties"][field].is_object(),
+                    "{schema}.{field}"
+                );
+            }
+        }
+        let patch = &schemas["PatchCardRequest"]["properties"];
+        for field in ["expected_version", "client_id", "project_id"] {
+            assert!(patch[field].is_object(), "{field}");
+        }
+        for field in ["client_id", "project_id"] {
+            assert!(
+                schemas["SubmitTranscriptRequest"]["properties"][field].is_object(),
+                "{field}"
+            );
+        }
+        let detail = &schemas["ClientDetailResponse"]["properties"];
+        for field in ["client", "projects", "cards"] {
+            assert!(detail[field].is_object(), "{field}");
         }
     }
 

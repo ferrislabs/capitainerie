@@ -288,6 +288,12 @@ fn dedupe(actions: Vec<ExtractedAction>) -> Vec<ExtractedAction> {
         if best.due.is_none() {
             best.due = other.due;
         }
+        if best.client_ref.is_none() {
+            best.client_ref = other.client_ref;
+        }
+        if best.project_ref.is_none() {
+            best.project_ref = other.project_ref;
+        }
         *known = best;
     }
     kept
@@ -306,6 +312,8 @@ mod tests {
             quote: quote.into(),
             owner: owner.map(Into::into),
             due: due.map(Into::into),
+            client_ref: None,
+            project_ref: None,
         }
     }
 

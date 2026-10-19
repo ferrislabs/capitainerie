@@ -3,6 +3,7 @@ import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { agentName, type Column } from '#/domain/kanban/columns'
 import { relativeDate } from '#/domain/kanban/relative-date'
+import { LinkChips } from '#/domain/kanban/ui/link-chips'
 import { cn } from '#/lib/utils'
 
 interface Props {
@@ -76,6 +77,7 @@ export function CardItem({
 					</figure>
 				) : null}
 				<div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5">
+					<LinkChips client={card.client} project={card.project} />
 					{agent ? (
 						<Badge variant="secondary" className="font-mono text-[11px]">
 							{agentName(agent)}

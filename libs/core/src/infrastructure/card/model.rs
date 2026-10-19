@@ -2,7 +2,13 @@ use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunI
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::domain::card::{Author, Card, CardComment, CardTitle, Column, Provenance};
+use capitainerie_common::{ClientId, ProjectId};
+
+use crate::domain::{
+    card::{Author, Card, CardComment, CardTitle, Column, Provenance},
+    client::{ClientRef, links::Links},
+    project::ProjectRef,
+};
 
 pub(super) struct CardRow {
     pub id: Uuid,
@@ -21,6 +27,10 @@ pub(super) struct CardRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub repository_hint: Option<String>,
+    pub client_id: Option<Uuid>,
+    pub client_name: Option<String>,
+    pub project_id: Option<Uuid>,
+    pub project_name: Option<String>,
 }
 
 impl TryFrom<CardRow> for Card {
@@ -69,6 +79,20 @@ impl TryFrom<CardRow> for Card {
                 .map(|value| value.parse())
                 .transpose()
                 .map_err(|error| CoreError::Internal(format!("stored repository hint: {error}")))?,
+            links: Links::stored(
+                row.client_id
+                    .zip(row.client_name)
+                    .map(|(id, name)| ClientRef {
+                        id: ClientId(id),
+                        name,
+                    }),
+                row.project_id
+                    .zip(row.project_name)
+                    .map(|(id, name)| ProjectRef {
+                        id: ProjectId(id),
+                        name,
+                    }),
+            ),
         })
     }
 }

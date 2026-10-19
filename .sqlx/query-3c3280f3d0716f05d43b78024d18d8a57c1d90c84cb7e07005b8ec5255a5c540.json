@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE clients\n            SET name = $3, aliases = $4, notes = $5, updated_at = $6, archived_at = $7\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "TextArray",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3c3280f3d0716f05d43b78024d18d8a57c1d90c84cb7e07005b8ec5255a5c540"
+}

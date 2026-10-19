@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE transcripts SET client_id = $3\n            WHERE organization_id = $1 AND project_id = $2 AND client_id IS DISTINCT FROM $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6c7729c00f4a94e25fcb491402c7c8f3c9170de6cdc7bbfd6e1c64814d9e6181"
+}

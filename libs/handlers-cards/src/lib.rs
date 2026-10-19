@@ -3,6 +3,7 @@ pub mod execute_card;
 pub mod get_card;
 pub mod list_cards;
 pub mod move_card;
+pub mod patch_card;
 pub mod response;
 
 use std::sync::Arc;
@@ -20,6 +21,7 @@ pub fn router(github: Arc<GithubApps>) -> Router<AppState> {
     Router::new()
         .typed_get(list_cards::handler)
         .typed_get(get_card::handler)
+        .typed_patch(patch_card::handler)
         .typed_post(move_card::handler)
         .typed_post(comment_card::handler)
         .typed_post(execute_card::handler)

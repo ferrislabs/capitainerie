@@ -96,10 +96,14 @@ impl RunRepository for PgRunRepository<'_> {
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
+            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
+            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
             WHERE r.organization_id = $1
             ORDER BY r.created_at DESC, r.id DESC
             LIMIT $2 OFFSET $3
@@ -137,10 +141,14 @@ impl RunRepository for PgRunRepository<'_> {
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
+            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
+            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
             WHERE r.organization_id = $1 AND r.id = $2
             "#,
             organization_id.0,
@@ -164,10 +172,14 @@ impl RunRepository for PgRunRepository<'_> {
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
+            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
+            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
             WHERE r.organization_id = $1 AND r.card_id = $2
             ORDER BY r.created_at DESC, r.id DESC
             "#,
@@ -193,10 +205,14 @@ impl RunRepository for PgRunRepository<'_> {
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
+            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
+            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
             WHERE r.organization_id = $1 AND r.status IN ('queued', 'running')
             ORDER BY r.created_at, r.id
             LIMIT $2
@@ -219,10 +235,14 @@ impl RunRepository for PgRunRepository<'_> {
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
-                   t.repository AS repository_hint
+                   COALESCE(t.repository, p.repository) AS "repository_hint?",
+                   COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
+            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
+            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
             WHERE r.id = $1
             FOR UPDATE OF r SKIP LOCKED
             "#,

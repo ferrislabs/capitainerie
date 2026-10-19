@@ -7,17 +7,23 @@ export namespace Schemas {
     started_at: string;
   };
   export type CardId = string;
+  export type ClientId = string;
+  export type ClientRefResponse = { id: ClientId; name: string };
   export type RunId = string;
+  export type ProjectId = string;
+  export type ProjectRefResponse = { id: ProjectId; name: string };
   export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type TranscriptId = string;
   export type RunResponse = {
     card_id?: (null | CardId) | undefined;
+    client?: (null | ClientRefResponse) | undefined;
     created_at: string;
     failure?: (string | null) | undefined;
     finished_at?: (string | null) | undefined;
     id: RunId;
     initiated_by: string;
     pipeline: Array<string>;
+    project?: (null | ProjectRefResponse) | undefined;
     repository?: (string | null) | undefined;
     repository_hint?: (string | null) | undefined;
     started_at?: (string | null) | undefined;
@@ -51,6 +57,7 @@ export namespace Schemas {
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
   export type CardResponse = {
+    client?: (null | ClientRefResponse) | undefined;
     column: ColumnDto;
     created_at: string;
     created_by_agent?: (string | null) | undefined;
@@ -58,6 +65,7 @@ export namespace Schemas {
     created_by_subject: string;
     description: string;
     id: CardId;
+    project?: (null | ProjectRefResponse) | undefined;
     provenance?: (null | ProvenanceResponse) | undefined;
     repository_hint?: (string | null) | undefined;
     title: string;
@@ -73,6 +81,36 @@ export namespace Schemas {
   };
   export type CardDetailResponse = { card: CardResponse; comments: Array<CommentResponse>; runs: Array<RunResponse> };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type ColumnCountResponse = { cards: number; column: ColumnDto };
+  export type ClientResponse = {
+    aliases: Array<string>;
+    archived: boolean;
+    created_at: string;
+    created_by: string;
+    id: ClientId;
+    name: string;
+    notes: string;
+    updated_at: string;
+  };
+  export type ProjectResponse = {
+    aliases: Array<string>;
+    archived: boolean;
+    client?: (null | ClientRefResponse) | undefined;
+    created_at: string;
+    created_by: string;
+    description: string;
+    id: ProjectId;
+    name: string;
+    repository?: (string | null) | undefined;
+    updated_at: string;
+  };
+  export type ClientDetailResponse = {
+    cards: Array<ColumnCountResponse>;
+    client: ClientResponse;
+    projects: Array<ProjectResponse>;
+  };
+  export type ClientListItemResponse = { client: ClientResponse; open_cards: number; project_count: number };
+  export type ClientListResponse = { items: Array<ClientListItemResponse> };
   export type CommentCardRequest = { body: string };
   export type ConnectGithubRequest = { code: string; installation_id: number; state: string };
   export type CostDimensionParam = "agent" | "user" | "model" | "day";
@@ -86,9 +124,21 @@ export namespace Schemas {
   };
   export type CostTotals = { cost_micros: number; input_tokens: number; output_tokens: number };
   export type CostsResponse = { rows: Array<CostRowResponse>; total: CostTotals };
+  export type CreateClientRequest = {
+    aliases?: (Array<string> | null) | undefined;
+    name: string;
+    notes?: (string | null) | undefined;
+  };
   export type CreateGithubAppRequest = { code: string; state: string };
   export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
   export type CreateManifestRequest = { owner: ManifestOwner };
+  export type CreateProjectRequest = {
+    aliases?: (Array<string> | null) | undefined;
+    client_id?: (null | ClientId) | undefined;
+    description?: (string | null) | undefined;
+    name: string;
+    repository?: (string | null) | undefined;
+  };
   export type CreateTranscriptionRequest = { file: string };
   export type DecisionResponse = {
     action: string;
@@ -164,6 +214,14 @@ export namespace Schemas {
   };
   export type ModelCatalogResponse = { errors: Array<ProviderErrorResponse>; models: Array<ModelResponse> };
   export type MoveCardRequest = { expected_version: number; to: ColumnDto };
+  export type PatchCardRequest = {
+    client_id?: (null | ClientId) | undefined;
+    expected_version: number;
+    project_id?: (null | ProjectId) | undefined;
+  };
+  export type ProjectDetailResponse = { cards: Array<ColumnCountResponse>; project: ProjectResponse };
+  export type ProjectListItemResponse = { open_cards: number; project: ProjectResponse };
+  export type ProjectListResponse = { items: Array<ProjectListItemResponse> };
   export type ProviderResponse = {
     base_url?: (string | null) | undefined;
     created_by: string;
@@ -205,14 +263,30 @@ export namespace Schemas {
   };
   export type SubmitTranscriptRequest = {
     body: string;
+    client_id?: (null | ClientId) | undefined;
     meeting_date?: (string | null) | undefined;
     participants?: (Array<string> | null) | undefined;
+    project_id?: (null | ProjectId) | undefined;
     repository?: (string | null) | undefined;
     title: string;
   };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
   export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
   export type TranscriptionResponse = { model: string; text: string };
+  export type UpdateClientRequest = Partial<{
+    aliases: Array<string> | null;
+    archived: boolean | null;
+    name: string | null;
+    notes: string | null;
+  }>;
+  export type UpdateProjectRequest = Partial<{
+    aliases: Array<string> | null;
+    archived: boolean | null;
+    client_id: null | ClientId;
+    description: string | null;
+    name: string | null;
+    repository: string | null;
+  }>;
 
   // </Schemas>
 }
@@ -256,6 +330,24 @@ export namespace Endpoints {
       path: { card_id: string };
     };
     responses: { 200: Schemas.CardDetailResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
+  };
+  export type patch_PatchCard = {
+    method: "PATCH";
+    path: "/api/v1/cards/{card_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.PatchCardRequest;
+    };
+    responses: {
+      200: Schemas.CardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
   };
   export type post_CommentCard = {
     method: "POST";
@@ -309,6 +401,62 @@ export namespace Endpoints {
       409: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListClients = {
+    method: "GET";
+    path: "/api/v1/clients";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ q: string; archived: boolean }>;
+    };
+    responses: { 200: Schemas.ClientListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateClient = {
+    method: "POST";
+    path: "/api/v1/clients";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateClientRequest;
+    };
+    responses: {
+      201: Schemas.ClientResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetClient = {
+    method: "GET";
+    path: "/api/v1/clients/{client_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { client_id: string };
+    };
+    responses: {
+      200: Schemas.ClientDetailResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateClient = {
+    method: "PATCH";
+    path: "/api/v1/clients/{client_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { client_id: string };
+
+      body: Schemas.UpdateClientRequest;
+    };
+    responses: {
+      200: Schemas.ClientResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type post_ReadDocument = {
     method: "POST";
     path: "/api/v1/documents/text";
@@ -325,6 +473,7 @@ export namespace Endpoints {
       415: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
       502: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
     };
   };
   export type get_GetGithubIntegration = {
@@ -457,6 +606,62 @@ export namespace Endpoints {
     parameters: never;
     responses: { 200: Schemas.ModelCatalogResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
   };
+  export type get_ListProjects = {
+    method: "GET";
+    path: "/api/v1/projects";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ q: string; archived: boolean; client_id: string }>;
+    };
+    responses: { 200: Schemas.ProjectListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateProject = {
+    method: "POST";
+    path: "/api/v1/projects";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateProjectRequest;
+    };
+    responses: {
+      201: Schemas.ProjectResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetProject = {
+    method: "GET";
+    path: "/api/v1/projects/{project_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { project_id: string };
+    };
+    responses: {
+      200: Schemas.ProjectDetailResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateProject = {
+    method: "PATCH";
+    path: "/api/v1/projects/{project_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { project_id: string };
+
+      body: Schemas.UpdateProjectRequest;
+    };
+    responses: {
+      200: Schemas.ProjectResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListProviders = {
     method: "GET";
     path: "/api/v1/providers";
@@ -558,6 +763,7 @@ export namespace Endpoints {
       415: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
       502: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
     };
   };
   export type post_SubmitTranscript = {
@@ -599,12 +805,16 @@ export type EndpointByMethod = {
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
+    "/api/v1/clients": Endpoints.get_ListClients;
+    "/api/v1/clients/{client_id}": Endpoints.get_GetClient;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
     "/api/v1/me": Endpoints.get_GetMe;
     "/api/v1/model-assignments": Endpoints.get_GetModelAssignments;
     "/api/v1/models": Endpoints.get_ListModels;
+    "/api/v1/projects": Endpoints.get_ListProjects;
+    "/api/v1/projects/{project_id}": Endpoints.get_GetProject;
     "/api/v1/providers": Endpoints.get_ListProviders;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
@@ -613,14 +823,21 @@ export type EndpointByMethod = {
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
   };
+  patch: {
+    "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
+    "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
+    "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
+  };
   post: {
     "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
+    "/api/v1/clients": Endpoints.post_CreateClient;
     "/api/v1/documents/text": Endpoints.post_ReadDocument;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
     "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;
+    "/api/v1/projects": Endpoints.post_CreateProject;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
@@ -640,6 +857,7 @@ export type EndpointByMethod = {
 
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
+export type PatchEndpoints = EndpointByMethod["patch"];
 export type PostEndpoints = EndpointByMethod["post"];
 export type DeleteEndpoints = EndpointByMethod["delete"];
 export type PutEndpoints = EndpointByMethod["put"];
@@ -905,6 +1123,37 @@ export class ApiClient {
     return this.request("get", path, ...params);
   }
   // </ApiClient.get>
+
+  // <ApiClient.patch>
+  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  patch<Path extends keyof PatchEndpoints, _TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("patch", path, ...params);
+  }
+  // </ApiClient.patch>
 
   // <ApiClient.post>
   post<Path extends keyof PostEndpoints, TEndpoint extends PostEndpoints[Path]>(

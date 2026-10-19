@@ -1,4 +1,5 @@
 pub mod detail;
+pub mod link;
 pub mod ports;
 pub mod service;
 
@@ -6,7 +7,7 @@ use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunI
 use capitainerie_events::card::CardAuthor;
 use chrono::{DateTime, Utc};
 
-use crate::domain::{execution::RepositoryRef, transcript::TranscriptBody};
+use crate::domain::{client::links::Links, execution::RepositoryRef, transcript::TranscriptBody};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Column {
@@ -33,6 +34,7 @@ pub struct Card {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub repository_hint: Option<RepositoryRef>,
+    pub links: Links,
 }
 
 /// The exact passage of a transcript a card comes from.

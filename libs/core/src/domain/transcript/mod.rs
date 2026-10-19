@@ -5,7 +5,11 @@ use std::borrow::Cow;
 use capitainerie_common::{CoreError, OrganizationId, TranscriptId};
 use chrono::{DateTime, NaiveDate, Utc};
 
-use crate::domain::execution::RepositoryRef;
+use crate::domain::{
+    client::{catalog::Catalog, links::Links},
+    execution::RepositoryRef,
+    label::clean_label,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transcript {
@@ -16,6 +20,7 @@ pub struct Transcript {
     pub title: TranscriptTitle,
     pub body: TranscriptBody,
     pub metadata: MeetingMetadata,
+    pub links: Links,
     pub created_at: DateTime<Utc>,
 }
 
@@ -44,27 +49,7 @@ impl MeetingMetadata {
         }
         let mut participants: Vec<String> = participants
             .iter()
-            .map(|name| {
-                let name = name.trim();
-                if name.is_empty() {
-                    return Err(CoreError::Invalid("a participant name is empty".into()));
-                }
-                if name.chars().count() > Self::MAX_PARTICIPANT_CHARS {
-                    return Err(CoreError::Invalid(format!(
-                        "a participant name exceeds {} characters",
-                        Self::MAX_PARTICIPANT_CHARS
-                    )));
-                }
-                if name
-                    .chars()
-                    .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | ','))
-                {
-                    return Err(CoreError::Invalid(
-                        "a participant name contains a comma or a control character".into(),
-                    ));
-                }
-                Ok(name.to_owned())
-            })
+            .map(|name| clean_label(name, Self::MAX_PARTICIPANT_CHARS, "a participant name"))
             .collect::<Result<_, _>>()?;
         let mut seen = std::collections::HashSet::new();
         participants.retain(|name| seen.insert(name.to_lowercase()));
@@ -90,9 +75,19 @@ impl MeetingMetadata {
     }
 
     pub fn prompt_for<'a>(&self, body: &'a str) -> Cow<'a, str> {
-        match self.header() {
-            Some(header) => Cow::Owned(format!("{header}\n\n{body}")),
-            None => Cow::Borrowed(body),
+        self.prompt_with(body, None)
+    }
+
+    pub fn prompt_with<'a>(&self, body: &'a str, catalog: Option<&Catalog>) -> Cow<'a, str> {
+        let parts: Vec<String> = self
+            .header()
+            .into_iter()
+            .chain(catalog.and_then(Catalog::block))
+            .collect();
+        if parts.is_empty() {
+            Cow::Borrowed(body)
+        } else {
+            Cow::Owned(format!("{}\n\n{body}", parts.join("\n\n")))
         }
     }
 }
