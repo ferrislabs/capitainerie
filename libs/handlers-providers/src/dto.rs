@@ -211,6 +211,12 @@ pub struct ModelAssignmentsDto {
     #[serde(default, deserialize_with = "present_or_null")]
     #[schema(value_type = Option<ModelRefDto>)]
     pub reader: Option<Option<ModelRefDto>>,
+    /// The model of the Captain, the chat agent (a chat model that calls
+    /// tools). On a PUT, an absent key keeps the current captain and an
+    /// explicit `null` clears it; without one, the writer's model serves.
+    #[serde(default, deserialize_with = "present_or_null")]
+    #[schema(value_type = Option<ModelRefDto>)]
+    pub captain: Option<Option<ModelRefDto>>,
     /// The Anthropic model Claude Code runs on. When absent on a PUT, the
     /// current value (or the default) is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -234,6 +240,7 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             embeddings: assignments.embeddings.into(),
             transcriber: Some(assignments.transcriber.map(Into::into)),
             reader: Some(assignments.reader.map(Into::into)),
+            captain: Some(assignments.captain.map(Into::into)),
             executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
@@ -256,6 +263,10 @@ impl ModelAssignmentsDto {
             Some(chosen) => chosen.map(Into::into),
             None => current.and_then(|c| c.reader.clone()),
         };
+        let captain = match self.captain {
+            Some(chosen) => chosen.map(Into::into),
+            None => current.and_then(|c| c.captain.clone()),
+        };
         Ok(ModelAssignments {
             extractor: self.extractor.into(),
             judge: self.judge.into(),
@@ -263,6 +274,7 @@ impl ModelAssignmentsDto {
             embeddings: self.embeddings.into(),
             transcriber,
             reader,
+            captain,
             executor,
         })
     }
@@ -437,5 +449,43 @@ mod tests {
             output_price_per_mtok_micros: None,
         };
         assert!(ModelResponse::from(model).price.is_none());
+    }
+
+    fn wire_captain(captain: Option<serde_json::Value>) -> ModelAssignmentsDto {
+        let mut body = serde_json::to_value(dto(None)).unwrap();
+        body.as_object_mut().unwrap().remove("captain");
+        if let Some(value) = captain {
+            body["captain"] = value;
+        }
+        serde_json::from_value(body).unwrap()
+    }
+
+    #[test]
+    fn an_absent_captain_keeps_the_current_one_and_null_clears_it() {
+        let mut current = ModelAssignments::defaults("chat", "embed");
+        current.captain = Some(ModelRef {
+            provider: capitainerie_core::domain::provider::ProviderKind::Anthropic,
+            model: "claude-sonnet-5-5".into(),
+        });
+        let kept = wire_captain(None).into_assignments(Some(&current)).unwrap();
+        let cleared = wire_captain(Some(serde_json::Value::Null))
+            .into_assignments(Some(&current))
+            .unwrap();
+        let replaced = wire_captain(Some(
+            serde_json::json!({"provider": "mistral", "model": "mistral-large"}),
+        ))
+        .into_assignments(Some(&current))
+        .unwrap();
+        let first_time = wire_captain(None).into_assignments(None).unwrap();
+        assert_eq!(kept.captain, current.captain);
+        assert_eq!(cleared.captain, None);
+        assert_eq!(
+            replaced.captain.map(|m| (m.provider, m.model)),
+            Some((
+                capitainerie_core::domain::provider::ProviderKind::Mistral,
+                "mistral-large".to_owned()
+            ))
+        );
+        assert_eq!(first_time.captain, None);
     }
 }

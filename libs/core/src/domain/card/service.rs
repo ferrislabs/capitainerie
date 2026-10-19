@@ -11,6 +11,7 @@ use super::{
 };
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
+    conversation::CAPTAIN_AGENT,
     event::ports::EventEmitter,
     transcript::ports::TranscriptRepository,
 };
@@ -94,7 +95,11 @@ where
 
         let provenance = match command.provenance {
             Some(input) => Some(self.verified_provenance(&subject, input).await?),
-            None if subject.actor.is_some() => {
+            None if subject
+                .actor
+                .as_deref()
+                .is_some_and(|actor| actor != CAPTAIN_AGENT) =>
+            {
                 return Err(CoreError::Invalid(
                     "an agent must cite the transcript passage the card comes from".into(),
                 ));
@@ -483,6 +488,42 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(error, CoreError::Invalid(_)));
+    }
+
+    #[tokio::test]
+    async fn the_captain_proposes_without_provenance_and_the_card_stays_proposed() {
+        let emitter = RecordingEmitter::default();
+        let authorizer = allow();
+        let mut cards = MockCardRepository::new();
+        cards
+            .expect_insert()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let mut captain = agent(OrganizationId::new());
+        captain.actor = Some(CAPTAIN_AGENT.into());
+
+        let card = CardService::new(
+            cards,
+            MockCardCommentRepository::new(),
+            MockTranscriptRepository::new(),
+            &emitter,
+            &authorizer,
+        )
+        .create(
+            captain,
+            CreateCard {
+                title: "Ajouter un README".into(),
+                description: String::new(),
+                provenance: None,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(card.column, Column::Proposed);
+        assert_eq!(card.provenance, None);
+        assert_eq!(card.created_by.actor.as_deref(), Some(CAPTAIN_AGENT));
     }
 
     #[tokio::test]

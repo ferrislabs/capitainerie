@@ -1008,6 +1008,7 @@ fn claude_for_the_agents() -> ModelAssignments {
         embeddings: model(ProviderKind::OpenAiCompatible, "bge-m3"),
         transcriber: None,
         reader: None,
+        captain: None,
         executor: Default::default(),
     }
 }

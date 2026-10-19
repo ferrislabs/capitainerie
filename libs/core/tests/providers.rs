@@ -118,6 +118,7 @@ fn assignments(chat: ModelRef) -> ModelAssignments {
         embeddings: model_ref(ProviderKind::OpenAiCompatible, "bge-m3"),
         transcriber: None,
         reader: None,
+        captain: None,
         executor: Default::default(),
     }
 }

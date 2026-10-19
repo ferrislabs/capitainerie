@@ -50,6 +50,8 @@ pub enum Action {
     ClientRead,
     ClientManage,
     MemberRead,
+    ConversationRead,
+    ConversationWrite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +75,7 @@ pub enum ResourceKind {
     Client,
     Project,
     Member,
+    Conversation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +84,12 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 3] = ["run.read", "card.read", "provider.read"];
+pub const READ_ACTIONS: [&str; 4] = [
+    "run.read",
+    "card.read",
+    "provider.read",
+    "conversation.read",
+];
 
 impl Action {
     pub fn is_read(self) -> bool {
@@ -107,6 +115,8 @@ impl Action {
             Self::ClientRead => "client.read",
             Self::ClientManage => "client.manage",
             Self::MemberRead => "member.read",
+            Self::ConversationRead => "conversation.read",
+            Self::ConversationWrite => "conversation.write",
         }
     }
 }
@@ -126,6 +136,7 @@ impl ResourceKind {
             Self::Client => "client",
             Self::Project => "project",
             Self::Member => "member",
+            Self::Conversation => "conversation",
         }
     }
 }

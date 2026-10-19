@@ -61,6 +61,8 @@ id!(CardCommentId);
 id!(StepId);
 id!(ClientId, Uuid::new_v4);
 id!(ProjectId, Uuid::new_v4);
+id!(ConversationId);
+id!(ConversationMessageId);
 
 #[cfg(test)]
 mod tests {

@@ -25,6 +25,7 @@ pub enum AgentRole {
     Embeddings,
     Transcriber,
     Reader,
+    Captain,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -45,6 +46,8 @@ pub struct ModelAssignments {
     pub transcriber: Option<ModelRef>,
     #[serde(default)]
     pub reader: Option<ModelRef>,
+    #[serde(default)]
+    pub captain: Option<ModelRef>,
     /// Always an Anthropic model; runs queued before it existed take the default.
     #[serde(default)]
     pub executor: ExecutorModel,
@@ -136,13 +139,14 @@ impl TryFrom<&str> for ProviderKind {
 }
 
 impl AgentRole {
-    pub const ALL: [AgentRole; 6] = [
+    pub const ALL: [AgentRole; 7] = [
         Self::Extractor,
         Self::Judge,
         Self::Writer,
         Self::Embeddings,
         Self::Transcriber,
         Self::Reader,
+        Self::Captain,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -153,6 +157,7 @@ impl AgentRole {
             Self::Embeddings => "embeddings",
             Self::Transcriber => "transcriber",
             Self::Reader => "reader",
+            Self::Captain => "captain",
         }
     }
 }
@@ -166,6 +171,7 @@ impl ModelAssignments {
             AgentRole::Embeddings => Some(&self.embeddings),
             AgentRole::Transcriber => self.transcriber.as_ref(),
             AgentRole::Reader => self.reader.as_ref(),
+            AgentRole::Captain => self.captain.as_ref().or(Some(&self.writer)),
         }
     }
 
@@ -208,6 +214,7 @@ impl ModelAssignments {
             },
             transcriber: None,
             reader: None,
+            captain: None,
             executor: ExecutorModel::default(),
         }
     }
@@ -391,5 +398,35 @@ mod tests {
         );
         assert_eq!(defaults.for_role(AgentRole::Transcriber), None);
         assert_eq!(defaults.for_role(AgentRole::Reader), None);
+    }
+
+    #[test]
+    fn assignments_stored_before_the_captain_existed_fall_back_to_the_writer() {
+        let mut stored = serde_json::to_value(ModelAssignments::defaults("chat", "embed")).unwrap();
+        stored.as_object_mut().unwrap().remove("captain");
+        let assignments: ModelAssignments = serde_json::from_value(stored).unwrap();
+        assert_eq!(assignments.captain, None);
+        assert_eq!(
+            assignments.for_role(AgentRole::Captain),
+            Some(&assignments.writer)
+        );
+        assert_eq!(AgentRole::Captain.as_str(), "captain");
+    }
+
+    #[test]
+    fn a_stored_captain_wins_over_the_writer_and_round_trips() {
+        let mut assignments = ModelAssignments::defaults("chat", "embed");
+        let chosen = ModelRef {
+            provider: ProviderKind::Anthropic,
+            model: "claude-sonnet-5-5".into(),
+        };
+        assignments.captain = Some(chosen.clone());
+        assert_eq!(assignments.for_role(AgentRole::Captain), Some(&chosen));
+        let stored = serde_json::to_value(&assignments).unwrap();
+        assert_eq!(stored["captain"]["model"], "claude-sonnet-5-5");
+        assert_eq!(
+            serde_json::from_value::<ModelAssignments>(stored).unwrap(),
+            assignments
+        );
     }
 }

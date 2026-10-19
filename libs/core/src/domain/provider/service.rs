@@ -207,6 +207,47 @@ where
             }))
     }
 
+    /// The model that serves the Captain: the organization's choice, or the
+    /// writer's. `None` when the organization assigned no models at all or its
+    /// provider has no key (other than the worker's own endpoint).
+    pub async fn captain_target(
+        mut self,
+        subject: Subject,
+    ) -> Result<Option<ModelTarget>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require(
+            subject,
+            Action::ConversationWrite,
+            ResourceKind::Conversation,
+            None,
+        )
+        .await?;
+        let Some(model) = self
+            .assignments
+            .get(organization_id)
+            .await?
+            .and_then(|assignments| assignments.for_role(AgentRole::Captain).cloned())
+        else {
+            return Ok(None);
+        };
+        let access = self
+            .providers
+            .find(organization_id, model.provider)
+            .await?
+            .map(ProviderAccess::from);
+        Ok(match (model.provider, access) {
+            (_, Some(access)) => Some(ModelTarget {
+                model,
+                access: Some(access),
+            }),
+            (ProviderKind::OpenAiCompatible, None) => Some(ModelTarget {
+                model,
+                access: None,
+            }),
+            (_, None) => None,
+        })
+    }
+
     pub async fn reader_target(
         mut self,
         subject: Subject,
@@ -418,6 +459,7 @@ mod tests {
             embeddings: reference(ProviderKind::OpenAiCompatible, "bge-m3"),
             transcriber: None,
             reader: None,
+            captain: None,
             executor: Default::default(),
         }
     }
@@ -718,6 +760,46 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(keyless, None);
+    }
+
+    #[tokio::test]
+    async fn the_captain_target_follows_the_captain_then_the_writer() {
+        let memory = Memory::default();
+        let subject = subject();
+        let none = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .captain_target(subject.clone())
+            .await
+            .unwrap();
+        assert_eq!(none, None);
+
+        ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .put(PutProvider {
+                subject: subject.clone(),
+                kind: ProviderKind::Anthropic,
+                secret: secret("sk-ant-api03-x"),
+                base_url: None,
+            })
+            .await
+            .unwrap();
+        let mut chosen = assignments();
+        chosen.writer = reference(ProviderKind::Anthropic, "claude-haiku-5-5");
+        *memory.assigned.lock().unwrap() = Some(chosen.clone());
+        let fallback = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .captain_target(subject.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fallback.model.model, "claude-haiku-5-5");
+        assert!(fallback.access.is_some());
+
+        chosen.captain = Some(reference(ProviderKind::Anthropic, "claude-sonnet-5-5"));
+        *memory.assigned.lock().unwrap() = Some(chosen);
+        let own = ProviderService::new(memory.clone(), memory, &Allow)
+            .captain_target(subject)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(own.model.model, "claude-sonnet-5-5");
     }
 
     #[tokio::test]
