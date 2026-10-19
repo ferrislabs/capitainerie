@@ -1,14 +1,7 @@
-import { ChevronDown } from 'lucide-react'
-import { useId } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import {
-	agentName,
-	COLUMN_LABELS,
-	COLUMNS,
-	type Column,
-} from '#/domain/kanban/columns'
+import { agentName, type Column } from '#/domain/kanban/columns'
 import { relativeDate } from '#/domain/kanban/relative-date'
 import { cn } from '#/lib/utils'
 
@@ -19,6 +12,7 @@ interface Props {
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
+	dragging?: 'origin' | 'overlay'
 }
 
 export function CardItem({
@@ -28,8 +22,8 @@ export function CardItem({
 	onToggleExpanded,
 	onMove,
 	onExecute,
+	dragging,
 }: Props) {
-	const selectId = useId()
 	const agent = card.created_by_agent
 
 	return (
@@ -39,6 +33,9 @@ export function CardItem({
 			className={cn(
 				'flex flex-col gap-2 rounded-md border bg-card p-3 transition-opacity duration-150',
 				isPending && 'opacity-60',
+				dragging === 'origin' &&
+					'border-dashed border-input bg-transparent [&>*]:invisible',
+				dragging === 'overlay' && 'shadow-float',
 			)}
 		>
 			<h3 className="text-[13px] leading-snug font-semibold break-words [text-wrap:pretty]">
@@ -107,35 +104,7 @@ export function CardItem({
 							Rejeter
 						</Button>
 					</div>
-				) : (
-					<div className="relative">
-						<select
-							id={selectId}
-							aria-label="Déplacer vers…"
-							className="h-7 appearance-none rounded-md border border-input bg-card pr-7 pl-2 text-xs text-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/25 disabled:opacity-50"
-							disabled={isPending}
-							value=""
-							onChange={(event) => {
-								if (event.target.value) {
-									onMove(card.id, event.target.value as Column, card.version)
-								}
-							}}
-						>
-							<option value="">Déplacer vers…</option>
-							{COLUMNS.filter((column) => column !== card.column).map(
-								(column) => (
-									<option key={column} value={column}>
-										{COLUMN_LABELS[column]}
-									</option>
-								),
-							)}
-						</select>
-						<ChevronDown
-							aria-hidden="true"
-							className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground"
-						/>
-					</div>
-				)}
+				) : null}
 			</div>
 			{card.column === 'todo' && onExecute ? (
 				<Button

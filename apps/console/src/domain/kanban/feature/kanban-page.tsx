@@ -5,6 +5,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Skeleton } from '#/components/ui/skeleton'
 import { COLUMNS } from '#/domain/kanban/columns'
+import { CardPanel } from '#/domain/kanban/feature/card-panel'
 import { ExecuteCardFlow } from '#/domain/kanban/feature/execute-card-flow'
 import { useCards } from '#/domain/kanban/hooks/use-cards'
 import { useMoveCard } from '#/domain/kanban/hooks/use-move-card'
@@ -28,7 +29,12 @@ function BoardSkeleton() {
 	)
 }
 
-export function KanbanPage() {
+interface Props {
+	openCardId: string | undefined
+	onOpenCard: (cardId: string | undefined) => void
+}
+
+export function KanbanPage({ openCardId, onOpenCard }: Props) {
 	const cards = useCards()
 	const move = useMoveCard()
 	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
@@ -76,6 +82,7 @@ export function KanbanPage() {
 					pendingCardId={move.pendingCardId}
 					expandedIds={expandedIds}
 					onToggleExpanded={toggleExpanded}
+					onOpen={(cardId) => onOpenCard(cardId)}
 					onExecute={(card) => {
 						setStartedRunId(undefined)
 						setExecutingId(card.id)
@@ -88,6 +95,25 @@ export function KanbanPage() {
 					}
 				/>
 			)}
+			<CardPanel
+				key={openCardId ?? 'closed'}
+				cardId={openCardId}
+				listedCard={cards.data?.items.find((card) => card.id === openCardId)}
+				isMoving={move.pendingCardId === openCardId}
+				moveError={move.errorMessage}
+				onClose={() => onOpenCard(undefined)}
+				onMove={(cardId, to, expectedVersion) =>
+					move.mutate({
+						path: { card_id: cardId },
+						body: { to, expected_version: expectedVersion },
+					})
+				}
+				onExecute={(card) => {
+					setStartedRunId(undefined)
+					onOpenCard(undefined)
+					setExecutingId(card.id)
+				}}
+			/>
 			<ExecuteCardFlow
 				card={cards.data?.items.find((card) => card.id === executingId)}
 				onClose={() => setExecutingId(undefined)}
