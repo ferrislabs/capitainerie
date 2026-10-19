@@ -30,7 +30,7 @@ describe('TranscriptDropzone', () => {
 		const input = screen.getByLabelText(/Glissez un fichier ici/)
 
 		expect(input.getAttribute('accept')).toBe(
-			'.txt,.md,.vtt,.srt,.mp3,.m4a,.wav,.webm,.ogg',
+			'.txt,.md,.vtt,.srt,.mp3,.m4a,.wav,.webm,.ogg,.aac',
 		)
 		const file = new File(['x'], 'a.vtt')
 		await user.upload(input, file)
@@ -83,7 +83,7 @@ describe('TranscriptDropzone', () => {
 		setup()
 
 		expect(
-			screen.getByText(/\.mp3, \.m4a, \.wav, \.webm ou \.ogg, 25 Mo au plus/),
+			screen.getByText(/\.mp3, \.m4a, \.wav, \.webm, \.ogg ou \.aac, 25 Mo au plus/),
 		).toBeTruthy()
 		expect(screen.queryByText(/Aucun transcripteur/)).toBeNull()
 	})

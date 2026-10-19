@@ -14,6 +14,7 @@ pub enum AudioMime {
     Wav,
     Webm,
     Ogg,
+    Aac,
 }
 
 #[derive(Clone)]
@@ -60,6 +61,7 @@ impl AudioMime {
             Self::Wav => "audio/wav",
             Self::Webm => "audio/webm",
             Self::Ogg => "audio/ogg",
+            Self::Aac => "audio/aac",
         }
     }
 
@@ -71,6 +73,7 @@ impl AudioMime {
             "wav" => Some(Self::Wav),
             "webm" => Some(Self::Webm),
             "ogg" => Some(Self::Ogg),
+            "aac" => Some(Self::Aac),
             _ => None,
         }
     }
@@ -88,6 +91,7 @@ impl AudioMime {
             "audio/wav" | "audio/x-wav" | "audio/wave" => Some(Self::Wav),
             "audio/webm" | "video/webm" => Some(Self::Webm),
             "audio/ogg" | "application/ogg" => Some(Self::Ogg),
+            "audio/aac" | "audio/x-aac" | "audio/aacp" => Some(Self::Aac),
             _ => None,
         }
     }
@@ -117,6 +121,7 @@ mod tests {
             ("a.wav", AudioMime::Wav),
             ("réunion.final.webm", AudioMime::Webm),
             ("a.ogg", AudioMime::Ogg),
+            ("vocal.AAC", AudioMime::Aac),
         ];
         for (name, mime) in cases {
             assert_eq!(AudioMime::from_file_name(name), Some(mime), "{name}");
@@ -134,6 +139,10 @@ mod tests {
         assert_eq!(
             AudioMime::from_content_type("Audio/X-M4A"),
             Some(AudioMime::Mp4)
+        );
+        assert_eq!(
+            AudioMime::from_content_type("audio/x-aac"),
+            Some(AudioMime::Aac)
         );
         assert_eq!(AudioMime::from_content_type("text/plain"), None);
     }
