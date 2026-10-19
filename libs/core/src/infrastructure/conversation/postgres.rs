@@ -166,11 +166,16 @@ impl ConversationRepository for PgConversationRepository<'_> {
         Ok(taken.rows_affected() == 1)
     }
 
-    async fn end_turn(&mut self, id: ConversationId) -> Result<(), CoreError> {
+    async fn end_turn(
+        &mut self,
+        id: ConversationId,
+        leased_at: DateTime<Utc>,
+    ) -> Result<(), CoreError> {
         let mut tx = self.tx.lock().await;
         sqlx::query!(
-            "UPDATE conversations SET turn_started_at = NULL WHERE id = $1",
-            id.0
+            "UPDATE conversations SET turn_started_at = NULL WHERE id = $1 AND turn_started_at = $2",
+            id.0,
+            leased_at
         )
         .execute(&mut ***tx)
         .await

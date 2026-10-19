@@ -90,6 +90,10 @@ impl FerrisKeyTokenExchange {
         }
     }
 
+    pub fn has_agent(&self, client_id: &str) -> bool {
+        self.inner.agents.contains_key(client_id)
+    }
+
     async fn token_endpoint(&self, issuer: &str) -> Result<String, CoreError> {
         if let Some(endpoint) = self.inner.endpoints.read().await.get(issuer) {
             return Ok(endpoint.clone());

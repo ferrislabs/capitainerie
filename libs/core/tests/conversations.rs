@@ -114,6 +114,7 @@ async fn a_conversation_round_trips_with_its_messages_and_usage() {
         .finish_conversation_turn(
             owner.clone(),
             created.id,
+            started.leased_at,
             outcome("Voici.", MessageStatus::Complete),
         )
         .await
@@ -197,7 +198,7 @@ async fn one_turn_at_a_time_and_the_slot_frees_when_it_finishes() {
         .await
         .unwrap();
 
-    usecase
+    let first = usecase
         .start_conversation_turn(owner.clone(), created.id, None)
         .await
         .unwrap();
@@ -215,6 +216,7 @@ async fn one_turn_at_a_time_and_the_slot_frees_when_it_finishes() {
         .finish_conversation_turn(
             owner.clone(),
             created.id,
+            first.leased_at,
             outcome("Ok", MessageStatus::Interrupted),
         )
         .await
@@ -353,4 +355,64 @@ async fn the_captain_is_denied_conversations_and_the_denial_is_audited() {
     .await
     .unwrap();
     assert_eq!(audited, 1);
+}
+
+#[tokio::test]
+async fn a_turn_whose_lease_was_taken_over_does_not_free_the_new_one() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let owner = member(organization_id, "user-1");
+    let usecase = usecase(&pool);
+    let created = usecase
+        .create_conversation(owner.clone(), "Bonjour".into())
+        .await
+        .unwrap();
+    let old = usecase
+        .start_conversation_turn(owner.clone(), created.id, None)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE conversations SET turn_started_at = now() - interval '1 hour' WHERE id = $1",
+    )
+    .bind(created.id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let new = usecase
+        .start_conversation_turn(owner.clone(), created.id, Some("Reprise".into()))
+        .await
+        .unwrap();
+    assert_ne!(old.leased_at, new.leased_at);
+
+    usecase
+        .finish_conversation_turn(
+            owner.clone(),
+            created.id,
+            old.leased_at,
+            outcome("Tard", MessageStatus::Complete),
+        )
+        .await
+        .unwrap();
+    usecase
+        .abandon_conversation_turn(owner.clone(), created.id, old.leased_at)
+        .await
+        .unwrap();
+
+    let blocked = usecase
+        .start_conversation_turn(owner.clone(), created.id, Some("Encore".into()))
+        .await;
+    assert!(matches!(blocked, Err(TurnError::InProgress)));
+    usecase
+        .finish_conversation_turn(
+            owner.clone(),
+            created.id,
+            new.leased_at,
+            outcome("À temps", MessageStatus::Complete),
+        )
+        .await
+        .unwrap();
+    usecase
+        .start_conversation_turn(owner, created.id, Some("Encore".into()))
+        .await
+        .unwrap();
 }

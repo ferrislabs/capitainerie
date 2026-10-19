@@ -21,6 +21,7 @@ use capitainerie_core::domain::{
     execution::ports::CodeHost,
 };
 use capitainerie_handlers::{ApiError, Caller};
+use chrono::{DateTime, Utc};
 use futures_util::{Stream, stream};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -177,7 +178,11 @@ where
     {
         Ok(delegated) => delegated,
         Err(error) => {
-            if let Err(release) = state.usecase.abandon_conversation_turn(subject, id).await {
+            if let Err(release) = state
+                .usecase
+                .abandon_conversation_turn(subject, id, started.leased_at)
+                .await
+            {
                 tracing::error!(%release, "the turn slot could not be freed");
             }
             return Err(match error {
@@ -197,7 +202,14 @@ where
         limits: TurnLimits::default(),
     };
     let (sender, receiver) = mpsc::channel(BUFFER);
-    tokio::spawn(run_turn(state, subject, id, turn, sender));
+    tokio::spawn(run_turn(
+        state,
+        subject,
+        id,
+        started.leased_at,
+        turn,
+        sender,
+    ));
     let events = stream::unfold(receiver, |mut receiver| async move {
         receiver
             .recv()
@@ -207,10 +219,17 @@ where
     Ok(Sse::new(events).keep_alive(KeepAlive::default()))
 }
 
+struct Finished {
+    state: TurnState,
+    status: MessageStatus,
+    closing: Closing,
+}
+
 async fn run_turn<R, H, X>(
     state: ConversationsState<R, H, X>,
     subject: Subject,
     id: ConversationId,
+    leased_at: DateTime<Utc>,
     turn: TurnRequest,
     sender: mpsc::Sender<Event>,
 ) where
@@ -218,71 +237,113 @@ async fn run_turn<R, H, X>(
     H: CodeHost + 'static,
     X: TokenExchanger + 'static,
 {
-    let sink = ChannelSink(sender.clone());
-    let tools = ApiTools {
-        usecase: state.usecase.clone(),
-        code_host: state.code_host.clone(),
-        subject: Subject {
-            actor: Some(CAPTAIN_AGENT.to_owned()),
-            ..subject.clone()
-        },
-    };
-    let mut turn_state = TurnState::default();
-    let result = {
-        let run = state
-            .runtime
-            .run_turn(&turn, &tools, &sink, &mut turn_state);
-        tokio::select! {
-            result = run => Some(result),
-            () = sender.closed() => None,
-        }
-    };
-    let (status, closing) = match result {
-        Some(Ok(TurnEnd::Completed)) => (MessageStatus::Complete, Closing::Done),
-        Some(Ok(TurnEnd::Interrupted)) | None => (MessageStatus::Interrupted, Closing::Silent),
-        Some(Err(error)) => {
-            tracing::warn!(%error, conversation = %id, "the Captain's turn failed");
-            (MessageStatus::Failed, Closing::Failed(error))
+    let worker = tokio::spawn(execute(
+        state.clone(),
+        subject.clone(),
+        turn.clone(),
+        sender.clone(),
+    ));
+    let finished = match worker.await {
+        Ok(finished) => finished,
+        Err(join) => {
+            tracing::error!(%join, conversation = %id, "the Captain's turn crashed");
+            Finished {
+                state: TurnState::default(),
+                status: MessageStatus::Failed,
+                closing: Closing::Failed(CoreError::Internal("the turn crashed".into())),
+            }
         }
     };
     let outcome = TurnOutcome {
-        content: turn_state.content(),
-        status,
-        usage: turn_state.usage.clone(),
-        cost_micros: turn_state.cost_micros,
+        content: finished.state.content(),
+        status: finished.status,
+        usage: finished.state.usage.clone(),
+        cost_micros: finished.state.cost_micros,
         model: turn.target.model.clone(),
     };
     let stored = state
         .usecase
-        .finish_conversation_turn(subject, id, outcome)
+        .finish_conversation_turn(subject, id, leased_at, outcome)
         .await;
     if let Err(error) = &stored {
         tracing::error!(%error, conversation = %id, "the turn could not be stored");
     }
-    let event = match (closing, stored) {
+    let event = match (finished.closing, stored) {
         (Closing::Silent, _) => return,
         (_, Err(_)) => error_event("storage_failed", "the answer could not be saved"),
         (Closing::Done, Ok(())) => Event::default().event("done").json_data(json!({
             "status": "complete",
             "usage": {
-                "input_tokens": turn_state.usage.input_tokens,
-                "output_tokens": turn_state.usage.output_tokens,
-                "cost_micros": turn_state.cost_micros,
+                "input_tokens": finished.state.usage.input_tokens,
+                "output_tokens": finished.state.usage.output_tokens,
+                "cost_micros": finished.state.cost_micros,
             },
         })),
         (Closing::Failed(error), Ok(())) => {
             let message: String = error.to_string().chars().take(ERROR_MAX_CHARS).collect();
             error_event("provider_error", &message)
         }
+        (Closing::TimedOut, Ok(())) => error_event(
+            "turn_timeout",
+            "the Captain took too long to answer; what it produced is kept",
+        ),
     };
     if let Ok(event) = event {
         let _ = sender.send(event).await;
     }
 }
 
+async fn execute<R, H, X>(
+    state: ConversationsState<R, H, X>,
+    subject: Subject,
+    turn: TurnRequest,
+    sender: mpsc::Sender<Event>,
+) -> Finished
+where
+    R: CaptainRuntime + 'static,
+    H: CodeHost + 'static,
+    X: TokenExchanger + 'static,
+{
+    let sink = ChannelSink(sender);
+    let tools = ApiTools {
+        usecase: state.usecase.clone(),
+        code_host: state.code_host.clone(),
+        subject: Subject {
+            actor: Some(CAPTAIN_AGENT.to_owned()),
+            ..subject
+        },
+    };
+    let mut turn_state = TurnState::default();
+    let result = tokio::time::timeout(
+        state.deadline,
+        state
+            .runtime
+            .run_turn(&turn, &tools, &sink, &mut turn_state),
+    )
+    .await;
+    let (status, closing) = match result {
+        Ok(Ok(TurnEnd::Completed)) => (MessageStatus::Complete, Closing::Done),
+        Ok(Ok(TurnEnd::Interrupted)) => (MessageStatus::Interrupted, Closing::Silent),
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "the Captain's turn failed");
+            (MessageStatus::Failed, Closing::Failed(error))
+        }
+        Err(_) => {
+            tracing::warn!("the Captain's turn ran past its deadline");
+            (MessageStatus::Failed, Closing::TimedOut)
+        }
+    };
+    Finished {
+        state: turn_state,
+        status,
+        closing,
+    }
+}
+
 enum Closing {
     Done,
     Silent,
+    TimedOut,
     Failed(CoreError),
 }
 

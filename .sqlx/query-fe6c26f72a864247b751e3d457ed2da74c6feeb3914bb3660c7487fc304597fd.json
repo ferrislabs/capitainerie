@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE conversations SET turn_started_at = NULL WHERE id = $1 AND turn_started_at = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fe6c26f72a864247b751e3d457ed2da74c6feeb3914bb3660c7487fc304597fd"
+}

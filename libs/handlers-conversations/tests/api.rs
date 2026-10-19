@@ -43,6 +43,7 @@ enum Act {
     Usage(u64, u64),
     Wait,
     Fail(&'static str),
+    Panic,
     Local(&'static str),
     UserMessageIsStored,
 }
@@ -82,6 +83,7 @@ impl CaptainRuntime for FakeRuntime {
     ) -> Result<TurnEnd, CoreError> {
         self.requests.lock().unwrap().push(request.clone());
         let script = self.scripts.lock().unwrap().pop_front().unwrap_or_default();
+        let mut alive = true;
         for act in script {
             match act {
                 Act::Event(event) => {
@@ -103,9 +105,7 @@ impl CaptainRuntime for FakeRuntime {
                         TurnEvent::Card(card) => state.cards.push(card.clone()),
                         TurnEvent::ToolStarted { .. } => {}
                     }
-                    if !sink.emit(event).await {
-                        return Ok(TurnEnd::Interrupted);
-                    }
+                    alive = sink.emit(event).await && alive;
                 }
                 Act::Usage(input, output) => {
                     state.usage.input_tokens += input;
@@ -116,6 +116,7 @@ impl CaptainRuntime for FakeRuntime {
                     self.gate.notified().await;
                 }
                 Act::Fail(message) => return Err(CoreError::Internal(message.into())),
+                Act::Panic => panic!("the runtime crashed"),
                 Act::Local(name) => {
                     let result = local.call(name, &json!({})).await;
                     self.locals.lock().unwrap().push(result);
@@ -134,7 +135,11 @@ impl CaptainRuntime for FakeRuntime {
                 }
             }
         }
-        Ok(TurnEnd::Completed)
+        Ok(if alive {
+            TurnEnd::Completed
+        } else {
+            TurnEnd::Interrupted
+        })
     }
 }
 
@@ -350,13 +355,24 @@ async fn serve(
     runtime: FakeRuntime,
     exchanger: Option<FakeExchanger>,
 ) -> Server {
+    serve_with_deadline(pool, caller, runtime, exchanger, Duration::from_secs(60)).await
+}
+
+async fn serve_with_deadline(
+    pool: &PgPool,
+    caller: Caller,
+    runtime: FakeRuntime,
+    exchanger: Option<FakeExchanger>,
+    deadline: Duration,
+) -> Server {
     let seen = exchanger.clone().unwrap_or_default();
     let state = ConversationsState::new(
         usecase(pool),
         runtime.clone(),
         Arc::new(FakeHost),
         exchanger,
-    );
+    )
+    .with_deadline(deadline);
     let app: Router = router::<(), _, _, _>(state).layer(Extension(caller));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -679,6 +695,8 @@ async fn a_client_that_leaves_mid_turn_leaves_an_interrupted_answer_and_frees_th
     assert!(String::from_utf8_lossy(&first).contains("Je cher"));
     server.runtime.entered.notified().await;
     drop(response);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    server.runtime.gate.notify_one();
 
     let probe = id.clone();
     let base = server.base.clone();
@@ -691,7 +709,9 @@ async fn a_client_that_leaves_mid_turn_leaves_an_interrupted_answer_and_frees_th
             .unwrap();
         stored["messages"].as_array().is_some_and(|messages| {
             messages.iter().any(|m| {
-                m["role"] == "assistant" && m["status"] == "interrupted" && m["text"] == "Je cher"
+                m["role"] == "assistant"
+                    && m["status"] == "interrupted"
+                    && m["text"] == "Je cherche la suite"
             })
         })
     })
@@ -994,4 +1014,117 @@ async fn conversations_are_listed_renamed_and_archived() {
         .await
         .unwrap();
     assert_eq!(empty.status(), 422);
+}
+
+#[tokio::test]
+async fn a_runtime_that_panics_leaves_a_failed_message_and_frees_the_slot() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_captain(&pool, &organization).await;
+    let runtime = FakeRuntime::scripted(&pool, vec![vec![Act::Panic], vec![delta("Ça marche.")]]);
+    let server = serve(
+        &pool,
+        caller(&organization),
+        runtime,
+        Some(FakeExchanger::default()),
+    )
+    .await;
+    let id = server.create("Bonjour").await;
+
+    let events = events_of(&server.turn(&id, json!({})).await.text().await.unwrap());
+
+    assert_eq!(events.last().unwrap().0, "error");
+    assert_eq!(events.last().unwrap().1["code"], "provider_error");
+    let (_, stored) = server.get(&id).await;
+    assert_eq!(stored["messages"][1]["status"], "failed");
+    let again = server.turn(&id, json!({ "message": "Encore" })).await;
+    assert_eq!(again.status(), 200);
+    let events = events_of(&again.text().await.unwrap());
+    assert_eq!(events.last().unwrap().0, "done");
+}
+
+#[tokio::test]
+async fn a_turn_past_its_deadline_is_failed_with_its_partial_text_and_frees_the_slot() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_captain(&pool, &organization).await;
+    let runtime = FakeRuntime::scripted(&pool, vec![vec![delta("Début"), Act::Wait]]);
+    let server = serve_with_deadline(
+        &pool,
+        caller(&organization),
+        runtime,
+        Some(FakeExchanger::default()),
+        Duration::from_millis(300),
+    )
+    .await;
+    let id = server.create("Bonjour").await;
+
+    let events = events_of(&server.turn(&id, json!({})).await.text().await.unwrap());
+
+    assert_eq!(events.last().unwrap().0, "error");
+    assert_eq!(events.last().unwrap().1["code"], "turn_timeout");
+    let (_, stored) = server.get(&id).await;
+    assert_eq!(stored["messages"][1]["status"], "failed");
+    assert_eq!(stored["messages"][1]["text"], "Début");
+    let slot: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT turn_started_at FROM conversations WHERE id = $1")
+            .bind(Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(slot, None);
+}
+
+#[tokio::test]
+async fn a_tool_call_in_flight_at_disconnect_is_still_stored_with_its_card() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    configure_captain(&pool, &organization).await;
+    let card = ProposedCard {
+        card_id: Uuid::from_u128(11),
+        title: "Ajouter un README".into(),
+    };
+    let runtime = FakeRuntime::scripted(
+        &pool,
+        vec![vec![
+            delta("Je propose."),
+            Act::Wait,
+            Act::Event(TurnEvent::ToolFinished {
+                id: "t1".into(),
+                name: "propose_card".into(),
+                succeeded: true,
+                latency_ms: 3,
+                summary: "Ajouter un README".into(),
+            }),
+            Act::Event(TurnEvent::Card(card)),
+        ]],
+    );
+    let server = serve(
+        &pool,
+        caller(&organization),
+        runtime,
+        Some(FakeExchanger::default()),
+    )
+    .await;
+    let id = server.create("Bonjour").await;
+    let mut response = server.turn(&id, json!({})).await;
+    response.chunk().await.unwrap();
+    server.runtime.entered.notified().await;
+    drop(response);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    server.runtime.gate.notify_one();
+
+    let probe = id.clone();
+    let base = server.base.clone();
+    wait_for("the interrupted answer with its card", async || {
+        let stored: Value = reqwest::get(format!("{base}/{probe}"))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        stored["messages"][1]["cards"][0]["title"] == "Ajouter un README"
+            && stored["messages"][1]["status"] == "interrupted"
+    })
+    .await;
 }

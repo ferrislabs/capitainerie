@@ -178,16 +178,13 @@ pub(crate) async fn run<P: Provider, T: Tools, S: TurnSink>(
             }
             calls_made += 1;
             let arguments = summarize_arguments(&call.input);
-            let began = sink
+            let mut alive = sink
                 .emit(TurnEvent::ToolStarted {
                     id: call.id.clone(),
                     name: call.name.clone(),
                     arguments: arguments.clone(),
                 })
                 .await;
-            if !began {
-                return Ok(TurnEnd::Interrupted);
-            }
             let started = Instant::now();
             let output = tools.call(&call.name, &call.input).await;
             let latency = latency_ms(started);
@@ -198,7 +195,7 @@ pub(crate) async fn run<P: Provider, T: Tools, S: TurnSink>(
                 latency_ms: latency,
                 summary: output.summary.clone(),
             });
-            let mut alive = sink
+            alive = sink
                 .emit(TurnEvent::ToolFinished {
                     id: call.id.clone(),
                     name: call.name.clone(),
@@ -206,7 +203,8 @@ pub(crate) async fn run<P: Provider, T: Tools, S: TurnSink>(
                     latency_ms: latency,
                     summary: output.summary,
                 })
-                .await;
+                .await
+                && alive;
             if let Some(card) = output.card {
                 state.cards.push(card.clone());
                 alive = sink.emit(TurnEvent::Card(card)).await && alive;
@@ -566,5 +564,44 @@ pub(crate) mod tests {
         assert!(!state.tool_calls[0].succeeded);
         let seen = provider.1.lock().unwrap();
         assert!(matches!(&seen[1].0[2], Msg::Results(results) if results[0].is_error));
+    }
+
+    #[tokio::test]
+    async fn a_tool_call_in_flight_when_the_client_leaves_finishes_and_is_recorded() {
+        let card = ProposedCard {
+            card_id: Uuid::from_u128(8),
+            title: "Ajouter un README".into(),
+        };
+        let provider = Script::of(vec![
+            vec![
+                Step::Text("Je propose."),
+                Step::Call("c1", "propose_card", json!({"title": "Ajouter un README"})),
+            ],
+            vec![Step::Text("jamais")],
+        ]);
+        let tools = backend(Some(card.clone()));
+        let sink = Sink {
+            gone_after: Some(1),
+            ..Sink::default()
+        };
+        let mut state = TurnState::default();
+
+        let end = run(
+            &provider,
+            &tools,
+            "system",
+            &history(),
+            TurnLimits::default(),
+            &sink,
+            &mut state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(end, TurnEnd::Interrupted);
+        assert_eq!(tools.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.tool_calls.len(), 1);
+        assert_eq!(state.cards, [card]);
+        assert_eq!(provider.1.lock().unwrap().len(), 1, "no further model call");
     }
 }

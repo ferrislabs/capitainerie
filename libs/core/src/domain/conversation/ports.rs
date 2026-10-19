@@ -39,9 +39,12 @@ pub trait ConversationRepository: Send {
         lease_secs: i64,
     ) -> impl Future<Output = Result<bool, CoreError>> + Send;
 
+    /// Frees the turn slot only if it is still the one `leased_at` took: a
+    /// turn whose lease expired and was taken over must not free the new one.
     fn end_turn(
         &mut self,
         id: ConversationId,
+        leased_at: DateTime<Utc>,
     ) -> impl Future<Output = Result<(), CoreError>> + Send;
 }
 

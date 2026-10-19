@@ -1,5 +1,6 @@
 use capitainerie_common::{ConversationId, CoreError};
 use capitainerie_macros::transactional;
+use chrono::{DateTime, Utc};
 
 use super::CapitainerieUseCase;
 use crate::{
@@ -131,6 +132,7 @@ impl CapitainerieUseCase {
         &self,
         subject: Subject,
         id: ConversationId,
+        leased_at: DateTime<Utc>,
         outcome: TurnOutcome,
     ) -> Result<(), CoreError> {
         ConversationService::new(
@@ -138,7 +140,7 @@ impl CapitainerieUseCase {
             conversation_message_repository,
             authz,
         )
-        .finish_turn(subject, id, outcome)
+        .finish_turn(subject, id, leased_at, outcome)
         .await
     }
 
@@ -147,13 +149,14 @@ impl CapitainerieUseCase {
         &self,
         subject: Subject,
         id: ConversationId,
+        leased_at: DateTime<Utc>,
     ) -> Result<(), CoreError> {
         ConversationService::new(
             conversation_repository,
             conversation_message_repository,
             authz,
         )
-        .abandon_turn(subject, id)
+        .abandon_turn(subject, id, leased_at)
         .await
     }
 

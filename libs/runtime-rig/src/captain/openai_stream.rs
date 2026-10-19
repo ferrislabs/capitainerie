@@ -10,7 +10,10 @@ use serde_json::{Value, json};
 
 use super::{
     driver::{Call, DeltaSink, ModelReply, ModelRequest, Msg, Provider},
-    sse::SseDecoder,
+    sse::{
+        MAX_ERROR_BODY_BYTES, MAX_REPLY_BYTES, MAX_TOOL_JSON_BYTES, SseDecoder, overflow,
+        read_capped_text,
+    },
 };
 use crate::{anthropic::http_failure, usage::truncate_chars};
 
@@ -122,6 +125,10 @@ impl Assembly {
         let delta = &event["choices"][0]["delta"];
         if let Some(text) = delta["content"].as_str().filter(|text| !text.is_empty()) {
             self.reply.text.push_str(text);
+            if self.reply.text.len() > MAX_REPLY_BYTES {
+                self.failure = Some(overflow("answer"));
+                return false;
+            }
             if !deltas.delta(text).await {
                 self.reply.stopped = true;
                 return false;
@@ -139,6 +146,10 @@ impl Assembly {
                 }
                 if let Some(arguments) = call["function"]["arguments"].as_str() {
                     pending.arguments.push_str(arguments);
+                    if pending.arguments.len() > MAX_TOOL_JSON_BYTES {
+                        self.failure = Some(overflow("tool call"));
+                        return false;
+                    }
                 }
             }
         }
@@ -192,7 +203,7 @@ impl Provider for OpenAiStream {
         })?;
         let status = response.status();
         if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = read_capped_text(&mut response, MAX_ERROR_BODY_BYTES).await;
             return Err(http_failure(status.as_u16(), &text));
         }
         let mut decoder = SseDecoder::default();
@@ -200,7 +211,7 @@ impl Provider for OpenAiStream {
         'read: loop {
             match response.chunk().await {
                 Ok(Some(chunk)) => {
-                    for data in decoder.push(&chunk) {
+                    for data in decoder.push(&chunk)? {
                         if !assembly.on_event(&data, deltas).await {
                             break 'read;
                         }
@@ -332,5 +343,51 @@ mod tests {
         assert_eq!(body["messages"][3]["tool_call_id"], "c1");
         assert_eq!(body["tools"][0]["function"]["name"], "search_cards");
         assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[tokio::test]
+    async fn an_answer_past_512_kib_fails_the_turn() {
+        let mut sink = Collect(String::new());
+        let mut assembly = Assembly::default();
+        let event = json!({"choices": [{"delta": {"content": "x".repeat(64 * 1024)}}]}).to_string();
+        let mut stopped_at = None;
+        for n in 0..10 {
+            if !assembly.on_event(&event, &mut sink).await {
+                stopped_at = Some(n);
+                break;
+            }
+        }
+
+        assert_eq!(stopped_at, Some(8));
+        assert!(
+            assembly
+                .finish("m")
+                .unwrap_err()
+                .to_string()
+                .contains("answer is too large")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_arguments_past_256_kib_fail_the_turn() {
+        let mut sink = Collect(String::new());
+        let mut assembly = Assembly::default();
+        let event = json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c", "function": {"name": "n", "arguments": "x".repeat(64 * 1024)}}]}}]}).to_string();
+        let mut stopped_at = None;
+        for n in 0..10 {
+            if !assembly.on_event(&event, &mut sink).await {
+                stopped_at = Some(n);
+                break;
+            }
+        }
+
+        assert_eq!(stopped_at, Some(4));
+        assert!(
+            assembly
+                .finish("m")
+                .unwrap_err()
+                .to_string()
+                .contains("tool call is too large")
+        );
     }
 }

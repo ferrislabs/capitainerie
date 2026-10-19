@@ -1,5 +1,5 @@
 use capitainerie_common::{ConversationId, CoreError};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use super::{
     Conversation, Message, MessageContent, MessageRole, MessageStatus, TURN_LEASE_SECS,
@@ -32,6 +32,7 @@ pub struct TurnOutcome {
 
 #[derive(Debug, Clone)]
 pub struct StartedTurn {
+    pub leased_at: DateTime<Utc>,
     pub conversation: Conversation,
     pub history: Vec<ChatMessage>,
 }
@@ -168,9 +169,10 @@ where
             return Err(TurnError::Full);
         }
         let message = message.map(valid_message).transpose()?;
+        let leased_at = micros(Utc::now());
         if !self
             .conversations
-            .begin_turn(id, Utc::now(), TURN_LEASE_SECS)
+            .begin_turn(id, leased_at, TURN_LEASE_SECS)
             .await?
         {
             return Err(TurnError::InProgress);
@@ -193,6 +195,7 @@ where
             return Err(CoreError::Invalid("there is no message to answer".into()).into());
         }
         Ok(StartedTurn {
+            leased_at,
             conversation,
             history,
         })
@@ -202,6 +205,7 @@ where
         mut self,
         subject: Subject,
         id: ConversationId,
+        leased_at: DateTime<Utc>,
         outcome: TurnOutcome,
     ) -> Result<(), CoreError> {
         let mut conversation = self.owned(&subject, id).await?;
@@ -223,7 +227,7 @@ where
         conversation.cost_micros = conversation.cost_micros.saturating_add(outcome.cost_micros);
         conversation.updated_at = Utc::now();
         self.conversations.update(&conversation).await?;
-        self.conversations.end_turn(id).await
+        self.conversations.end_turn(id, leased_at).await
     }
 
     /// Frees the turn slot when the turn could not even start its model call.
@@ -231,9 +235,10 @@ where
         mut self,
         subject: Subject,
         id: ConversationId,
+        leased_at: DateTime<Utc>,
     ) -> Result<(), CoreError> {
         self.owned(&subject, id).await?;
-        self.conversations.end_turn(id).await
+        self.conversations.end_turn(id, leased_at).await
     }
 
     async fn owned(
@@ -264,6 +269,11 @@ where
         )
         .await
     }
+}
+
+/// The database keeps microseconds: the lease must compare equal after a round trip.
+fn micros(at: DateTime<Utc>) -> DateTime<Utc> {
+    DateTime::from_timestamp_micros(at.timestamp_micros()).unwrap_or(at)
 }
 
 fn history_of(messages: Vec<Message>) -> Vec<ChatMessage> {
@@ -573,13 +583,14 @@ mod tests {
         conversations
             .expect_end_turn()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let authorizer = allow();
 
         ConversationService::new(conversations, messages, &authorizer)
             .finish_turn(
                 owner,
                 conversation.id,
+                Utc::now(),
                 TurnOutcome {
                     content: MessageContent {
                         text: "Je cher".into(),

@@ -6,9 +6,17 @@ use serde_json::{Value, json};
 
 use super::{
     driver::{Call, DeltaSink, ModelReply, ModelRequest, Msg, Provider},
-    sse::SseDecoder,
+    sse::{
+        MAX_ERROR_BODY_BYTES, MAX_REPLY_BYTES, MAX_TOOL_JSON_BYTES, SseDecoder, overflow,
+        read_capped_text,
+    },
 };
-use crate::anthropic::{Api, http_failure};
+use crate::{
+    anthropic::{Api, http_failure},
+    usage::truncate_chars,
+};
+
+const ERROR_MAX_CHARS: usize = 300;
 
 pub(crate) struct AnthropicStream {
     pub api: Api,
@@ -111,6 +119,10 @@ impl Assembly {
                     "text_delta" => {
                         let text = delta["text"].as_str().unwrap_or_default();
                         self.reply.text.push_str(text);
+                        if self.reply.text.len() > MAX_REPLY_BYTES {
+                            self.failure = Some(overflow("answer"));
+                            return false;
+                        }
                         if !text.is_empty() && !deltas.delta(text).await {
                             self.reply.stopped = true;
                             return false;
@@ -121,6 +133,10 @@ impl Assembly {
                             pending
                                 .json
                                 .push_str(delta["partial_json"].as_str().unwrap_or_default());
+                            if pending.json.len() > MAX_TOOL_JSON_BYTES {
+                                self.failure = Some(overflow("tool call"));
+                                return false;
+                            }
                         }
                     }
                     _ => {}
@@ -179,11 +195,14 @@ impl Provider for AnthropicStream {
             .send()
             .await
             .map_err(|error| {
-                CoreError::Internal(format!("the language model call failed: {error}"))
+                CoreError::Internal(format!(
+                    "the language model call failed: {}",
+                    truncate_chars(&error.without_url().to_string(), ERROR_MAX_CHARS)
+                ))
             })?;
         let status = response.status();
         if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = read_capped_text(&mut response, MAX_ERROR_BODY_BYTES).await;
             return Err(http_failure(status.as_u16(), &text));
         }
         let mut decoder = SseDecoder::default();
@@ -191,7 +210,7 @@ impl Provider for AnthropicStream {
         'read: loop {
             match response.chunk().await {
                 Ok(Some(chunk)) => {
-                    for data in decoder.push(&chunk) {
+                    for data in decoder.push(&chunk)? {
                         if !assembly.on_event(&data, deltas).await {
                             break 'read;
                         }
@@ -205,7 +224,8 @@ impl Provider for AnthropicStream {
                 }
                 Err(error) => {
                     return Err(CoreError::Internal(format!(
-                        "the language model stream broke: {error}"
+                        "the language model stream broke: {}",
+                        truncate_chars(&error.without_url().to_string(), ERROR_MAX_CHARS)
                     )));
                 }
             }
@@ -355,5 +375,48 @@ mod tests {
             },
         );
         assert!(without.get("tools").is_none() && without.get("tool_choice").is_none());
+    }
+
+    #[tokio::test]
+    async fn an_answer_past_512_kib_fails_the_turn() {
+        let mut sink = Collect(String::new(), true);
+        let mut assembly = Assembly::default();
+        let chunk = "x".repeat(64 * 1024);
+        let event = json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": chunk}}).to_string();
+        let mut stopped_at = None;
+        for n in 0..10 {
+            if !assembly.on_event(&event, &mut sink).await {
+                stopped_at = Some(n);
+                break;
+            }
+        }
+
+        assert_eq!(stopped_at, Some(8));
+        let error = assembly.finish("m").unwrap_err();
+        assert!(error.to_string().contains("answer is too large"));
+    }
+
+    #[tokio::test]
+    async fn tool_input_past_256_kib_fails_the_turn() {
+        let mut sink = Collect(String::new(), true);
+        let mut assembly = Assembly::default();
+        assembly
+            .on_event(
+                &json!({"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t", "name": "n", "input": {}}}).to_string(),
+                &mut sink,
+            )
+            .await;
+        let piece = json!({"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "x".repeat(64 * 1024)}}).to_string();
+        let mut stopped_at = None;
+        for n in 0..10 {
+            if !assembly.on_event(&piece, &mut sink).await {
+                stopped_at = Some(n);
+                break;
+            }
+        }
+
+        assert_eq!(stopped_at, Some(4));
+        let error = assembly.finish("m").unwrap_err();
+        assert!(error.to_string().contains("tool call is too large"));
     }
 }
