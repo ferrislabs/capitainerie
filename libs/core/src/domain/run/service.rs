@@ -39,6 +39,8 @@ where
         }
     }
 
+    pub const ACTIVE_LIMIT: u32 = 100;
+
     /// Stores the transcript and queues the meeting pipeline on it.
     pub async fn submit(self, command: SubmitTranscript) -> Result<(Transcript, Run), CoreError> {
         self.submit_with_models(command, None).await
@@ -97,6 +99,14 @@ where
         self.require_read(subject, None).await?;
         self.runs
             .list(organization_id, limit.clamp(1, 100), offset)
+            .await
+    }
+
+    pub async fn active(mut self, subject: Subject) -> Result<Vec<RunOverview>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require_read(subject, None).await?;
+        self.runs
+            .list_active(organization_id, Self::ACTIVE_LIMIT)
             .await
     }
 

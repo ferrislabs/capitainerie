@@ -29,6 +29,29 @@ async function renderRail(path: string, props = rail()) {
 }
 
 describe('AppRail', () => {
+	it('shows the number of active runs in the running blue', async () => {
+		await renderRail('/live', rail({ badges: { '/live': 3 } }))
+
+		const link = screen.getByRole('link', { name: 'En cours, 3 runs actifs' })
+		const count = screen.getByText('3')
+		expect(link.contains(count)).toBe(true)
+		expect(count.className).toContain('text-signal-running')
+		expect(count.className).not.toContain('attention')
+	})
+
+	it('caps the count at 100+', async () => {
+		await renderRail('/live', rail({ badges: { '/live': 100 } }))
+
+		expect(screen.getByText('100+')).toBeTruthy()
+	})
+
+	it('shows no count when nothing runs', async () => {
+		await renderRail('/live', rail({ badges: { '/live': 0 } }))
+
+		expect(screen.getByRole('link', { name: 'En cours' })).toBeTruthy()
+		expect(screen.queryByText('0')).toBeNull()
+	})
+
 	it('groups the destinations by section and marks the current page', async () => {
 		await renderRail('/kanban')
 
@@ -40,6 +63,7 @@ describe('AppRail', () => {
 		}
 		for (const label of [
 			'Runs',
+			'En cours',
 			'Kanban',
 			'Agents',
 			'Fournisseurs',
@@ -129,6 +153,11 @@ describe('AppRail', () => {
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
 			screen.getByRole('link', { name: 'Kanban' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'En cours' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })

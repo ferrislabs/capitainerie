@@ -179,6 +179,16 @@ describe('startRealtime', () => {
 		expect(invalidated(key('/api/v1/cards'))).toBe(false)
 	})
 
+	it('invalidates the active runs whichever run the event is about', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'run.step_started', run_id: 'r1' })
+		expect(invalidated(key('/api/v1/runs/active'))).toBe(true)
+		latest().receive({ op: 'event', kind: 'card.moved', run_id: 'r1' })
+		filters = []
+		latest().receive({ op: 'event', kind: 'card.moved' })
+		expect(invalidated(key('/api/v1/runs/active'))).toBe(false)
+	})
+
 	it('invalidates the cards list, and the timeline when a run is carried', () => {
 		start()
 		latest().receive({
@@ -192,6 +202,18 @@ describe('startRealtime', () => {
 			invalidated(key('/api/v1/runs/{run_id}/timeline', { run_id: 'r1' })),
 		).toBe(true)
 		expect(invalidated(key('/api/v1/runs'))).toBe(false)
+	})
+
+	it('reloads the open card panel when a comment is added', () => {
+		start()
+		latest().receive({
+			op: 'event',
+			kind: 'card.commented',
+			card_id: 'c1',
+		})
+		expect(invalidated(key('/api/v1/cards/{card_id}', { card_id: 'c1' }))).toBe(
+			true,
+		)
 	})
 
 	it('does not touch the timeline for a card event without run', () => {

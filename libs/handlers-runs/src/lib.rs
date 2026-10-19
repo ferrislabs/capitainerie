@@ -1,4 +1,5 @@
 pub mod get_run;
+pub mod list_active_runs;
 pub mod list_runs;
 pub mod response;
 pub mod submit_transcript;
@@ -14,6 +15,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .typed_post(submit_transcript::handler)
         .typed_get(list_runs::handler)
+        .typed_get(list_active_runs::handler)
         .typed_get(get_run::handler)
         .typed_get(timeline::handler)
 }

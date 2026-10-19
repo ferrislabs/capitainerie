@@ -151,6 +151,63 @@ impl RunRepository for PgRunRepository<'_> {
         .transpose()
     }
 
+    async fn list_for_card(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Vec<RunOverview>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            RunOverviewRow,
+            r#"
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+            FROM runs r
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
+            WHERE r.organization_id = $1 AND r.card_id = $2
+            ORDER BY r.created_at DESC, r.id DESC
+            "#,
+            organization_id.0,
+            card_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(RunOverview::try_from)
+        .collect()
+    }
+
+    async fn list_active(
+        &mut self,
+        organization_id: OrganizationId,
+        limit: u32,
+    ) -> Result<Vec<RunOverview>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            RunOverviewRow,
+            r#"
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+            FROM runs r
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
+            WHERE r.organization_id = $1 AND r.status IN ('queued', 'running')
+            ORDER BY r.created_at, r.id
+            LIMIT $2
+            "#,
+            organization_id.0,
+            i64::from(limit),
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(RunOverview::try_from)
+        .collect()
+    }
+
     async fn lock(&mut self, id: RunId) -> Result<Option<Run>, CoreError> {
         let mut tx = self.tx.lock().await;
         sqlx::query_as!(
@@ -273,6 +330,28 @@ impl StepRepository for PgStepRepository<'_> {
             ORDER BY seq
             "#,
             run_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(Step::try_from)
+        .collect()
+    }
+
+    async fn list_for_runs(&mut self, run_ids: &[RunId]) -> Result<Vec<Step>, CoreError> {
+        let ids: Vec<uuid::Uuid> = run_ids.iter().map(|id| id.0).collect();
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            StepRow,
+            r#"
+            SELECT id, run_id, organization_id, seq, kind, agent, status, attempt, output, model,
+                   input_tokens, output_tokens, cost_micros, latency_ms, error, started_at, finished_at
+            FROM run_steps
+            WHERE run_id = ANY($1)
+            ORDER BY run_id, seq
+            "#,
+            &ids,
         )
         .fetch_all(&mut ***tx)
         .await

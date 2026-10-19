@@ -1,5 +1,41 @@
 export namespace Schemas {
   // <Schemas>
+  export type ActiveStepResponse = {
+    agent?: (string | null) | undefined;
+    kind: string;
+    model?: (string | null) | undefined;
+    started_at: string;
+  };
+  export type CardId = string;
+  export type RunId = string;
+  export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  export type TranscriptId = string;
+  export type RunResponse = {
+    card_id?: (null | CardId) | undefined;
+    created_at: string;
+    failure?: (string | null) | undefined;
+    finished_at?: (string | null) | undefined;
+    id: RunId;
+    initiated_by: string;
+    pipeline: Array<string>;
+    repository?: (string | null) | undefined;
+    started_at?: (string | null) | undefined;
+    status: RunStatusResponse;
+    title?: (string | null) | undefined;
+    trace_id?: (string | null) | undefined;
+    transcript_id?: (null | TranscriptId) | undefined;
+    transcript_title?: (string | null) | undefined;
+  };
+  export type ActiveRunResponse = {
+    cost_micros: number;
+    current_step?: (null | ActiveStepResponse) | undefined;
+    input_tokens: number;
+    output_tokens: number;
+    run: RunResponse;
+    steps_done: number;
+    steps_total: number;
+  };
+  export type ActiveRunListResponse = { items: Array<ActiveRunResponse> };
   export type AgentResponse = {
     agent: string;
     cost_micros: number;
@@ -10,10 +46,8 @@ export namespace Schemas {
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean };
-  export type CardId = string;
+  export type CardCommentId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
-  export type RunId = string;
-  export type TranscriptId = string;
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
   export type CardResponse = {
     column: ColumnDto;
@@ -28,7 +62,16 @@ export namespace Schemas {
     updated_at: string;
     version: number;
   };
+  export type CommentResponse = {
+    author_actor?: (string | null) | undefined;
+    author_subject: string;
+    body: string;
+    created_at: string;
+    id: CardCommentId;
+  };
+  export type CardDetailResponse = { card: CardResponse; comments: Array<CommentResponse>; runs: Array<RunResponse> };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type CommentCardRequest = { body: string };
   export type ConnectGithubRequest = { code: string; installation_id: number; state: string };
   export type CostDimensionParam = "agent" | "user" | "model" | "day";
   export type CostRowResponse = {
@@ -126,23 +169,6 @@ export namespace Schemas {
   export type PutProviderRequest = Partial<{ api_key: string; base_url: string | null }>;
   export type RepositoryResponse = { full_name: string; name: string; owner: string };
   export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
-  export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-  export type RunResponse = {
-    card_id?: (null | CardId) | undefined;
-    created_at: string;
-    failure?: (string | null) | undefined;
-    finished_at?: (string | null) | undefined;
-    id: RunId;
-    initiated_by: string;
-    pipeline: Array<string>;
-    repository?: (string | null) | undefined;
-    started_at?: (string | null) | undefined;
-    status: RunStatusResponse;
-    title?: (string | null) | undefined;
-    trace_id?: (string | null) | undefined;
-    transcript_id?: (null | TranscriptId) | undefined;
-    transcript_title?: (string | null) | undefined;
-  };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
   export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
   export type ToolCallResponse = { latency_ms: number; succeeded: boolean; summary: string; tool: string };
@@ -207,6 +233,32 @@ export namespace Endpoints {
     requestFormat: "json";
     parameters: never;
     responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type get_GetCard = {
+    method: "GET";
+    path: "/api/v1/cards/{card_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+    };
+    responses: { 200: Schemas.CardDetailResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
+  };
+  export type post_CommentCard = {
+    method: "POST";
+    path: "/api/v1/cards/{card_id}/comments";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.CommentCardRequest;
+    };
+    responses: {
+      201: Schemas.CommentResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
   };
   export type post_ExecuteCard = {
     method: "POST";
@@ -433,6 +485,13 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunListResponse; 401: Schemas.ApiErrorResponse };
   };
+  export type get_ListActiveRuns = {
+    method: "GET";
+    path: "/api/v1/runs/active";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ActiveRunListResponse; 401: Schemas.ApiErrorResponse };
+  };
   export type get_GetRun = {
     method: "GET";
     path: "/api/v1/runs/{run_id}";
@@ -489,6 +548,7 @@ export type EndpointByMethod = {
     "/api/v1/agents": Endpoints.get_ListAgents;
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
+    "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
@@ -497,12 +557,14 @@ export type EndpointByMethod = {
     "/api/v1/models": Endpoints.get_ListModels;
     "/api/v1/providers": Endpoints.get_ListProviders;
     "/api/v1/runs": Endpoints.get_ListRuns;
+    "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
   };
   post: {
+    "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;

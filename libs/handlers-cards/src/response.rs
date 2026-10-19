@@ -1,5 +1,6 @@
-use capitainerie_common::{CardId, RunId, TranscriptId};
-use capitainerie_core::domain::card::{Card, Column};
+use capitainerie_common::{CardCommentId, CardId, RunId, TranscriptId};
+use capitainerie_core::domain::card::{Card, CardComment, Column, detail::CardDetail};
+use capitainerie_handlers_runs::response::RunResponse;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -81,6 +82,47 @@ impl From<Card> for CardResponse {
             version: card.version,
             created_at: card.created_at,
             updated_at: card.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CommentResponse {
+    pub id: CardCommentId,
+    pub body: String,
+    pub author_subject: String,
+    /// Client id of the agent that wrote the comment, when one did.
+    pub author_actor: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CardDetailResponse {
+    pub card: CardResponse,
+    /// Oldest first.
+    pub comments: Vec<CommentResponse>,
+    /// The run that proposed the card, then its executions, newest first.
+    pub runs: Vec<RunResponse>,
+}
+
+impl From<CardComment> for CommentResponse {
+    fn from(comment: CardComment) -> Self {
+        Self {
+            id: comment.id,
+            body: comment.body,
+            author_subject: comment.author.subject,
+            author_actor: comment.author.actor,
+            created_at: comment.created_at,
+        }
+    }
+}
+
+impl From<CardDetail> for CardDetailResponse {
+    fn from(detail: CardDetail) -> Self {
+        Self {
+            card: detail.card.into(),
+            comments: detail.comments.into_iter().map(Into::into).collect(),
+            runs: detail.runs.into_iter().map(Into::into).collect(),
         }
     }
 }

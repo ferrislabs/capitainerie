@@ -27,6 +27,7 @@ function board(cards: Schemas.CardResponse[]) {
 			expandedIds={new Set()}
 			onToggleExpanded={vi.fn()}
 			onMove={vi.fn()}
+			onOpen={vi.fn()}
 		/>,
 	)
 }

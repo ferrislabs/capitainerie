@@ -1,7 +1,7 @@
 use capitainerie_common::{CardId, CoreError, OrganizationId};
 use capitainerie_macros::repository;
 
-use super::model::{CardRow, stored_offset};
+use super::model::{CardCommentRow, CardRow, stored_offset};
 use crate::{
     domain::card::{
         Card, CardComment,
@@ -73,6 +73,31 @@ impl CardRepository for PgCardRepository<'_> {
             FROM cards
             WHERE organization_id = $1 AND id = $2
             FOR UPDATE
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .map(Card::try_from)
+        .transpose()
+    }
+
+    async fn get(
+        &mut self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> Result<Option<Card>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            CardRow,
+            r#"
+            SELECT id, organization_id, title, description, "column",
+                   provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
+                   created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at
+            FROM cards
+            WHERE organization_id = $1 AND id = $2
             "#,
             organization_id.0,
             id.0,
@@ -167,5 +192,29 @@ impl CardCommentRepository for PgCardCommentRepository<'_> {
         .await
         .map(|_| ())
         .map_err(map_sqlx_error)
+    }
+    async fn list(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Vec<CardComment>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        Ok(sqlx::query_as!(
+            CardCommentRow,
+            r#"
+            SELECT id, card_id, organization_id, author_subject, author_actor, body, created_at
+            FROM card_comments
+            WHERE organization_id = $1 AND card_id = $2
+            ORDER BY created_at, id
+            "#,
+            organization_id.0,
+            card_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(CardComment::from)
+        .collect())
     }
 }

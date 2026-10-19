@@ -6,6 +6,7 @@ use crate::domain::{
     authorization::Subject,
     card::{
         Card, CardComment,
+        detail::{CardDetail, CardDetailService},
         service::{CardService, CreateCard, MoveCard, UpdateCard},
     },
 };
@@ -93,6 +94,18 @@ impl CapitainerieUseCase {
             authz,
         )
         .list(subject)
+        .await
+    }
+
+    #[transactional(card, card_comment, run, authz)]
+    pub async fn card_detail(&self, subject: Subject, id: CardId) -> Result<CardDetail, CoreError> {
+        CardDetailService::new(
+            card_repository,
+            card_comment_repository,
+            run_repository,
+            authz,
+        )
+        .get(subject, id)
         .await
     }
 }

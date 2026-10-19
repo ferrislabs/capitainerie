@@ -501,3 +501,148 @@ async fn an_executable_card_reaches_github_after_the_checks() {
     assert_eq!(response.status(), 202);
     assert!(fixture.github_calls.load(Ordering::SeqCst) > 0);
 }
+
+impl Fixture {
+    async fn get_card(&self, card_id: CardId) -> reqwest::Response {
+        reqwest::Client::new()
+            .get(format!("{}/api/v1/cards/{}", self.base, card_id.0))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn comment(&self, card_id: CardId, body: &str) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!("{}/api/v1/cards/{}/comments", self.base, card_id.0))
+            .json(&json!({ "body": body }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn stored_comments(&self, card_id: CardId) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM card_comments WHERE card_id = $1")
+            .bind(card_id.0)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+
+    async fn commented_events(&self, card_id: CardId) -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'card.commented'",
+        )
+        .bind(card_id.0)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn a_member_reads_a_card_with_its_comments_and_runs() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let card = fixture.todo_card().await;
+    fixture.comment(card.id, "Premier").await;
+    fixture.comment(card.id, "Second").await;
+    let executed = fixture.execute(&card, "acme/web", card.version).await;
+    assert_eq!(executed.status(), 202);
+
+    let response = fixture.get_card(card.id).await;
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["card"]["id"], card.id.0.to_string());
+    let bodies: Vec<&str> = body["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|comment| comment["body"].as_str().unwrap())
+        .collect();
+    assert_eq!(bodies, ["Premier", "Second"]);
+    let runs = body["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0]["card_id"], card.id.0.to_string());
+    assert_eq!(runs[0]["repository"], "acme/web");
+}
+
+#[tokio::test]
+async fn a_card_of_another_organization_is_a_404_not_a_403() {
+    let Some(mine) = fixture(false).await else {
+        return;
+    };
+    let Some(theirs) = fixture(false).await else {
+        return;
+    };
+    let card = theirs.proposed_card().await;
+
+    let read = mine.get_card(card.id).await;
+    let commented = mine.comment(card.id, "Intrus").await;
+
+    assert_eq!(read.status(), 404);
+    assert_eq!(commented.status(), 404);
+    assert_eq!(theirs.stored_comments(card.id).await, 0);
+}
+
+#[tokio::test]
+async fn a_human_comment_carries_the_subject_and_no_actor() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+
+    let response = fixture.comment(card.id, "  À relire  ").await;
+
+    assert_eq!(response.status(), 201);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["body"], "À relire");
+    assert_eq!(body["author_subject"], "user-1");
+    assert!(body["author_actor"].is_null());
+    assert!(body["id"].is_string());
+    assert!(body["created_at"].is_string());
+    let stored: (String, Option<String>) =
+        sqlx::query_as("SELECT author_subject, author_actor FROM card_comments WHERE card_id = $1")
+            .bind(card.id.0)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, ("user-1".to_owned(), None));
+    assert_eq!(fixture.commented_events(card.id).await, 1);
+}
+
+#[tokio::test]
+async fn an_empty_or_too_long_comment_is_a_422_and_stores_nothing() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+
+    let empty = fixture.comment(card.id, "").await;
+    let blank = fixture.comment(card.id, " \n\t ").await;
+    let too_long = fixture.comment(card.id, &"x".repeat(10_001)).await;
+    let longest = fixture.comment(card.id, &"x".repeat(10_000)).await;
+
+    assert_eq!(empty.status(), 422);
+    assert_eq!(blank.status(), 422);
+    assert_eq!(too_long.status(), 422);
+    assert_eq!(longest.status(), 201);
+    assert_eq!(fixture.stored_comments(card.id).await, 1);
+    assert_eq!(fixture.commented_events(card.id).await, 1);
+}
+
+#[tokio::test]
+async fn an_agent_cannot_comment_through_the_http_route() {
+    let Some(fixture) = fixture_as(Github::Absent, Some("capitainerie-agent-writer")).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+
+    let response = fixture.comment(card.id, "Je suis un agent").await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(fixture.stored_comments(card.id).await, 0);
+    assert_eq!(fixture.commented_events(card.id).await, 0);
+}
