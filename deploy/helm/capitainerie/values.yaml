@@ -42,6 +42,8 @@ config:
   # The executor that runs Claude Code on a card is not one of them: it holds no token and writes through the worker only.
   pipelineAgents:
     - capitainerie-agent-writer
+  # -- Client id of the Captain, the chat agent (added to MCP_ACCEPTED_AGENTS on mcp-kanban; the api and AGENT_CREDENTIALS must hold its secret).
+  captainAgent: capitainerie-agent-captain
   github:
     # -- GITHUB_WEB_BASE, for GitHub Enterprise: OAuth, App manifest and installation pages. Empty keeps https://github.com.
     # Each organization creates its own GitHub App from the console; there is nothing else to configure here.
