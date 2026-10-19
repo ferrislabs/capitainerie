@@ -516,6 +516,7 @@ mod tests {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                ..CreateCard::default()
             },
         )
         .await

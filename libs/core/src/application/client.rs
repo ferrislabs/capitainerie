@@ -9,11 +9,12 @@ use crate::domain::{
         Card,
         link::{CardLinkService, LinkCard},
         ports::CardRepository,
+        service::{CardService, CreateCard},
     },
     client::{
         Client, ClientDetail, ClientListing, ListFilter,
         catalog::{self, Catalog},
-        links::Links,
+        links::{Change, Links},
         service::{ClientService, CreateClient, UpdateClient},
     },
     event::ports::EventEmitter,
@@ -22,6 +23,7 @@ use crate::domain::{
         service::{CreateProject, ProjectService, UpdateProject},
     },
 };
+use crate::infrastructure::card::postgres::PgCardRepository;
 
 #[derive(Debug, Clone)]
 pub struct RunCardLinks {
@@ -135,6 +137,47 @@ impl CapitainerieUseCase {
             authz,
         )
         .link(subject, id, command)
+        .await
+    }
+
+    /// Creates a card and, in the same transaction, attaches it to a client
+    /// and/or project of the organization: a wrong id creates nothing.
+    #[transactional(card, card_comment, transcript, client, project, emitter, authz)]
+    pub async fn create_card_linked(
+        &self,
+        subject: Subject,
+        command: CreateCard,
+        client: Option<ClientId>,
+        project: Option<ProjectId>,
+    ) -> Result<Card, CoreError> {
+        let card = CardService::new(
+            card_repository,
+            card_comment_repository,
+            transcript_repository,
+            emitter,
+            authz,
+        )
+        .create(subject.clone(), command)
+        .await?;
+        if client.is_none() && project.is_none() {
+            return Ok(card);
+        }
+        CardLinkService::new(
+            PgCardRepository::new(&tx),
+            client_repository,
+            project_repository,
+            emitter,
+            authz,
+        )
+        .link(
+            subject,
+            card.id,
+            LinkCard {
+                expected_version: card.version,
+                client: client.map_or(Change::Keep, Change::Set),
+                project: project.map_or(Change::Keep, Change::Set),
+            },
+        )
         .await
     }
 

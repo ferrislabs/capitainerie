@@ -62,13 +62,17 @@ fn decide_for_agent(actor: &str, action: Action) -> Decision {
     }
 }
 
-/// The Captain only reads the board, proposes cards and comments on them: it
-/// never edits, moves, validates or executes anything, whatever the user may do.
+/// The Captain reads the board and the clients, proposes cards (attaching them
+/// to a client or project as it creates them) and comments on them: it never
+/// edits, moves, validates or executes anything, whatever the user may do.
 fn decide_for_captain(action: Action) -> Decision {
     match action {
-        Action::CardCreate | Action::CardRead | Action::CardComment | Action::GithubRead => {
-            Decision::Allow
-        }
+        Action::CardCreate
+        | Action::CardRead
+        | Action::CardComment
+        | Action::CardLink
+        | Action::ClientRead
+        | Action::GithubRead => Decision::Allow,
         other => deny(&format!("agent {CAPTAIN_AGENT} may not {}", other.as_str())),
     }
 }
@@ -374,6 +378,8 @@ mod tests {
             Action::CardRead,
             Action::CardCreate,
             Action::CardComment,
+            Action::CardLink,
+            Action::ClientRead,
             Action::GithubRead,
         ] {
             assert!(allowed(action, CAPTAIN));
@@ -401,6 +407,9 @@ mod tests {
             }
             for action in [
                 Action::CardExecute,
+                Action::CardEdit,
+                Action::ClientManage,
+                Action::MemberRead,
                 Action::GithubManage,
                 Action::TranscriptCreate,
                 Action::ProviderManage,

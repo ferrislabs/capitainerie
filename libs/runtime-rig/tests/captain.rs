@@ -393,6 +393,8 @@ async fn an_anthropic_model_streams_text_and_tool_input_deltas() {
         names,
         [
             "search_cards",
+            "list_clients",
+            "list_projects",
             "propose_card",
             "comment_card",
             "list_repositories"
