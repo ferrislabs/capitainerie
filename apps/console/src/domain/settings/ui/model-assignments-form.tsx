@@ -8,6 +8,7 @@ import {
 	AGENT_ROLES,
 	type AgentRole,
 	type AssignmentDraft,
+	CAPTAIN_ROLE,
 	catalogRef,
 	compatibleModels,
 	EXECUTOR_INFO,
@@ -36,6 +37,7 @@ interface Props {
 	onChange: (role: AgentRole, value: ModelRef) => void
 	onTranscriberChange: (value: ModelRef | undefined) => void
 	onReaderChange: (value: ModelRef | undefined) => void
+	onCaptainChange: (value: ModelRef | undefined) => void
 	onExecutorChange: (model: string) => void
 	onSubmit: () => void
 }
@@ -136,6 +138,7 @@ export function ModelAssignmentsForm({
 	onChange,
 	onTranscriberChange,
 	onReaderChange,
+	onCaptainChange,
 	onExecutorChange,
 	onSubmit,
 }: Props) {
@@ -147,6 +150,8 @@ export function ModelAssignmentsForm({
 	const transcriberOptions = compatibleModels(models, TRANSCRIBER_ROLE)
 	const readerInfo = ROLE_INFO[READER_ROLE]
 	const readerOptions = compatibleModels(models, READER_ROLE)
+	const captainInfo = ROLE_INFO[CAPTAIN_ROLE]
+	const captainOptions = compatibleModels(models, CAPTAIN_ROLE)
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -268,6 +273,16 @@ export function ModelAssignmentsForm({
 					noneLabel="Aucun lecteur de PDF"
 					disabled={!isAdmin || isPending}
 					onChange={onReaderChange}
+				/>
+				<OptionalRoleRow
+					id="assignment-captain"
+					info={captainInfo}
+					options={captainOptions}
+					value={values[CAPTAIN_ROLE]}
+					noModelLabel="Aucun modèle de chat"
+					noneLabel="Le modèle du Rédacteur"
+					disabled={!isAdmin || isPending}
+					onChange={onCaptainChange}
 				/>
 				<li className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-center md:gap-6">
 					<div className="flex min-w-0 flex-col gap-0.5">

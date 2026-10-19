@@ -82,6 +82,7 @@ describe('completeAssignments', () => {
 			embeddings: ref,
 			transcriber: null,
 			reader: null,
+			captain: null,
 		})
 	})
 })
@@ -113,6 +114,7 @@ describe('completeAssignments with an executor', () => {
 			...roles,
 			transcriber: null,
 			reader: null,
+			captain: null,
 			executor: 'claude-haiku-5',
 		})
 		expect(
@@ -152,11 +154,13 @@ describe('the transcriber role', () => {
 			...roles,
 			transcriber: voxtral,
 			reader: null,
+			captain: null,
 		})
 		expect(completeAssignments(roles)).toEqual({
 			...roles,
 			transcriber: null,
 			reader: null,
+			captain: null,
 		})
 		expect(draftFrom({ ...roles, transcriber: null })).toEqual(roles)
 		expect(draftFrom({ ...roles, transcriber: voxtral })).toMatchObject({

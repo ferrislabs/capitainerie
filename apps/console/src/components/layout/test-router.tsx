@@ -11,7 +11,10 @@ import type { ReactNode } from 'react'
 
 const PATHS = [
 	'/',
+	'/chat',
+	'/chat/$id',
 	'/runs',
+	'/runs/$runId',
 	'/live',
 	'/kanban',
 	'/clients',
