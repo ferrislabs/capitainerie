@@ -57,8 +57,8 @@ describe('CardItem', () => {
 			/>,
 		)
 
-		const zones = [...container.querySelectorAll('[data-zone]')].map(
-			(zone) => zone.getAttribute('data-zone'),
+		const zones = [...container.querySelectorAll('[data-zone]')].map((zone) =>
+			zone.getAttribute('data-zone'),
 		)
 		expect(zones).toEqual(['title', 'meta', 'footer'])
 		const title = container.querySelector('[data-zone="title"]')
