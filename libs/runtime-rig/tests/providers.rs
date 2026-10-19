@@ -697,6 +697,30 @@ async fn the_anthropic_catalog_lists_chat_models_with_known_prices() {
 }
 
 #[tokio::test]
+async fn an_anthropic_oauth_token_lists_models_as_a_bearer() {
+    const OAUTH_TOKEN: &str = "sk-ant-oat01-test";
+    let provider = FakeProvider::with(vec![json!({"data": [], "has_more": false})]);
+    let base = provider.serve().await;
+
+    RigModelCatalog::new()
+        .unwrap()
+        .list_models(&catalog_access(ProviderKind::Anthropic, OAUTH_TOKEN, &base))
+        .await
+        .unwrap();
+
+    let headers = &provider.recorded()[0].headers;
+    assert_eq!(
+        headers.get("authorization").map(String::as_str),
+        Some(format!("Bearer {OAUTH_TOKEN}").as_str())
+    );
+    assert_eq!(
+        headers.get("anthropic-beta").map(String::as_str),
+        Some("oauth-2025-04-20")
+    );
+    assert!(headers.get("x-api-key").is_none());
+}
+
+#[tokio::test]
 async fn the_mistral_catalog_tells_chat_from_embedding_models() {
     let provider = FakeProvider::with(vec![json!({
         "object": "list",

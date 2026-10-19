@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use capitainerie_common::CoreError;
-use capitainerie_core::domain::agent::{SecretToken, Usage};
+use capitainerie_core::domain::{
+    agent::{SecretToken, Usage},
+    provider::AnthropicAuth,
+};
 use rig_reqwest::reqwest;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -104,10 +107,8 @@ impl Api {
     }
 
     async fn call(&self, request: &Request<'_>) -> Result<Reply, CoreError> {
-        let response = self
-            .http
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", self.key.expose())
+        let request_builder = self.http.post(format!("{}/v1/messages", self.base_url));
+        let response = authenticate(request_builder, self.key.expose())
             .header("anthropic-version", VERSION)
             .json(&request.body())
             .send()
@@ -227,10 +228,38 @@ fn http_failure(status: u16, body: &str) -> CoreError {
     }
 }
 
+pub(crate) fn authenticate(
+    request: reqwest::RequestBuilder,
+    secret: &str,
+) -> reqwest::RequestBuilder {
+    match AnthropicAuth::of(secret) {
+        AnthropicAuth::OAuthToken => request
+            .bearer_auth(secret)
+            .header("anthropic-beta", AnthropicAuth::OAUTH_BETA),
+        AnthropicAuth::ApiKey => request.header("x-api-key", secret),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_oauth_token_is_a_bearer_and_an_api_key_is_x_api_key() {
+        let http = reqwest::Client::new();
+        let oauth = authenticate(http.get("http://x"), "sk-ant-oat01-t")
+            .build()
+            .unwrap();
+        assert_eq!(oauth.headers()["authorization"], "Bearer sk-ant-oat01-t");
+        assert_eq!(oauth.headers()["anthropic-beta"], "oauth-2025-04-20");
+        assert!(oauth.headers().get("x-api-key").is_none());
+        let key = authenticate(http.get("http://x"), "sk-ant-api03-k")
+            .build()
+            .unwrap();
+        assert_eq!(key.headers()["x-api-key"], "sk-ant-api03-k");
+        assert!(key.headers().get("authorization").is_none());
+    }
 
     #[test]
     fn a_request_never_carries_sampling_parameters_or_a_forced_tool() {

@@ -6,6 +6,7 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, Method, Uri, header},
     response::{IntoResponse, Response},
 };
+use capitainerie_core::domain::provider::AnthropicAuth;
 use serde_json::Value;
 
 use crate::{
@@ -24,6 +25,7 @@ const KEPT: [HeaderName; 3] = [
     header::ACCEPT,
 ];
 const BETA: HeaderName = HeaderName::from_static("anthropic-beta");
+const API_KEY: HeaderName = HeaderName::from_static("x-api-key");
 const BETA_PREFIXES: [&str; 5] = [
     "prompt-caching-",
     "interleaved-thinking-",
@@ -101,7 +103,8 @@ fn beta_allowed(value: &str) -> bool {
     BETA_PREFIXES.iter().any(|prefix| value.starts_with(prefix))
 }
 
-fn allowed_betas(headers: &HeaderMap) -> Option<HeaderValue> {
+/// The client's allowed betas, plus the one the credential requires.
+fn allowed_betas(headers: &HeaderMap, required: Option<&'static str>) -> Option<HeaderValue> {
     let kept: Vec<&str> = headers
         .get_all(BETA)
         .iter()
@@ -109,6 +112,7 @@ fn allowed_betas(headers: &HeaderMap) -> Option<HeaderValue> {
         .flat_map(|value| value.split(','))
         .map(str::trim)
         .filter(|value| beta_allowed(value))
+        .chain(required)
         .collect();
     if kept.is_empty() {
         return None;
@@ -160,14 +164,22 @@ async fn run<C: Credentials>(
         ))?;
 
     let mut upstream_headers = forward::copy_allowed(headers, &KEPT);
-    if let Some(betas) = allowed_betas(headers) {
+    let (name, value, required_beta) = match AnthropicAuth::of(key.expose()) {
+        AnthropicAuth::OAuthToken => (
+            header::AUTHORIZATION,
+            format!("Bearer {}", key.expose()),
+            Some(AnthropicAuth::OAUTH_BETA),
+        ),
+        AnthropicAuth::ApiKey => (API_KEY, key.expose().to_owned(), None),
+    };
+    if let Some(betas) = allowed_betas(headers, required_beta) {
         upstream_headers.insert(BETA, betas);
     }
-    let mut key_value = HeaderValue::from_str(key.expose()).map_err(|_| {
+    let mut credential = HeaderValue::from_str(&value).map_err(|_| {
         ProxyError::forbidden(run_id, "the organization's Anthropic key is unusable")
     })?;
-    key_value.set_sensitive(true);
-    upstream_headers.insert("x-api-key", key_value);
+    credential.set_sensitive(true);
+    upstream_headers.insert(name, credential);
 
     let url = format!(
         "{}/{path}{}",
@@ -289,13 +301,17 @@ mod tests {
             HeaderValue::from_static("token-efficient-tools-2025-02-19"),
         );
         assert_eq!(
-            allowed_betas(&headers).unwrap(),
+            allowed_betas(&headers, None).unwrap(),
             "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14,token-efficient-tools-2025-02-19"
         );
         let mut none = HeaderMap::new();
         none.insert(BETA, HeaderValue::from_static("files-api-2025-04-14"));
-        assert_eq!(allowed_betas(&none), None);
-        assert_eq!(allowed_betas(&HeaderMap::new()), None);
+        assert_eq!(allowed_betas(&none, None), None);
+        assert_eq!(allowed_betas(&HeaderMap::new(), None), None);
+        assert_eq!(
+            allowed_betas(&none, Some("oauth-2025-04-20")).unwrap(),
+            "oauth-2025-04-20"
+        );
     }
 
     #[test]

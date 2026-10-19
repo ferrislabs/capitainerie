@@ -426,6 +426,27 @@ async fn anthropic_messages_are_forwarded_with_the_real_key_only() {
 }
 
 #[tokio::test]
+async fn an_oauth_token_is_forwarded_as_a_bearer_with_the_oauth_beta() {
+    const OAUTH_TOKEN: &str = "sk-ant-oat01-real-token";
+    let mut fake = Fake::with(grant());
+    fake.anthropic_key = Some(OAUTH_TOKEN);
+    let h = harness_with(fake).await;
+    assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
+
+    let seen = Harness::received(&h.anthropic);
+    let request = &seen[0];
+    assert_eq!(
+        request.headers["authorization"],
+        format!("Bearer {OAUTH_TOKEN}")
+    );
+    assert_eq!(
+        request.headers["anthropic-beta"],
+        "prompt-caching-2024-07-31,oauth-2025-04-20"
+    );
+    assert!(request.headers.get("x-api-key").is_none());
+}
+
+#[tokio::test]
 async fn a_bearer_task_token_and_count_tokens_are_accepted() {
     let h = harness().await;
     let response = h

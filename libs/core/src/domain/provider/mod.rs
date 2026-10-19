@@ -214,6 +214,27 @@ impl ModelAssignments {
 }
 
 /// `sk-…a1b2`: enough to recognise a key, never enough to use it.
+/// How an Anthropic credential authenticates, told apart by its prefix: an
+/// OAuth token as a bearer with the OAuth beta, an API key as `x-api-key`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnthropicAuth {
+    ApiKey,
+    OAuthToken,
+}
+
+impl AnthropicAuth {
+    pub const OAUTH_BETA: &'static str = "oauth-2025-04-20";
+    const OAUTH_PREFIX: &'static str = "sk-ant-oat";
+
+    pub fn of(secret: &str) -> Self {
+        if secret.starts_with(Self::OAUTH_PREFIX) {
+            Self::OAuthToken
+        } else {
+            Self::ApiKey
+        }
+    }
+}
+
 pub fn preview(secret: &str) -> String {
     let tail: String = secret
         .chars()
@@ -232,6 +253,16 @@ pub fn preview(secret: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_anthropic_credential_is_told_apart_by_its_prefix() {
+        assert_eq!(
+            AnthropicAuth::of("sk-ant-oat01-abc"),
+            AnthropicAuth::OAuthToken
+        );
+        assert_eq!(AnthropicAuth::of("sk-ant-api03-abc"), AnthropicAuth::ApiKey);
+        assert_eq!(AnthropicAuth::of(""), AnthropicAuth::ApiKey);
+    }
 
     #[test]
     fn kinds_round_trip_through_text() {

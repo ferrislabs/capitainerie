@@ -7,6 +7,7 @@ use rig_reqwest::reqwest;
 use serde_json::Value;
 
 use crate::{
+    anthropic,
     client::{ANTHROPIC_BASE, MISTRAL_BASE, http_client},
     error::RuntimeError,
     prices::price_of,
@@ -75,8 +76,8 @@ impl RigModelCatalog {
             let request = self
                 .http
                 .get(url)
-                .header("x-api-key", access.secret.expose())
                 .header("anthropic-version", ANTHROPIC_VERSION);
+            let request = anthropic::authenticate(request, access.secret.expose());
             let page = self.get(request).await?;
             models.extend(anthropic_models(&page));
             match (page["has_more"].as_bool(), page["last_id"].as_str()) {
