@@ -151,6 +151,34 @@ impl RunRepository for PgRunRepository<'_> {
         .transpose()
     }
 
+    async fn list_for_card(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Vec<RunOverview>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            RunOverviewRow,
+            r#"
+            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+            FROM runs r
+            LEFT JOIN transcripts t ON t.id = r.transcript_id
+            LEFT JOIN cards c ON c.id = r.card_id
+            WHERE r.organization_id = $1 AND r.card_id = $2
+            ORDER BY r.created_at DESC, r.id DESC
+            "#,
+            organization_id.0,
+            card_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(RunOverview::try_from)
+        .collect()
+    }
+
     async fn lock(&mut self, id: RunId) -> Result<Option<Run>, CoreError> {
         let mut tx = self.tx.lock().await;
         sqlx::query_as!(

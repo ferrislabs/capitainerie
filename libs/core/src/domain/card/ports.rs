@@ -28,4 +28,11 @@ pub trait CardCommentRepository: Send {
         &mut self,
         comment: &CardComment,
     ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    /// Oldest first.
+    fn list(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> impl Future<Output = Result<Vec<CardComment>, CoreError>> + Send;
 }

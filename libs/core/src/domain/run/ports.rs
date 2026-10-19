@@ -41,6 +41,13 @@ pub trait RunRepository: Send {
         limit: i64,
     ) -> impl Future<Output = Result<Vec<RunId>, CoreError>> + Send;
 
+    /// The executions of a card, newest first.
+    fn list_for_card(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> impl Future<Output = Result<Vec<RunOverview>, CoreError>> + Send;
+
     fn has_active_execution(
         &mut self,
         card_id: CardId,

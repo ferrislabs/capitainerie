@@ -1,7 +1,7 @@
 use capitainerie_common::{CardId, CoreError, OrganizationId};
 use capitainerie_macros::repository;
 
-use super::model::{CardRow, stored_offset};
+use super::model::{CardCommentRow, CardRow, stored_offset};
 use crate::{
     domain::card::{
         Card, CardComment,
@@ -167,5 +167,29 @@ impl CardCommentRepository for PgCardCommentRepository<'_> {
         .await
         .map(|_| ())
         .map_err(map_sqlx_error)
+    }
+    async fn list(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Vec<CardComment>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        Ok(sqlx::query_as!(
+            CardCommentRow,
+            r#"
+            SELECT id, card_id, organization_id, author_subject, author_actor, body, created_at
+            FROM card_comments
+            WHERE organization_id = $1 AND card_id = $2
+            ORDER BY created_at, id
+            "#,
+            organization_id.0,
+            card_id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .into_iter()
+        .map(CardComment::from)
+        .collect())
     }
 }
