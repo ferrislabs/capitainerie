@@ -263,6 +263,23 @@ The row above a table: filter chips, then a full-width search field.
 - **Empty result:** an empty-state card with a « Réinitialiser les filtres » action. Options offered are the values present in the data.
 - **Wrap:** the row wraps on narrow screens; the search field keeps its minimum width.
 
+## Formulaires
+
+> Inspiré des principes de la console Qovery (GPL-3.0) ; aucun code repris.
+
+Le kit vit dans `src/components/ui`. La revue visuelle se fait sur `/_dev/ui` (mode développement seulement), qui montre chaque composant dans tous ses états.
+
+- **Champ (`Field`):** libellé au-dessus (13 px, medium), puis le contrôle, puis l'aide (`muted-foreground`, 12 px), puis l'erreur. Marqueur « * » avec « (obligatoire) » pour les lecteurs d'écran, ou « (facultatif) » en gris. Le compteur de caractères est à droite du libellé et passe en `signal-danger` avec « · trop long » quand la limite est dépassée. Le libellé est relié au contrôle, l'aide et l'erreur par `aria-describedby`, l'état par `aria-invalid`. Un groupe (boutons radio) prend `group` et se nomme par `aria-labelledby`.
+- **Boîte de saisie:** 32 px (`md`) ou 28 px (`sm`), rayon 6 px, trait `input`, fond `card`. Le focus remplace le trait par `ring` et ajoute un halo de 3 px à 25 %. L'erreur passe le trait en `destructive` et s'écrit toujours avec un mot et une icône sous le champ (State-Only Rule). Désactivé: 50 % d'opacité, curseur interdit.
+- **Icônes et actions:** icône de début et de fin à 16 px en `muted-foreground`; bouton d'effacement de 20 px, atteignable au clavier, visible seulement quand le champ est rempli et modifiable; chargement par un indicateur tournant doublé du texte « Chargement… » pour les lecteurs d'écran.
+- **Zone de texte:** hauteur libre ou croissante avec le contenu, plafonnée par `maxRows` (défilement au-delà); compteur optionnel.
+- **Select (un bouton) et Combobox (un champ):** le Select est un bouton `role="combobox"`; le Combobox est un champ de saisie qui filtre sans tenir compte de la casse ni des accents. Les deux ouvrent la même liste (`role="listbox"`) dans une surface flottante (`popover`, `shadow-float`, rayon 8 px) large comme le champ, avec options groupées sous un titre 12 px, texte vide (« Aucun résultat »), état de chargement et option « Aucun » facultative. La sélection multiple montre des puces de 20 px retirables (bouton « Retirer … ») dans le champ; la liste reste ouverte à chaque choix.
+- **Clavier des listes:** flèches pour naviguer (en boucle, options désactivées sautées), Entrée pour choisir, Échap pour fermer, Tab pour quitter. Pour le Select, Home et End vont aux extrémités et la frappe de lettres saute à l'option qui commence par elles. Pour le Combobox, Home et End ne servent à la liste que lorsque le champ est vide; Retour arrière retire la dernière puce. Entrée ne soumet pas le formulaire tant que la liste est ouverte.
+- **Menu déroulant:** sections avec titre 12 px, icônes de 16 px, raccourci clavier à droite en 12 px, sous-menus avec chevron, cases à cocher. Une action destructive est écrite en `signal-danger` et son libellé dit l'action (« Supprimer »), jamais la couleur seule.
+- **Cases, interrupteur, boutons radio:** 16 px (interrupteur 36 x 20 px), même focus que les champs, coché en `primary`. Libellé et description cliquables, reliés par `aria-describedby`.
+- **Date:** le champ natif `type="date"` dans la même boîte, avec `min`, `max` et un bouton « Effacer la date ». Pas de bibliothèque de calendrier.
+- **Mouvement:** les transitions de 150 ms et l'ouverture des listes sont neutralisées par `prefers-reduced-motion`.
+
 ## Do's and Don'ts
 
 ### Do:
