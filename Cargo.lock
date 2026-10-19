@@ -1227,6 +1227,7 @@ dependencies = [
  "capitainerie-core",
  "capitainerie-github",
  "capitainerie-handlers",
+ "capitainerie-handlers-runs",
  "chrono",
  "reqwest 0.12.28",
  "serde",
