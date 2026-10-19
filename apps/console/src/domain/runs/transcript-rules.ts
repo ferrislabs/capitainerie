@@ -17,3 +17,46 @@ export function validateBody(value: string): string | undefined {
 	}
 	return undefined
 }
+
+export const PARTICIPANTS_MAX = 50
+export const PARTICIPANT_MAX_LENGTH = 100
+
+export function mergeParticipants(
+	current: readonly string[],
+	names: readonly string[],
+): string[] {
+	const next = [...current]
+	for (const part of names) {
+		const name = part.trim()
+		if (name !== '' && !next.includes(name)) next.push(name)
+	}
+	return next
+}
+
+export function addParticipants(
+	current: readonly string[],
+	raw: string,
+): string[] {
+	return mergeParticipants(current, raw.split(','))
+}
+
+export function validateParticipants(
+	participants: readonly string[],
+): string | undefined {
+	if (participants.length > PARTICIPANTS_MAX) {
+		return `Pas plus de ${PARTICIPANTS_MAX} participants.`
+	}
+	if (participants.some((name) => name.length > PARTICIPANT_MAX_LENGTH)) {
+		return `Un nom ne doit pas dépasser ${PARTICIPANT_MAX_LENGTH} caractères.`
+	}
+	return undefined
+}
+
+export function validateRepository(value: string): string | undefined {
+	const repository = value.trim()
+	if (repository === '') return undefined
+	if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repository)) {
+		return 'Le dépôt doit être au format propriétaire/nom.'
+	}
+	return undefined
+}
