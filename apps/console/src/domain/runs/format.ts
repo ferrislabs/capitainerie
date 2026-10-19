@@ -29,3 +29,16 @@ export function runDurationMs(run: {
 	const ms = Date.parse(run.finished_at) - Date.parse(run.started_at)
 	return Number.isNaN(ms) || ms < 0 ? null : ms
 }
+
+export function formatElapsed(ms: number): string {
+	const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+	if (totalSeconds < 60) return `${totalSeconds} s`
+	const seconds = String(totalSeconds % 60).padStart(2, '0')
+	if (totalSeconds < 3600)
+		return `${Math.floor(totalSeconds / 60)} min ${seconds} s`
+	const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+		2,
+		'0',
+	)
+	return `${Math.floor(totalSeconds / 3600)} h ${minutes} min`
+}

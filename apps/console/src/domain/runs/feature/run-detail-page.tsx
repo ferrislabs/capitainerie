@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, ExternalLink } from 'lucide-react'
+import { useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
@@ -17,7 +18,10 @@ import {
 import { useRunTimeline } from '#/domain/runs/hooks/use-run-timeline'
 import { isCardRun, runTitle } from '#/domain/runs/run-title'
 import { STATUS_LABELS, STATUS_TONES } from '#/domain/runs/status'
+import { defaultSelectedSeq } from '#/domain/runs/step-selection'
 import { RunTimeline } from '#/domain/runs/ui/run-timeline'
+import { useCopyToClipboard } from '#/hooks/use-copy-to-clipboard'
+import { useNow } from '#/hooks/use-now'
 import { ApiRequestError } from '#/lib/api-error'
 import { getRuntimeConfig } from '#/lib/runtime-config'
 
@@ -84,6 +88,11 @@ function DetailSkeleton() {
 
 export function RunDetailPage({ runId }: { runId: string }) {
 	const timeline = useRunTimeline(runId)
+	const [picked, setPicked] = useState<number | undefined>()
+	const { copied, copy, reset } = useCopyToClipboard()
+	const runStatus = timeline.data?.run.status
+	const active = runStatus === 'queued' || runStatus === 'running'
+	const nowMs = useNow(active)
 
 	if (timeline.isError) {
 		const notFound =
@@ -120,6 +129,9 @@ export function RunDetailPage({ runId }: { runId: string }) {
 
 	const { run, steps, decisions, totals } = timeline.data
 	const duration = runDurationMs(run)
+	const selectedSeq = steps.some((step) => step.seq === picked)
+		? picked
+		: defaultSelectedSeq(steps)
 	const stepLatency = steps.reduce((sum, s) => sum + (s.latency_ms ?? 0), 0)
 	const tracesUrl = getRuntimeConfig().tracesUrl
 
@@ -177,7 +189,19 @@ export function RunDetailPage({ runId }: { runId: string }) {
 				<InlineAlert tone="danger">{run.failure}</InlineAlert>
 			) : null}
 			<TotalsBar totals={totals} latencyMs={duration ?? stepLatency} />
-			<RunTimeline steps={steps} decisions={decisions} />
+			<RunTimeline
+				run={run}
+				steps={steps}
+				decisions={decisions}
+				nowMs={nowMs}
+				selectedSeq={selectedSeq}
+				onSelect={(seq) => {
+					reset()
+					setPicked(seq)
+				}}
+				copied={copied}
+				onCopy={copy}
+			/>
 		</Page>
 	)
 }

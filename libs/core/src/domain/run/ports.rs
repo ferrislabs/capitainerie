@@ -21,6 +21,13 @@ pub trait RunRepository: Send {
         id: RunId,
     ) -> impl Future<Output = Result<Option<RunOverview>, CoreError>> + Send;
 
+    /// The organization's queued and running runs, oldest first.
+    fn list_active(
+        &mut self,
+        organization_id: OrganizationId,
+        limit: u32,
+    ) -> impl Future<Output = Result<Vec<RunOverview>, CoreError>> + Send;
+
     /// Locks the run for the calling worker; `None` if it does not exist or
     /// another worker holds it.
     fn lock(&mut self, id: RunId) -> impl Future<Output = Result<Option<Run>, CoreError>> + Send;
@@ -62,6 +69,12 @@ pub trait RunRepository: Send {
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
 pub trait StepRepository: Send {
     fn list(&mut self, run_id: RunId) -> impl Future<Output = Result<Vec<Step>, CoreError>> + Send;
+
+    /// The steps of every given run, ordered by run then position.
+    fn list_for_runs(
+        &mut self,
+        run_ids: &[RunId],
+    ) -> impl Future<Output = Result<Vec<Step>, CoreError>> + Send;
 
     /// Inserts the step, or replaces the one at the same `(run_id, seq)`.
     fn save(&mut self, step: &Step) -> impl Future<Output = Result<(), CoreError>> + Send;

@@ -15,6 +15,7 @@ export const SAFETY_REFETCH_MS = 60000
 
 const SOCKET_OPEN = 1
 const RUNS_ID = '/api/v1/runs'
+const ACTIVE_RUNS_ID = '/api/v1/runs/active'
 const CARDS_ID = '/api/v1/cards'
 const TIMELINE_ID = '/api/v1/runs/{run_id}/timeline'
 
@@ -98,7 +99,7 @@ export function invalidateForEvent(
 		void queryClient.invalidateQueries({
 			predicate: (query) => {
 				const { _id: id, path } = queryKeyHead(query)
-				if (id === RUNS_ID) return true
+				if (id === RUNS_ID || id === ACTIVE_RUNS_ID) return true
 				if (!id?.startsWith(`${RUNS_ID}/`)) return false
 				return runId === undefined || path?.run_id === runId
 			},

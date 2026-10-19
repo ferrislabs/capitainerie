@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
 	formatCost,
+	formatElapsed,
 	formatLatency,
 	formatTokens,
 	runDurationMs,
@@ -40,5 +41,14 @@ describe('runDurationMs', () => {
 	it('is null while unfinished', () => {
 		expect(runDurationMs({ started_at: '2026-10-16T09:00:00Z' })).toBeNull()
 		expect(runDurationMs({})).toBeNull()
+	})
+})
+
+describe('formatElapsed', () => {
+	it('counts up in seconds, then minutes, then hours', () => {
+		expect(formatElapsed(-500)).toBe('0 s')
+		expect(formatElapsed(42_900)).toBe('42 s')
+		expect(formatElapsed(65_000)).toBe('1 min 05 s')
+		expect(formatElapsed(3_720_000)).toBe('1 h 02 min')
 	})
 })
