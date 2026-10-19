@@ -50,7 +50,7 @@ describe('createAnnouncements', () => {
 			'Carte « Écrire le compte rendu » au-dessus de la colonne Terminé.',
 		)
 		expect(announce.onDragOver?.(event({ column: 'todo' }))).toBe(
-			'Carte « Écrire le compte rendu » : déplacement vers la colonne À faire impossible.',
+			"Carte « Écrire le compte rendu » au-dessus de sa colonne d'origine.",
 		)
 		expect(announce.onDragOver?.(event())).toBe(
 			'Carte « Écrire le compte rendu » hors des colonnes.',

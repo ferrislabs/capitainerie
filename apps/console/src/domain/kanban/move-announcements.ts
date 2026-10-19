@@ -39,6 +39,9 @@ export function createAnnouncements(
 			const from = origin(active.id)
 			const to = target(over)
 			if (!from || !to) return `Carte ${title(active.id)} hors des colonnes.`
+			if (from === to) {
+				return `Carte ${title(active.id)} au-dessus de sa colonne d'origine.`
+			}
 			if (!canDrop(from, to)) {
 				return `Carte ${title(active.id)} : déplacement vers la colonne ${COLUMN_LABELS[to]} impossible.`
 			}

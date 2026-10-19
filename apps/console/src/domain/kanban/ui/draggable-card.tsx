@@ -36,7 +36,7 @@ export function DraggableCard({
 	const dragKeyDown = listeners?.onKeyDown as KeyHandler | undefined
 
 	function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-		dragKeyDown?.(event)
+		if (event.target === event.currentTarget) dragKeyDown?.(event)
 		if (event.key === 'Enter' && event.target === event.currentTarget) {
 			event.preventDefault()
 			onOpen(card.id)

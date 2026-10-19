@@ -81,6 +81,18 @@ describe('KanbanBoard interactions', () => {
 		expect(onMove).not.toHaveBeenCalled()
 	})
 
+	it('does not start a drag from Space or Enter on a button of the card', async () => {
+		const { onMove, onOpen } = setup()
+
+		screen.getByRole('button', { name: 'Valider' }).focus()
+		await userEvent.keyboard(' ')
+
+		expect(screen.queryByRole('status')?.textContent ?? '').not.toMatch(/prise/)
+		expect(onOpen).not.toHaveBeenCalled()
+		expect(onMove).toHaveBeenCalledTimes(1)
+		expect(onMove).toHaveBeenCalledWith('1', 'todo', 2)
+	})
+
 	it('describes the gesture to screen readers', () => {
 		setup()
 

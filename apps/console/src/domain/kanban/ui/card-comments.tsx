@@ -20,8 +20,12 @@ interface Props {
 	onSubmit: () => void
 }
 
+export function commentLength(draft: string): number {
+	return [...draft].length
+}
+
 export function commentCanBeSent(draft: string): boolean {
-	return draft.trim() !== '' && draft.length <= COMMENT_MAX_CHARS
+	return draft.trim() !== '' && commentLength(draft) <= COMMENT_MAX_CHARS
 }
 
 function Author({
@@ -97,7 +101,6 @@ export function CardComments({
 				<Textarea
 					id="card-comment-body"
 					value={draft}
-					maxLength={COMMENT_MAX_CHARS}
 					disabled={isPending}
 					onChange={(event) => onDraftChange(event.target.value)}
 				/>
@@ -106,7 +109,7 @@ export function CardComments({
 				) : null}
 				<div className="flex items-center justify-between gap-2">
 					<span className="text-xs text-muted-foreground figures">
-						{draft.length} / {COMMENT_MAX_CHARS}
+						{commentLength(draft)} / {COMMENT_MAX_CHARS}
 					</span>
 					<Button
 						type="submit"

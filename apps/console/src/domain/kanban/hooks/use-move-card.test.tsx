@@ -175,5 +175,6 @@ describe('useMoveCard', () => {
 		await waitFor(() => expect(result.current.isError).toBe(true))
 		expect(cachedColumns()).toEqual(['c1:proposed'])
 		expect(result.current.errorMessage).toBe('Interdit')
+		await waitFor(() => expect(invalidated()).toBe(true))
 	})
 })

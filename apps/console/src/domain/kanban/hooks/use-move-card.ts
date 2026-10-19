@@ -34,13 +34,25 @@ export function useMoveCard() {
 			}
 			return { previous }
 		},
-		onError: (error, _variables, context) => {
-			if (context?.previous) {
-				queryClient.setQueryData(CARDS_QUERY_KEY, context.previous)
+		onError: (_error, variables, context) => {
+			const original = context?.previous?.items.find(
+				(card) => card.id === variables.path.card_id,
+			)
+			if (original) {
+				queryClient.setQueryData<Schemas.CardListResponse>(
+					CARDS_QUERY_KEY,
+					(current) =>
+						current && {
+							...current,
+							items: current.items.map((card) =>
+								card.id === original.id
+									? { ...card, column: original.column }
+									: card,
+							),
+						},
+				)
 			}
-			if (isApiRequestError(error) && error.status === 409) {
-				return queryClient.invalidateQueries({ queryKey: CARDS_QUERY_KEY })
-			}
+			return queryClient.invalidateQueries({ queryKey: CARDS_QUERY_KEY })
 		},
 		onSuccess: () =>
 			queryClient.invalidateQueries({
