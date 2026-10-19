@@ -10,6 +10,7 @@ import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 const PATHS = [
+	'/',
 	'/runs',
 	'/live',
 	'/kanban',

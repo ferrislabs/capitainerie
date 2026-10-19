@@ -43,6 +43,7 @@ function RailLink({
 	const link = (
 		<Link
 			to={item.to}
+			activeOptions={{ exact: item.to === '/' }}
 			aria-label={
 				expanded
 					? undefined
@@ -118,7 +119,7 @@ export function AppRail({
 				)}
 			>
 				<Link
-					to="/runs"
+					to="/"
 					aria-label="Capitainerie, accueil"
 					className={cn(
 						'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-rail-foreground-active',
