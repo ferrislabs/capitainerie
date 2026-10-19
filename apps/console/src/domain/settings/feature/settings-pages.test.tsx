@@ -164,6 +164,7 @@ describe('settings pages', () => {
 			judge: { provider: 'openai_compatible', model: QWEN.id },
 			writer: { provider: 'openai_compatible', model: QWEN.id },
 			embeddings: { provider: 'openai_compatible', model: BGE.id },
+			transcriber: null,
 		})
 		await waitFor(() =>
 			expect(
@@ -268,6 +269,6 @@ describe('settings pages', () => {
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		await waitFor(() => expect(puts).toHaveLength(2))
-		expect(puts[1]).not.toHaveProperty('transcriber')
+		expect(puts[1]).toMatchObject({ transcriber: null })
 	})
 })

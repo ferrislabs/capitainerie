@@ -1,7 +1,7 @@
 use axum::{
     Extension, Json,
     extract::{Multipart, State, multipart::MultipartError},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header::CONTENT_LENGTH},
 };
 use axum_extra::routing::TypedPath;
 use capitainerie_core::domain::transcription::{
@@ -11,7 +11,7 @@ use capitainerie_handlers::{ApiError, Caller};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::state::TranscriptionsState;
+use crate::{MULTIPART_OVERHEAD, state::TranscriptionsState};
 
 const FILE_FIELD: &str = "file";
 const FILE_NAME_MAX_CHARS: usize = 120;
@@ -22,13 +22,16 @@ pub struct TranscriptionsPath;
 
 #[derive(ToSchema)]
 pub struct CreateTranscriptionRequest {
+    /// The audio file: mp3, m4a, wav, webm or ogg, 25 MiB at most.
     #[schema(value_type = String, format = Binary)]
     pub file: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TranscriptionResponse {
+    /// The transcribed text, to proofread before submitting.
     pub text: String,
+    /// The id of the transcriber model that produced the text.
     pub model: String,
 }
 
@@ -54,21 +57,27 @@ pub async fn handler<F: TranscriberFactory + 'static>(
     _: TranscriptionsPath,
     State(state): State<TranscriptionsState<F>>,
     Extension(caller): Extension<Caller>,
+    headers: HeaderMap,
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<TranscriptionResponse>), ApiError> {
+    let prepared = state
+        .usecase
+        .prepare_transcription(caller.subject())
+        .await
+        .map_err(api_error)?;
+    let declared = headers
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok());
+    if declared.is_some_and(|length| length > MAX_AUDIO_BYTES + MULTIPART_OVERHEAD) {
+        return Err(too_large());
+    }
     let audio = read_clip(multipart).await?;
     let transcription = state
         .usecase
-        .transcribe(caller.subject(), audio, state.factory.as_ref())
+        .transcribe(prepared, audio, state.factory.as_ref())
         .await
-        .map_err(|error| match error {
-            TranscribeError::NotConfigured => ApiError::ConflictCode {
-                code: "transcriber_not_configured",
-                message: "no transcriber is assigned: choose one in Settings > Models".into(),
-            },
-            TranscribeError::Provider(message) => ApiError::BadGateway(message),
-            TranscribeError::Core(error) => error.into(),
-        })?;
+        .map_err(api_error)?;
     Ok((
         StatusCode::OK,
         Json(TranscriptionResponse {
@@ -76,6 +85,17 @@ pub async fn handler<F: TranscriberFactory + 'static>(
             model: transcription.model.model,
         }),
     ))
+}
+
+fn api_error(error: TranscribeError) -> ApiError {
+    match error {
+        TranscribeError::NotConfigured => ApiError::ConflictCode {
+            code: "transcriber_not_configured",
+            message: "no transcriber is assigned: choose one in Settings > Models".into(),
+        },
+        TranscribeError::Provider(message) => ApiError::BadGateway(message),
+        TranscribeError::Core(error) => error.into(),
+    }
 }
 
 async fn read_clip(mut multipart: Multipart) -> Result<AudioClip, ApiError> {

@@ -16,11 +16,21 @@ pub enum AudioMime {
     Ogg,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AudioClip {
     pub file_name: String,
     pub mime: AudioMime,
     pub bytes: Bytes,
+}
+
+impl std::fmt::Debug for AudioClip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioClip")
+            .field("file_name", &self.file_name)
+            .field("mime", &self.mime)
+            .field("len", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +96,18 @@ impl AudioMime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_shows_the_name_the_type_and_the_length_but_never_the_bytes() {
+        let clip = AudioClip {
+            file_name: "a.mp3".into(),
+            mime: AudioMime::Mpeg,
+            bytes: Bytes::from_static(b"SECRET-AUDIO"),
+        };
+        let shown = format!("{clip:?}");
+        assert!(shown.contains("a.mp3") && shown.contains("Mpeg") && shown.contains("12"));
+        assert!(!shown.contains("SECRET") && !shown.contains("83"));
+    }
 
     #[test]
     fn the_extension_names_the_format() {

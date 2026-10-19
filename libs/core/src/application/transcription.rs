@@ -5,7 +5,7 @@ use super::CapitainerieUseCase;
 use crate::{
     domain::{
         authorization::Subject,
-        provider::{ModelTarget, service::ProviderService},
+        provider::{ModelRef, ModelTarget, ProviderAccess, ProviderKind, service::ProviderService},
         transcription::{
             AudioClip, TranscribeError, Transcription,
             ports::{Transcriber, TranscriberFactory},
@@ -14,24 +14,37 @@ use crate::{
     infrastructure::provider::postgres::PgProviderRepository,
 };
 
+#[derive(Debug, Clone)]
+pub struct PreparedTranscription {
+    model: ModelRef,
+    access: ProviderAccess,
+}
+
 impl CapitainerieUseCase {
-    pub async fn transcribe<F: TranscriberFactory>(
+    pub async fn prepare_transcription(
         &self,
         subject: Subject,
-        audio: AudioClip,
-        factory: &F,
-    ) -> Result<Transcription, TranscribeError> {
+    ) -> Result<PreparedTranscription, TranscribeError> {
         let target = self
             .transcriber_target(subject)
             .await?
             .ok_or(TranscribeError::NotConfigured)?;
-        let ModelTarget {
-            model,
-            access: Some(access),
-        } = target
-        else {
-            return Err(TranscribeError::NotConfigured);
-        };
+        match target {
+            ModelTarget {
+                model,
+                access: Some(access),
+            } if usable(&access) => Ok(PreparedTranscription { model, access }),
+            _ => Err(TranscribeError::NotConfigured),
+        }
+    }
+
+    pub async fn transcribe<F: TranscriberFactory>(
+        &self,
+        prepared: PreparedTranscription,
+        audio: AudioClip,
+        factory: &F,
+    ) -> Result<Transcription, TranscribeError> {
+        let PreparedTranscription { model, access } = prepared;
         tracing::info!(
             bytes = audio.bytes.len(),
             provider = model.provider.as_str(),
@@ -60,5 +73,42 @@ impl CapitainerieUseCase {
         ProviderService::new(provider_repository, model_assignment_repository, authz)
             .transcriber_target(subject)
             .await
+    }
+}
+
+fn usable(access: &ProviderAccess) -> bool {
+    match access.kind {
+        ProviderKind::Anthropic => false,
+        ProviderKind::Mistral => true,
+        ProviderKind::OpenAiCompatible => access
+            .base_url
+            .as_deref()
+            .is_some_and(|url| !url.trim().is_empty()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::agent::SecretToken;
+
+    fn access(kind: ProviderKind, base_url: Option<&str>) -> ProviderAccess {
+        ProviderAccess {
+            kind,
+            secret: SecretToken::new("k"),
+            base_url: base_url.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn only_a_reachable_non_anthropic_provider_can_transcribe() {
+        assert!(usable(&access(ProviderKind::Mistral, None)));
+        assert!(usable(&access(
+            ProviderKind::OpenAiCompatible,
+            Some("http://localhost:11434/v1")
+        )));
+        assert!(!usable(&access(ProviderKind::OpenAiCompatible, None)));
+        assert!(!usable(&access(ProviderKind::OpenAiCompatible, Some("  "))));
+        assert!(!usable(&access(ProviderKind::Anthropic, None)));
     }
 }

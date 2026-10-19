@@ -145,7 +145,7 @@ export function completeAssignments(
 		judge,
 		writer,
 		embeddings,
-		...(transcriber ? { transcriber } : {}),
+		transcriber: transcriber ?? null,
 		...(executor ? { executor } : {}),
 	}
 }

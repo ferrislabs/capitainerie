@@ -35,6 +35,7 @@ export function useTranscribe() {
 	useEffect(() => () => controller.current?.abort(), [])
 
 	const run = useCallback(async (file: File): Promise<TranscribeOutcome> => {
+		controller.current?.abort()
 		const own = new AbortController()
 		controller.current = own
 		setFileName(file.name)

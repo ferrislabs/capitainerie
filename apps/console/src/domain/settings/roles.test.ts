@@ -74,7 +74,13 @@ describe('completeAssignments', () => {
 				writer: ref,
 				embeddings: ref,
 			}),
-		).toEqual({ extractor: ref, judge: ref, writer: ref, embeddings: ref })
+		).toEqual({
+			extractor: ref,
+			judge: ref,
+			writer: ref,
+			embeddings: ref,
+			transcriber: null,
+		})
 	})
 })
 
@@ -101,7 +107,7 @@ describe('completeAssignments with an executor', () => {
 	it('carries the executor only when one is chosen', () => {
 		expect(
 			completeAssignments({ ...roles, executor: 'claude-haiku-5' }),
-		).toEqual({ ...roles, executor: 'claude-haiku-5' })
+		).toEqual({ ...roles, transcriber: null, executor: 'claude-haiku-5' })
 		expect(
 			completeAssignments({ ...roles, executor: null }),
 		).not.toHaveProperty('executor')
@@ -134,7 +140,7 @@ describe('the transcriber role', () => {
 			...roles,
 			transcriber: voxtral,
 		})
-		expect(completeAssignments(roles)).not.toHaveProperty('transcriber')
+		expect(completeAssignments(roles)).toEqual({ ...roles, transcriber: null })
 		expect(draftFrom({ ...roles, transcriber: null })).toEqual(roles)
 		expect(draftFrom({ ...roles, transcriber: voxtral })).toMatchObject({
 			transcriber: voxtral,

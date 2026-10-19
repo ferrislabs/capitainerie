@@ -133,4 +133,23 @@ describe('useTranscribe', () => {
 		fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
 		expect(await run()).toMatchObject({ kind: 'failed', notConfigured: false })
 	})
+
+	it('aborts the previous request when a new file is transcribed', () => {
+		const signals: Array<AbortSignal> = []
+		fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+			signals.push(init.signal as AbortSignal)
+			return new Promise(() => undefined)
+		})
+		const { result } = renderHook(() => useTranscribe())
+
+		act(() => {
+			void result.current.run(new File(['x'], 'a.mp3'))
+		})
+		act(() => {
+			void result.current.run(new File(['y'], 'b.mp3'))
+		})
+
+		expect(signals[0].aborted).toBe(true)
+		expect(signals[1].aborted).toBe(false)
+	})
 })

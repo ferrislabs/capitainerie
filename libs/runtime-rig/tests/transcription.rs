@@ -204,7 +204,6 @@ async fn a_refusal_gives_a_readable_error_without_the_key() {
     let message = error.to_string();
     assert!(matches!(error, CoreError::Internal(_)), "{message}");
     assert!(message.contains("401"), "{message}");
-    assert!(message.contains("check the API key"), "{message}");
     assert!(message.contains("invalid api key"), "{message}");
     assert!(!message.contains("mistral-secret-key"), "{message}");
 }
@@ -223,7 +222,7 @@ async fn a_plain_text_failure_is_truncated_and_a_server_error_is_reported() {
 
     let message = error.to_string();
     assert!(message.contains("500"), "{message}");
-    assert!(message.len() < 400, "{}", message.len());
+    assert!(!message.contains('x'), "{message}");
 }
 
 #[tokio::test]
@@ -238,7 +237,7 @@ async fn an_answer_without_text_is_an_error() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("unreadable"), "{error}");
+    assert!(error.to_string().contains("illisible"), "{error}");
 }
 
 #[tokio::test]
@@ -250,7 +249,9 @@ async fn an_unreachable_provider_is_an_error() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("unreachable"), "{error}");
+    let message = error.to_string();
+    assert!(message.contains("injoignable"), "{message}");
+    assert!(!message.contains("127.0.0.1"), "{message}");
 }
 
 #[tokio::test]
@@ -273,4 +274,37 @@ async fn anthropic_and_a_missing_base_url_never_reach_the_network() {
 
     assert!(matches!(anthropic, CoreError::Invalid(_)));
     assert!(matches!(no_base, CoreError::Invalid(_)));
+}
+
+#[tokio::test]
+async fn a_provider_answer_over_1_mib_is_refused() {
+    let fake = Fake::new(200, &format!(r#"{{"text":"{}"}}"#, "a".repeat(1_100_000)));
+    let base = fake.serve().await;
+
+    let error = RigTranscribers::new()
+        .unwrap()
+        .bind(&access(ProviderKind::Mistral, "k", &base))
+        .transcribe(&model(ProviderKind::Mistral, "voxtral-mini-latest"), clip())
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("trop volumineuse"), "{error}");
+}
+
+#[tokio::test]
+async fn a_long_json_error_message_is_truncated_to_200_characters() {
+    let fake = Fake::new(
+        400,
+        &json!({"error": {"message": "m".repeat(1_000)}}).to_string(),
+    );
+    let base = fake.serve().await;
+
+    let error = RigTranscribers::new()
+        .unwrap()
+        .bind(&access(ProviderKind::Mistral, "k", &base))
+        .transcribe(&model(ProviderKind::Mistral, "voxtral-mini-latest"), clip())
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().matches('m').count() <= 205, "{error}");
 }

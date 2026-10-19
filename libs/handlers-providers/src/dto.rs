@@ -91,6 +91,7 @@ pub struct ProviderListResponse {
 pub struct CapabilitiesResponse {
     pub chat: bool,
     pub embeddings: bool,
+    /// Whether the model can transcribe audio.
     pub transcription: bool,
 }
 
@@ -196,12 +197,24 @@ pub struct ModelAssignmentsDto {
     pub judge: ModelRefDto,
     pub writer: ModelRefDto,
     pub embeddings: ModelRefDto,
-    #[serde(default)]
-    pub transcriber: Option<ModelRefDto>,
+    /// The model that transcribes audio (mistral or openai_compatible only).
+    /// On a PUT, an absent key keeps the current transcriber and an explicit
+    /// `null` clears it.
+    #[serde(default, deserialize_with = "present_or_null")]
+    #[schema(value_type = Option<ModelRefDto>)]
+    pub transcriber: Option<Option<ModelRefDto>>,
     /// The Anthropic model Claude Code runs on. When absent on a PUT, the
     /// current value (or the default) is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub executor: Option<String>,
+}
+
+fn present_or_null<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 impl From<ModelAssignments> for ModelAssignmentsDto {
@@ -211,7 +224,7 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             judge: assignments.judge.into(),
             writer: assignments.writer.into(),
             embeddings: assignments.embeddings.into(),
-            transcriber: assignments.transcriber.map(Into::into),
+            transcriber: Some(assignments.transcriber.map(Into::into)),
             executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
@@ -226,12 +239,16 @@ impl ModelAssignmentsDto {
             Some(model) => ExecutorModel::new(model)?,
             None => current.map(|c| c.executor.clone()).unwrap_or_default(),
         };
+        let transcriber = match self.transcriber {
+            Some(chosen) => chosen.map(Into::into),
+            None => current.and_then(|c| c.transcriber.clone()),
+        };
         Ok(ModelAssignments {
             extractor: self.extractor.into(),
             judge: self.judge.into(),
             writer: self.writer.into(),
             embeddings: self.embeddings.into(),
-            transcriber: self.transcriber.map(Into::into),
+            transcriber,
             executor,
         })
     }
@@ -285,32 +302,59 @@ mod tests {
         assert!(dto(Some(" ")).into_assignments(None).is_err());
     }
 
-    #[test]
-    fn the_transcriber_is_optional_on_the_wire_and_survives_the_conversion() {
-        let without: ModelAssignmentsDto = serde_json::from_value(serde_json::json!({
+    fn wire(transcriber: Option<serde_json::Value>) -> ModelAssignmentsDto {
+        let mut body = serde_json::json!({
             "extractor": {"provider": "mistral", "model": "m"},
             "judge": {"provider": "mistral", "model": "m"},
             "writer": {"provider": "mistral", "model": "m"},
             "embeddings": {"provider": "mistral", "model": "e"},
-        }))
-        .unwrap();
-        assert_eq!(without.transcriber, None);
-        assert_eq!(without.into_assignments(None).unwrap().transcriber, None);
+        });
+        if let Some(value) = transcriber {
+            body["transcriber"] = value;
+        }
+        serde_json::from_value(body).unwrap()
+    }
 
-        let mut with = dto(None);
-        with.transcriber = Some(ModelRefDto {
-            provider: ProviderKindDto::Mistral,
+    #[test]
+    fn an_absent_transcriber_keeps_the_current_one_and_null_clears_it() {
+        let mut current = ModelAssignments::defaults("chat", "embed");
+        current.transcriber = Some(ModelRef {
+            provider: ProviderKind::Mistral,
             model: "voxtral-mini-latest".into(),
         });
-        let assignments = with.clone().into_assignments(None).unwrap();
+
+        let kept = wire(None).into_assignments(Some(&current)).unwrap();
+        let cleared = wire(Some(serde_json::Value::Null))
+            .into_assignments(Some(&current))
+            .unwrap();
+        let replaced = wire(Some(
+            serde_json::json!({"provider": "openai_compatible", "model": "whisper-1"}),
+        ))
+        .into_assignments(Some(&current))
+        .unwrap();
+        let first_time = wire(None).into_assignments(None).unwrap();
+
+        assert_eq!(kept.transcriber, current.transcriber);
+        assert_eq!(cleared.transcriber, None);
         assert_eq!(
-            assignments.transcriber.as_ref().map(|m| m.model.as_str()),
-            Some("voxtral-mini-latest")
+            replaced.transcriber.map(|m| (m.provider, m.model)),
+            Some((ProviderKind::OpenAiCompatible, "whisper-1".to_owned()))
         );
-        assert_eq!(
-            ModelAssignmentsDto::from(assignments).transcriber,
-            with.transcriber
-        );
+        assert_eq!(first_time.transcriber, None);
+    }
+
+    #[test]
+    fn a_stored_transcriber_is_serialized_and_none_is_an_explicit_null() {
+        let mut assignments = ModelAssignments::defaults("chat", "embed");
+        let none = serde_json::to_value(ModelAssignmentsDto::from(assignments.clone())).unwrap();
+        assignments.transcriber = Some(ModelRef {
+            provider: ProviderKind::Mistral,
+            model: "voxtral-mini-latest".into(),
+        });
+        let some = serde_json::to_value(ModelAssignmentsDto::from(assignments)).unwrap();
+
+        assert_eq!(none["transcriber"], serde_json::Value::Null);
+        assert_eq!(some["transcriber"]["model"], "voxtral-mini-latest");
     }
 
     #[test]
