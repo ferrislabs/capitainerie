@@ -23,6 +23,7 @@ const CARD: Schemas.CardResponse = {
 	created_by_run: null,
 	created_by_subject: 'ada',
 	created_by_agent: null,
+	repository_hint: null,
 	version: 5,
 	created_at: '2026-10-16T09:30:00Z',
 	updated_at: '2026-10-16T09:30:00Z',
@@ -89,6 +90,62 @@ describe('ExecuteCardFlow', () => {
 
 		await waitFor(() => expect(onStarted).toHaveBeenCalledWith('run-9'))
 		expect(bodies).toEqual([{ repository: 'acme/web', expected_version: 5 }])
+	})
+
+	it('preselects the repository hinted by the meeting', async () => {
+		const bodies: Array<unknown> = []
+		serve({
+			'GET /api/v1/integrations/github': () => json(200, CONNECTED),
+			'GET /api/v1/integrations/github/repositories': () =>
+				json(200, REPOSITORIES),
+			'POST /api/v1/cards/c1/executions': (init) => {
+				bodies.push(JSON.parse(String(init.body)))
+				return json(202, { card: CARD, run_id: 'run-9' })
+			},
+		})
+		const user = userEvent.setup()
+		render(
+			<ExecuteCardFlow
+				card={{ ...CARD, repository_hint: 'acme/web' }}
+				onClose={vi.fn()}
+				onStarted={vi.fn()}
+			/>,
+			{ wrapper: harness.wrapper },
+		)
+
+		await waitFor(() =>
+			expect((screen.getByLabelText('Dépôt') as HTMLSelectElement).value).toBe(
+				'acme/web',
+			),
+		)
+		await user.click(screen.getByRole('button', { name: 'Confier' }))
+
+		await waitFor(() =>
+			expect(bodies).toEqual([{ repository: 'acme/web', expected_version: 5 }]),
+		)
+	})
+
+	it('ignores a hint the installation cannot reach', async () => {
+		serve({
+			'GET /api/v1/integrations/github': () => json(200, CONNECTED),
+			'GET /api/v1/integrations/github/repositories': () =>
+				json(200, REPOSITORIES),
+		})
+		render(
+			<ExecuteCardFlow
+				card={{ ...CARD, repository_hint: 'other/repo' }}
+				onClose={vi.fn()}
+				onStarted={vi.fn()}
+			/>,
+			{ wrapper: harness.wrapper },
+		)
+
+		const select = (await screen.findByLabelText('Dépôt')) as HTMLSelectElement
+		expect(select.value).toBe('')
+		expect(
+			(screen.getByRole('button', { name: 'Confier' }) as HTMLButtonElement)
+				.disabled,
+		).toBe(true)
 	})
 
 	it('shows the mapped message when the card already runs', async () => {
