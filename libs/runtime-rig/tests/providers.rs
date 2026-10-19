@@ -863,3 +863,55 @@ async fn voxtral_and_whisper_file_models_are_transcription_capable_and_nothing_e
     assert_eq!(capable(&local_models), ["Systran/faster-whisper-large-v3"]);
     assert!(capable(&anthropic_models).is_empty());
 }
+
+#[tokio::test]
+async fn mistral_ocr_models_read_documents_and_serve_no_other_role() {
+    let mistral = FakeProvider::with(vec![json!({
+        "data": [
+            {"id": "mistral-ocr-latest", "capabilities": {"completion_chat": true}},
+            {"id": "mistral-ocr-2505", "capabilities": {}},
+            {"id": "mistral-large-latest", "capabilities": {"completion_chat": true}},
+            {"id": "voxtral-mini-latest", "capabilities": {}},
+        ],
+    })]);
+    let mistral_base = mistral.serve().await;
+    let local = FakeProvider::with(vec![json!({
+        "data": [{"id": "some-ocr-model"}, {"id": "qwen2.5:7b-instruct"}],
+    })]);
+    let local_base = local.serve().await;
+    let catalog = RigModelCatalog::new().unwrap();
+
+    let mistral_models = catalog
+        .list_models(&catalog_access(ProviderKind::Mistral, "k", &mistral_base))
+        .await
+        .unwrap();
+    let local_models = catalog
+        .list_models(&catalog_access(
+            ProviderKind::OpenAiCompatible,
+            "",
+            &format!("{local_base}/v1"),
+        ))
+        .await
+        .unwrap();
+
+    let ocr: Vec<_> = mistral_models
+        .iter()
+        .filter(|model| model.ocr)
+        .map(|model| model.id.as_str())
+        .collect();
+    assert_eq!(ocr, ["mistral-ocr-2505", "mistral-ocr-latest"]);
+    for model in mistral_models.iter().filter(|model| model.ocr) {
+        assert!(
+            !model.chat && !model.embeddings && !model.transcription,
+            "{}",
+            model.id
+        );
+    }
+    assert!(
+        mistral_models
+            .iter()
+            .filter(|model| !model.ocr)
+            .all(|model| model.chat || model.id == "voxtral-mini-latest")
+    );
+    assert!(local_models.iter().all(|model| !model.ocr));
+}

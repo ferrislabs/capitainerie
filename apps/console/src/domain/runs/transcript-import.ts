@@ -7,12 +7,15 @@ export const AUDIO_EXTENSIONS = [
 	'.ogg',
 	'.aac',
 ] as const
+export const PDF_EXTENSIONS = ['.pdf'] as const
 export const ACCEPTED_FILE_EXTENSIONS = [
 	...ACCEPTED_EXTENSIONS,
+	...PDF_EXTENSIONS,
 	...AUDIO_EXTENSIONS,
 ] as const
 export const MAX_FILE_BYTES = 5 * 1024 * 1024
 export const MAX_AUDIO_BYTES = 25 * 1024 * 1024
+export const MAX_PDF_BYTES = 25 * 1024 * 1024
 
 export interface ImportedTranscript {
 	text: string
@@ -44,13 +47,20 @@ export function isAudioFile(fileName: string): boolean {
 	return AUDIO_EXTENSIONS.some((audio) => audio === extension)
 }
 
+export function isPdfFile(fileName: string): boolean {
+	return PDF_EXTENSIONS.some((pdf) => pdf === fileExtension(fileName))
+}
+
 export function validateTranscriptFile(file: {
 	name: string
 	size: number
 }): string | undefined {
 	const extension = fileExtension(file.name)
 	if (!ACCEPTED_FILE_EXTENSIONS.some((accepted) => accepted === extension)) {
-		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt, .srt, .mp3, .m4a, .wav, .webm, .ogg ou .aac.'
+		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt, .srt, .pdf, .mp3, .m4a, .wav, .webm, .ogg ou .aac.'
+	}
+	if (isPdfFile(file.name)) {
+		return file.size > MAX_PDF_BYTES ? 'Le fichier dépasse 25 Mo.' : undefined
 	}
 	if (isAudioFile(file.name)) {
 		return file.size > MAX_AUDIO_BYTES ? 'Le fichier dépasse 25 Mo.' : undefined

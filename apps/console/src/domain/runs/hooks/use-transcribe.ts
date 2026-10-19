@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '#/api'
+import { useCallback } from 'react'
 import type { Schemas } from '#/api/api.client'
-import { authHeaders, toApiError } from '#/api/api.fetch'
+import {
+	postFile,
+	type UploadFailure,
+	useCancellableUpload,
+} from '#/domain/runs/hooks/use-cancellable-upload'
 import { transcriptionErrorMessage } from '#/domain/runs/transcription-errors'
 import { isApiRequestError } from '#/lib/api-error'
 
@@ -12,54 +15,43 @@ export type TranscribeOutcome =
 	| { kind: 'cancelled' }
 	| { kind: 'failed'; message: string; notConfigured: boolean }
 
-export async function postAudio(
+export function postAudio(
 	file: File,
 	signal: AbortSignal,
 ): Promise<Schemas.TranscriptionResponse> {
-	const body = new FormData()
-	body.append('file', file, file.name)
-	const response = await fetch(`${api.baseUrl}${TRANSCRIPTIONS_PATH}`, {
-		method: 'POST',
-		headers: authHeaders(),
-		body,
+	return postFile<Schemas.TranscriptionResponse>(
+		TRANSCRIPTIONS_PATH,
+		file,
 		signal,
-	})
-	if (!response.ok) throw await toApiError(response)
-	return (await response.json()) as Schemas.TranscriptionResponse
+	)
+}
+
+function describeFailure(error: unknown): UploadFailure {
+	return {
+		message: transcriptionErrorMessage(error),
+		notConfigured:
+			isApiRequestError(error) && error.code === 'transcriber_not_configured',
+	}
 }
 
 export function useTranscribe() {
-	const controller = useRef<AbortController | null>(null)
-	const [fileName, setFileName] = useState<string>()
+	const upload = useCancellableUpload(postAudio, describeFailure)
+	const uploadFile = upload.run
 
-	useEffect(() => () => controller.current?.abort(), [])
+	const run = useCallback(
+		async (file: File): Promise<TranscribeOutcome> => {
+			const outcome = await uploadFile(file)
+			return outcome.kind === 'done'
+				? { kind: 'done', text: outcome.value.text, model: outcome.value.model }
+				: outcome
+		},
+		[uploadFile],
+	)
 
-	const run = useCallback(async (file: File): Promise<TranscribeOutcome> => {
-		controller.current?.abort()
-		const own = new AbortController()
-		controller.current = own
-		setFileName(file.name)
-		try {
-			const result = await postAudio(file, own.signal)
-			return { kind: 'done', text: result.text, model: result.model }
-		} catch (error) {
-			if (own.signal.aborted) return { kind: 'cancelled' }
-			return {
-				kind: 'failed',
-				message: transcriptionErrorMessage(error),
-				notConfigured:
-					isApiRequestError(error) &&
-					error.code === 'transcriber_not_configured',
-			}
-		} finally {
-			if (controller.current === own) {
-				controller.current = null
-				setFileName(undefined)
-			}
-		}
-	}, [])
-
-	const cancel = useCallback(() => controller.current?.abort(), [])
-
-	return { fileName, isPending: fileName !== undefined, run, cancel }
+	return {
+		fileName: upload.fileName,
+		isPending: upload.isPending,
+		run,
+		cancel: upload.cancel,
+	}
 }

@@ -11,6 +11,7 @@ axum-extra.workspace = true
 capitainerie-core.workspace = true
 capitainerie-handlers.workspace = true
 serde.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 utoipa.workspace = true
 
 [dev-dependencies]

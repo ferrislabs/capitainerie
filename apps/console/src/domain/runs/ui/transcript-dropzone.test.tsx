@@ -30,7 +30,7 @@ describe('TranscriptDropzone', () => {
 		const input = screen.getByLabelText(/Glissez un fichier ici/)
 
 		expect(input.getAttribute('accept')).toBe(
-			'.txt,.md,.vtt,.srt,.mp3,.m4a,.wav,.webm,.ogg,.aac',
+			'.txt,.md,.vtt,.srt,.pdf,.mp3,.m4a,.wav,.webm,.ogg,.aac',
 		)
 		const file = new File(['x'], 'a.vtt')
 		await user.upload(input, file)
@@ -132,6 +132,60 @@ describe('TranscriptDropzone', () => {
 		})
 
 		expect(screen.getByText(/transcrit par voxtral-mini-latest/)).toBeTruthy()
+		expect(screen.queryByText(/participant/)).toBeNull()
+	})
+
+	it('announces the PDF format and its 25 Mo limit', () => {
+		setup()
+
+		expect(screen.getByText(/PDF : \.pdf, 25 Mo au plus/)).toBeTruthy()
+		expect(screen.queryByText(/Aucun lecteur de PDF/)).toBeNull()
+	})
+
+	it('says a PDF reader is missing and links to the Models page', () => {
+		setup({
+			readerMissing: true,
+			readerLink: <a href="/settings/models">Choisir un lecteur de PDF</a>,
+		})
+
+		expect(
+			screen.getByText(/Aucun lecteur de PDF n’est configuré/),
+		).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'Choisir un lecteur de PDF' })
+				.getAttribute('href'),
+		).toBe('/settings/models')
+	})
+
+	it('shows the PDF reading in progress with the file name and a cancel button', async () => {
+		const onCancel = vi.fn()
+		setup({ readingFile: 'rapport.pdf', onCancel })
+		const user = userEvent.setup()
+
+		const status = screen.getByRole('status')
+		expect(status.textContent).toContain('Lecture du PDF en cours…')
+		expect(status.textContent).toContain('rapport.pdf')
+		expect(
+			(screen.getByLabelText(/Glissez un fichier ici/) as HTMLInputElement)
+				.disabled,
+		).toBe(true)
+		await user.click(screen.getByRole('button', { name: 'Annuler' }))
+
+		expect(onCancel).toHaveBeenCalledOnce()
+	})
+
+	it('names the reader in the preview of a read PDF', () => {
+		setup({
+			imported: {
+				name: 'a.pdf',
+				characters: 20,
+				participants: 0,
+				readBy: 'mistral-ocr-latest',
+			},
+		})
+
+		expect(screen.getByText(/lu par mistral-ocr-latest/)).toBeTruthy()
 		expect(screen.queryByText(/participant/)).toBeNull()
 	})
 })

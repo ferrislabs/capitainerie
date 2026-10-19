@@ -46,7 +46,7 @@ export namespace Schemas {
     runs: number;
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
-  export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; transcription: boolean };
+  export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
   export type CardCommentId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
@@ -99,6 +99,7 @@ export namespace Schemas {
     resource_id?: (string | null) | undefined;
     resource_kind: string;
   };
+  export type DocumentTextResponse = { model: string; pages: number; text: string };
   export type ExecuteCardRequest = { expected_version: number; repository: string };
   export type ExecuteCardResponse = { card: CardResponse; run_id: RunId };
   export type ExecutionResponse = Partial<{
@@ -146,6 +147,7 @@ export namespace Schemas {
     executor?: (string | null) | undefined;
     extractor: ModelRefDto;
     judge: ModelRefDto;
+    reader?: (null | ModelRefDto) | undefined;
     transcriber?: (null | ModelRefDto) | undefined;
     writer: ModelRefDto;
   };
@@ -171,6 +173,7 @@ export namespace Schemas {
   };
   export type ProviderListResponse = { providers: Array<ProviderResponse> };
   export type PutProviderRequest = Partial<{ api_key: string; base_url: string | null }>;
+  export type ReadDocumentRequest = { file: string };
   export type RepositoryResponse = { full_name: string; name: string; owner: string };
   export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
@@ -304,6 +307,24 @@ export namespace Endpoints {
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
       409: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_ReadDocument = {
+    method: "POST";
+    path: "/api/v1/documents/text";
+    requestFormat: "form-data";
+    parameters: {
+      body: Schemas.ReadDocumentRequest;
+    };
+    responses: {
+      200: Schemas.DocumentTextResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      413: Schemas.ApiErrorResponse;
+      415: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      502: Schemas.ApiErrorResponse;
     };
   };
   export type get_GetGithubIntegration = {
@@ -596,6 +617,7 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
+    "/api/v1/documents/text": Endpoints.post_ReadDocument;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
     "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;

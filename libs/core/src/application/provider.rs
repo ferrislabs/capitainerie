@@ -109,6 +109,7 @@ impl CapitainerieUseCase {
         catalog: &C,
     ) -> Result<ModelAssignments, CoreError> {
         assignments.check_transcriber()?;
+        assignments.check_reader()?;
         let accesses = self.accesses(subject.clone(), Action::ModelsAssign).await?;
         let mut announced = Vec::new();
         for access in &accesses {

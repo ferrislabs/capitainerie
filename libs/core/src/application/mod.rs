@@ -1,4 +1,5 @@
 mod card;
+mod document;
 mod execute_pipeline;
 mod execute_stream;
 mod execution;
@@ -19,6 +20,7 @@ use crate::infrastructure::{
     postgres,
 };
 
+pub use document::PreparedDocumentReading;
 pub use execute_pipeline::{ExecuteConfig, ExecutePipeline, ExecutionContext, Executor};
 pub use execution::StartedExecution;
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};

@@ -135,13 +135,15 @@ fn model(
     context_window: Option<u64>,
 ) -> CatalogModel {
     let price = price_of(provider, id);
+    let ocr = provider == ProviderKind::Mistral && is_ocr_model(id);
     CatalogModel {
         provider,
         id: id.to_owned(),
         display_name: display_name.unwrap_or(id).to_owned(),
-        chat,
-        embeddings,
-        transcription: provider != ProviderKind::Anthropic && is_transcription_model(id),
+        chat: chat && !ocr,
+        embeddings: embeddings && !ocr,
+        transcription: !ocr && provider != ProviderKind::Anthropic && is_transcription_model(id),
+        ocr,
         context_window,
         input_price_per_mtok_micros: price.map(|price| price.input_per_mtok_micros),
         output_price_per_mtok_micros: price.map(|price| price.output_per_mtok_micros),
@@ -155,6 +157,10 @@ fn is_transcription_model(id: &str) -> bool {
     (id.contains("voxtral") || id.contains("whisper"))
         && !id.contains("realtime")
         && !id.contains("tts")
+}
+
+fn is_ocr_model(id: &str) -> bool {
+    id.to_lowercase().contains("ocr")
 }
 
 fn sorted(mut models: Vec<CatalogModel>) -> Vec<CatalogModel> {

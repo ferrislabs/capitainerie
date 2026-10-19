@@ -93,6 +93,8 @@ pub struct CapabilitiesResponse {
     pub embeddings: bool,
     /// Whether the model can transcribe audio.
     pub transcription: bool,
+    /// Whether the model can read a PDF (Mistral OCR).
+    pub ocr: bool,
 }
 
 /// Per million tokens, in millionths of the provider's currency unit.
@@ -124,6 +126,7 @@ impl From<CatalogModel> for ModelResponse {
                 chat: model.chat,
                 embeddings: model.embeddings,
                 transcription: model.transcription,
+                ocr: model.ocr,
             },
             context_window: model.context_window,
             price: priced.then_some(PriceResponse {
@@ -203,6 +206,11 @@ pub struct ModelAssignmentsDto {
     #[serde(default, deserialize_with = "present_or_null")]
     #[schema(value_type = Option<ModelRefDto>)]
     pub transcriber: Option<Option<ModelRefDto>>,
+    /// The model that reads PDFs (mistral only). On a PUT, an absent key keeps
+    /// the current reader and an explicit `null` clears it.
+    #[serde(default, deserialize_with = "present_or_null")]
+    #[schema(value_type = Option<ModelRefDto>)]
+    pub reader: Option<Option<ModelRefDto>>,
     /// The Anthropic model Claude Code runs on. When absent on a PUT, the
     /// current value (or the default) is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -225,6 +233,7 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             writer: assignments.writer.into(),
             embeddings: assignments.embeddings.into(),
             transcriber: Some(assignments.transcriber.map(Into::into)),
+            reader: Some(assignments.reader.map(Into::into)),
             executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
@@ -243,12 +252,17 @@ impl ModelAssignmentsDto {
             Some(chosen) => chosen.map(Into::into),
             None => current.and_then(|c| c.transcriber.clone()),
         };
+        let reader = match self.reader {
+            Some(chosen) => chosen.map(Into::into),
+            None => current.and_then(|c| c.reader.clone()),
+        };
         Ok(ModelAssignments {
             extractor: self.extractor.into(),
             judge: self.judge.into(),
             writer: self.writer.into(),
             embeddings: self.embeddings.into(),
             transcriber,
+            reader,
             executor,
         })
     }
@@ -357,6 +371,57 @@ mod tests {
         assert_eq!(some["transcriber"]["model"], "voxtral-mini-latest");
     }
 
+    fn wire_reader(reader: Option<serde_json::Value>) -> ModelAssignmentsDto {
+        let mut body = serde_json::to_value(wire(None)).unwrap();
+        body.as_object_mut().unwrap().remove("reader");
+        if let Some(value) = reader {
+            body["reader"] = value;
+        }
+        serde_json::from_value(body).unwrap()
+    }
+
+    #[test]
+    fn an_absent_reader_keeps_the_current_one_and_null_clears_it() {
+        let mut current = ModelAssignments::defaults("chat", "embed");
+        current.reader = Some(ModelRef {
+            provider: ProviderKind::Mistral,
+            model: "mistral-ocr-latest".into(),
+        });
+
+        let kept = wire_reader(None).into_assignments(Some(&current)).unwrap();
+        let cleared = wire_reader(Some(serde_json::Value::Null))
+            .into_assignments(Some(&current))
+            .unwrap();
+        let replaced = wire_reader(Some(
+            serde_json::json!({"provider": "mistral", "model": "mistral-ocr-2505"}),
+        ))
+        .into_assignments(Some(&current))
+        .unwrap();
+        let first_time = wire_reader(None).into_assignments(None).unwrap();
+
+        assert_eq!(kept.reader, current.reader);
+        assert_eq!(cleared.reader, None);
+        assert_eq!(
+            replaced.reader.map(|m| (m.provider, m.model)),
+            Some((ProviderKind::Mistral, "mistral-ocr-2505".to_owned()))
+        );
+        assert_eq!(first_time.reader, None);
+    }
+
+    #[test]
+    fn a_stored_reader_is_serialized_and_none_is_an_explicit_null() {
+        let mut assignments = ModelAssignments::defaults("chat", "embed");
+        let none = serde_json::to_value(ModelAssignmentsDto::from(assignments.clone())).unwrap();
+        assignments.reader = Some(ModelRef {
+            provider: ProviderKind::Mistral,
+            model: "mistral-ocr-latest".into(),
+        });
+        let some = serde_json::to_value(ModelAssignmentsDto::from(assignments)).unwrap();
+
+        assert_eq!(none["reader"], serde_json::Value::Null);
+        assert_eq!(some["reader"]["model"], "mistral-ocr-latest");
+    }
+
     #[test]
     fn a_model_without_any_price_has_none() {
         let model = CatalogModel {
@@ -366,6 +431,7 @@ mod tests {
             chat: true,
             embeddings: false,
             transcription: false,
+            ocr: false,
             context_window: None,
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,

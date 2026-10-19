@@ -45,6 +45,7 @@ use capitainerie_handlers_runs::{
 use capitainerie_handlers_transcriptions::{
     self as transcriptions,
     create_transcription::{CreateTranscriptionRequest, TranscriptionResponse},
+    read_document::{DocumentTextResponse, ReadDocumentRequest},
 };
 use utoipa::{
     Modify, OpenApi,
@@ -71,6 +72,7 @@ use utoipa::{
         analytics::costs::handler,
         analytics::agents::handler,
         transcriptions::create_transcription::handler,
+        transcriptions::read_document::handler,
         providers::list_providers::handler,
         providers::put_provider::handler,
         providers::delete_provider::handler,
@@ -122,6 +124,8 @@ use utoipa::{
         AgentResponse,
         CreateTranscriptionRequest,
         TranscriptionResponse,
+        ReadDocumentRequest,
+        DocumentTextResponse,
         ProviderKindDto,
         ProviderResponse,
         ProviderListResponse,
@@ -155,7 +159,7 @@ use utoipa::{
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
-        (name = transcriptions::TAG, description = "Audio transcribed to text for the transcript form; the audio is never kept"),
+        (name = transcriptions::TAG, description = "Audio and PDF files turned into text for the transcript form; the file is never kept"),
         (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository"),
     )
 )]
@@ -272,6 +276,26 @@ mod tests {
         assert!(schemas["TranscriptionResponse"]["properties"]["model"].is_object());
         assert!(schemas["CapabilitiesResponse"]["properties"]["transcription"].is_object());
         assert!(schemas["ModelAssignmentsDto"]["properties"]["transcriber"].is_object());
+    }
+
+    #[test]
+    fn the_document_endpoint_is_documented_as_multipart() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let operation = &spec["paths"]["/api/v1/documents/text"]["post"];
+        assert_eq!(operation["operationId"], "readDocument");
+        assert!(operation["requestBody"]["content"]["multipart/form-data"]["schema"].is_object());
+        for status in ["200", "409", "413", "415", "502"] {
+            assert!(operation["responses"][status].is_object(), "{status}");
+        }
+        let schemas = &spec["components"]["schemas"];
+        for field in ["text", "model", "pages"] {
+            assert!(
+                schemas["DocumentTextResponse"]["properties"][field].is_object(),
+                "{field}"
+            );
+        }
+        assert!(schemas["CapabilitiesResponse"]["properties"]["ocr"].is_object());
+        assert!(schemas["ModelAssignmentsDto"]["properties"]["reader"].is_object());
     }
 
     #[test]

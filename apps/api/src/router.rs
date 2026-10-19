@@ -2,7 +2,8 @@ use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
 use capitainerie_analytics::Analytics;
 use capitainerie_core::domain::{
-    provider::ports::ModelCatalog, transcription::ports::TranscriberFactory,
+    document::ports::DocumentReaderFactory, provider::ports::ModelCatalog,
+    transcription::ports::TranscriberFactory,
 };
 use capitainerie_handlers::{AppState, auth::authenticate, health};
 use capitainerie_handlers_integrations::GithubIntegration;
@@ -17,16 +18,22 @@ use utoipa_scalar::{Scalar, Servable};
 
 use crate::openapi::ApiDoc;
 
+pub struct IntakeAdapters<T, D> {
+    pub transcribers: T,
+    pub document_readers: D,
+}
+
 pub fn router<
     A: Analytics + 'static,
     C: ModelCatalog + 'static,
     T: TranscriberFactory + 'static,
+    D: DocumentReaderFactory + 'static,
 >(
     state: AppState,
     realtime: Gateway<AppState>,
     analytics: A,
     catalog: C,
-    transcribers: T,
+    intake: IntakeAdapters<T, D>,
     github: GithubIntegration,
     allowed_origins: &[String],
 ) -> anyhow::Result<Router> {
@@ -49,7 +56,8 @@ pub fn router<
         ))
         .merge(capitainerie_handlers_transcriptions::router(
             state.usecase.clone(),
-            transcribers,
+            intake.transcribers,
+            intake.document_readers,
         ))
         .merge(capitainerie_handlers_integrations::router(
             state.usecase.clone(),

@@ -14,6 +14,7 @@ import {
 	CLAUDE_HAIKU,
 	CLAUDE_LOOKALIKE,
 	MISTRAL_EMBED,
+	MISTRAL_OCR,
 	QWEN,
 	SONNET,
 	VOXTRAL,
@@ -80,6 +81,7 @@ describe('completeAssignments', () => {
 			writer: ref,
 			embeddings: ref,
 			transcriber: null,
+			reader: null,
 		})
 	})
 })
@@ -107,7 +109,12 @@ describe('completeAssignments with an executor', () => {
 	it('carries the executor only when one is chosen', () => {
 		expect(
 			completeAssignments({ ...roles, executor: 'claude-haiku-5' }),
-		).toEqual({ ...roles, transcriber: null, executor: 'claude-haiku-5' })
+		).toEqual({
+			...roles,
+			transcriber: null,
+			reader: null,
+			executor: 'claude-haiku-5',
+		})
 		expect(
 			completeAssignments({ ...roles, executor: null }),
 		).not.toHaveProperty('executor')
@@ -118,7 +125,12 @@ describe('the transcriber role', () => {
 	it('offers transcription models of mistral and openai_compatible only', () => {
 		const anthropicOne = {
 			...SONNET,
-			capabilities: { chat: true, embeddings: false, transcription: true },
+			capabilities: {
+				chat: true,
+				embeddings: false,
+				transcription: true,
+				ocr: false,
+			},
 		}
 		expect(
 			compatibleModels(
@@ -139,12 +151,49 @@ describe('the transcriber role', () => {
 		expect(completeAssignments({ ...roles, transcriber: voxtral })).toEqual({
 			...roles,
 			transcriber: voxtral,
+			reader: null,
 		})
-		expect(completeAssignments(roles)).toEqual({ ...roles, transcriber: null })
+		expect(completeAssignments(roles)).toEqual({
+			...roles,
+			transcriber: null,
+			reader: null,
+		})
 		expect(draftFrom({ ...roles, transcriber: null })).toEqual(roles)
 		expect(draftFrom({ ...roles, transcriber: voxtral })).toMatchObject({
 			transcriber: voxtral,
 		})
 		expect(draftFrom(null)).toEqual({})
+	})
+})
+
+describe('the reader role', () => {
+	const ref = { provider: 'mistral', model: 'm' } as const
+	const roles = { extractor: ref, judge: ref, writer: ref, embeddings: ref }
+	const ocr = { provider: 'mistral', model: 'mistral-ocr-latest' } as const
+
+	it('offers OCR models of mistral only', () => {
+		const foreignOcr = {
+			...WHISPER,
+			id: 'other-ocr',
+			capabilities: {
+				chat: false,
+				embeddings: false,
+				transcription: false,
+				ocr: true,
+			},
+		}
+		expect(
+			compatibleModels([QWEN, VOXTRAL, MISTRAL_OCR, foreignOcr], 'reader'),
+		).toEqual([MISTRAL_OCR])
+		expect(compatibleModels([MISTRAL_OCR], 'extractor')).toEqual([])
+	})
+
+	it('is carried when chosen and sent as null to clear it', () => {
+		expect(completeAssignments({ ...roles, reader: ocr })).toMatchObject({
+			reader: ocr,
+		})
+		expect(completeAssignments(roles)).toMatchObject({ reader: null })
+		expect(draftFrom({ ...roles, reader: null })).toEqual(roles)
+		expect(draftFrom({ ...roles, reader: ocr })).toMatchObject({ reader: ocr })
 	})
 })

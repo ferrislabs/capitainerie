@@ -33,6 +33,7 @@ pub struct Subject {
 pub enum Action {
     TranscriptCreate,
     TranscriptionCreate,
+    DocumentRead,
     RunRead,
     CardCreate,
     CardRead,
@@ -57,6 +58,7 @@ pub struct Resource {
 pub enum ResourceKind {
     Transcript,
     Transcription,
+    Document,
     Run,
     Card,
     Provider,
@@ -82,6 +84,7 @@ impl Action {
         match self {
             Self::TranscriptCreate => "transcript.create",
             Self::TranscriptionCreate => "transcription.create",
+            Self::DocumentRead => "document.read",
             Self::RunRead => "run.read",
             Self::CardCreate => "card.create",
             Self::CardRead => "card.read",
@@ -102,6 +105,7 @@ impl ResourceKind {
         match self {
             Self::Transcript => "transcript",
             Self::Transcription => "transcription",
+            Self::Document => "document",
             Self::Run => "run",
             Self::Card => "card",
             Self::Provider => "provider",

@@ -128,6 +128,9 @@ export function ModelsCatalog({
 												{model.capabilities.transcription ? (
 													<Badge variant="outline">Transcription</Badge>
 												) : null}
+												{model.capabilities.ocr ? (
+													<Badge variant="outline">OCR</Badge>
+												) : null}
 											</div>
 										</TableCell>
 										<TableCell className="text-right whitespace-nowrap figures">

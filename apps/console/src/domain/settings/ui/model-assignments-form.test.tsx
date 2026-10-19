@@ -8,6 +8,7 @@ import {
 	CLAUDE_HAIKU,
 	CLAUDE_LOOKALIKE,
 	MISTRAL_EMBED,
+	MISTRAL_OCR,
 	QWEN,
 	SONNET,
 	VOXTRAL,
@@ -24,6 +25,7 @@ function setup(
 	const handlers = {
 		onChange: vi.fn(),
 		onTranscriberChange: vi.fn(),
+		onReaderChange: vi.fn(),
 		onExecutorChange: vi.fn(),
 		onSubmit: vi.fn(),
 	}
@@ -203,7 +205,12 @@ describe('ModelAssignmentsForm', () => {
 		const anthropicTranscriber = {
 			...SONNET,
 			id: 'claude-whisper',
-			capabilities: { chat: false, embeddings: false, transcription: true },
+			capabilities: {
+				chat: false,
+				embeddings: false,
+				transcription: true,
+				ocr: false,
+			},
 		}
 		const handlers = setup({
 			models: [QWEN, BGE, SONNET, VOXTRAL, WHISPER, anthropicTranscriber],
@@ -242,7 +249,9 @@ describe('ModelAssignmentsForm', () => {
 		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
 		expect(select.disabled).toBe(true)
 		expect(select.textContent).toContain('Aucun modèle de transcription')
-		expect(screen.getByText(/Facultatif/)).toBeTruthy()
+		expect(
+			screen.getByText(/Facultatif : sans lui, seuls les fichiers texte/),
+		).toBeTruthy()
 	})
 
 	it('shows a saved transcriber the catalog dropped', () => {
@@ -254,5 +263,57 @@ describe('ModelAssignmentsForm', () => {
 		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
 		expect(select.value).toBe('mistral:voxtral-old')
 		expect(select.selectedOptions[0].textContent).toContain('indisponible')
+	})
+
+	it('offers the PDF reader only OCR models of mistral', async () => {
+		const otherOcr = {
+			...QWEN,
+			id: 'some-ocr',
+			capabilities: {
+				chat: false,
+				embeddings: false,
+				transcription: false,
+				ocr: true,
+			},
+		}
+		const handlers = setup({
+			models: [QWEN, BGE, SONNET, VOXTRAL, MISTRAL_OCR, otherOcr],
+		})
+		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
+
+		expect(optionValues(select)).toEqual(['mistral:mistral-ocr-latest'])
+		expect(select.value).toBe('')
+		expect(select.selectedOptions[0].textContent).toBe('Aucun lecteur de PDF')
+
+		await userEvent.selectOptions(select, 'mistral:mistral-ocr-latest')
+		expect(handlers.onReaderChange).toHaveBeenCalledWith({
+			provider: 'mistral',
+			model: 'mistral-ocr-latest',
+		})
+		expect(handlers.onTranscriberChange).not.toHaveBeenCalled()
+	})
+
+	it('clears the reader with the empty choice', async () => {
+		const handlers = setup({
+			models: [MISTRAL_OCR],
+			values: { reader: { provider: 'mistral', model: MISTRAL_OCR.id } },
+		})
+		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
+		expect(select.value).toBe('mistral:mistral-ocr-latest')
+
+		await userEvent.selectOptions(select, '')
+
+		expect(handlers.onReaderChange).toHaveBeenCalledWith(undefined)
+	})
+
+	it('says when no model can read a PDF', () => {
+		setup({ models: [QWEN, BGE] })
+		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
+
+		expect(select.disabled).toBe(true)
+		expect(select.textContent).toContain('Aucun modèle OCR')
+		expect(
+			screen.getByText(/Facultatif : sans lui, les PDF sont refusés/),
+		).toBeTruthy()
 	})
 })

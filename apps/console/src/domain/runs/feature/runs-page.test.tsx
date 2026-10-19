@@ -112,7 +112,7 @@ describe('RunsPage intake', () => {
 
 		await user.upload(
 			screen.getByLabelText(/Glissez un fichier ici/),
-			new File(['x'], 'notes.pdf'),
+			new File(['x'], 'notes.docx'),
 		)
 
 		expect((await screen.findByRole('alert')).textContent).toMatch(

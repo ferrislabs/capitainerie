@@ -10,13 +10,16 @@ import {
 	useGithubIntegration,
 	useGithubRepositories,
 } from '#/domain/integrations/hooks/use-github-integration'
+import { READER_MISSING_MESSAGE } from '#/domain/runs/document-errors'
 import { useFileDrop } from '#/domain/runs/hooks/use-file-drop'
+import { useReadDocument } from '#/domain/runs/hooks/use-read-document'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
 import { useSubmitTranscript } from '#/domain/runs/hooks/use-submit-transcript'
 import { useTranscribe } from '#/domain/runs/hooks/use-transcribe'
 import {
 	importTranscript,
 	isAudioFile,
+	isPdfFile,
 	titleFromFileName,
 	validateTranscriptFile,
 } from '#/domain/runs/transcript-import'
@@ -42,15 +45,19 @@ interface ImportedState {
 	previousBody: string
 	added: string[]
 	transcribedBy?: string
+	readBy?: string
 }
 
 export function RunsPage() {
 	const runs = useRuns()
 	const submit = useSubmitTranscript()
 	const transcription = useTranscribe()
+	const reading = useReadDocument()
 	const assignments = useModelAssignments()
 	const transcriberMissing =
 		assignments.isSuccess && !assignments.data.assignments?.transcriber
+	const readerMissing =
+		assignments.isSuccess && !assignments.data.assignments?.reader
 	const integration = useGithubIntegration(true)
 	const repositories = useGithubRepositories(
 		Boolean(integration.data?.installation),
@@ -114,6 +121,10 @@ export function RunsPage() {
 			setFileError(problem)
 			return
 		}
+		if (isPdfFile(file.name)) {
+			await handlePdf(file)
+			return
+		}
 		if (isAudioFile(file.name)) {
 			await handleAudio(file)
 			return
@@ -143,20 +154,37 @@ export function RunsPage() {
 			setFileError(outcome.message)
 			return
 		}
-		applyText(file.name, outcome.text, [], outcome.model)
+		applyText(file.name, outcome.text, [], { transcribedBy: outcome.model })
+	}
+
+	async function handlePdf(file: File) {
+		if (readerMissing) {
+			setFileError(READER_MISSING_MESSAGE)
+			return
+		}
+		setFileError(undefined)
+		const outcome = await reading.run(file)
+		if (outcome.kind === 'cancelled') return
+		if (outcome.kind === 'failed') {
+			setFileError(outcome.message)
+			return
+		}
+		applyText(file.name, outcome.text, [], { readBy: outcome.model })
 	}
 
 	function applyText(
 		name: string,
 		text: string,
 		detected: string[],
-		transcribedBy?: string,
+		source: { transcribedBy?: string; readBy?: string } = {},
 	) {
 		if (text.trim() === '') {
 			setFileError(
-				transcribedBy
-					? 'Cet audio ne contient aucune parole exploitable.'
-					: 'Ce fichier ne contient aucun texte exploitable.',
+				source.readBy
+					? 'Ce PDF ne contient aucun texte exploitable.'
+					: source.transcribedBy
+						? 'Cet audio ne contient aucune parole exploitable.'
+						: 'Ce fichier ne contient aucun texte exploitable.',
 			)
 			return
 		}
@@ -183,7 +211,8 @@ export function RunsPage() {
 				? imported.previousBody
 				: form.getFieldValue('body'),
 			added,
-			...(transcribedBy ? { transcribedBy } : {}),
+			...(source.transcribedBy ? { transcribedBy: source.transcribedBy } : {}),
+			...(source.readBy ? { readBy: source.readBy } : {}),
 		})
 		form.setFieldValue('body', text)
 		if (form.getFieldValue('title').trim() === '') {
@@ -234,7 +263,7 @@ export function RunsPage() {
 	const drop = useFileDrop(
 		handleFile,
 		setFileError,
-		submit.isPending || transcription.isPending,
+		submit.isPending || transcription.isPending || reading.isPending,
 	)
 
 	function handleSubmit() {
@@ -252,7 +281,7 @@ export function RunsPage() {
 			<div className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
 				<SectionCard
 					title="Déposer un transcript"
-					description="Texte brut ou fichier .txt, .md, .vtt ou .srt, 200 000 caractères au plus."
+					description="Texte brut ou fichier .txt, .md, .vtt, .srt ou .pdf, 200 000 caractères au plus."
 				>
 					<SubmitTranscriptForm
 						title={values.title}
@@ -264,7 +293,7 @@ export function RunsPage() {
 						serverError={submit.error?.message}
 						successMessage={submit.isSuccess ? 'Run lancé' : undefined}
 						isPending={submit.isPending}
-						isTranscribing={transcription.isPending}
+						isTranscribing={transcription.isPending || reading.isPending}
 						onTitleChange={(value) => form.setFieldValue('title', value)}
 						onBodyChange={(value) => form.setFieldValue('body', value)}
 						dropzone={{
@@ -273,9 +302,12 @@ export function RunsPage() {
 								characters: imported.characters,
 								participants: imported.detected,
 								transcribedBy: imported.transcribedBy,
+								readBy: imported.readBy,
 							},
 							error: fileError,
 							transcribingFile: transcription.fileName,
+							readingFile: reading.fileName,
+							readerMissing,
 							transcriberMissing,
 							modelsLink: (
 								<Link
@@ -285,7 +317,18 @@ export function RunsPage() {
 									Choisir un transcripteur
 								</Link>
 							),
-							onCancel: transcription.cancel,
+							readerLink: (
+								<Link
+									to="/settings/models"
+									className="font-medium text-foreground underline underline-offset-2"
+								>
+									Choisir un lecteur de PDF
+								</Link>
+							),
+							onCancel: () => {
+								transcription.cancel()
+								reading.cancel()
+							},
 							isDragging: drop.isDragging,
 							dropHandlers: drop.handlers,
 							onFileSelected: handleFile,

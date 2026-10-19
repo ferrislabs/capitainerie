@@ -217,6 +217,62 @@ pub enum AudioMime { Mpeg, Mp4, Wav, Webm, Ogg, Aac }   // mp3, m4a/mp4, wav, we
 - Le texte remplit le champ Transcript.
 - Paramètres › Modèles affiche le rôle « Transcripteur », facultatif. Sans transcripteur, la zone indique qu'il faut en choisir un et renvoie vers la page.
 
+## PR 5 : PDF lus par OCR
+
+Décision validée le 2026-10-19 : l'extraction du texte d'un PDF passe par **Mistral OCR**, 25 Mio au plus. Même principe que l'audio (W5) : le PDF est lu puis jeté, le texte revient dans le formulaire pour relecture.
+
+### Domaine et fournisseurs
+
+- `AgentRole` gagne `Reader` (`"reader"`). `ModelAssignments` gagne `reader: Option<ModelRef>` : il n'y a pas de lecteur par défaut. Un JSONB stocké sans la clé se désérialise toujours, avec `reader = None`.
+- Le PUT des assignations n'accepte qu'un lecteur `mistral`. Tout autre fournisseur répond 422. Une clé `reader` absente garde la valeur actuelle, un `null` explicite l'efface, comme pour `transcriber`.
+- Le catalogue ajoute la capacité `ocr` aux modèles Mistral dont l'identifiant contient `ocr`. Ces modèles ne sont ni `chat`, ni `embeddings`, ni `transcription`. Un modèle `ocr` ne peut servir aucun autre rôle, et le rôle Lecteur n'accepte qu'un modèle `ocr`.
+- Port du cœur :
+
+```rust
+pub trait DocumentReader: Send + Sync {
+    fn read(&self, model: &ModelRef, document: PdfDocument)
+        -> impl Future<Output = Result<DocumentText, CoreError>> + Send;
+}
+pub struct PdfDocument { pub file_name: String, pub bytes: bytes::Bytes }
+pub struct DocumentText { pub text: String, pub pages: usize }
+```
+
+- `PdfDocument` écrit son `Debug` à la main : le nom et la longueur, jamais les octets.
+- Un document est accepté quand son extension est `.pdf` ou son type de contenu `application/pdf`, **et** que ses octets commencent par `%PDF-`. Contrairement à l'audio, le contenu est vérifié : un faux `.pdf` répond 415.
+- L'adaptateur, dans `libs/runtime-rig`, appelle `POST https://api.mistral.ai/v1/ocr` avec la clé de l'organisation en `Bearer` :
+
+```json
+{ "model": "<id>", "document": { "type": "document_url", "document_url": "data:application/pdf;base64,<b64>" } }
+```
+
+- La réponse porte `pages[]` avec `index` et `markdown`. Le texte est le markdown des pages dans l'ordre de `index`, séparé par une ligne vide.
+- Mêmes protections que l'audio : réponse du fournisseur limitée (8 Mio ici, le texte d'un gros PDF est volumineux), ni URL ni corps brut dans les erreurs, message JSON du fournisseur tronqué à 200 caractères, délai de 300 s.
+
+### API
+
+| Méthode | Chemin | Rôle | Réponse |
+|---|---|---|---|
+| `POST` | `/api/v1/documents/text` | membre humain | 200 `{ text, model, pages }` |
+
+- Corps en `multipart/form-data`, avec une seule partie `file` de 25 Mio au plus. La limite de corps est relevée pour cette route seulement. Un `Content-Length` trop grand répond 413 avant toute lecture.
+- Le PDP (`document.read`) et la présence d'un lecteur sont vérifiés **avant** de lire le corps.
+- Erreurs :
+  - 413 si le fichier est trop gros ;
+  - 415 si ce n'est pas un PDF (extension, type ou octets `%PDF-`) ;
+  - 409 `reader_not_configured` si aucun lecteur n'est assigné ;
+  - 422 si la partie `file` manque, est en double ou est vide ;
+  - 502 si le fournisseur échoue, avec son message JSON, ou « Le service de lecture des PDF est injoignable. ».
+- La route est synchrone : elle ne crée ni transcript ni run. Le PDF n'est jamais écrit sur disque, en base, dans les logs ni dans les traces. Seuls sa taille, son nombre de pages et le modèle sont journalisés.
+- Action du PDP : `document.read`, réservée aux humains.
+
+### Console
+
+- La zone de dépôt accepte aussi `.pdf`, 25 Mo au plus. Le texte de formats qui la décrit est mis à jour.
+- Pendant la lecture, la zone affiche « Lecture du PDF en cours… » avec le nom du fichier et un bouton « Annuler » qui interrompt la requête.
+- Le texte remplit le champ Transcript. Si le titre est vide, il prend le nom du fichier sans extension.
+- Sans lecteur, la zone indique qu'il faut en choisir un et renvoie vers la page Modèles.
+- Paramètres › Modèles affiche le rôle « Lecteur de PDF », facultatif, limité aux modèles de capacité `ocr`.
+
 ## Hors périmètre
 
 - Le réordonnancement des cartes dans une colonne (aucune position n'existe en base).
@@ -234,5 +290,6 @@ pub enum AudioMime { Mpeg, Mp4, Wav, Webm, Ogg, Aac }   // mp3, m4a/mp4, wav, we
 | 2 | `feat/live-runs-timeline` | `main` | aucune |
 | 3 | `feat/transcript-intake` | `main` | aucune |
 | 4 | `feat/audio-transcription` | PR 3 | feature `multipart` d'axum (ajoute `multer`, pour recevoir l'audio) et de reqwest (pour l'envoyer au fournisseur) |
+| 5 | `feat/pdf-intake` | `main` | aucune |
 
 Le client `src/api/api.client.ts` est généré dans chaque PR. En cas de conflit au rebase, on le régénère ; on ne le fusionne pas à la main.

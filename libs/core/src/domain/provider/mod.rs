@@ -24,6 +24,7 @@ pub enum AgentRole {
     Writer,
     Embeddings,
     Transcriber,
+    Reader,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -42,6 +43,8 @@ pub struct ModelAssignments {
     pub embeddings: ModelRef,
     #[serde(default)]
     pub transcriber: Option<ModelRef>,
+    #[serde(default)]
+    pub reader: Option<ModelRef>,
     /// Always an Anthropic model; runs queued before it existed take the default.
     #[serde(default)]
     pub executor: ExecutorModel,
@@ -133,12 +136,13 @@ impl TryFrom<&str> for ProviderKind {
 }
 
 impl AgentRole {
-    pub const ALL: [AgentRole; 5] = [
+    pub const ALL: [AgentRole; 6] = [
         Self::Extractor,
         Self::Judge,
         Self::Writer,
         Self::Embeddings,
         Self::Transcriber,
+        Self::Reader,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -148,6 +152,7 @@ impl AgentRole {
             Self::Writer => "writer",
             Self::Embeddings => "embeddings",
             Self::Transcriber => "transcriber",
+            Self::Reader => "reader",
         }
     }
 }
@@ -160,6 +165,7 @@ impl ModelAssignments {
             AgentRole::Writer => Some(&self.writer),
             AgentRole::Embeddings => Some(&self.embeddings),
             AgentRole::Transcriber => self.transcriber.as_ref(),
+            AgentRole::Reader => self.reader.as_ref(),
         }
     }
 
@@ -172,6 +178,15 @@ impl ModelAssignments {
         match &self.transcriber {
             Some(chosen) if chosen.provider == ProviderKind::Anthropic => Err(CoreError::Invalid(
                 "anthropic offers no transcription model".into(),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    pub fn check_reader(&self) -> Result<(), CoreError> {
+        match &self.reader {
+            Some(chosen) if chosen.provider != ProviderKind::Mistral => Err(CoreError::Invalid(
+                "only mistral offers a document reader".into(),
             )),
             _ => Ok(()),
         }
@@ -192,6 +207,7 @@ impl ModelAssignments {
                 model: embedding_model.to_owned(),
             },
             transcriber: None,
+            reader: None,
             executor: ExecutorModel::default(),
         }
     }
@@ -269,6 +285,53 @@ mod tests {
         );
     }
 
+    fn reader_assignment(provider: ProviderKind) -> ModelAssignments {
+        let mut assignments = ModelAssignments::defaults("chat", "embed");
+        assignments.reader = Some(ModelRef {
+            provider,
+            model: "mistral-ocr-latest".into(),
+        });
+        assignments
+    }
+
+    #[test]
+    fn assignments_stored_before_the_reader_existed_still_load() {
+        let mut stored = serde_json::to_value(ModelAssignments::defaults("chat", "embed")).unwrap();
+        stored.as_object_mut().unwrap().remove("reader");
+        let assignments: ModelAssignments = serde_json::from_value(stored).unwrap();
+        assert_eq!(assignments.reader, None);
+        assert_eq!(assignments.for_role(AgentRole::Reader), None);
+        assert!(assignments.require_role(AgentRole::Reader).is_err());
+        assert_eq!(AgentRole::Reader.as_str(), "reader");
+    }
+
+    #[test]
+    fn a_stored_reader_round_trips() {
+        let assignments = reader_assignment(ProviderKind::Mistral);
+        let stored = serde_json::to_value(&assignments).unwrap();
+        assert_eq!(stored["reader"]["model"], "mistral-ocr-latest");
+        assert_eq!(
+            serde_json::from_value::<ModelAssignments>(stored).unwrap(),
+            assignments
+        );
+    }
+
+    #[test]
+    fn only_mistral_may_read_documents() {
+        reader_assignment(ProviderKind::Mistral)
+            .check_reader()
+            .unwrap();
+        ModelAssignments::defaults("chat", "embed")
+            .check_reader()
+            .unwrap();
+        for provider in [ProviderKind::Anthropic, ProviderKind::OpenAiCompatible] {
+            assert!(matches!(
+                reader_assignment(provider).check_reader(),
+                Err(CoreError::Invalid(message)) if message.contains("only mistral")
+            ));
+        }
+    }
+
     #[test]
     fn a_preview_shows_only_the_last_four_characters() {
         assert_eq!(preview("sk-ant-api03-abcdefghij1234"), "…1234");
@@ -289,12 +352,13 @@ mod tests {
         assert!(
             AgentRole::ALL
                 .iter()
-                .filter(|role| **role != AgentRole::Transcriber)
+                .filter(|role| !matches!(role, AgentRole::Transcriber | AgentRole::Reader))
                 .all(|role| matches!(
                     defaults.for_role(*role),
                     Some(model) if model.provider == ProviderKind::OpenAiCompatible
                 ))
         );
         assert_eq!(defaults.for_role(AgentRole::Transcriber), None);
+        assert_eq!(defaults.for_role(AgentRole::Reader), None);
     }
 }
