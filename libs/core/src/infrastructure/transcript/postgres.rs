@@ -1,11 +1,11 @@
 use capitainerie_common::{CoreError, OrganizationId, TranscriptId};
 use capitainerie_macros::repository;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use uuid::Uuid;
 
 use crate::{
     domain::transcript::{
-        Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository,
+        MeetingMetadata, Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
@@ -26,8 +26,11 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO transcripts (id, organization_id, submitted_by, title, body, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO transcripts (
+                id, organization_id, submitted_by, title, body, created_at,
+                meeting_date, participants, repository
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
             transcript.id.0,
             transcript.organization_id.0,
@@ -35,6 +38,13 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
             transcript.title.as_str(),
             transcript.body.as_str(),
             transcript.created_at,
+            transcript.metadata.date,
+            &transcript.metadata.participants,
+            transcript
+                .metadata
+                .repository
+                .as_ref()
+                .map(ToString::to_string),
         )
         .execute(&mut ***tx)
         .await
@@ -51,7 +61,8 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
         sqlx::query_as!(
             TranscriptRow,
             r#"
-            SELECT id, organization_id, submitted_by, title, body, created_at
+            SELECT id, organization_id, submitted_by, title, body, created_at,
+                   meeting_date, participants, repository
             FROM transcripts
             WHERE organization_id = $1 AND id = $2
             "#,
@@ -73,6 +84,9 @@ struct TranscriptRow {
     title: String,
     body: String,
     created_at: DateTime<Utc>,
+    meeting_date: Option<NaiveDate>,
+    participants: Vec<String>,
+    repository: Option<String>,
 }
 
 impl TryFrom<TranscriptRow> for Transcript {
@@ -88,6 +102,12 @@ impl TryFrom<TranscriptRow> for Transcript {
             submitted_by: row.submitted_by,
             title: TranscriptTitle::try_from(row.title).map_err(stored)?,
             body: TranscriptBody::try_from(row.body).map_err(stored)?,
+            metadata: MeetingMetadata::new(
+                row.meeting_date,
+                Some(row.participants),
+                row.repository,
+            )
+            .map_err(stored)?,
             created_at: row.created_at,
         })
     }

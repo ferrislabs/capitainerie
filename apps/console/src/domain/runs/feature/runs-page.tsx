@@ -1,38 +1,89 @@
 import { useForm, useStore } from '@tanstack/react-form'
+import { useState } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { TableSkeleton } from '#/components/layout/table-skeleton'
+import {
+	useGithubIntegration,
+	useGithubRepositories,
+} from '#/domain/integrations/hooks/use-github-integration'
+import { useFileDrop } from '#/domain/runs/hooks/use-file-drop'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
 import { useSubmitTranscript } from '#/domain/runs/hooks/use-submit-transcript'
 import {
+	importTranscript,
+	titleFromFileName,
+	validateTranscriptFile,
+} from '#/domain/runs/transcript-import'
+import {
+	addParticipants,
 	BODY_MAX_LENGTH,
+	mergeParticipants,
 	TITLE_MAX_LENGTH,
 	validateBody,
+	validateParticipants,
+	validateRepository,
 	validateTitle,
 } from '#/domain/runs/transcript-rules'
 import { RunsTable } from '#/domain/runs/ui/runs-table'
 import { SubmitTranscriptForm } from '#/domain/runs/ui/submit-transcript-form'
 
+interface ImportedState {
+	name: string
+	characters: number
+	detected: number
+	previousBody: string
+	added: string[]
+}
+
 export function RunsPage() {
 	const runs = useRuns()
 	const submit = useSubmitTranscript()
+	const integration = useGithubIntegration(true)
+	const repositories = useGithubRepositories(
+		Boolean(integration.data?.installation),
+	)
+	const [imported, setImported] = useState<ImportedState>()
+	const [fileError, setFileError] = useState<string>()
+	const [participantDraft, setParticipantDraft] = useState('')
 
 	const form = useForm({
-		defaultValues: { title: '', body: '' },
+		defaultValues: {
+			title: '',
+			body: '',
+			meetingDate: '',
+			participants: [] as string[],
+			repository: '',
+		},
 		validators: {
 			onChange: ({ value }) => {
 				const title = validateTitle(value.title)
 				const body = validateBody(value.body)
-				return title || body ? { fields: { title, body } } : undefined
+				const participants = validateParticipants(value.participants)
+				const repository = validateRepository(value.repository)
+				return title || body || participants || repository
+					? { fields: { title, body, participants, repository } }
+					: undefined
 			},
 		},
 		onSubmit: async ({ value, formApi }) => {
+			const participants = addParticipants(value.participants, participantDraft)
+			const repository = value.repository.trim()
 			await submit.mutateAsync({
-				body: { title: value.title.trim(), body: value.body },
+				body: {
+					title: value.title.trim(),
+					body: value.body,
+					...(value.meetingDate ? { meeting_date: value.meetingDate } : {}),
+					...(participants.length > 0 ? { participants } : {}),
+					...(repository ? { repository } : {}),
+				},
 			})
 			formApi.reset()
+			setImported(undefined)
+			setFileError(undefined)
+			setParticipantDraft('')
 		},
 	})
 
@@ -48,8 +99,96 @@ export function RunsPage() {
 	}
 
 	async function handleFile(file: File) {
-		form.setFieldValue('body', await file.text())
+		const problem = validateTranscriptFile(file)
+		if (problem) {
+			setFileError(problem)
+			return
+		}
+		let content: string
+		try {
+			content = new TextDecoder('utf-8', { fatal: true }).decode(
+				await file.arrayBuffer(),
+			)
+		} catch {
+			setFileError("Le fichier n'est pas en UTF-8.")
+			return
+		}
+		const result = importTranscript(file.name, content)
+		if (result.text.trim() === '') {
+			setFileError('Ce fichier ne contient aucun texte exploitable.')
+			return
+		}
+		const characters = [...result.text].length
+		if (characters > BODY_MAX_LENGTH) {
+			setFileError(
+				`Le transcript ne doit pas dépasser ${BODY_MAX_LENGTH} caractères.`,
+			)
+			return
+		}
+		setFileError(undefined)
+		const before = form.getFieldValue('participants')
+		const merged = mergeParticipants(before, result.participants)
+		const known = new Set(before.map((name) => name.toLowerCase()))
+		const added = [
+			...(imported?.added ?? []),
+			...merged.filter((name) => !known.has(name.toLowerCase())),
+		]
+		setImported({
+			name: file.name,
+			characters,
+			detected: result.participants.length,
+			previousBody: imported
+				? imported.previousBody
+				: form.getFieldValue('body'),
+			added,
+		})
+		form.setFieldValue('body', result.text)
+		if (form.getFieldValue('title').trim() === '') {
+			form.setFieldValue('title', titleFromFileName(file.name))
+		}
+		form.setFieldValue('participants', merged)
 	}
+
+	function removeImport() {
+		if (!imported) return
+		form.setFieldValue('body', imported.previousBody)
+		const added = new Set(imported.added.map((name) => name.toLowerCase()))
+		form.setFieldValue(
+			'participants',
+			form
+				.getFieldValue('participants')
+				.filter((name) => !added.has(name.toLowerCase())),
+		)
+		setImported(undefined)
+		setFileError(undefined)
+	}
+
+	function commitParticipantDraft() {
+		if (participantDraft === '') return
+		form.setFieldValue(
+			'participants',
+			addParticipants(form.getFieldValue('participants'), participantDraft),
+		)
+		setParticipantDraft('')
+	}
+
+	function changeParticipantDraft(value: string) {
+		const comma = value.lastIndexOf(',')
+		if (comma < 0) {
+			setParticipantDraft(value)
+			return
+		}
+		form.setFieldValue(
+			'participants',
+			addParticipants(
+				form.getFieldValue('participants'),
+				value.slice(0, comma),
+			),
+		)
+		setParticipantDraft(value.slice(comma + 1))
+	}
+
+	const drop = useFileDrop(handleFile, setFileError, submit.isPending)
 
 	function handleSubmit() {
 		form.handleSubmit().catch(() => undefined)
@@ -66,7 +205,7 @@ export function RunsPage() {
 			<div className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
 				<SectionCard
 					title="Déposer un transcript"
-					description="Texte brut ou fichier .txt, 200 000 caractères au plus."
+					description="Texte brut ou fichier .txt, .md, .vtt ou .srt, 200 000 caractères au plus."
 				>
 					<SubmitTranscriptForm
 						title={values.title}
@@ -80,7 +219,38 @@ export function RunsPage() {
 						isPending={submit.isPending}
 						onTitleChange={(value) => form.setFieldValue('title', value)}
 						onBodyChange={(value) => form.setFieldValue('body', value)}
-						onFileSelected={handleFile}
+						dropzone={{
+							imported: imported && {
+								name: imported.name,
+								characters: imported.characters,
+								participants: imported.detected,
+							},
+							error: fileError,
+							isDragging: drop.isDragging,
+							dropHandlers: drop.handlers,
+							onFileSelected: handleFile,
+							onRemove: removeImport,
+						}}
+						details={{
+							meetingDate: values.meetingDate,
+							participants: values.participants,
+							participantDraft,
+							repository: values.repository,
+							repositories: repositories.data?.repositories,
+							participantsError: validateParticipants(values.participants),
+							repositoryError: validateRepository(values.repository),
+							onMeetingDateChange: (value) =>
+								form.setFieldValue('meetingDate', value),
+							onParticipantDraftChange: changeParticipantDraft,
+							onParticipantDraftCommit: commitParticipantDraft,
+							onParticipantRemove: (name) =>
+								form.setFieldValue(
+									'participants',
+									values.participants.filter((item) => item !== name),
+								),
+							onRepositoryChange: (value) =>
+								form.setFieldValue('repository', value),
+						}}
 						onSubmit={handleSubmit}
 					/>
 				</SectionCard>

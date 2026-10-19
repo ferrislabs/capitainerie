@@ -232,6 +232,7 @@ mod tests {
             version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            repository_hint: None,
         }
     }
 

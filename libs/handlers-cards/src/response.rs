@@ -34,6 +34,7 @@ pub struct CardResponse {
     pub created_by_subject: String,
     /// Client id of the agent that proposed the card, when one did.
     pub created_by_agent: Option<String>,
+    pub repository_hint: Option<String>,
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -79,6 +80,7 @@ impl From<Card> for CardResponse {
             created_by_run: card.created_by_run,
             created_by_subject: card.created_by.subject,
             created_by_agent: card.created_by.actor,
+            repository_hint: card.repository_hint.map(|hint| hint.to_string()),
             version: card.version,
             created_at: card.created_at,
             updated_at: card.updated_at,

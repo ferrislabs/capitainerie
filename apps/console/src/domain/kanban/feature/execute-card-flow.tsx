@@ -25,6 +25,12 @@ export function ExecuteCardFlow({ card, onClose, onStarted }: Props) {
 	const repositories = useGithubRepositories(open && !notConnected)
 	const execute = useExecuteCard()
 	const [chosen, setChosen] = useState('')
+	const hint = card?.repository_hint ?? ''
+	const hintAvailable =
+		hint !== '' &&
+		(repositories.data?.repositories.some((item) => item.full_name === hint) ??
+			false)
+	const repository = chosen !== '' ? chosen : hintAvailable ? hint : ''
 
 	function state(): RepositoriesState {
 		if (notConnected) return { kind: 'not_connected' }
@@ -45,11 +51,11 @@ export function ExecuteCardFlow({ card, onClose, onStarted }: Props) {
 	}
 
 	function submit() {
-		if (!card || !chosen) return
+		if (!card || !repository) return
 		execute.mutate(
 			{
 				path: { card_id: card.id },
-				body: { repository: chosen, expected_version: card.version },
+				body: { repository, expected_version: card.version },
 			},
 			{
 				onSuccess: (response) => {
@@ -66,7 +72,7 @@ export function ExecuteCardFlow({ card, onClose, onStarted }: Props) {
 			open={open}
 			cardTitle={card?.title ?? ''}
 			repositories={state()}
-			repository={chosen}
+			repository={repository}
 			errorMessage={execute.errorMessage}
 			isPending={execute.isPending}
 			onRepositoryChange={(fullName) => {

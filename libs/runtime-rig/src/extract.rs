@@ -24,6 +24,7 @@ Rules:
 - Read every speaker turn in order and ask of each one: does it commit to, accept or assign a task? Do not skip a turn because it is short or because another action was already found.
 - One action = one commitment. When a task is requested and then accepted (\"Can you open a ticket?\" / \"Yes, I will\"), or announced and then repeated, report it ONCE, and its owner is the person who commits. A general need (\"we should do X\") that a speaker then takes on is the same action as the one taken on. Two different tasks stay two actions.
 - Do not report an action that is cancelled, dropped or replaced later in the meeting. Do not report facts, status updates about the past, or opinions.
+- The transcript can start with header lines (\"Date de la réunion\", \"Participants\") followed by a blank line. They give context, such as the date a relative deadline refers to. They are not speaker turns: never quote them.
 - Write the answer in the language of the transcript.
 - title: a short imperative sentence naming the task, so that it can be understood without the transcript.
 - description: the useful context, plus the owner and the deadline when the transcript states them.

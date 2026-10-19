@@ -10,7 +10,7 @@ use capitainerie_core::{
 };
 use capitainerie_handlers::{AppState, Caller};
 use chrono::{Duration, Utc};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 use uuid::Uuid;
@@ -107,6 +107,7 @@ impl Fixture {
                 },
                 title: title.into(),
                 body: "Alice : je m'occupe du devis.".into(),
+                metadata: Default::default(),
             })
             .await
             .unwrap()
@@ -248,4 +249,105 @@ async fn the_active_route_does_not_shadow_a_run_id() {
     assert_eq!(response.status(), 200);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["id"], run.0.to_string());
+}
+
+impl Fixture {
+    async fn submit_over_http(&self, extra: Value) -> reqwest::Response {
+        let mut body = json!({"title": "Point hebdo", "body": "Alice : on livre vendredi."});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        reqwest::Client::new()
+            .post(format!("{}/api/v1/transcripts", self.base))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn run_over_http(&self, id: &str) -> Value {
+        reqwest::get(format!("{}/api/v1/runs/{id}", self.base))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    async fn transcripts(&self) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM transcripts WHERE organization_id = $1")
+            .bind(self.organization.id.0)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn a_transcript_with_metadata_is_accepted_and_hints_its_repository() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+
+    let response = fixture
+        .submit_over_http(json!({
+            "meeting_date": "2026-10-19",
+            "participants": [" Alice ", "Bob"],
+            "repository": "acme/web",
+        }))
+        .await;
+
+    assert_eq!(response.status(), 202);
+    let accepted: Value = response.json().await.unwrap();
+    let run = fixture
+        .run_over_http(accepted["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(run["repository_hint"], "acme/web");
+    let participants: Vec<String> =
+        sqlx::query_scalar("SELECT participants FROM transcripts WHERE id = $1")
+            .bind(Uuid::parse_str(accepted["transcript_id"].as_str().unwrap()).unwrap())
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(participants, ["Alice", "Bob"]);
+}
+
+#[tokio::test]
+async fn a_transcript_without_metadata_still_works() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+
+    let response = fixture.submit_over_http(json!({})).await;
+
+    assert_eq!(response.status(), 202);
+    let accepted: Value = response.json().await.unwrap();
+    let run = fixture
+        .run_over_http(accepted["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(run["repository_hint"], Value::Null);
+}
+
+#[tokio::test]
+async fn invalid_metadata_is_refused_with_a_422_and_stores_nothing() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    let many: Vec<String> = (0..51).map(|n| format!("P{n}")).collect();
+    let cases = [
+        json!({"participants": many}),
+        json!({"participants": ["Alice", "   "]}),
+        json!({"participants": ["x".repeat(101)]}),
+        json!({"repository": "acme"}),
+        json!({"repository": "../etc/passwd"}),
+        json!({"meeting_date": "19/10/2026"}),
+        json!({"meeting_date": "2026-13-45"}),
+    ];
+
+    for case in cases {
+        let response = fixture.submit_over_http(case.clone()).await;
+        assert_eq!(response.status(), 422, "{case}");
+    }
+
+    assert_eq!(fixture.transcripts().await, 0);
 }

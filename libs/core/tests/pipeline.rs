@@ -27,6 +27,7 @@ use capitainerie_core::{
             CardVector, Embedding, SimilarCard,
             ports::{Embedder, VectorStore},
         },
+        transcript::MeetingMetadata,
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
@@ -56,6 +57,7 @@ struct FakeRuntime {
     judged: Arc<AtomicUsize>,
     targets: Arc<std::sync::Mutex<Vec<(&'static str, ModelTarget)>>>,
     echo_model: bool,
+    prompts: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl FakeRuntime {
@@ -97,8 +99,9 @@ impl AgentRuntime for FakeRuntime {
     async fn extract(
         &self,
         target: &ModelTarget,
-        _transcript: &str,
+        transcript: &str,
     ) -> Result<Extraction, CoreError> {
+        self.prompts.lock().unwrap().push(transcript.to_owned());
         self.extractions.fetch_add(1, Ordering::SeqCst);
         self.targets
             .lock()
@@ -374,6 +377,14 @@ async fn submit(
     usecase: &CapitainerieUseCase,
     organization_id: OrganizationId,
 ) -> capitainerie_core::SubmittedTranscript {
+    submit_with(usecase, organization_id, MeetingMetadata::default()).await
+}
+
+async fn submit_with(
+    usecase: &CapitainerieUseCase,
+    organization_id: OrganizationId,
+    metadata: MeetingMetadata,
+) -> capitainerie_core::SubmittedTranscript {
     usecase
         .submit_transcript_delegated(
             SubmitTranscript {
@@ -385,6 +396,7 @@ async fn submit(
                 },
                 title: "Rétro".into(),
                 body: BODY.into(),
+                metadata,
             },
             AgentDelegation {
                 exchanger: &FakeExchanger,
@@ -527,6 +539,35 @@ async fn an_abandoned_run_resumes_after_its_last_finished_step() {
 }
 
 #[tokio::test]
+async fn the_extractor_gets_a_header_only_when_the_meeting_has_metadata() {
+    let Some((_pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let metadata = MeetingMetadata::new(
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 19),
+        Some(vec!["Claire".into(), "Malik".into()]),
+        Some("acme/web".into()),
+    )
+    .unwrap();
+    let with = submit_with(&usecase, organization_id, metadata).await;
+    let without = submit(&usecase, organization_id).await;
+    let runtime = FakeRuntime::default();
+    let vectors = FakeVectors::knowing(CardId::new(), 0.5);
+    let pipeline = pipeline_for(&usecase, &runtime, &vectors);
+
+    pipeline.execute(with.run_id, None).await.unwrap();
+    pipeline.execute(without.run_id, None).await.unwrap();
+
+    let prompts = runtime.prompts.lock().unwrap();
+    assert_eq!(
+        prompts[0],
+        format!("Date de la réunion : 2026-10-19\nParticipants : Claire, Malik\n\n{BODY}")
+    );
+    assert!(!prompts[0].contains("acme/web"));
+    assert_eq!(prompts[1], BODY);
+}
+
+#[tokio::test]
 async fn without_a_delegation_the_run_fails_and_says_why() {
     let Some((pool, usecase, organization_id)) = setup().await else {
         return;
@@ -541,6 +582,7 @@ async fn without_a_delegation_the_run_fails_and_says_why() {
             },
             title: "Rétro".into(),
             body: BODY.into(),
+            metadata: Default::default(),
         })
         .await
         .unwrap();

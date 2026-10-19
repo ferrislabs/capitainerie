@@ -61,6 +61,7 @@ pub struct Run {
 pub struct RunOverview {
     pub run: Run,
     pub title: Option<String>,
+    pub repository_hint: Option<RepositoryRef>,
 }
 
 impl Run {

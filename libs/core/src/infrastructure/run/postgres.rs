@@ -95,7 +95,8 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
+                   t.repository AS repository_hint
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
@@ -135,7 +136,8 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
+                   t.repository AS repository_hint
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
@@ -161,7 +163,8 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
+                   t.repository AS repository_hint
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
@@ -189,7 +192,8 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
+                   t.repository AS repository_hint
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
@@ -214,7 +218,8 @@ impl RunRepository for PgRunRepository<'_> {
             RunOverviewRow,
             r#"
             SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,
-                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title
+                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
+                   t.repository AS repository_hint
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id

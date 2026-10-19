@@ -116,6 +116,7 @@ where
             version: 1,
             created_at: now,
             updated_at: now,
+            repository_hint: None,
         };
 
         self.cards.insert(&card).await?;
@@ -363,6 +364,7 @@ mod tests {
                 submitted_by: "user-1".into(),
                 title: TranscriptTitle::try_from("Point".to_string()).unwrap(),
                 body: TranscriptBody::try_from(BODY.to_string()).unwrap(),
+                metadata: Default::default(),
                 created_at: Utc::now(),
             };
             Box::pin(async move { Ok(Some(transcript)) })
@@ -386,6 +388,7 @@ mod tests {
             version: 3,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            repository_hint: None,
         }
     }
 

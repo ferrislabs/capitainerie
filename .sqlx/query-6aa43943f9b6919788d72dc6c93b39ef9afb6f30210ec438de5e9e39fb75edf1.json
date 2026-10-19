@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, organization_id, title, description, \"column\",\n                   provenance_transcript_id, provenance_start, provenance_end, provenance_quote,\n                   created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at\n            FROM cards\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "query": "\n            SELECT c.id, c.organization_id, c.title, c.description, c.\"column\",\n                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,\n                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,\n                   t.repository AS repository_hint\n            FROM cards c\n            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id\n            WHERE c.organization_id = $1 AND c.id = $2\n            FOR UPDATE OF c\n            ",
   "describe": {
     "columns": [
       {
@@ -77,6 +77,11 @@
         "ordinal": 14,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "repository_hint",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -100,8 +105,9 @@
       true,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "cf7c04572edfca447ee2531997d295b91772aca7d6947c78b3a19351630fee47"
+  "hash": "6aa43943f9b6919788d72dc6c93b39ef9afb6f30210ec438de5e9e39fb75edf1"
 }

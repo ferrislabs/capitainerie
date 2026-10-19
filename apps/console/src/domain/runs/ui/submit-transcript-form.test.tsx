@@ -12,7 +12,28 @@ function setup(overrides: Partial<Parameters<typeof SubmitTranscriptForm>[0]>) {
 		isPending: false,
 		onTitleChange: vi.fn(),
 		onBodyChange: vi.fn(),
-		onFileSelected: vi.fn(),
+		dropzone: {
+			isDragging: false,
+			dropHandlers: {
+				onDragEnter: vi.fn(),
+				onDragOver: vi.fn(),
+				onDragLeave: vi.fn(),
+				onDrop: vi.fn(),
+			},
+			onFileSelected: vi.fn(),
+			onRemove: vi.fn(),
+		},
+		details: {
+			meetingDate: '',
+			participants: [],
+			participantDraft: '',
+			repository: '',
+			onMeetingDateChange: vi.fn(),
+			onParticipantDraftChange: vi.fn(),
+			onParticipantDraftCommit: vi.fn(),
+			onParticipantRemove: vi.fn(),
+			onRepositoryChange: vi.fn(),
+		},
 		onSubmit: vi.fn(),
 		...overrides,
 	}
@@ -41,8 +62,8 @@ describe('SubmitTranscriptForm', () => {
 		expect(props.onSubmit).toHaveBeenCalledOnce()
 
 		const file = new File(['hello'], 'a.txt', { type: 'text/plain' })
-		await user.upload(screen.getByLabelText(/Importer un fichier/), file)
-		expect(props.onFileSelected).toHaveBeenCalledWith(file)
+		await user.upload(screen.getByLabelText(/Glissez un fichier ici/), file)
+		expect(props.dropzone.onFileSelected).toHaveBeenCalledWith(file)
 	})
 
 	it('disables the form while pending', () => {

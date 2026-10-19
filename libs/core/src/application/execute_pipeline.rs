@@ -987,6 +987,7 @@ mod tests {
             version: 1,
             created_at: now,
             updated_at: now,
+            repository_hint: None,
         }
     }
 

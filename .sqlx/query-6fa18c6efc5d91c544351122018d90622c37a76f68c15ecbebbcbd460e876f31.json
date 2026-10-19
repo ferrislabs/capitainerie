@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            WHERE r.organization_id = $1 AND r.status IN ('queued', 'running')\n            ORDER BY r.created_at, r.id\n            LIMIT $2\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   t.repository AS repository_hint\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            WHERE r.organization_id = $1 AND r.card_id = $2\n            ORDER BY r.created_at DESC, r.id DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -82,12 +82,17 @@
         "ordinal": 15,
         "name": "title",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "repository_hint",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -106,8 +111,9 @@
       true,
       true,
       true,
-      null
+      null,
+      true
     ]
   },
-  "hash": "77dfadf75aee515c95d8be66a0f0f8b09bf28602b7d71455964707f8b3642bd3"
+  "hash": "6fa18c6efc5d91c544351122018d90622c37a76f68c15ecbebbcbd460e876f31"
 }
