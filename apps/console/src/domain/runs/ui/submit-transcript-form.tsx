@@ -1,10 +1,20 @@
-import { FileUp } from 'lucide-react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ComponentProps, FormEvent } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
+import { MeetingDetails } from '#/domain/runs/ui/meeting-details'
+import { TranscriptDropzone } from '#/domain/runs/ui/transcript-dropzone'
+
+export type DropzoneProps = Omit<
+	ComponentProps<typeof TranscriptDropzone>,
+	'disabled'
+>
+export type DetailsProps = Omit<
+	ComponentProps<typeof MeetingDetails>,
+	'disabled'
+>
 
 interface Props {
 	title: string
@@ -18,7 +28,8 @@ interface Props {
 	isPending: boolean
 	onTitleChange: (value: string) => void
 	onBodyChange: (value: string) => void
-	onFileSelected: (file: File) => void
+	dropzone: DropzoneProps
+	details: DetailsProps
 	onSubmit: () => void
 }
 
@@ -34,18 +45,13 @@ export function SubmitTranscriptForm({
 	isPending,
 	onTitleChange,
 	onBodyChange,
-	onFileSelected,
+	dropzone,
+	details,
 	onSubmit,
 }: Props) {
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
 		onSubmit()
-	}
-
-	function handleFile(event: ChangeEvent<HTMLInputElement>) {
-		const file = event.target.files?.[0]
-		if (file) onFileSelected(file)
-		event.target.value = ''
 	}
 
 	return (
@@ -71,6 +77,7 @@ export function SubmitTranscriptForm({
 					</span>
 				</div>
 			</div>
+			<TranscriptDropzone {...dropzone} disabled={isPending} />
 			<div className="flex flex-col gap-1.5">
 				<Label htmlFor="transcript-body">Transcript</Label>
 				<Textarea
@@ -93,32 +100,7 @@ export function SubmitTranscriptForm({
 					</span>
 				</div>
 			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="transcript-file">
-					Importer un fichier .txt{' '}
-					<span className="font-normal text-muted-foreground">(optionnel)</span>
-				</Label>
-				<div className="flex items-center gap-3">
-					<input
-						id="transcript-file"
-						type="file"
-						className="peer sr-only"
-						accept=".txt,text/plain"
-						onChange={handleFile}
-						disabled={isPending}
-					/>
-					<label
-						htmlFor="transcript-file"
-						className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input/70 bg-card px-3 text-[13px] font-medium transition-colors duration-150 hover:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:pointer-events-none peer-disabled:opacity-50"
-					>
-						<FileUp aria-hidden="true" className="size-4" />
-						Choisir un fichier
-					</label>
-					<span className="text-xs text-muted-foreground">
-						Son contenu remplace le transcript.
-					</span>
-				</div>
-			</div>
+			<MeetingDetails {...details} disabled={isPending} />
 			{serverError ? (
 				<InlineAlert tone="danger">{serverError}</InlineAlert>
 			) : null}
