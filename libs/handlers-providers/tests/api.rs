@@ -33,6 +33,7 @@ impl ModelCatalog for FakeCatalog {
                 display_name: "Claude Haiku 5.5".into(),
                 chat: true,
                 embeddings: false,
+                transcription: false,
                 context_window: Some(200_000),
                 input_price_per_mtok_micros: Some(1_000_000),
                 output_price_per_mtok_micros: Some(5_000_000),
@@ -275,4 +276,48 @@ async fn models_assignments_and_test_follow_the_providers() {
     assert_eq!(invalid.status(), 422);
     assert_eq!(foreign_executor.status(), 422);
     assert_eq!(member_put.status(), 403);
+}
+
+#[tokio::test]
+async fn an_anthropic_transcriber_is_a_422() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let admin = serve(&pool, caller(&organization, &["capitainerie-admin"])).await;
+    let client = reqwest::Client::new();
+    client
+        .put(format!("{admin}/api/v1/providers/anthropic"))
+        .json(&json!({ "api_key": SECRET }))
+        .send()
+        .await
+        .unwrap();
+    let chat = json!({ "provider": "anthropic", "model": "claude-haiku-5-5" });
+
+    let response = client
+        .put(format!("{admin}/api/v1/model-assignments"))
+        .json(&json!({
+            "extractor": chat, "judge": chat, "writer": chat,
+            "embeddings": { "provider": "openai_compatible", "model": "bge-m3" },
+            "transcriber": chat,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 422);
+    let body: Value = response.json().await.unwrap();
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("no transcription model")
+    );
+    let stored: Value = client
+        .get(format!("{admin}/api/v1/model-assignments"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(stored["assignments"], Value::Null);
 }

@@ -23,6 +23,18 @@ pub enum ApiError {
     #[error("conflict: {0}")]
     Conflict(String),
 
+    #[error("conflict: {message}")]
+    ConflictCode { code: &'static str, message: String },
+
+    #[error("payload too large: {0}")]
+    PayloadTooLarge(String),
+
+    #[error("unsupported media type: {0}")]
+    UnsupportedMediaType(String),
+
+    #[error("bad gateway: {0}")]
+    BadGateway(String),
+
     #[error("forbidden")]
     Forbidden(Option<String>),
 
@@ -46,7 +58,10 @@ impl ApiError {
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Conflict(_) | Self::ConflictCode { .. } => StatusCode::CONFLICT,
+            Self::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
+            Self::UnsupportedMediaType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -59,6 +74,10 @@ impl ApiError {
             Self::BadRequest(_) => "invalid",
             Self::NotFound => "not_found",
             Self::Conflict(_) => "conflict",
+            Self::ConflictCode { code, .. } => code,
+            Self::PayloadTooLarge(_) => "payload_too_large",
+            Self::UnsupportedMediaType(_) => "unsupported_media_type",
+            Self::BadGateway(_) => "bad_gateway",
             Self::Forbidden(_) => "forbidden",
             Self::Unavailable(_) => "unavailable",
             Self::Internal(_) => "internal",
@@ -68,7 +87,12 @@ impl ApiError {
     fn public_message(&self) -> String {
         match self {
             Self::Unauthorized(_) => "unauthorized".to_owned(),
-            Self::BadRequest(message) | Self::Conflict(message) => message.clone(),
+            Self::BadRequest(message)
+            | Self::Conflict(message)
+            | Self::PayloadTooLarge(message)
+            | Self::UnsupportedMediaType(message)
+            | Self::BadGateway(message)
+            | Self::ConflictCode { message, .. } => message.clone(),
             Self::Forbidden(Some(reason)) => reason.clone(),
             Self::Unavailable(_) => "unavailable".to_owned(),
             other => other.to_string(),
@@ -148,6 +172,39 @@ mod tests {
         ];
         for (core, status) in cases {
             assert_eq!(ApiError::from(core).into_response().status(), status);
+        }
+    }
+
+    #[test]
+    fn upload_and_gateway_errors_have_their_own_status_and_code() {
+        let cases = [
+            (
+                ApiError::PayloadTooLarge("big".into()),
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload_too_large",
+            ),
+            (
+                ApiError::UnsupportedMediaType("pdf".into()),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_media_type",
+            ),
+            (
+                ApiError::BadGateway("down".into()),
+                StatusCode::BAD_GATEWAY,
+                "bad_gateway",
+            ),
+            (
+                ApiError::ConflictCode {
+                    code: "transcriber_not_configured",
+                    message: "none".into(),
+                },
+                StatusCode::CONFLICT,
+                "transcriber_not_configured",
+            ),
+        ];
+        for (error, status, code) in cases {
+            assert_eq!(error.code(), code);
+            assert_eq!(error.into_response().status(), status);
         }
     }
 

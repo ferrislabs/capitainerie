@@ -1,0 +1,26 @@
+[package]
+name = "capitainerie-handlers-transcriptions"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+axum-extra.workspace = true
+capitainerie-core.workspace = true
+capitainerie-handlers.workspace = true
+serde.workspace = true
+utoipa.workspace = true
+
+[dev-dependencies]
+capitainerie-auth.workspace = true
+capitainerie-common.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

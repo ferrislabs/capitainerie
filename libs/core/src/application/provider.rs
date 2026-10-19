@@ -6,7 +6,7 @@ use crate::{
     domain::{
         authorization::{Action, Subject},
         provider::{
-            ModelAssignments, ProviderAccess, ProviderKind, ProviderSummary,
+            AgentRole, ModelAssignments, ProviderAccess, ProviderKind, ProviderSummary,
             ports::{CatalogModel, ModelAssignmentRepository, ModelCatalog, ProviderRepository},
             service::{ProviderService, PutProvider, validate_assignments},
         },
@@ -108,17 +108,14 @@ impl CapitainerieUseCase {
         assignments: ModelAssignments,
         catalog: &C,
     ) -> Result<ModelAssignments, CoreError> {
+        assignments.check_transcriber()?;
         let accesses = self.accesses(subject.clone(), Action::ModelsAssign).await?;
         let mut announced = Vec::new();
         for access in &accesses {
-            let chosen = [
-                &assignments.extractor,
-                &assignments.judge,
-                &assignments.writer,
-                &assignments.embeddings,
-            ]
-            .iter()
-            .any(|model| model.provider == access.kind);
+            let chosen = AgentRole::ALL
+                .iter()
+                .filter_map(|role| assignments.for_role(*role))
+                .any(|model| model.provider == access.kind);
             if !chosen {
                 continue;
             }

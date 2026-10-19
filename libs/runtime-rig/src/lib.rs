@@ -10,6 +10,7 @@ mod mcp;
 mod post;
 mod prices;
 mod runtime;
+mod transcribe;
 mod usage;
 mod write;
 
@@ -19,3 +20,4 @@ pub use embeddings::RigEmbedder;
 pub use error::RuntimeError;
 pub use prices::claude_prices;
 pub use runtime::RigAgentRuntime;
+pub use transcribe::{RigTranscriber, RigTranscribers};

@@ -220,8 +220,11 @@ impl CapitainerieUseCase {
     ) -> Result<ModelTarget, CoreError> {
         let chosen = self.model_assignments_for(organization_id).await?;
         let assignments = chosen.as_ref().unwrap_or(defaults);
-        self.target_for(organization_id, assignments.for_role(AgentRole::Embeddings))
-            .await
+        self.target_for(
+            organization_id,
+            assignments.require_role(AgentRole::Embeddings)?,
+        )
+        .await
     }
 
     pub async fn ensure_indexed<E: Embedder, V: VectorStore>(
@@ -509,7 +512,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
             .as_ref()
             .unwrap_or(&self.config.default_models);
         self.usecase
-            .target_for(context.run.organization_id, assignments.for_role(role))
+            .target_for(context.run.organization_id, assignments.require_role(role)?)
             .await
     }
 

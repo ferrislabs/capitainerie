@@ -85,6 +85,7 @@ impl ModelCatalog for FakeCatalog {
             display_name: id.into(),
             chat,
             embeddings,
+            transcription: id.contains("whisper"),
             context_window: Some(200_000),
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
@@ -95,6 +96,7 @@ impl ModelCatalog for FakeCatalog {
             ProviderKind::OpenAiCompatible => Ok(vec![
                 model("qwen2.5:7b-instruct", true, false),
                 model("bge-m3", false, true),
+                model("whisper-large-v3", false, false),
             ]),
         }
     }
@@ -113,6 +115,7 @@ fn assignments(chat: ModelRef) -> ModelAssignments {
         judge: chat.clone(),
         writer: chat,
         embeddings: model_ref(ProviderKind::OpenAiCompatible, "bge-m3"),
+        transcriber: None,
         executor: Default::default(),
     }
 }
@@ -384,6 +387,102 @@ async fn assignments_are_validated_against_providers_and_the_catalog() {
             .unwrap(),
         Some(haiku)
     );
+}
+
+#[tokio::test]
+async fn the_transcriber_is_optional_never_anthropic_and_needs_a_transcription_model() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let admin = subject(organization_id, true);
+    usecase
+        .put_provider(anthropic(admin.clone()))
+        .await
+        .unwrap();
+    configure_local_endpoint(&usecase, organization_id).await;
+    let haiku = assignments(model_ref(ProviderKind::Anthropic, "claude-haiku-5-5"));
+    let with = |transcriber: ModelRef| ModelAssignments {
+        transcriber: Some(transcriber),
+        ..haiku.clone()
+    };
+
+    let on_anthropic = usecase
+        .put_model_assignments(
+            admin.clone(),
+            with(model_ref(ProviderKind::Anthropic, "claude-haiku-5-5")),
+            &FakeCatalog,
+        )
+        .await;
+    let not_a_transcriber = usecase
+        .put_model_assignments(
+            admin.clone(),
+            with(model_ref(
+                ProviderKind::OpenAiCompatible,
+                "qwen2.5:7b-instruct",
+            )),
+            &FakeCatalog,
+        )
+        .await;
+    let stored = usecase
+        .put_model_assignments(
+            admin.clone(),
+            with(model_ref(
+                ProviderKind::OpenAiCompatible,
+                "whisper-large-v3",
+            )),
+            &FakeCatalog,
+        )
+        .await
+        .unwrap();
+    let cleared = usecase
+        .put_model_assignments(admin.clone(), haiku.clone(), &FakeCatalog)
+        .await
+        .unwrap();
+
+    assert!(matches!(on_anthropic, Err(CoreError::Invalid(_))));
+    assert!(matches!(not_a_transcriber, Err(CoreError::Invalid(_))));
+    assert_eq!(
+        stored.transcriber,
+        Some(model_ref(
+            ProviderKind::OpenAiCompatible,
+            "whisper-large-v3"
+        ))
+    );
+    assert_eq!(cleared.transcriber, None);
+    assert_eq!(
+        usecase
+            .model_assignments_for(organization_id)
+            .await
+            .unwrap()
+            .and_then(|stored| stored.transcriber),
+        None
+    );
+}
+
+#[tokio::test]
+async fn assignments_stored_before_the_transcriber_existed_still_load() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let haiku = assignments(model_ref(ProviderKind::Anthropic, "claude-haiku-5-5"));
+    let mut old = serde_json::to_value(&haiku).unwrap();
+    old.as_object_mut().unwrap().remove("transcriber");
+    sqlx::query(
+        "INSERT INTO model_assignments (organization_id, assignments, updated_by) VALUES ($1, $2, 'old')",
+    )
+    .bind(organization_id.0)
+    .bind(old)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let loaded = usecase
+        .model_assignments_for(organization_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(loaded, haiku);
 }
 
 #[tokio::test]

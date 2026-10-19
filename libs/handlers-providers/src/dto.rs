@@ -91,6 +91,7 @@ pub struct ProviderListResponse {
 pub struct CapabilitiesResponse {
     pub chat: bool,
     pub embeddings: bool,
+    pub transcription: bool,
 }
 
 /// Per million tokens, in millionths of the provider's currency unit.
@@ -121,6 +122,7 @@ impl From<CatalogModel> for ModelResponse {
             capabilities: CapabilitiesResponse {
                 chat: model.chat,
                 embeddings: model.embeddings,
+                transcription: model.transcription,
             },
             context_window: model.context_window,
             price: priced.then_some(PriceResponse {
@@ -194,6 +196,8 @@ pub struct ModelAssignmentsDto {
     pub judge: ModelRefDto,
     pub writer: ModelRefDto,
     pub embeddings: ModelRefDto,
+    #[serde(default)]
+    pub transcriber: Option<ModelRefDto>,
     /// The Anthropic model Claude Code runs on. When absent on a PUT, the
     /// current value (or the default) is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -207,6 +211,7 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             judge: assignments.judge.into(),
             writer: assignments.writer.into(),
             embeddings: assignments.embeddings.into(),
+            transcriber: assignments.transcriber.map(Into::into),
             executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
@@ -226,6 +231,7 @@ impl ModelAssignmentsDto {
             judge: self.judge.into(),
             writer: self.writer.into(),
             embeddings: self.embeddings.into(),
+            transcriber: self.transcriber.map(Into::into),
             executor,
         })
     }
@@ -280,6 +286,34 @@ mod tests {
     }
 
     #[test]
+    fn the_transcriber_is_optional_on_the_wire_and_survives_the_conversion() {
+        let without: ModelAssignmentsDto = serde_json::from_value(serde_json::json!({
+            "extractor": {"provider": "mistral", "model": "m"},
+            "judge": {"provider": "mistral", "model": "m"},
+            "writer": {"provider": "mistral", "model": "m"},
+            "embeddings": {"provider": "mistral", "model": "e"},
+        }))
+        .unwrap();
+        assert_eq!(without.transcriber, None);
+        assert_eq!(without.into_assignments(None).unwrap().transcriber, None);
+
+        let mut with = dto(None);
+        with.transcriber = Some(ModelRefDto {
+            provider: ProviderKindDto::Mistral,
+            model: "voxtral-mini-latest".into(),
+        });
+        let assignments = with.clone().into_assignments(None).unwrap();
+        assert_eq!(
+            assignments.transcriber.as_ref().map(|m| m.model.as_str()),
+            Some("voxtral-mini-latest")
+        );
+        assert_eq!(
+            ModelAssignmentsDto::from(assignments).transcriber,
+            with.transcriber
+        );
+    }
+
+    #[test]
     fn a_model_without_any_price_has_none() {
         let model = CatalogModel {
             provider: ProviderKind::Mistral,
@@ -287,6 +321,7 @@ mod tests {
             display_name: "M".into(),
             chat: true,
             embeddings: false,
+            transcription: false,
             context_window: None,
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,

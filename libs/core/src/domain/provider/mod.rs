@@ -23,6 +23,7 @@ pub enum AgentRole {
     Judge,
     Writer,
     Embeddings,
+    Transcriber,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -39,6 +40,8 @@ pub struct ModelAssignments {
     pub judge: ModelRef,
     pub writer: ModelRef,
     pub embeddings: ModelRef,
+    #[serde(default)]
+    pub transcriber: Option<ModelRef>,
     /// Always an Anthropic model; runs queued before it existed take the default.
     #[serde(default)]
     pub executor: ExecutorModel,
@@ -130,7 +133,13 @@ impl TryFrom<&str> for ProviderKind {
 }
 
 impl AgentRole {
-    pub const ALL: [AgentRole; 4] = [Self::Extractor, Self::Judge, Self::Writer, Self::Embeddings];
+    pub const ALL: [AgentRole; 5] = [
+        Self::Extractor,
+        Self::Judge,
+        Self::Writer,
+        Self::Embeddings,
+        Self::Transcriber,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -138,17 +147,33 @@ impl AgentRole {
             Self::Judge => "judge",
             Self::Writer => "writer",
             Self::Embeddings => "embeddings",
+            Self::Transcriber => "transcriber",
         }
     }
 }
 
 impl ModelAssignments {
-    pub fn for_role(&self, role: AgentRole) -> &ModelRef {
+    pub fn for_role(&self, role: AgentRole) -> Option<&ModelRef> {
         match role {
-            AgentRole::Extractor => &self.extractor,
-            AgentRole::Judge => &self.judge,
-            AgentRole::Writer => &self.writer,
-            AgentRole::Embeddings => &self.embeddings,
+            AgentRole::Extractor => Some(&self.extractor),
+            AgentRole::Judge => Some(&self.judge),
+            AgentRole::Writer => Some(&self.writer),
+            AgentRole::Embeddings => Some(&self.embeddings),
+            AgentRole::Transcriber => self.transcriber.as_ref(),
+        }
+    }
+
+    pub fn require_role(&self, role: AgentRole) -> Result<&ModelRef, CoreError> {
+        self.for_role(role)
+            .ok_or_else(|| CoreError::Invalid(format!("no model is assigned to {}", role.as_str())))
+    }
+
+    pub fn check_transcriber(&self) -> Result<(), CoreError> {
+        match &self.transcriber {
+            Some(chosen) if chosen.provider == ProviderKind::Anthropic => Err(CoreError::Invalid(
+                "anthropic offers no transcription model".into(),
+            )),
+            _ => Ok(()),
         }
     }
 
@@ -166,6 +191,7 @@ impl ModelAssignments {
                 provider: ProviderKind::OpenAiCompatible,
                 model: embedding_model.to_owned(),
             },
+            transcriber: None,
             executor: ExecutorModel::default(),
         }
     }
@@ -218,6 +244,32 @@ mod tests {
     }
 
     #[test]
+    fn assignments_stored_before_the_transcriber_existed_still_load() {
+        let mut stored = serde_json::to_value(ModelAssignments::defaults("chat", "embed")).unwrap();
+        stored.as_object_mut().unwrap().remove("transcriber");
+        let assignments: ModelAssignments = serde_json::from_value(stored).unwrap();
+        assert_eq!(assignments.transcriber, None);
+        assert_eq!(assignments.for_role(AgentRole::Transcriber), None);
+        assert!(assignments.require_role(AgentRole::Transcriber).is_err());
+        assert!(assignments.require_role(AgentRole::Judge).is_ok());
+    }
+
+    #[test]
+    fn a_stored_transcriber_round_trips() {
+        let mut assignments = ModelAssignments::defaults("chat", "embed");
+        assignments.transcriber = Some(ModelRef {
+            provider: ProviderKind::Mistral,
+            model: "voxtral-mini-latest".into(),
+        });
+        let stored = serde_json::to_value(&assignments).unwrap();
+        assert_eq!(stored["transcriber"]["model"], "voxtral-mini-latest");
+        assert_eq!(
+            serde_json::from_value::<ModelAssignments>(stored).unwrap(),
+            assignments
+        );
+    }
+
+    #[test]
     fn a_preview_shows_only_the_last_four_characters() {
         assert_eq!(preview("sk-ant-api03-abcdefghij1234"), "…1234");
         assert_eq!(preview("short"), "…");
@@ -227,14 +279,22 @@ mod tests {
     fn defaults_put_every_role_on_the_local_endpoint() {
         let defaults = ModelAssignments::defaults("qwen2.5:7b-instruct", "bge-m3");
         assert_eq!(
-            defaults.for_role(AgentRole::Writer).model,
+            defaults.require_role(AgentRole::Writer).unwrap().model,
             "qwen2.5:7b-instruct"
         );
-        assert_eq!(defaults.for_role(AgentRole::Embeddings).model, "bge-m3");
+        assert_eq!(
+            defaults.require_role(AgentRole::Embeddings).unwrap().model,
+            "bge-m3"
+        );
         assert!(
             AgentRole::ALL
                 .iter()
-                .all(|role| defaults.for_role(*role).provider == ProviderKind::OpenAiCompatible)
+                .filter(|role| **role != AgentRole::Transcriber)
+                .all(|role| matches!(
+                    defaults.for_role(*role),
+                    Some(model) if model.provider == ProviderKind::OpenAiCompatible
+                ))
         );
+        assert_eq!(defaults.for_role(AgentRole::Transcriber), None);
     }
 }

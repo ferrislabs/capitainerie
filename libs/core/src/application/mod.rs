@@ -6,6 +6,7 @@ mod organization;
 mod pipeline;
 mod provider;
 mod run;
+mod transcription;
 
 use std::sync::Arc;
 

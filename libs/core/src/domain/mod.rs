@@ -9,3 +9,4 @@ pub mod provider;
 pub mod run;
 pub mod similarity;
 pub mod transcript;
+pub mod transcription;

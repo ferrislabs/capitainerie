@@ -808,3 +808,56 @@ async fn an_unreachable_provider_is_reported_not_panicked() {
 
     assert!(matches!(error, CoreError::Internal(m) if m.contains("unreachable")));
 }
+
+#[tokio::test]
+async fn voxtral_and_whisper_models_are_transcription_capable_and_nothing_else_is() {
+    let mistral = FakeProvider::with(vec![json!({
+        "data": [
+            {"id": "voxtral-mini-latest", "capabilities": {"completion_chat": true}},
+            {"id": "mistral-large-latest", "capabilities": {"completion_chat": true}},
+        ],
+    })]);
+    let mistral_base = mistral.serve().await;
+    let local = FakeProvider::with(vec![json!({
+        "data": [{"id": "Systran/faster-whisper-large-v3"}, {"id": "qwen2.5:7b-instruct"}],
+    })]);
+    let local_base = local.serve().await;
+    let anthropic = FakeProvider::with(vec![json!({
+        "data": [{"type": "model", "id": "claude-whisper-5"}],
+        "has_more": false,
+    })]);
+    let anthropic_base = anthropic.serve().await;
+    let catalog = RigModelCatalog::new().unwrap();
+
+    let mistral_models = catalog
+        .list_models(&catalog_access(ProviderKind::Mistral, "k", &mistral_base))
+        .await
+        .unwrap();
+    let local_models = catalog
+        .list_models(&catalog_access(
+            ProviderKind::OpenAiCompatible,
+            "",
+            &format!("{local_base}/v1"),
+        ))
+        .await
+        .unwrap();
+    let anthropic_models = catalog
+        .list_models(&catalog_access(
+            ProviderKind::Anthropic,
+            KEY,
+            &anthropic_base,
+        ))
+        .await
+        .unwrap();
+
+    let capable = |models: &[capitainerie_core::domain::provider::ports::CatalogModel]| {
+        models
+            .iter()
+            .filter(|model| model.transcription)
+            .map(|model| model.id.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(capable(&mistral_models), ["voxtral-mini-latest"]);
+    assert_eq!(capable(&local_models), ["Systran/faster-whisper-large-v3"]);
+    assert!(capable(&anthropic_models).is_empty());
+}
