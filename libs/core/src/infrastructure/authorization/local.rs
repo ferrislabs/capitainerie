@@ -66,7 +66,9 @@ fn decide_for_agent(actor: &str, action: Action) -> Decision {
 /// never edits, moves, validates or executes anything, whatever the user may do.
 fn decide_for_captain(action: Action) -> Decision {
     match action {
-        Action::CardCreate | Action::CardRead | Action::CardComment => Decision::Allow,
+        Action::CardCreate | Action::CardRead | Action::CardComment | Action::GithubRead => {
+            Decision::Allow
+        }
         other => deny(&format!("agent {CAPTAIN_AGENT} may not {}", other.as_str())),
     }
 }
@@ -350,6 +352,14 @@ mod tests {
     }
 
     #[test]
+    fn members_read_the_github_installation_and_only_the_captain_among_agents() {
+        assert!(allowed(Action::GithubRead, None));
+        assert!(allowed(Action::GithubRead, CAPTAIN));
+        assert!(!allowed(Action::GithubRead, AGENT));
+        assert!(!allowed(Action::GithubManage, CAPTAIN));
+    }
+
+    #[test]
     fn no_agent_touches_conversations() {
         for actor in [AGENT, CAPTAIN] {
             for action in [Action::ConversationRead, Action::ConversationWrite] {
@@ -360,7 +370,12 @@ mod tests {
 
     #[test]
     fn the_captain_reads_proposes_and_comments() {
-        for action in [Action::CardRead, Action::CardCreate, Action::CardComment] {
+        for action in [
+            Action::CardRead,
+            Action::CardCreate,
+            Action::CardComment,
+            Action::GithubRead,
+        ] {
             assert!(allowed(action, CAPTAIN));
             assert!(matches!(
                 decide(&request(action, CAPTAIN, false)),

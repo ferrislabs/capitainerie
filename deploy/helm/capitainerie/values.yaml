@@ -99,6 +99,7 @@ api:
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS
+    - LLM_API_KEY
     - IGGY_USERNAME
     - IGGY_PASSWORD
   # -- Extra environment variables (list of EnvVar).

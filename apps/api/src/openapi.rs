@@ -28,6 +28,15 @@ use capitainerie_handlers_clients::{
     update_client::UpdateClientRequest,
     update_project::UpdateProjectRequest,
 };
+use capitainerie_handlers_conversations::{
+    self as conversations,
+    dto::{
+        ChatToolCallResponse, ConversationListResponse, ConversationResponse,
+        ConversationSummaryResponse, CreateConversationRequest, CreatedConversationResponse,
+        MessageResponse, MessageRoleDto, MessageStatusDto, ProposedCardResponse,
+        SendMessageRequest, UpdateConversationRequest,
+    },
+};
 use capitainerie_handlers_identity::{
     self as identity,
     list_members::{MemberListResponse, MemberResponse},
@@ -115,6 +124,11 @@ use utoipa::{
         integrations::create_app::handler,
         integrations::delete_app::handler,
         integrations::list_repositories::handler,
+        conversations::create_conversation::handler,
+        conversations::list_conversations::handler,
+        conversations::get_conversation::handler,
+        conversations::update_conversation::handler,
+        conversations::send_message::handler,
     ),
     components(schemas(
         ApiErrorResponse,
@@ -198,6 +212,18 @@ use utoipa::{
         ConnectGithubRequest,
         RepositoryListResponse,
         RepositoryResponse,
+        CreateConversationRequest,
+        CreatedConversationResponse,
+        UpdateConversationRequest,
+        SendMessageRequest,
+        ConversationListResponse,
+        ConversationResponse,
+        ConversationSummaryResponse,
+        MessageResponse,
+        MessageRoleDto,
+        MessageStatusDto,
+        ProposedCardResponse,
+        ChatToolCallResponse,
     )),
     modifiers(&BearerAuth),
     tags(
@@ -209,6 +235,7 @@ use utoipa::{
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
         (name = transcriptions::TAG, description = "Audio and PDF files turned into text for the transcript form; the file is never kept"),
+        (name = conversations::TAG, description = "The chat with the Captain: conversations, their messages and the streamed turns"),
         (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository"),
     )
 )]
@@ -418,5 +445,34 @@ mod tests {
         for secret in ["client_secret", "pem", "private_key", "webhook_secret"] {
             assert!(app.get(secret).is_none(), "{secret}");
         }
+    }
+
+    #[test]
+    fn the_chat_endpoints_are_documented_with_their_stream() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert_eq!(
+            paths["/api/v1/conversations"]["post"]["operationId"],
+            "createConversation"
+        );
+        assert!(paths["/api/v1/conversations"]["get"].is_object());
+        assert!(paths["/api/v1/conversations/{id}"]["get"].is_object());
+        assert!(paths["/api/v1/conversations/{id}"]["patch"].is_object());
+        let turn = &paths["/api/v1/conversations/{id}/messages"]["post"];
+        assert_eq!(turn["operationId"], "sendConversationMessage");
+        assert!(turn["responses"]["200"]["content"]["text/event-stream"].is_object());
+        for status in ["403", "404", "409"] {
+            assert!(turn["responses"][status].is_object(), "{status}");
+        }
+        let schemas = &spec["components"]["schemas"];
+        for field in ["conversation", "messages"] {
+            assert!(
+                schemas["ConversationResponse"]["properties"][field].is_object(),
+                "{field}"
+            );
+        }
+        assert!(schemas["ModelAssignmentsDto"]["properties"]["captain"].is_object());
+        assert!(schemas["ToolCallResponse"].is_object());
+        assert!(schemas["ChatToolCallResponse"]["properties"]["summary"].is_object());
     }
 }

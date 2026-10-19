@@ -4,12 +4,13 @@ use capitainerie_macros::transactional;
 use super::CapitainerieUseCase;
 use crate::{
     domain::{
-        authorization::Subject,
+        authorization::{AccessRequest, Action, ResourceKind, Subject, require},
         conversation::{
             Conversation, Message,
             service::{ConversationService, StartedTurn, TurnOutcome, UpdateConversation},
             turn::TurnError,
         },
+        execution::{GithubInstallation, ports::GithubInstallationRepository},
         provider::{ModelTarget, service::ProviderService},
     },
     infrastructure::provider::postgres::PgProviderRepository,
@@ -57,6 +58,21 @@ impl CapitainerieUseCase {
             authz,
         )
         .get(subject, id)
+        .await
+    }
+
+    #[transactional(conversation, conversation_message, authz)]
+    pub async fn check_conversation_writable(
+        &self,
+        subject: Subject,
+        id: ConversationId,
+    ) -> Result<Conversation, CoreError> {
+        ConversationService::new(
+            conversation_repository,
+            conversation_message_repository,
+            authz,
+        )
+        .check_writable(subject, id)
         .await
     }
 
@@ -147,5 +163,27 @@ impl CapitainerieUseCase {
         ProviderService::new(provider_repository, model_assignment_repository, authz)
             .captain_target(subject)
             .await
+    }
+
+    /// The GitHub installation of the subject's organization, read through the
+    /// policy decision point so the Captain's reads are decided and audited.
+    #[transactional(github_installation, authz)]
+    pub async fn read_github_installation(
+        &self,
+        subject: Subject,
+    ) -> Result<Option<GithubInstallation>, CoreError> {
+        let organization_id = subject.organization_id;
+        require(
+            authz,
+            AccessRequest::new(
+                subject,
+                Action::GithubRead,
+                ResourceKind::GithubInstallation,
+                None,
+            ),
+        )
+        .await?;
+        let mut github_installation_repository = github_installation_repository;
+        github_installation_repository.get(organization_id).await
     }
 }

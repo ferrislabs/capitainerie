@@ -18,6 +18,7 @@ use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Delegation};
 use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
+use capitainerie_runtime_rig::{LlmArgs, RigCaptain};
 use clap::Parser;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -37,6 +38,8 @@ struct Args {
     exchange: ExchangeArgs,
     #[command(flatten)]
     delegation: DelegationArgs,
+    #[command(flatten)]
+    llm: LlmArgs,
     #[command(flatten)]
     secrets: SecretsArgs,
     #[command(flatten)]
@@ -89,6 +92,13 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    let captain_exchanger = match &args.exchange.client_id {
+        Some(_) => Some(args.exchange.exchanger()?),
+        None => {
+            tracing::warn!("EXCHANGE_CLIENT_ID is unset: the Captain cannot act for anyone");
+            None
+        }
+    };
     let github = github_integration(
         &args.github,
         args.console_url.clone(),
@@ -115,9 +125,15 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
-        router::IntakeAdapters {
-            transcribers: catalog::build_transcribers()?,
-            document_readers: catalog::build_document_readers()?,
+        router::Adapters {
+            intake: router::IntakeAdapters {
+                transcribers: catalog::build_transcribers()?,
+                document_readers: catalog::build_document_readers()?,
+            },
+            captain: router::CaptainAdapters {
+                runtime: RigCaptain::new(&args.llm).context("building the Captain runtime")?,
+                exchanger: captain_exchanger,
+            },
         },
         github,
         &args.server.allowed_origins,

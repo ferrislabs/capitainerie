@@ -113,6 +113,18 @@ where
         Ok((conversation, messages))
     }
 
+    /// Checks the caller may talk in this conversation, before anything else
+    /// is looked at: a conversation of someone else is not found.
+    pub async fn check_writable(
+        mut self,
+        subject: Subject,
+        id: ConversationId,
+    ) -> Result<Conversation, CoreError> {
+        self.require(&subject, Action::ConversationWrite, Some(id))
+            .await?;
+        self.owned(&subject, id).await
+    }
+
     pub async fn update(
         mut self,
         subject: Subject,

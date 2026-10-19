@@ -468,7 +468,7 @@ async fn the_captain_proposes_without_a_transcript_searches_and_cannot_move_card
         .iter()
         .map(|card| card["id"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(ids, [id.clone()]);
+    assert_eq!(ids, std::slice::from_ref(&id));
 
     for to in ["todo", "rejected", "in_progress"] {
         let moved = client

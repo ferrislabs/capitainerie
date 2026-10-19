@@ -2,10 +2,12 @@ use anyhow::Context;
 use axum::{Json, Router, http::HeaderValue, middleware, routing::get};
 use capitainerie_analytics::Analytics;
 use capitainerie_core::domain::{
+    conversation::turn::CaptainRuntime, delegation::ports::TokenExchanger,
     document::ports::DocumentReaderFactory, provider::ports::ModelCatalog,
     transcription::ports::TranscriberFactory,
 };
 use capitainerie_handlers::{AppState, auth::authenticate, health};
+use capitainerie_handlers_conversations::ConversationsState;
 use capitainerie_handlers_integrations::GithubIntegration;
 use capitainerie_handlers_realtime::Gateway;
 use tower_http::{
@@ -18,9 +20,19 @@ use utoipa_scalar::{Scalar, Servable};
 
 use crate::openapi::ApiDoc;
 
+pub struct CaptainAdapters<R, X> {
+    pub runtime: R,
+    pub exchanger: Option<X>,
+}
+
 pub struct IntakeAdapters<T, D> {
     pub transcribers: T,
     pub document_readers: D,
+}
+
+pub struct Adapters<T, D, R, X> {
+    pub intake: IntakeAdapters<T, D>,
+    pub captain: CaptainAdapters<R, X>,
 }
 
 pub fn router<
@@ -28,12 +40,14 @@ pub fn router<
     C: ModelCatalog + 'static,
     T: TranscriberFactory + 'static,
     D: DocumentReaderFactory + 'static,
+    R: CaptainRuntime + 'static,
+    X: TokenExchanger + 'static,
 >(
     state: AppState,
     realtime: Gateway<AppState>,
     analytics: A,
     catalog: C,
-    intake: IntakeAdapters<T, D>,
+    adapters: Adapters<T, D, R, X>,
     github: GithubIntegration,
     allowed_origins: &[String],
 ) -> anyhow::Result<Router> {
@@ -57,8 +71,16 @@ pub fn router<
         ))
         .merge(capitainerie_handlers_transcriptions::router(
             state.usecase.clone(),
-            intake.transcribers,
-            intake.document_readers,
+            adapters.intake.transcribers,
+            adapters.intake.document_readers,
+        ))
+        .merge(capitainerie_handlers_conversations::router(
+            ConversationsState::new(
+                state.usecase.clone(),
+                adapters.captain.runtime,
+                github.apps.clone(),
+                adapters.captain.exchanger,
+            ),
         ))
         .merge(capitainerie_handlers_integrations::router(
             state.usecase.clone(),

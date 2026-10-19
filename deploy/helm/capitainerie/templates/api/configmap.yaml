@@ -15,6 +15,9 @@ data:
   {{- end }}
   MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
   PIPELINE_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
+  MCP_URL: {{ include "capitainerie.mcpUrl" . | quote }}
+  LLM_BASE_URL: {{ .Values.worker.llm.baseUrl | quote }}
+  LLM_TIMEOUT_SECS: {{ .Values.worker.llm.timeoutSecs | quote }}
   DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
   {{- with .Values.api.consoleUrl }}
   CONSOLE_URL: {{ . | quote }}

@@ -20,7 +20,7 @@ Le chart ne crée aucune valeur secrète. Créer le Secret `secrets.existingSecr
 | `EXCHANGE_CLIENT_ID`, `EXCHANGE_CLIENT_SECRET` | api, worker |
 | `AGENT_CREDENTIALS` (`client=secret,...`) | api, worker |
 | `IGGY_USERNAME`, `IGGY_PASSWORD` | api, worker, exporter |
-| `LLM_API_KEY` (optionnelle) | worker |
+| `LLM_API_KEY` (optionnelle) | api, worker |
 
 Le proxy d'identifiants de l'Exécutant ne résout aucun nom pour les pods de tâche : ils joignent le proxy par une entrée `hostAliases` (IP résolue par le worker) et la `NetworkPolicy` du namespace des tâches n'ouvre pas le DNS. Le Service du proxy doit donc rester un `ClusterIP` à IP stable.
 

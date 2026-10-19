@@ -50,6 +50,7 @@ pub enum Action {
     ClientRead,
     ClientManage,
     MemberRead,
+    GithubRead,
     ConversationRead,
     ConversationWrite,
 }
@@ -84,11 +85,12 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 4] = [
+pub const READ_ACTIONS: [&str; 5] = [
     "run.read",
     "card.read",
     "provider.read",
     "conversation.read",
+    "github.read",
 ];
 
 impl Action {
@@ -115,6 +117,7 @@ impl Action {
             Self::ClientRead => "client.read",
             Self::ClientManage => "client.manage",
             Self::MemberRead => "member.read",
+            Self::GithubRead => "github.read",
             Self::ConversationRead => "conversation.read",
             Self::ConversationWrite => "conversation.write",
         }
