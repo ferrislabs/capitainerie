@@ -143,6 +143,19 @@ pub struct CommentInput {
     pub run_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct SearchCardsInput {
+    #[schemars(
+        description = "Words to look for in the title and the description of the cards, case-insensitive. Omit to list the cards of the column."
+    )]
+    pub query: Option<String>,
+    #[schemars(description = "Only the cards of this column.")]
+    pub column: Option<ColumnParam>,
+    #[schemars(description = "How many cards to return at most, 20 by default, 50 at most.")]
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 #[serde(rename_all = "snake_case")]
@@ -293,6 +306,60 @@ pub struct CriterionView {
     pub done: bool,
 }
 
+pub const SEARCH_DEFAULT_LIMIT: u32 = 20;
+pub const SEARCH_MAX_LIMIT: u32 = 50;
+const SEARCH_DESCRIPTION_CHARS: usize = 300;
+
+#[derive(Debug, Serialize)]
+pub struct CardSummary {
+    pub id: Uuid,
+    pub title: String,
+    pub description: String,
+    pub column: &'static str,
+    pub version: i32,
+}
+
+impl From<&Card> for CardSummary {
+    fn from(card: &Card) -> Self {
+        Self {
+            id: card.id.0,
+            title: card.title.as_str().to_owned(),
+            description: card
+                .description
+                .chars()
+                .take(SEARCH_DESCRIPTION_CHARS)
+                .collect(),
+            column: card.column.as_str(),
+            version: card.version,
+        }
+    }
+}
+
+pub fn search(cards: &[Card], input: &SearchCardsInput) -> Vec<CardSummary> {
+    let words: Vec<String> = input
+        .query
+        .as_deref()
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect();
+    let column = input.column.map(Column::from);
+    let limit = input
+        .limit
+        .unwrap_or(SEARCH_DEFAULT_LIMIT)
+        .clamp(1, SEARCH_MAX_LIMIT) as usize;
+    cards
+        .iter()
+        .filter(|card| column.is_none_or(|column| card.column == column))
+        .filter(|card| {
+            let text = format!("{} {}", card.title.as_str(), card.description).to_lowercase();
+            words.iter().all(|word| text.contains(word.as_str()))
+        })
+        .take(limit)
+        .map(CardSummary::from)
+        .collect()
+}
+
 #[derive(Debug, Serialize)]
 pub struct CommentView {
     pub id: Uuid,
@@ -414,6 +481,27 @@ impl KanbanTools {
                 .create_card(subject, command)
                 .await
                 .map(|card| CardView::from(&card)),
+        )
+    }
+
+    #[tool(
+        description = "Search the cards of your organization's board, most recently changed first. Read-only. Give words to look for in the title and the description (all of them must match) and/or a column. Returns up to 50 cards with their id, title, a description excerpt, column and version."
+    )]
+    #[tracing::instrument(
+        skip_all,
+        fields(gen_ai.tool.name = "search_cards", organization_id, actor)
+    )]
+    async fn search_cards(
+        &self,
+        Parameters(input): Parameters<SearchCardsInput>,
+        Extension(parts): Extension<Parts>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let subject = subject_of(&parts)?;
+        into_tool_result(
+            self.usecase
+                .list_cards(subject)
+                .await
+                .map(|cards| search(&cards, &input)),
         )
     }
 
@@ -650,5 +738,95 @@ mod tests {
             assert_eq!(Column::from(param), column);
         }
         assert!(serde_json::from_value::<ColumnParam>(serde_json::json!("backlog")).is_err());
+    }
+
+    fn card(title: &str, description: &str, column: Column) -> Card {
+        let now = chrono::Utc::now();
+        Card {
+            id: CardId::new(),
+            organization_id: capitainerie_common::OrganizationId::new(),
+            title: capitainerie_core::domain::card::CardTitle::try_from(title.to_owned()).unwrap(),
+            description: description.to_owned(),
+            column,
+            provenance: None,
+            created_by_run: None,
+            created_by: capitainerie_core::domain::card::Author {
+                subject: "u".into(),
+                actor: None,
+            },
+            version: 1,
+            created_at: now,
+            updated_at: now,
+            repository_hint: None,
+        }
+    }
+
+    fn query(
+        text: Option<&str>,
+        column: Option<ColumnParam>,
+        limit: Option<u32>,
+    ) -> SearchCardsInput {
+        SearchCardsInput {
+            query: text.map(str::to_owned),
+            column,
+            limit,
+        }
+    }
+
+    #[test]
+    fn search_matches_every_word_in_the_title_or_description_ignoring_case() {
+        let cards = [
+            card("Ajouter un README", "Pour Acme", Column::Proposed),
+            card("Relancer Acme", "Avant vendredi", Column::Todo),
+            card("Migrer la CI", "", Column::Todo),
+        ];
+        let found = search(&cards, &query(Some("acme readme"), None, None));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "Ajouter un README");
+        assert_eq!(search(&cards, &query(Some("ACME"), None, None)).len(), 2);
+        assert_eq!(search(&cards, &query(None, None, None)).len(), 3);
+    }
+
+    #[test]
+    fn search_filters_by_column_and_bounds_the_result() {
+        let cards: Vec<Card> = (0..60)
+            .map(|n| card(&format!("Carte {n}"), "", Column::Todo))
+            .chain([card("Autre", "", Column::Done)])
+            .collect();
+        assert_eq!(
+            search(&cards, &query(None, Some(ColumnParam::Done), None)).len(),
+            1
+        );
+        assert_eq!(search(&cards, &query(None, None, None)).len(), 20);
+        assert_eq!(search(&cards, &query(None, None, Some(500))).len(), 50);
+        assert_eq!(search(&cards, &query(None, None, Some(0))).len(), 1);
+    }
+
+    #[test]
+    fn search_excerpts_long_descriptions() {
+        let cards = [card("T", &"é".repeat(1000), Column::Todo)];
+        let found = search(&cards, &query(None, None, None));
+        assert_eq!(found[0].description.chars().count(), 300);
+    }
+
+    #[test]
+    fn the_server_exposes_the_search_without_any_other_new_tool() {
+        let router = KanbanTools::tool_router();
+        let mut names: Vec<_> = router
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "comment",
+                "create_card",
+                "move_card",
+                "search_cards",
+                "update_card"
+            ]
+        );
     }
 }

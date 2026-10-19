@@ -27,6 +27,7 @@ use uuid::Uuid;
 const KEY_A_PEM: &str = include_str!("../../../libs/auth/tests/fixtures/test-only-key-a.pem");
 const KEY_A_JWK: &str = include_str!("../../../libs/auth/tests/fixtures/test-only-key-a.jwk.json");
 const AGENT: &str = "capitainerie-agent-writer";
+const CAPTAIN: &str = "capitainerie-agent-captain";
 const AUDIENCE: &str = "capitainerie-mcp";
 
 fn database_url() -> Option<String> {
@@ -110,7 +111,8 @@ async fn harness() -> Option<Harness> {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let verifier = FerrisKeyVerifier::with_audience(AcceptedClients::new([AGENT]), AUDIENCE);
+    let verifier =
+        FerrisKeyVerifier::with_audience(AcceptedClients::new([AGENT, CAPTAIN]), AUDIENCE);
     let usecase = CapitainerieUseCase::with_local_policies(pool);
     let app = router(usecase.clone(), verifier, base.clone());
     tokio::spawn(async move {
@@ -134,17 +136,21 @@ fn now() -> u64 {
 
 impl Harness {
     fn token(&self, audience: &str, delegated: bool) -> String {
+        self.token_of(AGENT, audience, delegated)
+    }
+
+    fn token_of(&self, agent: &str, audience: &str, delegated: bool) -> String {
         let mut claims = json!({
             "sub": "7b0f0c1e-0000-4000-8000-000000000001",
             "iss": self.issuer,
             "typ": "Bearer",
-            "azp": AGENT,
+            "azp": agent,
             "aud": [audience],
             "exp": now() + 300,
             "iat": now(),
         });
         if delegated {
-            claims["act"] = json!({"client_id": AGENT, "sub": "service-account-agent-writer"});
+            claims["act"] = json!({"client_id": agent, "sub": "service-account-agent"});
         }
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some("kid-a".to_owned());
@@ -288,7 +294,7 @@ async fn a_token_that_is_not_delegated_is_forbidden() {
 }
 
 #[tokio::test]
-async fn a_delegated_token_lists_the_four_tools() {
+async fn a_delegated_token_lists_the_five_tools() {
     let Some(h) = harness().await else { return };
     let client = h.client(h.token(AUDIENCE, true)).await;
     let mut names: Vec<String> = client
@@ -301,7 +307,13 @@ async fn a_delegated_token_lists_the_four_tools() {
     names.sort();
     assert_eq!(
         names,
-        ["comment", "create_card", "move_card", "update_card"]
+        [
+            "comment",
+            "create_card",
+            "move_card",
+            "search_cards",
+            "update_card"
+        ]
     );
     client.cancel().await.unwrap();
 }
@@ -425,5 +437,62 @@ async fn an_agent_card_carries_its_details_and_an_out_of_window_deadline_is_refu
             "{refused:?}"
         );
     }
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn the_captain_proposes_without_a_transcript_searches_and_cannot_move_cards() {
+    let Some(h) = harness().await else { return };
+    let client = h.client(h.token_of(CAPTAIN, AUDIENCE, true)).await;
+
+    let created = client
+        .call_tool(call(
+            "create_card",
+            json!({"title": "Ajouter un README", "description": "Dépôt test d'Acme"}),
+        ))
+        .await
+        .unwrap();
+    assert_ne!(created.is_error, Some(true), "{created:?}");
+    let card = payload(&created);
+    assert_eq!(card["column"], "proposed");
+    let id = card["id"].as_str().unwrap().to_owned();
+
+    let found = client
+        .call_tool(call("search_cards", json!({"query": "readme acme"})))
+        .await
+        .unwrap();
+    assert_ne!(found.is_error, Some(true), "{found:?}");
+    let ids: Vec<_> = payload(&found)
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|card| card["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(ids, [id.clone()]);
+
+    for to in ["todo", "rejected", "in_progress"] {
+        let moved = client
+            .call_tool(call(
+                "move_card",
+                json!({"card_id": id, "to": to, "expected_version": 1}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(moved.is_error, Some(true), "{to}: {moved:?}");
+    }
+    let updated = client
+        .call_tool(call(
+            "update_card",
+            json!({"card_id": id, "expected_version": 1, "title": "Autre"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(updated.is_error, Some(true), "{updated:?}");
+
+    let commented = client
+        .call_tool(call("comment", json!({"card_id": id, "body": "À valider"})))
+        .await
+        .unwrap();
+    assert_ne!(commented.is_error, Some(true), "{commented:?}");
     client.cancel().await.unwrap();
 }

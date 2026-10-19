@@ -1407,6 +1407,7 @@ dependencies = [
  "capitainerie-common",
  "capitainerie-core",
  "capitainerie-telemetry",
+ "chrono",
  "clap",
  "dotenvy",
  "jsonwebtoken",
