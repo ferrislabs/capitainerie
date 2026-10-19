@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO conversation_messages (id, conversation_id, seq, role, content, status, created_at)\n            SELECT $1, $2, COALESCE(MAX(seq), 0) + 1, $3, $4, $5, now()\n            FROM conversation_messages\n            WHERE conversation_id = $2\n            RETURNING id AS \"id!\", conversation_id AS \"conversation_id!\", seq AS \"seq!\", role AS \"role!\",\n                      content AS \"content!: Json<MessageContent>\", status AS \"status!\",\n                      created_at AS \"created_at!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "conversation_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "seq!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "role!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "content!: Json<MessageContent>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "08231a5a6677c966183b3c05c4286afffbbd03fbe7529a7209a0190a6b520da3"
+}

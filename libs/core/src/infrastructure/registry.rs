@@ -8,6 +8,8 @@ pub mod domain {
     pub struct Card;
     pub struct CardComment;
     pub struct Client;
+    pub struct Conversation;
+    pub struct ConversationMessage;
     pub struct DecisionLog;
     pub struct GithubApp;
     pub struct GithubInstallation;

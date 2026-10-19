@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE conversations\n            SET turn_started_at = $2\n            WHERE id = $1\n              AND (turn_started_at IS NULL\n                   OR turn_started_at < $2::timestamptz - make_interval(secs => $3::double precision))\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22b37fa11a6622539dff0793413c34dffac08e647601cfe81ebc1a8c2c594e41"
+}
