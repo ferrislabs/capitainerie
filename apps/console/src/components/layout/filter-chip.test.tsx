@@ -17,6 +17,22 @@ function setup(selected: ReadonlyArray<string> = []) {
 }
 
 describe('FilterChip', () => {
+	it('is disabled without options', () => {
+		render(
+			<FilterChip
+				label="Modèle"
+				options={[]}
+				selected={[]}
+				onChange={vi.fn()}
+			/>,
+		)
+
+		expect(
+			(screen.getByRole('button', { name: 'Modèle' }) as HTMLButtonElement)
+				.disabled,
+		).toBe(true)
+	})
+
 	it('has a dashed border while empty', () => {
 		setup()
 

@@ -103,5 +103,7 @@ describe('AgentsTable', () => {
 
 		expect(writeText).toHaveBeenCalledWith('capitainerie-agent-writer')
 		expect(onOpen).not.toHaveBeenCalled()
+		expect(await screen.findByText('Copié')).toBeTruthy()
+		expect(screen.getByText('Copié').getAttribute('aria-live')).toBe('polite')
 	})
 })

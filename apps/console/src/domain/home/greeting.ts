@@ -12,7 +12,8 @@ export function firstName(
 	const display = me?.display_name?.trim().split(/\s+/)[0]
 	if (display) return display
 	const username = me?.username?.trim()
-	return username || undefined
+	if (!username || username.includes('@')) return undefined
+	return username
 }
 
 export function greetingTitle(now: Date, name: string | undefined): string {

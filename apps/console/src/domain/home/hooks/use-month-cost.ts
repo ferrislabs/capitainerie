@@ -2,16 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { tanstackApi } from '#/api'
 
-export function monthWindow(now: Date): { from: string; to: string } {
-	const from = new Date(now.getFullYear(), now.getMonth(), 1)
-	return { from: from.toISOString(), to: now.toISOString() }
+export function monthStart(now: Date): string {
+	return new Date(
+		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+	).toISOString()
 }
 
 export function useMonthCost() {
-	const window = useMemo(() => monthWindow(new Date()), [])
+	const from = useMemo(() => monthStart(new Date()), [])
 	return useQuery(
 		tanstackApi.get('/api/v1/analytics/costs', {
-			query: { by: 'day', ...window },
+			query: { by: 'day', from },
 		}).queryOptions,
 	)
 }

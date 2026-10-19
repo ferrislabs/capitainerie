@@ -30,9 +30,10 @@ export function FilterChip({ label, options, selected, onChange }: Props) {
 			<DropdownMenuTrigger asChild>
 				<button
 					type="button"
+					disabled={options.length === 0}
 					className={cn(
 						'inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors duration-150',
-						'hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+						'hover:bg-muted disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
 						value === undefined
 							? 'border-dashed border-input text-muted-foreground'
 							: 'border-input bg-card text-foreground',

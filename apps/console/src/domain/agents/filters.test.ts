@@ -6,6 +6,7 @@ import {
 	filterRows,
 	NO_FILTERS,
 	optionsOf,
+	pruneFilters,
 } from '#/domain/agents/filters'
 import type { ModelAssignments } from '#/domain/settings/roles'
 
@@ -91,6 +92,25 @@ describe('filterRows', () => {
 		expect(search('claude-opus')).toEqual(['capitainerie-agent-executor'])
 		expect(search('  ')).toHaveLength(3)
 		expect(search('introuvable')).toEqual([])
+	})
+})
+
+describe('pruneFilters', () => {
+	it('drops selected values that no longer appear in the rows', () => {
+		const pruned = pruneFilters(
+			{
+				sources: ['Pipeline', 'MCP'],
+				models: ['gone', 'claude-opus'],
+				query: 'x',
+			},
+			ROWS,
+		)
+
+		expect(pruned).toEqual({
+			sources: ['Pipeline'],
+			models: ['claude-opus'],
+			query: 'x',
+		})
 	})
 })
 

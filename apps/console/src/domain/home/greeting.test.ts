@@ -30,6 +30,12 @@ describe('firstName', () => {
 		expect(firstName({ display_name: null, username: 'ada' })).toBe('ada')
 	})
 
+	it('skips a username that is an email address', () => {
+		expect(firstName({ display_name: null, username: 'ada@example.com' })).toBe(
+			undefined,
+		)
+	})
+
 	it('is undefined without a name', () => {
 		expect(firstName({})).toBeUndefined()
 		expect(firstName(undefined)).toBeUndefined()

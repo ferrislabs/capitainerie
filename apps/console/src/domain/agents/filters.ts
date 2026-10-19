@@ -74,3 +74,16 @@ export function optionsOf(
 	}
 	return [...values].sort((a, b) => a.localeCompare(b, 'fr'))
 }
+
+export function pruneFilters(
+	filters: AgentFilters,
+	rows: ReadonlyArray<AgentRow>,
+): AgentFilters {
+	const sources = optionsOf(rows, 'source')
+	const models = optionsOf(rows, 'model')
+	return {
+		...filters,
+		sources: filters.sources.filter((value) => sources.includes(value)),
+		models: filters.models.filter((value) => models.includes(value)),
+	}
+}

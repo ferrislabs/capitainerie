@@ -18,6 +18,7 @@ import {
 	filterRows,
 	NO_FILTERS,
 	optionsOf,
+	pruneFilters,
 } from '#/domain/agents/filters'
 import { useAgents } from '#/domain/agents/hooks/use-agents'
 import { useCosts } from '#/domain/agents/hooks/use-costs'
@@ -29,7 +30,7 @@ import { useModelAssignments } from '#/domain/settings/hooks/use-settings-querie
 
 export function AgentsPage() {
 	const [by, setBy] = useState<CostDimension>('agent')
-	const [filters, setFilters] = useState<AgentFilters>(NO_FILTERS)
+	const [chosen, setFilters] = useState<AgentFilters>(NO_FILTERS)
 	const [openId, setOpenId] = useState<string>()
 	const agents = useAgents()
 	const assignments = useModelAssignments()
@@ -39,6 +40,7 @@ export function AgentsPage() {
 		() => buildRows(agents.data ?? [], assignments.data?.assignments),
 		[agents.data, assignments.data],
 	)
+	const filters = useMemo(() => pruneFilters(chosen, rows), [chosen, rows])
 	const visible = useMemo(() => filterRows(rows, filters), [rows, filters])
 	const opened: AgentRow | undefined = rows.find(
 		(row) => row.agent.agent === openId,

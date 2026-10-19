@@ -58,5 +58,6 @@ describe('HomeCards', () => {
 		})
 
 		expect(screen.getAllByText('Chargement')).toHaveLength(3)
+		expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3)
 	})
 })

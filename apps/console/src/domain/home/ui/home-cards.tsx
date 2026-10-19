@@ -1,6 +1,7 @@
 import { Bot, CircleDollarSign, ClipboardCheck, Upload } from 'lucide-react'
 import { LinkCard } from '#/components/layout/link-card'
 import { Badge } from '#/components/ui/badge'
+import { Skeleton } from '#/components/ui/skeleton'
 import { formatCost } from '#/domain/runs/format'
 
 interface Props {
@@ -14,7 +15,12 @@ function plural(count: number, one: string, many: string): string {
 }
 
 function Loading() {
-	return <span className="sr-only">Chargement</span>
+	return (
+		<>
+			<Skeleton className="h-6 w-16" />
+			<span className="sr-only">Chargement</span>
+		</>
+	)
 }
 
 function Unavailable() {
