@@ -20,6 +20,7 @@ pub(super) struct CardRow {
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub repository_hint: Option<String>,
 }
 
 impl TryFrom<CardRow> for Card {
@@ -63,6 +64,11 @@ impl TryFrom<CardRow> for Card {
             version: row.version,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            repository_hint: row
+                .repository_hint
+                .map(|value| value.parse())
+                .transpose()
+                .map_err(|error| CoreError::Internal(format!("stored repository hint: {error}")))?,
         })
     }
 }

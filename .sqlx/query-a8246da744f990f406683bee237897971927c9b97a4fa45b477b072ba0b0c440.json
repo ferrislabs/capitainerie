@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   t.repository AS repository_hint\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            WHERE r.id = $1\n            FOR UPDATE OF r SKIP LOCKED\n            ",
   "describe": {
     "columns": [
       {
@@ -82,13 +82,16 @@
         "ordinal": 15,
         "name": "title",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "repository_hint",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -107,8 +110,9 @@
       true,
       true,
       true,
-      null
+      null,
+      true
     ]
   },
-  "hash": "42ecdc738cf6771e01a984cb2a50f9346137711ab6f1a3116758f300d355c362"
+  "hash": "a8246da744f990f406683bee237897971927c9b97a4fa45b477b072ba0b0c440"
 }

@@ -578,6 +578,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         seq: i32,
     ) -> Result<Vec<LocatedAction>, CoreError> {
         let body = context.transcript.body.as_str();
+        let prompt = context.transcript.metadata.prompt_for(body);
         let step = self.new_step(context, seq, StepKind::Extract, Some("extractor".into()), 1);
         self.usecase
             .record_step(context.run.clone(), step.clone())
@@ -585,7 +586,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let started = Instant::now();
         let extracted = match self.target(context, AgentRole::Extractor).await {
             Ok(target) => {
-                self.with_retries(|_| self.runtime.extract(&target, body))
+                self.with_retries(|_| self.runtime.extract(&target, &prompt))
                     .await
             }
             Err(error) => Err(error),

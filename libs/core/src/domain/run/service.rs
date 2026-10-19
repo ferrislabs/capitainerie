@@ -6,7 +6,9 @@ use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     event::ports::EventEmitter,
     provider::ModelAssignments,
-    transcript::{Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository},
+    transcript::{
+        MeetingMetadata, Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -14,6 +16,7 @@ pub struct SubmitTranscript {
     pub subject: Subject,
     pub title: String,
     pub body: String,
+    pub metadata: MeetingMetadata,
 }
 
 pub struct RunService<'a, T, R, E, A> {
@@ -72,6 +75,7 @@ where
             submitted_by: command.subject.id.clone(),
             title: TranscriptTitle::try_from(command.title)?,
             body: TranscriptBody::try_from(command.body)?,
+            metadata: command.metadata,
             created_at: now,
         };
         let (mut run, queued) = Run::queue(
@@ -180,6 +184,7 @@ mod tests {
             subject: subject(),
             title: title.into(),
             body: "Alice : je m'occupe du devis.".into(),
+            metadata: MeetingMetadata::default(),
         }
     }
 

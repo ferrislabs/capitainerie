@@ -27,6 +27,7 @@ pub(super) struct RunOverviewRow {
     pub trace_id: Option<String>,
     pub models: Option<serde_json::Value>,
     pub title: Option<String>,
+    pub repository_hint: Option<String>,
 }
 
 fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
@@ -80,6 +81,11 @@ impl TryFrom<RunOverviewRow> for RunOverview {
                     .map_err(|error| CoreError::Internal(format!("stored run models: {error}")))?,
             },
             title: row.title,
+            repository_hint: row
+                .repository_hint
+                .map(|value| value.parse())
+                .transpose()
+                .map_err(|error| CoreError::Internal(format!("stored repository hint: {error}")))?,
         })
     }
 }

@@ -23,6 +23,7 @@ pub struct RunResponse {
     pub title: Option<String>,
     pub card_id: Option<CardId>,
     pub repository: Option<String>,
+    pub repository_hint: Option<String>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
     pub failure: Option<String>,
@@ -34,7 +35,13 @@ pub struct RunResponse {
 }
 
 impl From<RunOverview> for RunResponse {
-    fn from(RunOverview { run, title }: RunOverview) -> Self {
+    fn from(
+        RunOverview {
+            run,
+            title,
+            repository_hint,
+        }: RunOverview,
+    ) -> Self {
         use capitainerie_core::domain::run::RunStatus;
         let (transcript_id, card_id, repository) = match &run.subject {
             RunSubject::Transcript(id) => (Some(*id), None, None),
@@ -59,6 +66,7 @@ impl From<RunOverview> for RunResponse {
             title,
             card_id,
             repository,
+            repository_hint: repository_hint.map(|hint| hint.to_string()),
             initiated_by: run.initiated_by,
             pipeline: run
                 .pipeline

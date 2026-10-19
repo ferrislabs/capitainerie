@@ -1,8 +1,12 @@
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{RunId, TranscriptId};
-use capitainerie_core::{AgentDelegation, domain::run::service::SubmitTranscript};
+use capitainerie_core::{
+    AgentDelegation,
+    domain::{run::service::SubmitTranscript, transcript::MeetingMetadata},
+};
 use capitainerie_handlers::{ApiError, AppState, Caller};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -14,6 +18,9 @@ pub struct TranscriptsPath;
 pub struct SubmitTranscriptRequest {
     pub title: String,
     pub body: String,
+    pub meeting_date: Option<NaiveDate>,
+    pub participants: Option<Vec<String>>,
+    pub repository: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -32,7 +39,7 @@ pub struct SubmitTranscriptResponse {
         (status = 202, description = "Stored; a run is queued on it", body = SubmitTranscriptResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "Not allowed", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "Empty or oversized title or transcript", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "Empty or oversized title or transcript, invalid participants or repository", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -42,10 +49,16 @@ pub async fn handler(
     Extension(caller): Extension<Caller>,
     Json(request): Json<SubmitTranscriptRequest>,
 ) -> Result<(StatusCode, Json<SubmitTranscriptResponse>), ApiError> {
+    let metadata = MeetingMetadata::new(
+        request.meeting_date,
+        request.participants,
+        request.repository,
+    )?;
     let command = SubmitTranscript {
         subject: caller.subject(),
         title: request.title,
         body: request.body,
+        metadata,
     };
     let submitted = match &state.delegation {
         Some(delegation) => {

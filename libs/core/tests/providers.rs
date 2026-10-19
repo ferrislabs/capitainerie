@@ -396,6 +396,7 @@ async fn a_submitted_run_freezes_the_models_in_force() {
         subject: subject(organization_id, false),
         title: title.into(),
         body: "Alice : je relance le fournisseur.".into(),
+        metadata: Default::default(),
     };
     let models_of = |run_id: Uuid| {
         let pool = pool.clone();

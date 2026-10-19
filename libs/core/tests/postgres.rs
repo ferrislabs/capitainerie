@@ -9,6 +9,7 @@ use capitainerie_core::{
         authorization::Subject,
         event::ports::EventBus,
         run::{RunStatus, service::SubmitTranscript},
+        transcript::MeetingMetadata,
     },
     infrastructure::{
         event::{OutboxRelay, OutboxRelayConfig},
@@ -16,6 +17,7 @@ use capitainerie_core::{
     },
 };
 use capitainerie_events::{EventEnvelope, run::RunQueued};
+use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -108,6 +110,7 @@ async fn submitting_a_transcript_queues_a_run_and_its_event_atomically() {
             subject: member(organization_id),
             title: "Point hebdo".into(),
             body: "Alice : je relance le fournisseur.".into(),
+            metadata: Default::default(),
         })
         .await
         .unwrap();
@@ -125,6 +128,82 @@ async fn submitting_a_transcript_queues_a_run_and_its_event_atomically() {
 }
 
 #[tokio::test]
+async fn meeting_metadata_survives_a_round_trip() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let metadata = MeetingMetadata::new(
+        NaiveDate::from_ymd_opt(2026, 10, 19),
+        Some(vec!["Alice".into(), "Bob".into()]),
+        Some("acme/web".into()),
+    )
+    .unwrap();
+
+    let submitted = usecase(&pool)
+        .submit_transcript(SubmitTranscript {
+            subject: member(organization_id),
+            title: "Point hebdo".into(),
+            body: "Alice : je relance le fournisseur.".into(),
+            metadata: metadata.clone(),
+        })
+        .await
+        .unwrap();
+
+    let stored: (Option<NaiveDate>, Vec<String>, Option<String>) = sqlx::query_as(
+        "SELECT meeting_date, participants, repository FROM transcripts WHERE id = $1",
+    )
+    .bind(submitted.transcript_id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored,
+        (
+            metadata.date,
+            vec!["Alice".to_owned(), "Bob".to_owned()],
+            Some("acme/web".to_owned())
+        )
+    );
+    let run = usecase(&pool)
+        .get_run(member(organization_id), submitted.run_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        run.repository_hint.map(|hint| hint.to_string()).as_deref(),
+        Some("acme/web")
+    );
+}
+
+#[tokio::test]
+async fn a_transcript_without_metadata_has_no_repository_hint() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+
+    let submitted = usecase(&pool)
+        .submit_transcript(SubmitTranscript {
+            subject: member(organization_id),
+            title: "Point hebdo".into(),
+            body: "Alice : je relance le fournisseur.".into(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+
+    let stored: (Option<NaiveDate>, Vec<String>, Option<String>) = sqlx::query_as(
+        "SELECT meeting_date, participants, repository FROM transcripts WHERE id = $1",
+    )
+    .bind(submitted.transcript_id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, (None, vec![], None));
+    let run = usecase(&pool)
+        .get_run(member(organization_id), submitted.run_id)
+        .await
+        .unwrap();
+    assert_eq!(run.repository_hint, None);
+}
+
+#[tokio::test]
 async fn a_rejected_submission_leaves_no_trace() {
     let Some(pool) = pool().await else { return };
     let organization_id = organization(&pool).await;
@@ -134,6 +213,7 @@ async fn a_rejected_submission_leaves_no_trace() {
             subject: member(organization_id),
             title: "Point hebdo".into(),
             body: "   ".into(),
+            metadata: Default::default(),
         })
         .await
         .unwrap_err();
@@ -158,6 +238,7 @@ async fn runs_are_listed_newest_first_and_never_across_organizations() {
                 subject: member(mine),
                 title: title.into(),
                 body: "contenu".into(),
+                metadata: Default::default(),
             })
             .await
             .unwrap();
@@ -217,6 +298,7 @@ async fn the_relay_publishes_committed_events_once_the_bus_accepts_them() {
             subject: member(organization_id),
             title: "Relais".into(),
             body: "contenu".into(),
+            metadata: Default::default(),
         })
         .await
         .unwrap();
@@ -251,6 +333,7 @@ async fn the_timeline_lists_what_the_run_did_not_its_reads() {
             subject: member(organization_id),
             title: "Point".into(),
             body: "Claire : Malik migre la CI.".into(),
+            metadata: Default::default(),
         })
         .await
         .unwrap();
@@ -327,6 +410,67 @@ mod cards {
     }
 
     #[tokio::test]
+    async fn a_card_carries_the_repository_of_its_transcript() {
+        let Some(pool) = pool().await else { return };
+        let organization_id = organization(&pool).await;
+        let usecase = usecase(&pool);
+        let submit = |repository: Option<&str>| {
+            let metadata = MeetingMetadata::new(None, None, repository.map(str::to_owned)).unwrap();
+            usecase.submit_transcript(SubmitTranscript {
+                subject: member(organization_id),
+                title: "Point".into(),
+                body: BODY.into(),
+                metadata,
+            })
+        };
+        let with_hint = submit(Some("acme/web")).await.unwrap();
+        let without_hint = submit(None).await.unwrap();
+        let propose = |submitted: capitainerie_core::SubmittedTranscript, title: &str| {
+            usecase.create_card(
+                agent(organization_id),
+                CreateCard {
+                    title: title.into(),
+                    description: String::new(),
+                    provenance: Some(ProvenanceInput {
+                        transcript_id: submitted.transcript_id,
+                        start: 9,
+                        end: 35,
+                        quote: "Malik migre la CI vers ARM".into(),
+                    }),
+                    run_id: Some(submitted.run_id),
+                },
+            )
+        };
+        let hinted = propose(with_hint, "Avec dépôt").await.unwrap();
+        let plain = propose(without_hint, "Sans dépôt").await.unwrap();
+        let manual = usecase
+            .create_card(
+                member(organization_id),
+                CreateCard {
+                    title: "À la main".into(),
+                    description: String::new(),
+                    provenance: None,
+                    run_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let cards = usecase.list_cards(member(organization_id)).await.unwrap();
+        let hint = |id| {
+            cards
+                .iter()
+                .find(|card| card.id == id)
+                .and_then(|card| card.repository_hint.as_ref())
+                .map(ToString::to_string)
+        };
+
+        assert_eq!(hint(hinted.id).as_deref(), Some("acme/web"));
+        assert_eq!(hint(plain.id), None);
+        assert_eq!(hint(manual.id), None);
+    }
+
+    #[tokio::test]
     async fn an_agent_proposes_and_only_a_human_validates() {
         let Some(pool) = pool().await else { return };
         let organization_id = organization(&pool).await;
@@ -336,6 +480,7 @@ mod cards {
                 subject: member(organization_id),
                 title: "Point".into(),
                 body: BODY.into(),
+                metadata: Default::default(),
             })
             .await
             .unwrap();
@@ -440,6 +585,7 @@ mod cards {
                 subject: member(organization_id),
                 title: "Point".into(),
                 body: BODY.into(),
+                metadata: Default::default(),
             })
             .await
             .unwrap();
