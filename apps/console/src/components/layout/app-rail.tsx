@@ -14,23 +14,41 @@ import {
 } from '#/components/ui/tooltip'
 import { cn } from '#/lib/utils'
 
+export type RailBadges = Readonly<Partial<Record<NavItem['to'], number>>>
+
 interface Props {
 	sections: ReadonlyArray<NavSection>
 	expanded: boolean
 	canExpand: boolean
 	onExpandedChange: (expanded: boolean) => void
 	footer?: (expanded: boolean) => ReactNode
+	badges?: RailBadges
 }
 
 const FOCUS =
 	'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring'
 
-function RailLink({ item, expanded }: { item: NavItem; expanded: boolean }) {
+function RailLink({
+	item,
+	expanded,
+	count,
+}: {
+	item: NavItem
+	expanded: boolean
+	count: number | undefined
+}) {
 	const Icon = item.icon
+	const showCount = count !== undefined && count > 0
 	const link = (
 		<Link
 			to={item.to}
-			aria-label={expanded ? undefined : item.label}
+			aria-label={
+				expanded
+					? undefined
+					: showCount
+						? `${item.label}, ${count} runs actifs`
+						: item.label
+			}
 			className={cn(
 				'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm text-rail-foreground transition-colors duration-150',
 				'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
@@ -39,8 +57,27 @@ function RailLink({ item, expanded }: { item: NavItem; expanded: boolean }) {
 				FOCUS,
 			)}
 		>
-			<Icon aria-hidden="true" className="size-4 shrink-0" />
+			<span className="relative flex shrink-0">
+				<Icon aria-hidden="true" className="size-4" />
+				{showCount && !expanded ? (
+					<span
+						aria-hidden="true"
+						className="absolute -top-1 -right-1 size-2 rounded-full bg-signal-running"
+					/>
+				) : null}
+			</span>
 			{expanded ? <span className="truncate">{item.label}</span> : null}
+			{showCount && expanded ? (
+				<>
+					<span
+						aria-hidden="true"
+						className="figures ml-auto rounded-sm bg-signal-running-soft px-1.5 text-xs leading-5 font-medium text-signal-running"
+					>
+						{count}
+					</span>
+					<span className="sr-only">{`, ${count} runs actifs`}</span>
+				</>
+			) : null}
 		</Link>
 	)
 
@@ -59,6 +96,7 @@ export function AppRail({
 	canExpand,
 	onExpandedChange,
 	footer,
+	badges,
 }: Props) {
 	const isExpanded = expanded && canExpand
 	const ToggleIcon = isExpanded ? PanelLeftClose : PanelLeftOpen
@@ -135,7 +173,11 @@ export function AppRail({
 							<ul aria-labelledby={labelId} className="flex flex-col gap-0.5">
 								{section.items.map((item) => (
 									<li key={item.to}>
-										<RailLink item={item} expanded={isExpanded} />
+										<RailLink
+											item={item}
+											expanded={isExpanded}
+											count={badges?.[item.to]}
+										/>
 									</li>
 								))}
 							</ul>

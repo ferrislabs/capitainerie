@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 
 const PATHS = [
 	'/runs',
+	'/live',
 	'/kanban',
 	'/agents',
 	'/settings',
