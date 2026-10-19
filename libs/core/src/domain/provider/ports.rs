@@ -48,6 +48,7 @@ pub struct CatalogModel {
     pub chat: bool,
     pub embeddings: bool,
     pub transcription: bool,
+    pub ocr: bool,
     pub context_window: Option<u64>,
     pub input_price_per_mtok_micros: Option<u64>,
     pub output_price_per_mtok_micros: Option<u64>,

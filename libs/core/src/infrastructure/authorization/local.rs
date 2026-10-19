@@ -224,6 +224,19 @@ mod tests {
     }
 
     #[test]
+    fn members_read_documents_but_agents_never_do() {
+        assert!(allowed(Action::DocumentRead, None));
+        assert!(matches!(
+            decide(&request(Action::DocumentRead, None, false)),
+            Decision::Deny { .. }
+        ));
+        for actor in [AGENT, Some(crate::domain::execution::EXECUTOR_AGENT)] {
+            assert!(!allowed(Action::DocumentRead, actor));
+        }
+        assert_eq!(Action::DocumentRead.as_str(), "document.read");
+    }
+
+    #[test]
     fn agents_propose_and_comment_but_do_not_submit_transcripts() {
         assert!(allowed(Action::CardCreate, AGENT));
         assert!(allowed(Action::CardComment, AGENT));

@@ -86,6 +86,7 @@ impl ModelCatalog for FakeCatalog {
             chat,
             embeddings,
             transcription: id.contains("whisper"),
+            ocr: false,
             context_window: Some(200_000),
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
@@ -116,6 +117,7 @@ fn assignments(chat: ModelRef) -> ModelAssignments {
         writer: chat,
         embeddings: model_ref(ProviderKind::OpenAiCompatible, "bge-m3"),
         transcriber: None,
+        reader: None,
         executor: Default::default(),
     }
 }
@@ -457,6 +459,45 @@ async fn the_transcriber_is_optional_never_anthropic_and_needs_a_transcription_m
             .and_then(|stored| stored.transcriber),
         None
     );
+}
+
+#[tokio::test]
+async fn a_reader_outside_mistral_is_refused_and_the_stored_reader_is_optional() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let admin = subject(organization_id, true);
+    usecase
+        .put_provider(anthropic(admin.clone()))
+        .await
+        .unwrap();
+    configure_local_endpoint(&usecase, organization_id).await;
+    let haiku = assignments(model_ref(ProviderKind::Anthropic, "claude-haiku-5-5"));
+
+    for reader in [
+        model_ref(ProviderKind::Anthropic, "claude-haiku-5-5"),
+        model_ref(ProviderKind::OpenAiCompatible, "qwen2.5:7b-instruct"),
+    ] {
+        let refused = usecase
+            .put_model_assignments(
+                admin.clone(),
+                ModelAssignments {
+                    reader: Some(reader),
+                    ..haiku.clone()
+                },
+                &FakeCatalog,
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(CoreError::Invalid(ref message)) if message.contains("only mistral")),
+            "{refused:?}"
+        );
+    }
+    let stored = usecase
+        .put_model_assignments(admin, haiku, &FakeCatalog)
+        .await
+        .unwrap();
+    assert_eq!(stored.reader, None);
 }
 
 #[tokio::test]

@@ -150,6 +150,7 @@ where
         )
         .await?;
         assignments.check_transcriber()?;
+        assignments.check_reader()?;
         let configured: Vec<ProviderKind> = self
             .providers
             .list(organization_id)
@@ -193,6 +194,31 @@ where
             .get(organization_id)
             .await?
             .and_then(|assignments| assignments.transcriber)
+        else {
+            return Ok(None);
+        };
+        Ok(self
+            .providers
+            .find(organization_id, model.provider)
+            .await?
+            .map(|credential| ModelTarget {
+                model,
+                access: Some(ProviderAccess::from(credential)),
+            }))
+    }
+
+    pub async fn reader_target(
+        mut self,
+        subject: Subject,
+    ) -> Result<Option<ModelTarget>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require(subject, Action::DocumentRead, ResourceKind::Document, None)
+            .await?;
+        let Some(model) = self
+            .assignments
+            .get(organization_id)
+            .await?
+            .and_then(|assignments| assignments.reader)
         else {
             return Ok(None);
         };
@@ -275,6 +301,7 @@ pub fn validate_assignments(
     catalog: &[CatalogModel],
 ) -> Result<(), CoreError> {
     assignments.check_transcriber()?;
+    assignments.check_reader()?;
     for role in AgentRole::ALL {
         let Some(chosen) = assignments.for_role(role) else {
             continue;
@@ -298,6 +325,7 @@ pub fn validate_assignments(
         let capable = match role {
             AgentRole::Embeddings => model.embeddings,
             AgentRole::Transcriber => model.transcription,
+            AgentRole::Reader => model.ocr,
             _ => model.chat,
         };
         if !capable {
@@ -367,6 +395,7 @@ mod tests {
             chat,
             embeddings,
             transcription: id.contains("voxtral") || id.contains("whisper"),
+            ocr: id.contains("ocr"),
             context_window: None,
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
@@ -388,6 +417,7 @@ mod tests {
             writer: chat,
             embeddings: reference(ProviderKind::OpenAiCompatible, "bge-m3"),
             transcriber: None,
+            reader: None,
             executor: Default::default(),
         }
     }
@@ -449,6 +479,35 @@ mod tests {
             validate_assignments(&chosen, &catalog),
             Err(CoreError::Invalid(message)) if message.contains("no transcription")
         ));
+    }
+
+    #[test]
+    fn a_reader_needs_an_ocr_model_of_mistral() {
+        let catalog = vec![
+            model(ProviderKind::Anthropic, "claude-haiku-5-5", true, false),
+            model(ProviderKind::OpenAiCompatible, "bge-m3", false, true),
+            model(ProviderKind::Mistral, "mistral-ocr-latest", false, false),
+            model(ProviderKind::Mistral, "mistral-small", true, false),
+            model(ProviderKind::Mistral, "voxtral-mini-latest", false, false),
+        ];
+        let mut chosen = assignments();
+        chosen.reader = Some(reference(ProviderKind::Mistral, "mistral-ocr-latest"));
+        validate_assignments(&chosen, &catalog).unwrap();
+
+        for id in ["mistral-small", "voxtral-mini-latest"] {
+            chosen.reader = Some(reference(ProviderKind::Mistral, id));
+            assert!(validate_assignments(&chosen, &catalog).is_err(), "{id}");
+        }
+
+        chosen.reader = Some(reference(ProviderKind::Anthropic, "claude-haiku-5-5"));
+        assert!(matches!(
+            validate_assignments(&chosen, &catalog),
+            Err(CoreError::Invalid(message)) if message.contains("only mistral")
+        ));
+
+        let mut chosen = assignments();
+        chosen.writer = reference(ProviderKind::Mistral, "mistral-ocr-latest");
+        assert!(validate_assignments(&chosen, &catalog).is_err());
     }
 
     struct Allow;
@@ -619,6 +678,43 @@ mod tests {
         memory.credentials.lock().unwrap().clear();
         let keyless = ProviderService::new(memory.clone(), memory, &Allow)
             .transcriber_target(subject)
+            .await
+            .unwrap();
+        assert_eq!(keyless, None);
+    }
+
+    #[tokio::test]
+    async fn the_reader_target_needs_an_assignment_and_a_key() {
+        let memory = Memory::default();
+        let subject = subject();
+        let none = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .reader_target(subject.clone())
+            .await
+            .unwrap();
+        assert_eq!(none, None);
+
+        ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .put(PutProvider {
+                subject: subject.clone(),
+                kind: ProviderKind::Mistral,
+                secret: secret("sk-mistral"),
+                base_url: None,
+            })
+            .await
+            .unwrap();
+        let mut chosen = assignments();
+        chosen.reader = Some(reference(ProviderKind::Mistral, "mistral-ocr-latest"));
+        *memory.assigned.lock().unwrap() = Some(chosen);
+        let target = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .reader_target(subject.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(target.model.model, "mistral-ocr-latest");
+
+        memory.credentials.lock().unwrap().clear();
+        let keyless = ProviderService::new(memory.clone(), memory, &Allow)
+            .reader_target(subject)
             .await
             .unwrap();
         assert_eq!(keyless, None);

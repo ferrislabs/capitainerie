@@ -914,6 +914,7 @@ fn claude_for_the_agents() -> ModelAssignments {
         writer: model(ProviderKind::Anthropic, "claude-haiku-5-5"),
         embeddings: model(ProviderKind::OpenAiCompatible, "bge-m3"),
         transcriber: None,
+        reader: None,
         executor: Default::default(),
     }
 }

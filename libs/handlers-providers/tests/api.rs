@@ -34,6 +34,7 @@ impl ModelCatalog for FakeCatalog {
                 chat: true,
                 embeddings: false,
                 transcription: false,
+                ocr: false,
                 context_window: Some(200_000),
                 input_price_per_mtok_micros: Some(1_000_000),
                 output_price_per_mtok_micros: Some(5_000_000),
@@ -311,6 +312,49 @@ async fn an_anthropic_transcriber_is_a_422() {
             .unwrap()
             .contains("no transcription model")
     );
+    let stored: Value = client
+        .get(format!("{admin}/api/v1/model-assignments"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(stored["assignments"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_reader_outside_mistral_is_a_422() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let admin = serve(&pool, caller(&organization, &["capitainerie-admin"])).await;
+    let client = reqwest::Client::new();
+    client
+        .put(format!("{admin}/api/v1/providers/anthropic"))
+        .json(&json!({ "api_key": SECRET }))
+        .send()
+        .await
+        .unwrap();
+    let chat = json!({ "provider": "anthropic", "model": "claude-haiku-5-5" });
+    let put = |reader: Option<Value>| {
+        let mut body = json!({
+            "extractor": chat, "judge": chat, "writer": chat,
+            "embeddings": { "provider": "openai_compatible", "model": "bge-m3" },
+        });
+        if let Some(reader) = reader {
+            body["reader"] = reader;
+        }
+        client
+            .put(format!("{admin}/api/v1/model-assignments"))
+            .json(&body)
+            .send()
+    };
+
+    let refused = put(Some(chat.clone())).await.unwrap();
+
+    assert_eq!(refused.status(), 422);
+    let body: Value = refused.json().await.unwrap();
+    assert!(body["message"].as_str().unwrap().contains("only mistral"));
     let stored: Value = client
         .get(format!("{admin}/api/v1/model-assignments"))
         .send()

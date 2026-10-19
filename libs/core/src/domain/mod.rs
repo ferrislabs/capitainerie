@@ -2,6 +2,7 @@ pub mod agent;
 pub mod authorization;
 pub mod card;
 pub mod delegation;
+pub mod document;
 pub mod event;
 pub mod execution;
 pub mod organization;
