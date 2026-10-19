@@ -10,8 +10,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '#/components/ui/dialog'
+import { Field } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
 import {
 	formatAliases,
@@ -36,6 +36,9 @@ interface Props {
 	onSubmit: (values: ClientValues) => void
 	onClose: () => void
 }
+
+const ALIASES_HINT =
+	'Les autres noms sous lesquels la réunion en parle : ils aident la détection.'
 
 function ClientForm({
 	client,
@@ -63,57 +66,46 @@ function ClientForm({
 
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="client-name">Nom</Label>
+			<Field
+				label="Nom"
+				id="client-name"
+				error={attempted ? nameError : undefined}
+			>
 				<Input
-					id="client-name"
 					value={name}
 					onChange={(event) => setName(event.target.value)}
 					disabled={isPending}
-					aria-invalid={attempted && Boolean(nameError)}
 				/>
-				{attempted && nameError ? (
-					<span role="alert" className="text-xs text-signal-danger">
-						{nameError}
-					</span>
-				) : null}
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="client-aliases">Alias</Label>
+			</Field>
+			<Field
+				label="Alias"
+				id="client-aliases"
+				hint={aliasError ? undefined : ALIASES_HINT}
+				error={aliasError}
+			>
 				<Input
-					id="client-aliases"
 					value={aliases}
 					onChange={(event) => setAliases(event.target.value)}
 					disabled={isPending}
 					placeholder="Séparés par des virgules"
-					aria-invalid={Boolean(aliasError)}
 				/>
-				<span
-					role={aliasError ? 'alert' : undefined}
-					className={
-						aliasError
-							? 'text-xs text-signal-danger'
-							: 'text-xs text-muted-foreground'
-					}
-				>
-					{aliasError ??
-						'Les autres noms sous lesquels la réunion en parle : ils aident la détection.'}
-				</span>
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="client-notes">Notes</Label>
+			</Field>
+			<Field
+				label="Notes"
+				id="client-notes"
+				count={[...notes].length}
+				max={TEXT_MAX_LENGTH}
+				error={notesError}
+			>
 				<Textarea
-					id="client-notes"
-					className="max-h-48 min-h-20"
+					maxRows={8}
+					rows={3}
+					className="min-h-20"
 					value={notes}
 					onChange={(event) => setNotes(event.target.value)}
 					disabled={isPending}
-					aria-invalid={Boolean(notesError)}
 				/>
-				<span className="ml-auto text-xs text-muted-foreground figures">
-					{[...notes].length} / {TEXT_MAX_LENGTH}
-				</span>
-			</div>
+			</Field>
 			{errorMessage ? (
 				<InlineAlert tone="danger">{errorMessage}</InlineAlert>
 			) : null}

@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
+import { Select } from '#/components/ui/combobox'
 import {
 	Dialog,
 	DialogContent,
@@ -10,8 +11,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '#/components/ui/dialog'
+import { Field } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
 import {
 	formatAliases,
@@ -79,79 +80,62 @@ function ProjectForm({
 
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="project-name">Nom</Label>
+			<Field
+				label="Nom"
+				id="project-name"
+				error={attempted ? nameError : undefined}
+			>
 				<Input
-					id="project-name"
 					value={name}
 					onChange={(event) => setName(event.target.value)}
 					disabled={isPending}
-					aria-invalid={attempted && Boolean(nameError)}
 				/>
-				{attempted && nameError ? (
-					<span role="alert" className="text-xs text-signal-danger">
-						{nameError}
-					</span>
-				) : null}
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="project-client">Client</Label>
-				<select
-					id="project-client"
-					className="h-8 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:opacity-60"
+			</Field>
+			<Field label="Client" id="project-client">
+				<Select
+					items={clients.map((client) => ({
+						value: client.id,
+						label: client.name,
+					}))}
 					value={clientId}
-					onChange={(event) => setClientId(event.target.value)}
+					onValueChange={setClientId}
+					noneLabel="Aucun (projet interne)"
 					disabled={isPending}
-				>
-					<option value="">Aucun (projet interne)</option>
-					{clients.map((client) => (
-						<option key={client.id} value={client.id}>
-							{client.name}
-						</option>
-					))}
-				</select>
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="project-aliases">Alias</Label>
+				/>
+			</Field>
+			<Field label="Alias" id="project-aliases" error={aliasError}>
 				<Input
-					id="project-aliases"
 					value={aliases}
 					onChange={(event) => setAliases(event.target.value)}
 					disabled={isPending}
 					placeholder="Séparés par des virgules"
-					aria-invalid={Boolean(aliasError)}
 				/>
-				{aliasError ? (
-					<span role="alert" className="text-xs text-signal-danger">
-						{aliasError}
-					</span>
-				) : null}
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="project-repository">Dépôt par défaut</Label>
+			</Field>
+			<Field label="Dépôt par défaut" id="project-repository">
 				<Input
-					id="project-repository"
 					className="font-mono text-xs"
 					value={repository}
 					onChange={(event) => setRepository(event.target.value)}
 					disabled={isPending}
 					placeholder="propriétaire/nom"
 				/>
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="project-description">Description</Label>
+			</Field>
+			<Field
+				label="Description"
+				id="project-description"
+				count={[...description].length}
+				max={TEXT_MAX_LENGTH}
+				error={descriptionError}
+			>
 				<Textarea
-					id="project-description"
-					className="max-h-48 min-h-20"
+					maxRows={8}
+					rows={3}
+					className="min-h-20"
 					value={description}
 					onChange={(event) => setDescription(event.target.value)}
 					disabled={isPending}
-					aria-invalid={Boolean(descriptionError)}
 				/>
-				<span className="ml-auto text-xs text-muted-foreground figures">
-					{[...description].length} / {TEXT_MAX_LENGTH}
-				</span>
-			</div>
+			</Field>
 			{errorMessage ? (
 				<InlineAlert tone="danger">{errorMessage}</InlineAlert>
 			) : null}
