@@ -32,6 +32,7 @@ pub struct Subject {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     TranscriptCreate,
+    TranscriptionCreate,
     RunRead,
     CardCreate,
     CardRead,
@@ -55,6 +56,7 @@ pub struct Resource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceKind {
     Transcript,
+    Transcription,
     Run,
     Card,
     Provider,
@@ -79,6 +81,7 @@ impl Action {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TranscriptCreate => "transcript.create",
+            Self::TranscriptionCreate => "transcription.create",
             Self::RunRead => "run.read",
             Self::CardCreate => "card.create",
             Self::CardRead => "card.read",
@@ -98,6 +101,7 @@ impl ResourceKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Transcript => "transcript",
+            Self::Transcription => "transcription",
             Self::Run => "run",
             Self::Card => "card",
             Self::Provider => "provider",

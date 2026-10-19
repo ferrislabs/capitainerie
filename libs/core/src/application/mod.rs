@@ -6,6 +6,7 @@ mod organization;
 mod pipeline;
 mod provider;
 mod run;
+mod transcription;
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ pub use execution::StartedExecution;
 pub use pipeline::{MeetingPipeline, PipelineConfig, RunContext};
 pub use provider::{ModelListing, ProviderFailure};
 pub use run::{AgentDelegation, RunTimeline, SubmittedTranscript};
+pub use transcription::PreparedTranscription;
 
 pub type CapitainerieAuthorizer = AuditedAuthorizer<LocalPolicyEngine>;
 

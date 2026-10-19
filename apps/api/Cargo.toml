@@ -23,6 +23,7 @@ capitainerie-handlers-integrations.workspace = true
 capitainerie-handlers-providers.workspace = true
 capitainerie-handlers-realtime.workspace = true
 capitainerie-handlers-runs.workspace = true
+capitainerie-handlers-transcriptions.workspace = true
 capitainerie-runtime-rig.workspace = true
 capitainerie-telemetry.workspace = true
 clap.workspace = true

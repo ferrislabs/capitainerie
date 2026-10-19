@@ -115,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
+        catalog::build_transcribers()?,
         github,
         &args.server.allowed_origins,
     )?;

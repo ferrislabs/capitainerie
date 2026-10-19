@@ -212,6 +212,18 @@ mod tests {
     }
 
     #[test]
+    fn members_transcribe_audio_but_agents_never_do() {
+        assert!(allowed(Action::TranscriptionCreate, None));
+        assert!(matches!(
+            decide(&request(Action::TranscriptionCreate, None, false)),
+            Decision::Deny { .. }
+        ));
+        for actor in [AGENT, Some(crate::domain::execution::EXECUTOR_AGENT)] {
+            assert!(!allowed(Action::TranscriptionCreate, actor));
+        }
+    }
+
+    #[test]
     fn agents_propose_and_comment_but_do_not_submit_transcripts() {
         assert!(allowed(Action::CardCreate, AGENT));
         assert!(allowed(Action::CardComment, AGENT));

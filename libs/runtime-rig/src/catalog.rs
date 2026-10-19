@@ -141,10 +141,16 @@ fn model(
         display_name: display_name.unwrap_or(id).to_owned(),
         chat,
         embeddings,
+        transcription: provider != ProviderKind::Anthropic && is_transcription_model(id),
         context_window,
         input_price_per_mtok_micros: price.map(|price| price.input_per_mtok_micros),
         output_price_per_mtok_micros: price.map(|price| price.output_per_mtok_micros),
     }
+}
+
+fn is_transcription_model(id: &str) -> bool {
+    let id = id.to_lowercase();
+    id.contains("voxtral") || id.contains("whisper")
 }
 
 fn sorted(mut models: Vec<CatalogModel>) -> Vec<CatalogModel> {

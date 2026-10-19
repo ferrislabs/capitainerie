@@ -1,5 +1,17 @@
 export const ACCEPTED_EXTENSIONS = ['.txt', '.md', '.vtt', '.srt'] as const
+export const AUDIO_EXTENSIONS = [
+	'.mp3',
+	'.m4a',
+	'.wav',
+	'.webm',
+	'.ogg',
+] as const
+export const ACCEPTED_FILE_EXTENSIONS = [
+	...ACCEPTED_EXTENSIONS,
+	...AUDIO_EXTENSIONS,
+] as const
 export const MAX_FILE_BYTES = 5 * 1024 * 1024
+export const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 export interface ImportedTranscript {
 	text: string
@@ -26,13 +38,21 @@ export function titleFromFileName(fileName: string): string {
 	return (dot > 0 ? fileName.slice(0, dot) : fileName).trim()
 }
 
+export function isAudioFile(fileName: string): boolean {
+	const extension = fileExtension(fileName)
+	return AUDIO_EXTENSIONS.some((audio) => audio === extension)
+}
+
 export function validateTranscriptFile(file: {
 	name: string
 	size: number
 }): string | undefined {
 	const extension = fileExtension(file.name)
-	if (!ACCEPTED_EXTENSIONS.some((accepted) => accepted === extension)) {
-		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt ou .srt.'
+	if (!ACCEPTED_FILE_EXTENSIONS.some((accepted) => accepted === extension)) {
+		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt, .srt, .mp3, .m4a, .wav, .webm ou .ogg.'
+	}
+	if (isAudioFile(file.name)) {
+		return file.size > MAX_AUDIO_BYTES ? 'Le fichier dépasse 25 Mo.' : undefined
 	}
 	if (file.size > MAX_FILE_BYTES) {
 		return 'Le fichier dépasse 5 Mo.'

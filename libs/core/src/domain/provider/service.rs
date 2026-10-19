@@ -2,7 +2,8 @@ use capitainerie_common::{CoreError, OrganizationId};
 use chrono::Utc;
 
 use super::{
-    AgentRole, ModelAssignments, ProviderAccess, ProviderCredential, ProviderKind, ProviderSummary,
+    AgentRole, ModelAssignments, ModelTarget, ProviderAccess, ProviderCredential, ProviderKind,
+    ProviderSummary,
     ports::{CatalogModel, ModelAssignmentRepository, ProviderRepository},
     preview,
 };
@@ -148,6 +149,7 @@ where
             None,
         )
         .await?;
+        assignments.check_transcriber()?;
         let configured: Vec<ProviderKind> = self
             .providers
             .list(organization_id)
@@ -156,7 +158,10 @@ where
             .map(|summary| summary.kind)
             .collect();
         for role in AgentRole::ALL {
-            let provider = assignments.for_role(role).provider;
+            let Some(chosen) = assignments.for_role(role) else {
+                continue;
+            };
+            let provider = chosen.provider;
             if !configured.contains(&provider) {
                 return Err(CoreError::Invalid(format!(
                     "{} is not configured for this organization (role {})",
@@ -169,6 +174,36 @@ where
             .put(organization_id, &assignments, &subject.id)
             .await?;
         Ok(assignments)
+    }
+
+    pub async fn transcriber_target(
+        mut self,
+        subject: Subject,
+    ) -> Result<Option<ModelTarget>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require(
+            subject,
+            Action::TranscriptionCreate,
+            ResourceKind::Transcription,
+            None,
+        )
+        .await?;
+        let Some(model) = self
+            .assignments
+            .get(organization_id)
+            .await?
+            .and_then(|assignments| assignments.transcriber)
+        else {
+            return Ok(None);
+        };
+        Ok(self
+            .providers
+            .find(organization_id, model.provider)
+            .await?
+            .map(|credential| ModelTarget {
+                model,
+                access: Some(ProviderAccess::from(credential)),
+            }))
     }
 
     async fn all_accesses(
@@ -239,8 +274,11 @@ pub fn validate_assignments(
     assignments: &ModelAssignments,
     catalog: &[CatalogModel],
 ) -> Result<(), CoreError> {
+    assignments.check_transcriber()?;
     for role in AgentRole::ALL {
-        let chosen = assignments.for_role(role);
+        let Some(chosen) = assignments.for_role(role) else {
+            continue;
+        };
         if role == AgentRole::Embeddings && chosen.provider == ProviderKind::Anthropic {
             return Err(CoreError::Invalid(
                 "anthropic offers no embeddings model".into(),
@@ -257,10 +295,10 @@ pub fn validate_assignments(
                     role.as_str()
                 ))
             })?;
-        let capable = if role == AgentRole::Embeddings {
-            model.embeddings
-        } else {
-            model.chat
+        let capable = match role {
+            AgentRole::Embeddings => model.embeddings,
+            AgentRole::Transcriber => model.transcription,
+            _ => model.chat,
         };
         if !capable {
             return Err(CoreError::Invalid(format!(
@@ -328,6 +366,7 @@ mod tests {
             display_name: id.into(),
             chat,
             embeddings,
+            transcription: id.contains("voxtral") || id.contains("whisper"),
             context_window: None,
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
@@ -348,6 +387,7 @@ mod tests {
             judge: chat.clone(),
             writer: chat,
             embeddings: reference(ProviderKind::OpenAiCompatible, "bge-m3"),
+            transcriber: None,
             executor: Default::default(),
         }
     }
@@ -387,6 +427,28 @@ mod tests {
         let mut chosen = assignments();
         chosen.embeddings = reference(ProviderKind::OpenAiCompatible, "claude-haiku-5-5");
         assert!(validate_assignments(&chosen, &catalog()).is_err());
+    }
+
+    #[test]
+    fn a_transcriber_needs_a_transcription_model_of_a_non_anthropic_provider() {
+        let catalog = vec![
+            model(ProviderKind::Anthropic, "claude-haiku-5-5", true, false),
+            model(ProviderKind::OpenAiCompatible, "bge-m3", false, true),
+            model(ProviderKind::Mistral, "voxtral-mini-latest", false, false),
+            model(ProviderKind::Mistral, "mistral-small", true, false),
+        ];
+        let mut chosen = assignments();
+        chosen.transcriber = Some(reference(ProviderKind::Mistral, "voxtral-mini-latest"));
+        validate_assignments(&chosen, &catalog).unwrap();
+
+        chosen.transcriber = Some(reference(ProviderKind::Mistral, "mistral-small"));
+        assert!(validate_assignments(&chosen, &catalog).is_err());
+
+        chosen.transcriber = Some(reference(ProviderKind::Anthropic, "claude-haiku-5-5"));
+        assert!(matches!(
+            validate_assignments(&chosen, &catalog),
+            Err(CoreError::Invalid(message)) if message.contains("no transcription")
+        ));
     }
 
     struct Allow;
@@ -493,6 +555,73 @@ mod tests {
             .assign(subject(), assignments())
             .await;
         assert!(matches!(result, Err(CoreError::Invalid(_))));
+    }
+
+    #[tokio::test]
+    async fn an_anthropic_transcriber_is_refused_even_when_anthropic_is_configured() {
+        let memory = Memory::default();
+        let subject = subject();
+        for (kind, secret) in [
+            (ProviderKind::Anthropic, "sk-ant"),
+            (ProviderKind::OpenAiCompatible, ""),
+        ] {
+            ProviderService::new(memory.clone(), memory.clone(), &Allow)
+                .put(PutProvider {
+                    subject: subject.clone(),
+                    kind,
+                    secret: self::secret(secret),
+                    base_url: Some("http://localhost:11434/v1".into()),
+                })
+                .await
+                .unwrap();
+        }
+        let mut chosen = assignments();
+        chosen.transcriber = Some(reference(ProviderKind::Anthropic, "claude-haiku-5-5"));
+        let result = ProviderService::new(memory.clone(), memory, &Allow)
+            .assign(subject, chosen)
+            .await;
+        assert!(matches!(result, Err(CoreError::Invalid(_))));
+    }
+
+    #[tokio::test]
+    async fn the_transcriber_target_needs_an_assignment_and_a_key() {
+        let memory = Memory::default();
+        let subject = subject();
+        let none = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .transcriber_target(subject.clone())
+            .await
+            .unwrap();
+        assert_eq!(none, None);
+
+        ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .put(PutProvider {
+                subject: subject.clone(),
+                kind: ProviderKind::Mistral,
+                secret: secret("sk-mistral"),
+                base_url: None,
+            })
+            .await
+            .unwrap();
+        let mut chosen = assignments();
+        chosen.transcriber = Some(reference(ProviderKind::Mistral, "voxtral-mini-latest"));
+        *memory.assigned.lock().unwrap() = Some(chosen.clone());
+        let target = ProviderService::new(memory.clone(), memory.clone(), &Allow)
+            .transcriber_target(subject.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(target.model.model, "voxtral-mini-latest");
+        assert_eq!(
+            target.access.map(|access| access.kind),
+            Some(ProviderKind::Mistral)
+        );
+
+        memory.credentials.lock().unwrap().clear();
+        let keyless = ProviderService::new(memory.clone(), memory, &Allow)
+            .transcriber_target(subject)
+            .await
+            .unwrap();
+        assert_eq!(keyless, None);
     }
 
     #[tokio::test]

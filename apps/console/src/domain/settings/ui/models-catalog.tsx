@@ -125,6 +125,9 @@ export function ModelsCatalog({
 												{model.capabilities.embeddings ? (
 													<Badge variant="outline">Embeddings</Badge>
 												) : null}
+												{model.capabilities.transcription ? (
+													<Badge variant="outline">Transcription</Badge>
+												) : null}
 											</div>
 										</TableCell>
 										<TableCell className="text-right whitespace-nowrap figures">

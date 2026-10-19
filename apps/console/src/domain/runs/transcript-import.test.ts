@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
 	fileExtension,
 	importTranscript,
+	isAudioFile,
+	MAX_AUDIO_BYTES,
 	MAX_FILE_BYTES,
 	titleFromFileName,
 	validateTranscriptFile,
@@ -139,6 +141,25 @@ describe('file helpers', () => {
 		)
 		expect(
 			validateTranscriptFile({ name: 'a.txt', size: MAX_FILE_BYTES + 1 }),
+		).toBe('Le fichier dépasse 5 Mo.')
+	})
+
+	it('accepts the five audio formats up to 25 Mo', () => {
+		for (const name of ['a.mp3', 'a.m4a', 'a.WAV', 'a.webm', 'a.ogg']) {
+			expect(isAudioFile(name)).toBe(true)
+			expect(validateTranscriptFile({ name, size: MAX_AUDIO_BYTES })).toBe(
+				undefined,
+			)
+			expect(validateTranscriptFile({ name, size: MAX_AUDIO_BYTES + 1 })).toBe(
+				'Le fichier dépasse 25 Mo.',
+			)
+		}
+		expect(isAudioFile('a.vtt')).toBe(false)
+	})
+
+	it('keeps the 5 Mo limit for text even when audio is larger', () => {
+		expect(
+			validateTranscriptFile({ name: 'a.md', size: MAX_FILE_BYTES + 1 }),
 		).toBe('Le fichier dépasse 5 Mo.')
 	})
 })

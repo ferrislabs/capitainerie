@@ -913,6 +913,7 @@ fn claude_for_the_agents() -> ModelAssignments {
         judge: model(ProviderKind::Anthropic, "claude-sonnet-5-5"),
         writer: model(ProviderKind::Anthropic, "claude-haiku-5-5"),
         embeddings: model(ProviderKind::OpenAiCompatible, "bge-m3"),
+        transcriber: None,
         executor: Default::default(),
     }
 }

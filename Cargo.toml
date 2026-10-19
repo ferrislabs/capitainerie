@@ -21,6 +21,7 @@ members = [
     "libs/handlers-providers",
     "libs/handlers-realtime",
     "libs/handlers-runs",
+    "libs/handlers-transcriptions",
     "libs/macros",
     "libs/runner-kube",
     "libs/runtime-rig",
@@ -38,9 +39,10 @@ license = "Apache-2.0"
 [workspace.dependencies]
 anyhow = "1.0.100"
 aws-lc-rs = "1.16"
-axum = { version = "0.8.9", features = ["macros"] }
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
 axum-extra = { version = "0.12.6", features = ["typed-routing"] }
 base64 = "0.22.1"
+bytes = "1.10"
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.6.1", features = ["env", "derive"] }
 dotenvy = "0.15.7"
@@ -55,7 +57,7 @@ opentelemetry_sdk = "0.31.0"
 proc-macro2 = "1.0.103"
 http = "1.5.0"
 quote = "1.0.42"
-reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 rig-agent = "=0.44.0"
 rig-core = { version = "=0.44.0", default-features = false, features = ["reqwest", "rustls", "derive"] }
 rig-reqwest = { version = "=0.44.0", default-features = false, features = ["rustls"] }
@@ -101,6 +103,7 @@ capitainerie-handlers-integrations = { path = "libs/handlers-integrations" }
 capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
+capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }
 capitainerie-macros = { path = "libs/macros" }
 capitainerie-runner-kube = { path = "libs/runner-kube" }
 capitainerie-runtime-rig = { path = "libs/runtime-rig" }

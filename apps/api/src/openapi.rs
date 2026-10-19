@@ -42,6 +42,10 @@ use capitainerie_handlers_runs::{
         UsageTotals,
     },
 };
+use capitainerie_handlers_transcriptions::{
+    self as transcriptions,
+    create_transcription::{CreateTranscriptionRequest, TranscriptionResponse},
+};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -66,6 +70,7 @@ use utoipa::{
         cards::execute_card::handler,
         analytics::costs::handler,
         analytics::agents::handler,
+        transcriptions::create_transcription::handler,
         providers::list_providers::handler,
         providers::put_provider::handler,
         providers::delete_provider::handler,
@@ -115,6 +120,8 @@ use utoipa::{
         CostTotals,
         CostDimensionParam,
         AgentResponse,
+        CreateTranscriptionRequest,
+        TranscriptionResponse,
         ProviderKindDto,
         ProviderResponse,
         ProviderListResponse,
@@ -148,6 +155,7 @@ use utoipa::{
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
+        (name = transcriptions::TAG, description = "Audio transcribed to text for the transcript form; the audio is never kept"),
         (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository"),
     )
 )]
@@ -247,6 +255,23 @@ mod tests {
         let provider = &spec["components"]["schemas"]["ProviderResponse"]["properties"];
         assert!(provider.get("api_key").is_none());
         assert!(provider["preview"].is_object());
+    }
+
+    #[test]
+    fn the_transcription_endpoint_is_documented_as_multipart() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let operation = &spec["paths"]["/api/v1/transcriptions"]["post"];
+        assert_eq!(operation["operationId"], "createTranscription");
+        let content = &operation["requestBody"]["content"]["multipart/form-data"];
+        assert!(content["schema"].is_object());
+        for status in ["200", "409", "413", "415", "502"] {
+            assert!(operation["responses"][status].is_object(), "{status}");
+        }
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["TranscriptionResponse"]["properties"]["text"].is_object());
+        assert!(schemas["TranscriptionResponse"]["properties"]["model"].is_object());
+        assert!(schemas["CapabilitiesResponse"]["properties"]["transcription"].is_object());
+        assert!(schemas["ModelAssignmentsDto"]["properties"]["transcriber"].is_object());
     }
 
     #[test]

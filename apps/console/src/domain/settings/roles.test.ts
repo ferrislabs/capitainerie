@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	compatibleModels,
 	completeAssignments,
+	draftFrom,
 	executorModels,
 	groupByProvider,
 	modelRefKey,
@@ -15,6 +16,8 @@ import {
 	MISTRAL_EMBED,
 	QWEN,
 	SONNET,
+	VOXTRAL,
+	WHISPER,
 } from '#/domain/settings/test-fixtures'
 
 const CATALOG = [QWEN, BGE, SONNET, MISTRAL_EMBED]
@@ -71,7 +74,13 @@ describe('completeAssignments', () => {
 				writer: ref,
 				embeddings: ref,
 			}),
-		).toEqual({ extractor: ref, judge: ref, writer: ref, embeddings: ref })
+		).toEqual({
+			extractor: ref,
+			judge: ref,
+			writer: ref,
+			embeddings: ref,
+			transcriber: null,
+		})
 	})
 })
 
@@ -98,9 +107,44 @@ describe('completeAssignments with an executor', () => {
 	it('carries the executor only when one is chosen', () => {
 		expect(
 			completeAssignments({ ...roles, executor: 'claude-haiku-5' }),
-		).toEqual({ ...roles, executor: 'claude-haiku-5' })
+		).toEqual({ ...roles, transcriber: null, executor: 'claude-haiku-5' })
 		expect(
 			completeAssignments({ ...roles, executor: null }),
 		).not.toHaveProperty('executor')
+	})
+})
+
+describe('the transcriber role', () => {
+	it('offers transcription models of mistral and openai_compatible only', () => {
+		const anthropicOne = {
+			...SONNET,
+			capabilities: { chat: true, embeddings: false, transcription: true },
+		}
+		expect(
+			compatibleModels(
+				[QWEN, SONNET, anthropicOne, VOXTRAL, WHISPER],
+				'transcriber',
+			),
+		).toEqual([VOXTRAL, WHISPER])
+	})
+
+	it('is carried only when chosen, and may be null in a saved set', () => {
+		const ref = { provider: 'mistral', model: 'm' } as const
+		const roles = { extractor: ref, judge: ref, writer: ref, embeddings: ref }
+		const voxtral = {
+			provider: 'mistral',
+			model: 'voxtral-mini-latest',
+		} as const
+
+		expect(completeAssignments({ ...roles, transcriber: voxtral })).toEqual({
+			...roles,
+			transcriber: voxtral,
+		})
+		expect(completeAssignments(roles)).toEqual({ ...roles, transcriber: null })
+		expect(draftFrom({ ...roles, transcriber: null })).toEqual(roles)
+		expect(draftFrom({ ...roles, transcriber: voxtral })).toMatchObject({
+			transcriber: voxtral,
+		})
+		expect(draftFrom(null)).toEqual({})
 	})
 })
