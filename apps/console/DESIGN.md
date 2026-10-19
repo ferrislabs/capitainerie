@@ -230,7 +230,7 @@ Flat. Depth is the paper/sheet step and 1px rules. Only floating layers (menus, 
 
 ## Shapes
 
-6px on buttons, inputs, sidebar links; 8px on frames, columns, menus; 4px on badges. The empty state is a dashed field-stroke frame.
+6px on buttons, inputs, sidebar links; 8px on frames, columns, menus; 4px on badges. The empty state is a sheet-coloured card in a dashed field-stroke frame.
 
 ## Components
 
@@ -239,6 +239,28 @@ Flat. Depth is the paper/sheet step and 1px rules. Only floating layers (menus, 
 - **Badges:** soft ground, full-tone text, 4px radius.
 - **Sidebar link:** hover `rail-accent` at 60%, current page `rail-accent` with medium weight.
 - **Account menu:** trigger shows initials in a framed square, organization name, user name; the menu holds the profile, the theme choice and sign out.
+
+## Cartes
+
+A card is a block that leads somewhere or holds one fact: the home figures, the settings entries.
+
+- **Surface:** `card` on the page ground, 8px radius, 1px `border`. No shadow at rest, ever.
+- **Hover:** the surface moves to `muted`, nothing else (no lift, no border change). A card that is a link is one `<a>` as a whole, with the 2px `ring` outline on keyboard focus.
+- **Content:** a 13px `muted-foreground` title with a 16px icon, one figure or state in `headline`-weight ink (`figures` on numbers), one 13px hint in `muted-foreground`. Padding 16px, 8px between lines.
+- **Colour:** a card carries a signal only for a state, paired with a word. The count of proposed cards uses solid yellow when above zero (the Yellow Rule) and plain ink at zero.
+- **Grid:** one column on small screens, two from 640px, as many as the content needs on wide ones (four on home, three in settings), 12px gap.
+- **Empty state:** the same surface with a dashed `input` frame, an icon, a title, one sentence and a single action that fixes the emptiness.
+- **Kanban card:** three zones, title, meta (description, quote, chips, date), footer (actions, only when there is one), 8px apart.
+
+## Barre d'outils de filtres
+
+The row above a table: filter chips, then a full-width search field.
+
+- **Chip:** 32px, 6px radius, 13px medium. Empty: dashed `input` border, `muted-foreground` text. Filled: solid border, `card` ground, ink text, followed by the value or the count of choices.
+- **Menu:** a popover of checkboxes (several values allowed, the menu stays open on each choice), a separator and « Effacer » once something is chosen. Values within a chip are combined with "or", chips with "and".
+- **Search:** fills the rest of the row (min 12rem), leading search icon, matches regardless of case and accents, labelled for screen readers.
+- **Empty result:** an empty-state card with a « Réinitialiser les filtres » action. Options offered are the values present in the data.
+- **Wrap:** the row wraps on narrow screens; the search field keeps its minimum width.
 
 ## Do's and Don'ts
 
