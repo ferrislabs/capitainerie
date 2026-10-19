@@ -6,6 +6,7 @@ import {
 	ExecuteCardDialog,
 	type RepositoriesState,
 } from '#/domain/kanban/ui/execute-card-dialog'
+import { chooseValue } from '#/test-utils/combobox'
 
 vi.mock('@tanstack/react-router', () => ({
 	Link: ({ to, children }: { to: string; children: ReactNode }) => (
@@ -49,7 +50,7 @@ describe('ExecuteCardDialog', () => {
 		const handlers = setup({ repository: 'acme/web' })
 		const user = userEvent.setup()
 
-		await user.selectOptions(screen.getByLabelText('Dépôt'), 'acme/api')
+		await chooseValue(user, screen.getByLabelText('Dépôt'), 'acme/api')
 		expect(handlers.onRepositoryChange).toHaveBeenCalledWith('acme/api')
 
 		await user.click(screen.getByRole('button', { name: 'Confier' }))

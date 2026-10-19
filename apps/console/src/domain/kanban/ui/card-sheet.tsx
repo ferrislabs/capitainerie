@@ -5,6 +5,7 @@ import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
+import { Select } from '#/components/ui/combobox'
 import {
 	Sheet,
 	SheetBody,
@@ -153,28 +154,29 @@ export function CardSheet({
 								</Badge>
 							) : null}
 							<LinkChips client={card.client} project={card.project} />
-							<label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-								<span className="sr-only sm:not-sr-only">Déplacer vers…</span>
-								<select
+							<div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+								<span aria-hidden="true" className="hidden sm:inline">
+									Déplacer vers…
+								</span>
+								<Select
+									size="sm"
 									aria-label="Déplacer vers…"
-									className="h-7 rounded-md border border-input bg-card pr-2 pl-2 text-xs text-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/25 disabled:opacity-50"
+									className="w-40"
 									disabled={isMoving}
-									value=""
-									onChange={(event) => {
-										if (event.target.value) onMove(event.target.value as Column)
-									}}
-								>
-									<option value="">Choisir…</option>
-									{COLUMNS.filter(
+									items={COLUMNS.filter(
 										(column) =>
 											column !== card.column && canDrop(card.column, column),
-									).map((column) => (
-										<option key={column} value={column}>
-											{COLUMN_LABELS[column]}
-										</option>
-									))}
-								</select>
-							</label>
+									).map((column) => ({
+										value: column,
+										label: COLUMN_LABELS[column],
+									}))}
+									value=""
+									placeholder="Choisir…"
+									onValueChange={(value) => {
+										if (value) onMove(value as Column)
+									}}
+								/>
+							</div>
 						</div>
 					) : null}
 					{moveError ? (
