@@ -1445,6 +1445,7 @@ dependencies = [
  "axum",
  "capitainerie-common",
  "capitainerie-core",
+ "chrono",
  "clap",
  "http",
  "rig-agent",

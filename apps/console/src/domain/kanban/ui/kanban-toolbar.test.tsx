@@ -8,7 +8,7 @@ const OPTIONS = {
 	clients: ['Acme', 'Globex'],
 	projects: ['Site'],
 	priorities: ['Urgente', 'Normale'],
-	assignees: ['Claire Martin'],
+	assignees: ['u1'],
 	labels: ['infra'],
 }
 
@@ -79,6 +79,7 @@ describe('KanbanToolbar', () => {
 			<KanbanToolbar
 				filters={{ ...NO_FILTERS, priorities: ['Haute'] }}
 				options={OPTIONS}
+				assigneeLabels={new Map([['u1', 'Claire Martin']])}
 				onChange={onChange}
 			/>,
 		)
@@ -90,7 +91,7 @@ describe('KanbanToolbar', () => {
 		expect(onChange).toHaveBeenLastCalledWith({
 			...NO_FILTERS,
 			priorities: ['Haute'],
-			assignees: ['Claire Martin'],
+			assignees: ['u1'],
 		})
 	})
 

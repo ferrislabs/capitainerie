@@ -15,15 +15,30 @@ interface Props {
 	options: ReadonlyArray<string>
 	selected: ReadonlyArray<string>
 	onChange: (values: ReadonlyArray<string>) => void
+	labels?: ReadonlyMap<string, string>
 }
 
-function summary(selected: ReadonlyArray<string>): string | undefined {
+function summary(
+	selected: ReadonlyArray<string>,
+	labels: ReadonlyMap<string, string>,
+): string | undefined {
 	if (selected.length === 0) return undefined
-	return selected.length === 1 ? selected[0] : `${selected.length} choix`
+	const [only] = selected
+	return selected.length === 1 && only !== undefined
+		? (labels.get(only) ?? only)
+		: `${selected.length} choix`
 }
 
-export function FilterChip({ label, options, selected, onChange }: Props) {
-	const value = summary(selected)
+const NO_LABELS: ReadonlyMap<string, string> = new Map()
+
+export function FilterChip({
+	label,
+	options,
+	selected,
+	onChange,
+	labels = NO_LABELS,
+}: Props) {
+	const value = summary(selected, labels)
 
 	return (
 		<DropdownMenu>
@@ -59,7 +74,7 @@ export function FilterChip({ label, options, selected, onChange }: Props) {
 						onCheckedChange={() => onChange(toggleValue(selected, option))}
 						onSelect={(event) => event.preventDefault()}
 					>
-						{option}
+						{labels.get(option) ?? option}
 					</DropdownMenuCheckboxItem>
 				))}
 				{selected.length > 0 ? (

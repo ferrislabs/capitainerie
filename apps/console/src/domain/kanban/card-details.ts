@@ -98,3 +98,27 @@ export function assigneeName(
 ): string | undefined {
 	return subject ? (names.get(subject) ?? subject) : undefined
 }
+
+const SHORT_SUBJECT_CHARS = 8
+
+export function memberLabels(
+	members: ReadonlyArray<{
+		subject: string
+		name: string
+		email?: string | null
+	}>,
+): ReadonlyMap<string, string> {
+	const counts = new Map<string, number>()
+	for (const member of members) {
+		const key = member.name.toLocaleLowerCase('fr-FR')
+		counts.set(key, (counts.get(key) ?? 0) + 1)
+	}
+	return new Map(
+		members.map((member) => {
+			const shared =
+				(counts.get(member.name.toLocaleLowerCase('fr-FR')) ?? 0) > 1
+			const hint = member.email || member.subject.slice(0, SHORT_SUBJECT_CHARS)
+			return [member.subject, shared ? `${member.name} (${hint})` : member.name]
+		}),
+	)
+}

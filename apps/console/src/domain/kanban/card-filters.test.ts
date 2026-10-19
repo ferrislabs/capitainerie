@@ -68,9 +68,7 @@ const NAMES = new Map([
 ])
 
 const ids = (filters: Partial<CardFilters>) =>
-	filterCards(CARDS, { ...NO_FILTERS, ...filters }, NAMES).map(
-		(item) => item.id,
-	)
+	filterCards(CARDS, { ...NO_FILTERS, ...filters }).map((item) => item.id)
 
 describe('card filters', () => {
 	it('keeps everything without a filter', () => {
@@ -86,29 +84,22 @@ describe('card filters', () => {
 		expect(ids({ clients: ['Inconnu'] })).toEqual([])
 	})
 
-	it('filters by priority, by assignee name and by label without case', () => {
+	it('filters by priority, by assignee subject and by label without case', () => {
 		expect(ids({ priorities: ['Urgente'] })).toEqual(['a'])
 		expect(ids({ priorities: ['Urgente', 'Haute'] })).toEqual(['a', 'c'])
 		expect(ids({ priorities: ['Normale'] })).toEqual(['b', 'd'])
-		expect(ids({ assignees: ['Claire Martin'] })).toEqual(['b'])
-		expect(ids({ assignees: ['Claire Martin', 'Bastien'] })).toEqual(['b', 'c'])
+		expect(ids({ assignees: ['u1'] })).toEqual(['b'])
+		expect(ids({ assignees: ['u1', 'u2'] })).toEqual(['b', 'c'])
 		expect(ids({ labels: ['INFRA'] })).toEqual(['b', 'd'])
-		expect(ids({ labels: ['doc'], assignees: ['Claire Martin'] })).toEqual([])
-	})
-
-	it('falls back to the subject for an assignee who is not a known member', () => {
-		const stranger = [card('x', { assignee: 'u9' })]
-		expect(
-			filterCards(stranger, { ...NO_FILTERS, assignees: ['u9'] }, NAMES),
-		).toHaveLength(1)
+		expect(ids({ labels: ['doc'], assignees: ['u1'] })).toEqual([])
 	})
 
 	it('offers the values present, sorted, plus the ones already chosen', () => {
-		expect(filterOptions(CARDS, NO_FILTERS, NAMES)).toEqual({
+		expect(filterOptions(CARDS, NO_FILTERS, new Map(NAMES))).toEqual({
 			clients: ['Acme', 'Globex'],
 			projects: ['App', 'Site'],
 			priorities: ['Urgente', 'Haute', 'Normale'],
-			assignees: ['Bastien', 'Claire Martin'],
+			assignees: ['u2', 'u1'],
 			labels: ['doc', 'Infra'],
 		})
 		const kept = filterOptions([], {

@@ -27,8 +27,6 @@ export function hasFilters(filters: CardFilters): boolean {
 	)
 }
 
-const NO_NAMES: ReadonlyMap<string, string> = new Map()
-
 function lower(value: string): string {
 	return value.toLocaleLowerCase('fr-FR')
 }
@@ -36,7 +34,6 @@ function lower(value: string): string {
 export function filterCards(
 	cards: ReadonlyArray<Schemas.CardResponse>,
 	filters: CardFilters,
-	memberNames: ReadonlyMap<string, string> = NO_NAMES,
 ): ReadonlyArray<Schemas.CardResponse> {
 	if (!hasFilters(filters)) return cards
 	const labels = filters.labels.map(lower)
@@ -51,9 +48,7 @@ export function filterCards(
 				filters.priorities.includes(PRIORITY_LABELS[card.priority])) &&
 			(filters.assignees.length === 0 ||
 				(card.assignee_subject != null &&
-					filters.assignees.includes(
-						memberNames.get(card.assignee_subject) ?? card.assignee_subject,
-					))) &&
+					filters.assignees.includes(card.assignee_subject))) &&
 			(labels.length === 0 ||
 				card.labels.some((label) => labels.includes(lower(label)))),
 	)
@@ -82,7 +77,7 @@ export interface FilterOptions {
 export function filterOptions(
 	cards: ReadonlyArray<Schemas.CardResponse>,
 	filters: CardFilters,
-	memberNames: ReadonlyMap<string, string> = NO_NAMES,
+	assigneeLabels: ReadonlyMap<string, string> = new Map(),
 ): FilterOptions {
 	const names = <T extends { name: string }>(
 		items: ReadonlyArray<T | null | undefined>,
@@ -109,14 +104,19 @@ export function filterOptions(
 					),
 			),
 		],
-		assignees: distinct([
-			...cards.flatMap((card) =>
-				card.assignee_subject
-					? [memberNames.get(card.assignee_subject) ?? card.assignee_subject]
-					: [],
+		assignees: [
+			...new Set([
+				...cards.flatMap((card) =>
+					card.assignee_subject ? [card.assignee_subject] : [],
+				),
+				...filters.assignees,
+			]),
+		].sort((a, b) =>
+			(assigneeLabels.get(a) ?? a).localeCompare(
+				assigneeLabels.get(b) ?? b,
+				'fr',
 			),
-			...filters.assignees,
-		]),
+		),
 		labels: distinctNoCase([
 			...cards.flatMap((card) => card.labels),
 			...filters.labels,

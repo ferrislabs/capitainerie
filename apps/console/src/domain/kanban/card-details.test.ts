@@ -6,6 +6,7 @@ import {
 	initials,
 	isFlagged,
 	isOverdue,
+	memberLabels,
 	splitLabels,
 } from '#/domain/kanban/card-details'
 
@@ -65,5 +66,16 @@ describe('card details', () => {
 		expect(assigneeName('u1', names)).toBe('Claire Martin')
 		expect(assigneeName('u2', names)).toBe('u2')
 		expect(assigneeName(null, names)).toBeUndefined()
+	})
+
+	it('labels members by name, and tells namesakes apart', () => {
+		const labels = memberLabels([
+			{ subject: 'u1', name: 'Claire Martin', email: 'claire@a.test' },
+			{ subject: 'abcdef123456', name: 'Alex', email: 'alex@a.test' },
+			{ subject: 'u3-long-subject', name: 'alex', email: null },
+		])
+		expect(labels.get('u1')).toBe('Claire Martin')
+		expect(labels.get('abcdef123456')).toBe('Alex (alex@a.test)')
+		expect(labels.get('u3-long-subject')).toBe('alex (u3-long-)')
 	})
 })

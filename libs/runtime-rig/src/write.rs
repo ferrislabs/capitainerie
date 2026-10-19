@@ -8,6 +8,10 @@ use capitainerie_common::{CoreError, RunId, TranscriptId};
 use capitainerie_core::domain::agent::{
     DuplicateAction, ExtractedAction, LocatedAction, ToolCall, Usage, WriteReport, WriteRequest,
 };
+use capitainerie_core::domain::card::attributes::{
+    Estimate, Priority, agent_due_date, parse_due_date,
+};
+use chrono::NaiveDate;
 use rig_agent::{agent::AgentBuilder, run::PromptError};
 use rig_core::{
     DynModel,
@@ -72,6 +76,40 @@ pub(crate) struct ProposeCardArgs {
     due_date: Option<String>,
 }
 
+struct SoundDetails {
+    priority: Option<&'static str>,
+    estimate: Option<&'static str>,
+    due_date: Option<String>,
+}
+
+/// What the model gave that MCP would accept; the rest is dropped so the card
+/// is still created.
+fn sound_details(
+    args: &ProposeCardArgs,
+    deadline_stated: bool,
+    meeting_date: Option<NaiveDate>,
+) -> SoundDetails {
+    SoundDetails {
+        priority: args
+            .priority
+            .as_deref()
+            .and_then(|value| Priority::try_from(value.trim()).ok())
+            .map(Priority::as_str),
+        estimate: args
+            .estimate
+            .as_deref()
+            .and_then(|value| Estimate::try_from(value.trim()).ok())
+            .map(Estimate::as_str),
+        due_date: args
+            .due_date
+            .as_deref()
+            .filter(|_| deadline_stated)
+            .and_then(|value| parse_due_date(value).ok())
+            .and_then(|date| agent_due_date(date, meeting_date).ok())
+            .map(|date| date.to_string()),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub(crate) struct ToolFailure(String);
@@ -80,6 +118,7 @@ struct Shared {
     peer: Peer<RoleClient>,
     run_id: RunId,
     transcript_id: TranscriptId,
+    meeting_date: Option<NaiveDate>,
     actions: Vec<LocatedAction>,
     calls: Mutex<Vec<ToolCall>>,
     /// Indexes already turned into a card, or being: a model that calls the
@@ -97,6 +136,7 @@ impl ProposeCard {
         peer: Peer<RoleClient>,
         run_id: RunId,
         transcript_id: TranscriptId,
+        meeting_date: Option<NaiveDate>,
         actions: Vec<LocatedAction>,
     ) -> Self {
         Self {
@@ -104,6 +144,7 @@ impl ProposeCard {
                 peer,
                 run_id,
                 transcript_id,
+                meeting_date,
                 actions,
                 calls: Mutex::new(Vec::new()),
                 proposed: Mutex::new(HashSet::new()),
@@ -156,8 +197,12 @@ impl ProposeCard {
         if !self.reserve(index) {
             return Err(ToolFailure(already_proposed_message(args.action_index)));
         }
+        let details = sound_details(
+            &args,
+            located.action.due.is_some(),
+            self.shared.meeting_date,
+        );
         let criteria = args.acceptance_criteria.unwrap_or_default();
-        let due_date = located.action.due.as_ref().and(args.due_date.as_deref());
         let arguments = create_card_arguments(
             self.shared.run_id,
             self.shared.transcript_id,
@@ -166,9 +211,9 @@ impl ProposeCard {
             &card_description(&args.description, &located.action),
             &CardExtras {
                 acceptance_criteria: &criteria,
-                priority: args.priority.as_deref(),
-                estimate: args.estimate.as_deref(),
-                due_date,
+                priority: details.priority,
+                estimate: details.estimate,
+                due_date: details.due_date.as_deref(),
             },
         );
         let started = Instant::now();
@@ -551,6 +596,7 @@ pub(crate) async fn run(
             session.peer(),
             request.run_id,
             request.transcript_id,
+            request.meeting_date,
             request.actions,
         );
         let outcome = match engine {

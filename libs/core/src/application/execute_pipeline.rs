@@ -947,7 +947,11 @@ fn build_prompt(repository: &RepositoryRef, base_branch: &str, card: &Card) -> S
             fields.push_str(&format!(
                 "\n- [{}] {}",
                 if criterion.done { "x" } else { " " },
-                criterion.text
+                criterion
+                    .text
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
             ));
         }
     }
@@ -1064,6 +1068,17 @@ mod tests {
         let repository: RepositoryRef = "acme/web".parse().unwrap();
         let prompt = build_prompt(&repository, "main", &card("Créer CHANGELOG.md"));
         assert!(!prompt.contains("Acceptance criteria:"));
+    }
+
+    #[test]
+    fn a_criterion_is_rendered_on_one_line_with_single_spaces() {
+        let repository: RepositoryRef = "acme/web".parse().unwrap();
+        let prompt = build_prompt(
+            &repository,
+            "main",
+            &with_criteria(&[("Le  test\u{a0}\u{a0} passe", false)]),
+        );
+        assert!(prompt.contains("- [ ] Le test passe\n"));
     }
 
     #[test]

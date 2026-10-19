@@ -7,6 +7,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { memberLabels } from '#/domain/kanban/card-details'
 import {
 	type CardFilters,
 	filterCards,
@@ -63,8 +64,9 @@ export function KanbanPage({
 
 	const all = cards.data?.items ?? []
 	const names = memberNames(members.data?.items ?? [])
-	const visible = filterCards(all, filters, names)
-	const options = filterOptions(all, filters, names)
+	const assigneeLabels = memberLabels(members.data?.items ?? [])
+	const visible = filterCards(all, filters)
+	const options = filterOptions(all, filters, assigneeLabels)
 
 	function toggleExpanded(cardId: string) {
 		setExpandedIds((current) => {
@@ -95,6 +97,7 @@ export function KanbanPage({
 			<KanbanToolbar
 				filters={filters}
 				options={options}
+				assigneeLabels={assigneeLabels}
 				onChange={onFiltersChange}
 			/>
 			{move.errorMessage ? (

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use capitainerie_common::{ClientId, CoreError, ProjectId};
-use chrono::NaiveDate;
+use chrono::{Months, NaiveDate, Utc};
 
 use crate::domain::label::clean_label;
 
@@ -51,6 +51,14 @@ impl TryFrom<Vec<Criterion>> for AcceptanceCriteria {
                         "an acceptance criterion exceeds {} characters",
                         Self::MAX_CHARS
                     )));
+                }
+                if text
+                    .chars()
+                    .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+                {
+                    return Err(CoreError::Invalid(
+                        "an acceptance criterion contains a control character".into(),
+                    ));
                 }
                 Ok(Criterion {
                     text: text.to_owned(),
@@ -178,6 +186,33 @@ pub fn parse_due_date(value: &str) -> Result<NaiveDate, CoreError> {
         .map_err(|_| CoreError::Invalid(format!("a due date is YYYY-MM-DD, not {value}")))
 }
 
+pub const DUE_DATE_MAX_YEARS_AHEAD: u32 = 2;
+
+/// Accepts `date` only from `floor` to two years after it.
+pub fn check_due_date_window(date: NaiveDate, floor: NaiveDate) -> Result<NaiveDate, CoreError> {
+    let ceiling = floor
+        .checked_add_months(Months::new(12 * DUE_DATE_MAX_YEARS_AHEAD))
+        .unwrap_or(NaiveDate::MAX);
+    if date < floor {
+        return Err(CoreError::Invalid(format!(
+            "due_date {date} is in the past: give a date from {floor} to {ceiling}, or omit it"
+        )));
+    }
+    if date > ceiling {
+        return Err(CoreError::Invalid(format!(
+            "due_date {date} is too far ahead: give a date from {floor} to {ceiling}, or omit it"
+        )));
+    }
+    Ok(date)
+}
+
+/// The window an agent's deadline must fall in: not before today, nor before
+/// the meeting it comes from, and at most two years after that.
+pub fn agent_due_date(date: NaiveDate, meeting: Option<NaiveDate>) -> Result<NaiveDate, CoreError> {
+    let today = Utc::now().date_naive();
+    check_due_date_window(date, meeting.map_or(today, |meeting| meeting.max(today)))
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Attributes {
     pub acceptance_criteria: AcceptanceCriteria,
@@ -234,6 +269,23 @@ mod tests {
     }
 
     #[test]
+    fn a_criterion_with_a_control_character_or_line_separator_is_refused() {
+        for bad in [
+            "a\nb",
+            "a\tb",
+            "a\rb",
+            "a\u{0}b",
+            "a\u{2028}b",
+            "a\u{2029}b",
+        ] {
+            assert!(
+                AcceptanceCriteria::try_from(vec![criterion(bad, false)]).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_blank_criterion_is_refused() {
         assert!(AcceptanceCriteria::try_from(vec![criterion("   ", false)]).is_err());
         assert!(AcceptanceCriteria::try_from(vec![criterion("", true)]).is_err());
@@ -273,6 +325,30 @@ mod tests {
         for bad in ["vendredi", "2026-13-40", "31/10/2026", "2026-02-30", ""] {
             assert!(parse_due_date(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_due_date_window_runs_from_the_floor_to_two_years_after() {
+        let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        let floor = day(2026, 10, 19);
+        assert!(check_due_date_window(floor, floor).is_ok());
+        assert!(check_due_date_window(day(2028, 10, 19), floor).is_ok());
+        assert!(check_due_date_window(day(2026, 10, 18), floor).is_err());
+        assert!(check_due_date_window(day(2028, 10, 20), floor).is_err());
+        let past = check_due_date_window(day(2020, 1, 1), floor).unwrap_err();
+        assert!(
+            matches!(past, CoreError::Invalid(m) if m.contains("in the past") && m.contains("2028-10-19"))
+        );
+    }
+
+    #[test]
+    fn an_agent_deadline_is_bounded_by_today_and_the_meeting() {
+        let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        assert!(agent_due_date(day(2001, 1, 1), None).is_err());
+        assert!(agent_due_date(day(2001, 1, 1), Some(day(2099, 1, 1))).is_err());
+        assert!(agent_due_date(day(2099, 1, 5), Some(day(2099, 1, 1))).is_ok());
+        assert!(agent_due_date(day(2098, 12, 31), Some(day(2099, 1, 1))).is_err());
+        assert!(agent_due_date(day(2999, 1, 1), None).is_err());
     }
 
     #[test]

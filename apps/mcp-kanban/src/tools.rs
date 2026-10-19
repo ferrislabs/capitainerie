@@ -7,7 +7,8 @@ use capitainerie_core::{
         card::{
             Card, CardComment, Column, Provenance,
             attributes::{
-                AcceptanceCriteria, Attributes, Criterion, Estimate, Priority, parse_due_date,
+                AcceptanceCriteria, Attributes, Criterion, Estimate, Priority, agent_due_date,
+                parse_due_date,
             },
             service::{CreateCard, MoveCard, ProvenanceInput, UpdateCard},
         },
@@ -397,7 +398,14 @@ impl KanbanTools {
         Extension(parts): Extension<Parts>,
     ) -> Result<CallToolResult, ErrorData> {
         let subject = subject_of(&parts)?;
-        let command = match CreateCard::try_from(input) {
+        let command = match CreateCard::try_from(input).and_then(|command| {
+            if subject.actor.is_some()
+                && let Some(date) = command.attributes.due_date
+            {
+                agent_due_date(date, None)?;
+            }
+            Ok(command)
+        }) {
             Ok(command) => command,
             Err(error) => return into_tool_result::<()>(Err(error)),
         };
@@ -556,6 +564,23 @@ mod tests {
     fn create_input_defaults_to_normal_priority_and_no_details() {
         let attributes = CreateCard::try_from(create(None, None)).unwrap().attributes;
         assert_eq!(attributes, Attributes::default());
+    }
+
+    #[test]
+    fn an_agent_deadline_in_the_past_or_too_far_ahead_is_refused_with_the_window() {
+        for date in ["2001-01-01", "2999-01-01"] {
+            let mut input = create(None, None);
+            input.due_date = Some(date.into());
+            let due = CreateCard::try_from(input)
+                .unwrap()
+                .attributes
+                .due_date
+                .unwrap();
+            assert!(
+                matches!(agent_due_date(due, None), Err(CoreError::Invalid(m)) if m.contains("omit it")),
+                "{date}"
+            );
+        }
     }
 
     #[test]

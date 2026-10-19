@@ -4,10 +4,16 @@ import type { CardFilters, FilterOptions } from '#/domain/kanban/card-filters'
 interface Props {
 	filters: CardFilters
 	options: FilterOptions
+	assigneeLabels?: ReadonlyMap<string, string>
 	onChange: (filters: CardFilters) => void
 }
 
-export function KanbanToolbar({ filters, options, onChange }: Props) {
+export function KanbanToolbar({
+	filters,
+	options,
+	assigneeLabels,
+	onChange,
+}: Props) {
 	return (
 		<search
 			aria-label="Filtrer les cartes"
@@ -34,6 +40,7 @@ export function KanbanToolbar({ filters, options, onChange }: Props) {
 			<FilterChip
 				label="Responsable"
 				options={options.assignees}
+				labels={assigneeLabels}
 				selected={filters.assignees}
 				onChange={(values) => onChange({ ...filters, assignees: values })}
 			/>
