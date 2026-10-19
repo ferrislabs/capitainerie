@@ -6,6 +6,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { TableSkeleton } from '#/components/layout/table-skeleton'
+import { useClients, useProjects } from '#/domain/clients/hooks/use-directory'
 import {
 	useGithubIntegration,
 	useGithubRepositories,
@@ -16,6 +17,11 @@ import { useReadDocument } from '#/domain/runs/hooks/use-read-document'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
 import { useSubmitTranscript } from '#/domain/runs/hooks/use-submit-transcript'
 import { useTranscribe } from '#/domain/runs/hooks/use-transcribe'
+import {
+	chooseClient,
+	chooseProject,
+	intakeBody,
+} from '#/domain/runs/intake-links'
 import {
 	importTranscript,
 	isAudioFile,
@@ -62,6 +68,8 @@ export function RunsPage() {
 	const repositories = useGithubRepositories(
 		Boolean(integration.data?.installation),
 	)
+	const clients = useClients()
+	const projects = useProjects()
 	const [imported, setImported] = useState<ImportedState>()
 	const [fileError, setFileError] = useState<string>()
 	const [participantDraft, setParticipantDraft] = useState('')
@@ -73,6 +81,8 @@ export function RunsPage() {
 			meetingDate: '',
 			participants: [] as string[],
 			repository: '',
+			clientId: '',
+			projectId: '',
 		},
 		validators: {
 			onChange: ({ value }) => {
@@ -95,6 +105,7 @@ export function RunsPage() {
 					...(value.meetingDate ? { meeting_date: value.meetingDate } : {}),
 					...(participants.length > 0 ? { participants } : {}),
 					...(repository ? { repository } : {}),
+					...intakeBody(value),
 				},
 			})
 			formApi.reset()
@@ -270,6 +281,7 @@ export function RunsPage() {
 		form.handleSubmit().catch(() => undefined)
 	}
 
+	const projectList = projects.data?.items.map((item) => item.project) ?? []
 	const runCount = runs.data?.items.length
 
 	return (
@@ -340,6 +352,23 @@ export function RunsPage() {
 							participantDraft,
 							repository: values.repository,
 							repositories: repositories.data?.repositories,
+							clients: clients.data?.items.map((item) => item.client),
+							projects: projectList,
+							clientId: values.clientId,
+							projectId: values.projectId,
+							onClientChange: (clientId) => {
+								const next = chooseClient(projectList, values, clientId)
+								form.setFieldValue('clientId', next.clientId)
+								form.setFieldValue('projectId', next.projectId)
+							},
+							onProjectChange: (projectId) => {
+								const next = chooseProject(projectList, values, projectId)
+								form.setFieldValue('clientId', next.clientId)
+								form.setFieldValue('projectId', next.projectId)
+								if (next.repository) {
+									form.setFieldValue('repository', next.repository)
+								}
+							},
 							participantsError: validateParticipants(values.participants),
 							repositoryError: validateRepository(values.repository),
 							onMeetingDateChange: (value) =>

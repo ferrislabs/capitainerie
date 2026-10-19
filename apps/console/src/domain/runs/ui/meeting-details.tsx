@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { projectsOf } from '#/domain/runs/intake-links'
 
 interface Props {
 	meetingDate: string
@@ -10,6 +11,12 @@ interface Props {
 	participantDraft: string
 	repository: string
 	repositories?: ReadonlyArray<Schemas.RepositoryResponse>
+	clients?: ReadonlyArray<Schemas.ClientResponse>
+	projects?: ReadonlyArray<Schemas.ProjectResponse>
+	clientId?: string
+	projectId?: string
+	onClientChange?: (clientId: string) => void
+	onProjectChange?: (projectId: string) => void
 	participantsError?: string
 	repositoryError?: string
 	disabled: boolean
@@ -19,6 +26,9 @@ interface Props {
 	onParticipantRemove: (name: string) => void
 	onRepositoryChange: (value: string) => void
 }
+
+const SELECT_CLASS =
+	'h-8 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60'
 
 function FieldError({ id, message }: { id: string; message?: string }) {
 	return (
@@ -38,6 +48,12 @@ export function MeetingDetails({
 	participantDraft,
 	repository,
 	repositories,
+	clients = [],
+	projects = [],
+	clientId = '',
+	projectId = '',
+	onClientChange,
+	onProjectChange,
 	participantsError,
 	repositoryError,
 	disabled,
@@ -119,6 +135,48 @@ export function MeetingDetails({
 						message={participantsError}
 					/>
 				</div>
+				{onClientChange && onProjectChange ? (
+					<div className="grid gap-4 sm:grid-cols-2">
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="meeting-client">Client</Label>
+							<select
+								id="meeting-client"
+								className={SELECT_CLASS}
+								value={clientId}
+								onChange={(event) => onClientChange(event.target.value)}
+								disabled={disabled}
+							>
+								<option value="">Détecter automatiquement</option>
+								{clients.map((client) => (
+									<option key={client.id} value={client.id}>
+										{client.name}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="meeting-project">Projet</Label>
+							<select
+								id="meeting-project"
+								className={SELECT_CLASS}
+								value={projectId}
+								onChange={(event) => onProjectChange(event.target.value)}
+								disabled={disabled}
+							>
+								<option value="">Détecter automatiquement</option>
+								{projectsOf(projects, clientId).map((project) => (
+									<option key={project.id} value={project.id}>
+										{project.name}
+									</option>
+								))}
+							</select>
+						</div>
+						<span className="text-xs text-muted-foreground sm:col-span-2">
+							Un choix ici s’applique à toutes les cartes du run et remplace la
+							détection. Choisir un projet remplit le client et le dépôt.
+						</span>
+					</div>
+				) : null}
 				<div className="flex flex-col gap-1.5">
 					<Label htmlFor="meeting-repository">Dépôt par défaut</Label>
 					{repositories && repositories.length > 0 ? (
