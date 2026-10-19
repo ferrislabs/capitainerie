@@ -311,6 +311,27 @@ async fn an_unknown_token_is_401_with_the_same_body_as_a_revoked_one() {
 }
 
 #[tokio::test]
+async fn git_without_credentials_gets_a_basic_challenge() {
+    let h = harness().await;
+
+    let response = h
+        .client
+        .get(format!(
+            "{}/git/acme/web.git/info/refs?service=git-upload-pack",
+            h.url
+        ))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 401);
+    assert_eq!(
+        response.headers()["www-authenticate"],
+        r#"Basic realm="capitainerie""#
+    );
+}
+
+#[tokio::test]
 async fn a_request_without_credentials_is_401() {
     let h = harness().await;
     let anthropic = h

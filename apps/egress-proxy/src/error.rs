@@ -1,5 +1,5 @@
 use axum::{
-    http::{Method, StatusCode},
+    http::{Method, StatusCode, header::WWW_AUTHENTICATE},
     response::{IntoResponse, Response},
 };
 use capitainerie_common::RunId;
@@ -50,7 +50,13 @@ impl ProxyError {
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
         match self {
-            Self::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+            // git sends credentials only after a Basic challenge.
+            Self::Unauthorized { .. } => (
+                StatusCode::UNAUTHORIZED,
+                [(WWW_AUTHENTICATE, r#"Basic realm="capitainerie""#)],
+                "unauthorized",
+            )
+                .into_response(),
             Self::Forbidden { reason, .. } => (StatusCode::FORBIDDEN, reason).into_response(),
             Self::TooLarge { .. } => {
                 (StatusCode::PAYLOAD_TOO_LARGE, "request body too large").into_response()
