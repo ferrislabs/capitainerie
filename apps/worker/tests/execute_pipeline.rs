@@ -136,6 +136,7 @@ async fn world() -> Option<World> {
                 description: "À la racine".into(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await

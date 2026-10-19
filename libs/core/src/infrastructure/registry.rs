@@ -11,6 +11,7 @@ pub mod domain {
     pub struct DecisionLog;
     pub struct GithubApp;
     pub struct GithubInstallation;
+    pub struct Member;
     pub struct ModelAssignment;
     pub struct Organization;
     pub struct Project;

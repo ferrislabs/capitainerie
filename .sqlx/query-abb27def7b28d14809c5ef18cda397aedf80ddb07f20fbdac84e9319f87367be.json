@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT c.id, c.organization_id, c.title, c.description, c.\"column\",\n                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,\n                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   c.client_id, cl.name AS \"client_name?\", c.project_id, p.name AS \"project_name?\"\n            FROM cards c\n            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id\n            LEFT JOIN clients cl ON cl.id = c.client_id\n            LEFT JOIN projects p ON p.id = c.project_id\n            WHERE c.organization_id = $1\n            ORDER BY c.updated_at DESC, c.id DESC\n            LIMIT 500\n            ",
+  "query": "\n            SELECT c.id, c.organization_id, c.title, c.description, c.\"column\",\n                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,\n                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   c.client_id, cl.name AS \"client_name?\", c.project_id, p.name AS \"project_name?\",\n                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate\n            FROM cards c\n            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id\n            LEFT JOIN clients cl ON cl.id = c.client_id\n            LEFT JOIN projects p ON p.id = c.project_id\n            WHERE c.organization_id = $1 AND c.id = $2\n            ",
   "describe": {
     "columns": [
       {
@@ -102,10 +102,41 @@
         "ordinal": 19,
         "name": "project_name?",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "acceptance_criteria",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 21,
+        "name": "priority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "due_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 23,
+        "name": "assignee_subject",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 24,
+        "name": "labels",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 25,
+        "name": "estimate",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -129,8 +160,14 @@
       true,
       false,
       true,
-      false
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
     ]
   },
-  "hash": "07a981319d369247bdfc88a02e717592245f16f80d3d0cf5a7fe1f45a49d05f0"
+  "hash": "abb27def7b28d14809c5ef18cda397aedf80ddb07f20fbdac84e9319f87367be"
 }

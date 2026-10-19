@@ -1,9 +1,13 @@
 use capitainerie_common::{CardCommentId, CardId, RunId, TranscriptId};
-use capitainerie_core::domain::card::{Card, CardComment, Column, detail::CardDetail};
+use capitainerie_core::domain::card::{
+    Card, CardComment, Column,
+    attributes::{Criterion, Estimate, Priority},
+    detail::CardDetail,
+};
 use capitainerie_handlers_runs::response::{
     ClientRefResponse, ProjectRefResponse, RunResponse, link_refs,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -15,6 +19,95 @@ pub enum ColumnDto {
     InProgress,
     Done,
     Rejected,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PriorityDto {
+    Low,
+    Normal,
+    High,
+    Urgent,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EstimateDto {
+    Xs,
+    S,
+    M,
+    L,
+    Xl,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CriterionDto {
+    pub text: String,
+    pub done: bool,
+}
+
+impl From<Priority> for PriorityDto {
+    fn from(priority: Priority) -> Self {
+        match priority {
+            Priority::Low => Self::Low,
+            Priority::Normal => Self::Normal,
+            Priority::High => Self::High,
+            Priority::Urgent => Self::Urgent,
+        }
+    }
+}
+
+impl From<PriorityDto> for Priority {
+    fn from(priority: PriorityDto) -> Self {
+        match priority {
+            PriorityDto::Low => Self::Low,
+            PriorityDto::Normal => Self::Normal,
+            PriorityDto::High => Self::High,
+            PriorityDto::Urgent => Self::Urgent,
+        }
+    }
+}
+
+impl From<Estimate> for EstimateDto {
+    fn from(estimate: Estimate) -> Self {
+        match estimate {
+            Estimate::Xs => Self::Xs,
+            Estimate::S => Self::S,
+            Estimate::M => Self::M,
+            Estimate::L => Self::L,
+            Estimate::Xl => Self::Xl,
+        }
+    }
+}
+
+impl From<EstimateDto> for Estimate {
+    fn from(estimate: EstimateDto) -> Self {
+        match estimate {
+            EstimateDto::Xs => Self::Xs,
+            EstimateDto::S => Self::S,
+            EstimateDto::M => Self::M,
+            EstimateDto::L => Self::L,
+            EstimateDto::Xl => Self::Xl,
+        }
+    }
+}
+
+impl From<CriterionDto> for Criterion {
+    fn from(criterion: CriterionDto) -> Self {
+        Self {
+            text: criterion.text,
+            done: criterion.done,
+        }
+    }
+}
+
+impl From<&Criterion> for CriterionDto {
+    fn from(criterion: &Criterion) -> Self {
+        Self {
+            text: criterion.text.clone(),
+            done: criterion.done,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -39,6 +132,13 @@ pub struct CardResponse {
     pub repository_hint: Option<String>,
     pub client: Option<ClientRefResponse>,
     pub project: Option<ProjectRefResponse>,
+    pub acceptance_criteria: Vec<CriterionDto>,
+    pub priority: PriorityDto,
+    pub due_date: Option<NaiveDate>,
+    /// FerrisKey subject of the member the card is assigned to.
+    pub assignee_subject: Option<String>,
+    pub labels: Vec<String>,
+    pub estimate: Option<EstimateDto>,
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -88,6 +188,18 @@ impl From<Card> for CardResponse {
             repository_hint: card.repository_hint.map(|hint| hint.to_string()),
             client,
             project,
+            acceptance_criteria: card
+                .attributes
+                .acceptance_criteria
+                .as_slice()
+                .iter()
+                .map(CriterionDto::from)
+                .collect(),
+            priority: card.attributes.priority.into(),
+            due_date: card.attributes.due_date,
+            assignee_subject: card.attributes.assignee_subject,
+            labels: card.attributes.labels.as_slice().to_vec(),
+            estimate: card.attributes.estimate.map(Into::into),
             version: card.version,
             created_at: card.created_at,
             updated_at: card.updated_at,

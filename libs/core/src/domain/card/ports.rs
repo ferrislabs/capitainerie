@@ -1,6 +1,6 @@
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 
-use super::{Card, CardComment};
+use super::{Card, CardComment, attributes::CardFilter};
 use crate::domain::client::links::Links;
 
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
@@ -35,6 +35,7 @@ pub trait CardRepository: Send {
     fn list(
         &mut self,
         organization_id: OrganizationId,
+        filter: &CardFilter,
     ) -> impl Future<Output = Result<Vec<Card>, CoreError>> + Send;
 }
 

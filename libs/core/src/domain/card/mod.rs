@@ -1,4 +1,6 @@
+pub mod attributes;
 pub mod detail;
+pub mod edit;
 pub mod link;
 pub mod ports;
 pub mod service;
@@ -8,6 +10,8 @@ use capitainerie_events::card::CardAuthor;
 use chrono::{DateTime, Utc};
 
 use crate::domain::{client::links::Links, execution::RepositoryRef, transcript::TranscriptBody};
+
+use self::attributes::Attributes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Column {
@@ -35,6 +39,7 @@ pub struct Card {
     pub updated_at: DateTime<Utc>,
     pub repository_hint: Option<RepositoryRef>,
     pub links: Links,
+    pub attributes: Attributes,
 }
 
 /// The exact passage of a transcript a card comes from.

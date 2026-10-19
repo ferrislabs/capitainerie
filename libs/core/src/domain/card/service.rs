@@ -4,7 +4,9 @@ use chrono::Utc;
 
 use super::{
     Author, COMMENT_MAX_CHARS, Card, CardComment, CardTitle, Column, DESCRIPTION_MAX_CHARS,
-    Provenance, bounded_text,
+    Provenance,
+    attributes::{Attributes, CardFilter},
+    bounded_text,
     ports::{CardCommentRepository, CardRepository},
 };
 use crate::domain::{
@@ -13,12 +15,13 @@ use crate::domain::{
     transcript::ports::TranscriptRepository,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateCard {
     pub title: String,
     pub description: String,
     pub provenance: Option<ProvenanceInput>,
     pub run_id: Option<RunId>,
+    pub attributes: Attributes,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +121,7 @@ where
             updated_at: now,
             repository_hint: None,
             links: Default::default(),
+            attributes: command.attributes,
         };
 
         self.cards.insert(&card).await?;
@@ -262,14 +266,18 @@ where
         Ok(card)
     }
 
-    pub async fn list(mut self, subject: Subject) -> Result<Vec<Card>, CoreError> {
+    pub async fn list(
+        mut self,
+        subject: Subject,
+        filter: &CardFilter,
+    ) -> Result<Vec<Card>, CoreError> {
         let organization_id = subject.organization_id;
         require(
             self.authorizer,
             AccessRequest::new(subject, Action::CardRead, ResourceKind::Card, None),
         )
         .await?;
-        self.cards.list(organization_id).await
+        self.cards.list(organization_id, filter).await
     }
 
     async fn load(&mut self, subject: &Subject, id: CardId) -> Result<Card, CoreError> {
@@ -392,6 +400,7 @@ mod tests {
             updated_at: Utc::now(),
             repository_hint: None,
             links: Default::default(),
+            attributes: Default::default(),
         }
     }
 
@@ -435,6 +444,7 @@ mod tests {
                     quote: "Malik migre la CI vers ARM".into(),
                 }),
                 run_id: Some(RunId::new()),
+                attributes: Default::default(),
             },
         )
         .await
@@ -467,6 +477,7 @@ mod tests {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await

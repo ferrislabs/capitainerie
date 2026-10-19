@@ -82,6 +82,7 @@ async fn todo_card(usecase: &CapitainerieUseCase, organization_id: OrganizationI
                 description: "À la racine".into(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await
@@ -256,6 +257,7 @@ async fn a_proposed_card_cannot_be_handed_over() {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await
@@ -371,7 +373,7 @@ async fn without_github_nothing_is_created() {
     assert_eq!(conflict(error), "github_not_connected");
     assert_eq!(run_count(&pool, card.id).await, 0);
     let cards = usecase
-        .list_cards(human(organization_id, false))
+        .list_cards(human(organization_id, false), Default::default())
         .await
         .unwrap();
     assert_eq!(cards[0].column, Column::Todo);
@@ -718,6 +720,7 @@ async fn the_executability_check_reads_without_writing() {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await

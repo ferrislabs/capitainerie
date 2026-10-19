@@ -273,6 +273,7 @@ impl Fixture {
                     description: "À la racine".into(),
                     provenance: None,
                     run_id: None,
+                    attributes: Default::default(),
                 },
             )
             .await
@@ -893,6 +894,7 @@ async fn another_organizations_unknown_or_mismatched_links_are_a_422() {
                 description: String::new(),
                 provenance: None,
                 run_id: None,
+                attributes: Default::default(),
             },
         )
         .await
@@ -923,4 +925,237 @@ async fn an_agent_cannot_link_a_card() {
 
     assert_eq!(response.status(), 403);
     assert_eq!(fixture.stored_version(card.id).await, card.version);
+}
+
+impl Fixture {
+    async fn member(&self, subject: &str) {
+        self.usecase
+            .record_member(capitainerie_core::domain::member::Member {
+                organization_id: self.organization.id,
+                subject: subject.into(),
+                name: subject.to_uppercase(),
+                email: None,
+                last_seen_at: Utc::now(),
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn board(&self, query: &str) -> Value {
+        reqwest::get(format!("{}/api/v1/cards{query}", self.base))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn patching_edits_every_detail_and_absent_keeps_while_null_clears() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    fixture.member("claire").await;
+    let card = fixture.proposed_card().await;
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({
+                "expected_version": card.version,
+                "title": "  Ajouter un CHANGELOG.md ",
+                "description": "À la racine du dépôt",
+                "acceptance_criteria": [
+                    {"text": " Le fichier existe ", "done": true},
+                    {"text": "Le README le cite", "done": false},
+                ],
+                "priority": "urgent",
+                "due_date": "2026-10-31",
+                "assignee_subject": "claire",
+                "labels": ["Doc", "doc", "ci"],
+                "estimate": "xs",
+            }),
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["title"], "Ajouter un CHANGELOG.md");
+    assert_eq!(body["description"], "À la racine du dépôt");
+    assert_eq!(
+        body["acceptance_criteria"],
+        json!([
+            {"text": "Le fichier existe", "done": true},
+            {"text": "Le README le cite", "done": false},
+        ])
+    );
+    assert_eq!(body["priority"], "urgent");
+    assert_eq!(body["due_date"], "2026-10-31");
+    assert_eq!(body["assignee_subject"], "claire");
+    assert_eq!(body["labels"], json!(["Doc", "ci"]));
+    assert_eq!(body["estimate"], "xs");
+    assert_eq!(body["version"], card.version + 1);
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({
+                "expected_version": card.version + 1,
+                "priority": null,
+                "due_date": null,
+                "assignee_subject": null,
+                "estimate": null,
+                "labels": null,
+            }),
+        )
+        .await;
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["priority"], "normal");
+    assert_eq!(body["due_date"], Value::Null);
+    assert_eq!(body["assignee_subject"], Value::Null);
+    assert_eq!(body["estimate"], Value::Null);
+    assert_eq!(body["labels"], json!([]));
+    assert_eq!(body["title"], "Ajouter un CHANGELOG.md");
+    assert_eq!(body["acceptance_criteria"].as_array().unwrap().len(), 2);
+
+    let updated: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'card.updated'",
+    )
+    .bind(card.id.0)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    assert_eq!(updated, 2);
+}
+
+#[tokio::test]
+async fn invalid_details_and_strangers_as_assignee_are_a_422_and_change_nothing() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+    let version = card.version;
+    let many = vec![json!({"text": "c", "done": false}); 21];
+    let long_label = "é".repeat(31);
+
+    for body in [
+        json!({"expected_version": version, "assignee_subject": "inconnu"}),
+        json!({"expected_version": version, "title": "  "}),
+        json!({"expected_version": version, "title": null}),
+        json!({"expected_version": version, "priority": "critique"}),
+        json!({"expected_version": version, "estimate": "xxl"}),
+        json!({"expected_version": version, "due_date": "vendredi"}),
+        json!({"expected_version": version, "labels": ["a,b"]}),
+        json!({"expected_version": version, "labels": [long_label]}),
+        json!({"expected_version": version, "labels": (0..11).map(|n| format!("l{n}")).collect::<Vec<_>>()}),
+        json!({"expected_version": version, "acceptance_criteria": [{"text": " ", "done": false}]}),
+        json!({"expected_version": version, "acceptance_criteria": many}),
+    ] {
+        let response = fixture.patch(card.id, body.clone()).await;
+        assert_eq!(response.status(), 422, "{body}");
+    }
+    assert_eq!(fixture.stored_version(card.id).await, version);
+}
+
+#[tokio::test]
+async fn a_stale_version_on_a_detail_edit_is_a_409() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+    let ok = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "priority": "high"}),
+        )
+        .await;
+    assert_eq!(ok.status(), 200);
+
+    let stale = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "priority": "low"}),
+        )
+        .await;
+
+    assert_eq!(stale.status(), 409);
+    let board = fixture.board("").await;
+    assert_eq!(board["items"][0]["priority"], "high");
+}
+
+#[tokio::test]
+async fn an_agent_cannot_edit_a_card_through_the_http_route() {
+    let Some(fixture) = fixture_as(Github::Absent, Some("capitainerie-agent-writer")).await else {
+        return;
+    };
+    let card = fixture.proposed_card().await;
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "title": "Détourné"}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(fixture.stored_version(card.id).await, card.version);
+}
+
+#[tokio::test]
+async fn the_board_filters_by_client_project_priority_assignee_and_label() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let org = fixture.organization.id;
+    fixture.member("claire").await;
+    let acme = fixture.client_in(org, "Acme").await;
+    let site = fixture.project_in(org, "Site", Some(&acme)).await;
+    let first = fixture.proposed_card().await;
+    let second = fixture.proposed_card().await;
+    fixture
+        .patch(
+            first.id,
+            json!({
+                "expected_version": first.version,
+                "project_id": site.id.0,
+                "priority": "high",
+                "assignee_subject": "claire",
+                "labels": ["Infra"],
+            }),
+        )
+        .await;
+
+    let ids = |board: Value| -> Vec<String> {
+        board["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let first_id = first.id.0.to_string();
+
+    assert_eq!(ids(fixture.board("").await).len(), 2);
+    for query in [
+        format!("?client_id={}", acme.id.0),
+        format!("?project_id={}", site.id.0),
+        "?priority=high".to_owned(),
+        "?assignee=claire".to_owned(),
+        "?label=infra".to_owned(),
+        format!("?priority=high&label=INFRA&project_id={}", site.id.0),
+    ] {
+        assert_eq!(
+            ids(fixture.board(&query).await),
+            std::slice::from_ref(&first_id),
+            "{query}"
+        );
+    }
+    for query in ["?priority=low", "?assignee=personne", "?label=autre"] {
+        assert!(ids(fixture.board(query).await).is_empty(), "{query}");
+    }
+    assert!(second.id.0.to_string() != first_id);
+    let response = reqwest::get(format!("{}/api/v1/cards?priority=critique", fixture.base))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 422);
 }

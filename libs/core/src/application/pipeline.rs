@@ -11,7 +11,7 @@ use super::{CapitainerieUseCase, RunCardLinks};
 use crate::{
     domain::{
         agent::{DuplicateAction, LocatedAction, SecretToken, WriteRequest, ports::AgentRuntime},
-        card::{Card, ports::CardRepository},
+        card::{Card, attributes::CardFilter, ports::CardRepository},
         client::catalog::{Catalog, Shown},
         delegation::ports::{DelegationVault, TokenExchanger},
         event::ports::EventEmitter,
@@ -200,7 +200,9 @@ impl CapitainerieUseCase {
         organization_id: OrganizationId,
     ) -> Result<Vec<Card>, CoreError> {
         let mut card_repository = card_repository;
-        card_repository.list(organization_id).await
+        card_repository
+            .list(organization_id, &CardFilter::default())
+            .await
     }
 
     pub async fn target_for(
@@ -902,6 +904,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                         WriteRequest {
                             run_id: context.run.id,
                             transcript_id: context.transcript.id,
+                            meeting_date: context.transcript.metadata.date,
                             actions: actions.to_vec(),
                             duplicates: duplicates.to_vec(),
                             mcp_token: SecretToken::new(mcp_token.token.expose()),

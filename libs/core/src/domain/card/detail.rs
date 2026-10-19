@@ -116,6 +116,7 @@ mod tests {
             updated_at: Utc::now(),
             repository_hint: None,
             links: Default::default(),
+            attributes: Default::default(),
         }
     }
 

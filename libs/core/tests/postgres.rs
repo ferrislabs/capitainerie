@@ -446,6 +446,7 @@ mod cards {
                         quote: "Malik migre la CI vers ARM".into(),
                     }),
                     run_id: Some(submitted.run_id),
+                    attributes: Default::default(),
                 },
             )
         };
@@ -459,12 +460,16 @@ mod cards {
                     description: String::new(),
                     provenance: None,
                     run_id: None,
+                    attributes: Default::default(),
                 },
             )
             .await
             .unwrap();
 
-        let cards = usecase.list_cards(member(organization_id)).await.unwrap();
+        let cards = usecase
+            .list_cards(member(organization_id), Default::default())
+            .await
+            .unwrap();
         let hint = |id| {
             cards
                 .iter()
@@ -507,6 +512,7 @@ mod cards {
                         quote: "Malik migre la CI vers ARM".into(),
                     }),
                     run_id: Some(submitted.run_id),
+                    attributes: Default::default(),
                 },
             )
             .await
@@ -613,13 +619,17 @@ mod cards {
                         quote: "Malik migre la CI vers x86".into(),
                     }),
                     run_id: None,
+                    attributes: Default::default(),
                 },
             )
             .await
             .unwrap_err();
 
         assert!(matches!(error, CoreError::Invalid(_)));
-        let (cards,) = (usecase.list_cards(member(organization_id)).await.unwrap(),);
+        let (cards,) = (usecase
+            .list_cards(member(organization_id), Default::default())
+            .await
+            .unwrap(),);
         assert!(cards.is_empty());
     }
 }
