@@ -57,12 +57,21 @@ impl McpSession {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct CardExtras<'a> {
+    pub acceptance_criteria: &'a [String],
+    pub priority: Option<&'a str>,
+    pub estimate: Option<&'a str>,
+    pub due_date: Option<&'a str>,
+}
+
 pub(crate) fn create_card_arguments(
     run_id: RunId,
     transcript_id: TranscriptId,
     located: &LocatedAction,
     title: &str,
     description: &str,
+    extras: &CardExtras<'_>,
 ) -> Map<String, Value> {
     let mut arguments = Map::new();
     arguments.insert("title".into(), json!(title));
@@ -77,6 +86,24 @@ pub(crate) fn create_card_arguments(
             "quote": located.action.quote,
         }),
     );
+    let criteria: Vec<&str> = extras
+        .acceptance_criteria
+        .iter()
+        .map(|text| text.trim())
+        .filter(|text| !text.is_empty())
+        .collect();
+    if !criteria.is_empty() {
+        arguments.insert("acceptance_criteria".into(), json!(criteria));
+    }
+    for (key, value) in [
+        ("priority", extras.priority),
+        ("estimate", extras.estimate),
+        ("due_date", extras.due_date),
+    ] {
+        if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+            arguments.insert(key.into(), json!(value));
+        }
+    }
     arguments
 }
 
@@ -173,8 +200,14 @@ mod tests {
     fn arguments_carry_provenance_and_run() {
         let run = RunId(Uuid::from_u128(1));
         let transcript = TranscriptId(Uuid::from_u128(2));
-        let arguments =
-            create_card_arguments(run, transcript, &located(), "Relancer Acme", "Avant lundi");
+        let arguments = create_card_arguments(
+            run,
+            transcript,
+            &located(),
+            "Relancer Acme",
+            "Avant lundi",
+            &CardExtras::default(),
+        );
         assert_eq!(arguments["title"], "Relancer Acme");
         assert_eq!(arguments["description"], "Avant lundi");
         assert_eq!(arguments["run_id"], run.0.to_string());
@@ -188,6 +221,28 @@ mod tests {
             })
         );
         assert_eq!(arguments.len(), 4);
+    }
+
+    #[test]
+    fn create_card_arguments_pass_the_details_that_are_given() {
+        let criteria = vec!["  L'email part ".to_owned(), "  ".to_owned()];
+        let arguments = create_card_arguments(
+            RunId(Uuid::from_u128(1)),
+            TranscriptId(Uuid::from_u128(2)),
+            &located(),
+            "T",
+            "D",
+            &CardExtras {
+                acceptance_criteria: &criteria,
+                priority: Some("high"),
+                estimate: Some("m"),
+                due_date: Some("2026-10-31"),
+            },
+        );
+        assert_eq!(arguments["acceptance_criteria"], json!(["L'email part"]));
+        assert_eq!(arguments["priority"], "high");
+        assert_eq!(arguments["estimate"], "m");
+        assert_eq!(arguments["due_date"], "2026-10-31");
     }
 
     #[test]
