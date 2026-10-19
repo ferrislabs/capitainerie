@@ -115,8 +115,10 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
-        catalog::build_transcribers()?,
-        catalog::build_document_readers()?,
+        router::IntakeAdapters {
+            transcribers: catalog::build_transcribers()?,
+            document_readers: catalog::build_document_readers()?,
+        },
         github,
         &args.server.allowed_origins,
     )?;

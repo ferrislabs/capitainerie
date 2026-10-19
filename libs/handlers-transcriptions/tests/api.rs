@@ -112,9 +112,11 @@ struct Read {
     bytes: Vec<u8>,
 }
 
+type ReaderReply = Result<(String, usize), String>;
+
 #[derive(Clone, Default)]
 struct FakeReaders {
-    reply: Arc<Mutex<Option<Result<(String, usize), String>>>>,
+    reply: Arc<Mutex<Option<ReaderReply>>>,
     reads: Arc<Mutex<Vec<Read>>>,
 }
 

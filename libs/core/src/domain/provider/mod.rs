@@ -333,7 +333,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn a_preview_shows_only_the_last_four_characters() {
         assert_eq!(preview("sk-ant-api03-abcdefghij1234"), "…1234");
         assert_eq!(preview("short"), "…");
