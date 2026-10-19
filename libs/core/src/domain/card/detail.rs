@@ -114,6 +114,7 @@ mod tests {
             version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            repository_hint: None,
         }
     }
 
@@ -127,7 +128,11 @@ mod tests {
         )
         .0;
         run.id = id;
-        RunOverview { run, title: None }
+        RunOverview {
+            run,
+            title: None,
+            repository_hint: None,
+        }
     }
 
     fn allow() -> MockAuthorizer {

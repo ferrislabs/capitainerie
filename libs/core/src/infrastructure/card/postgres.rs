@@ -95,11 +95,13 @@ impl CardRepository for PgCardRepository<'_> {
         sqlx::query_as!(
             CardRow,
             r#"
-            SELECT id, organization_id, title, description, "column",
-                   provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
-                   created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at
-            FROM cards
-            WHERE organization_id = $1 AND id = $2
+            SELECT c.id, c.organization_id, c.title, c.description, c."column",
+                   c.provenance_transcript_id, c.provenance_start, c.provenance_end, c.provenance_quote,
+                   c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
+                   t.repository AS repository_hint
+            FROM cards c
+            LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
+            WHERE c.organization_id = $1 AND c.id = $2
             "#,
             organization_id.0,
             id.0,
