@@ -5,6 +5,7 @@ export const AUDIO_EXTENSIONS = [
 	'.wav',
 	'.webm',
 	'.ogg',
+	'.aac',
 ] as const
 export const ACCEPTED_FILE_EXTENSIONS = [
 	...ACCEPTED_EXTENSIONS,
@@ -49,7 +50,7 @@ export function validateTranscriptFile(file: {
 }): string | undefined {
 	const extension = fileExtension(file.name)
 	if (!ACCEPTED_FILE_EXTENSIONS.some((accepted) => accepted === extension)) {
-		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt, .srt, .mp3, .m4a, .wav, .webm ou .ogg.'
+		return 'Format non pris en charge : utilisez un fichier .txt, .md, .vtt, .srt, .mp3, .m4a, .wav, .webm, .ogg ou .aac.'
 	}
 	if (isAudioFile(file.name)) {
 		return file.size > MAX_AUDIO_BYTES ? 'Le fichier dépasse 25 Mo.' : undefined

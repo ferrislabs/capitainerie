@@ -14,7 +14,7 @@ export function transcriptionErrorMessage(error: unknown): string {
 		case 413:
 			return 'Le fichier dépasse 25 Mo.'
 		case 415:
-			return 'Format audio non pris en charge : utilisez un fichier .mp3, .m4a, .wav, .webm ou .ogg.'
+			return 'Format audio non pris en charge : utilisez un fichier .mp3, .m4a, .wav, .webm, .ogg ou .aac.'
 		case 502:
 			return `Le fournisseur n’a pas pu transcrire ce fichier : ${error.message}`
 		default:

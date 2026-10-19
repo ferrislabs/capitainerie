@@ -22,7 +22,7 @@ pub struct TranscriptionsPath;
 
 #[derive(ToSchema)]
 pub struct CreateTranscriptionRequest {
-    /// The audio file: mp3, m4a, wav, webm or ogg, 25 MiB at most.
+    /// The audio file: mp3, m4a, wav, webm, ogg or aac, 25 MiB at most.
     #[schema(value_type = String, format = Binary)]
     pub file: String,
 }
@@ -47,7 +47,7 @@ pub struct TranscriptionResponse {
         (status = 403, description = "Agents may not transcribe", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 409, description = "No transcriber is assigned (code transcriber_not_configured)", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 413, description = "The file is over 25 MiB", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 415, description = "The format is not mp3, m4a, wav, webm or ogg", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 415, description = "The format is not mp3, m4a, wav, webm, ogg or aac", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "No file part, an unexpected part or an empty file", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 502, description = "The provider failed; its message is returned", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
@@ -109,7 +109,7 @@ async fn read_clip(mut multipart: Multipart) -> Result<AudioClip, ApiError> {
             .or_else(|| field.content_type().and_then(AudioMime::from_content_type))
             .ok_or_else(|| {
                 ApiError::UnsupportedMediaType(
-                    "the format must be mp3, m4a, wav, webm or ogg".into(),
+                    "the format must be mp3, m4a, wav, webm, ogg or aac".into(),
                 )
             })?;
         let bytes = field.bytes().await.map_err(upload_error)?;

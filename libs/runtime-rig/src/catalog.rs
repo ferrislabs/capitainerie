@@ -148,9 +148,13 @@ fn model(
     }
 }
 
+/// Realtime models stream over a websocket and TTS models speak: neither
+/// answers `/audio/transcriptions` with a file.
 fn is_transcription_model(id: &str) -> bool {
     let id = id.to_lowercase();
-    id.contains("voxtral") || id.contains("whisper")
+    (id.contains("voxtral") || id.contains("whisper"))
+        && !id.contains("realtime")
+        && !id.contains("tts")
 }
 
 fn sorted(mut models: Vec<CatalogModel>) -> Vec<CatalogModel> {

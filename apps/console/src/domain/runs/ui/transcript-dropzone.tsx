@@ -84,7 +84,7 @@ export function TranscriptDropzone({
 					transcript.
 				</span>
 				<span className="text-xs text-muted-foreground">
-					Audio : .mp3, .m4a, .wav, .webm ou .ogg, 25 Mo au plus. Il est
+					Audio : .mp3, .m4a, .wav, .webm, .ogg ou .aac, 25 Mo au plus. Il est
 					transcrit puis jeté, jamais conservé.
 				</span>
 			</label>

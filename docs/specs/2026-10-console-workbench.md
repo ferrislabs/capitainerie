@@ -190,7 +190,7 @@ pub trait Transcriber: Send + Sync {
         -> impl Future<Output = Result<TranscriptionText, CoreError>> + Send;
 }
 pub struct AudioClip { pub file_name: String, pub mime: AudioMime, pub bytes: bytes::Bytes }
-pub enum AudioMime { Mpeg, Mp4, Wav, Webm, Ogg }   // mp3, m4a/mp4, wav, webm, ogg
+pub enum AudioMime { Mpeg, Mp4, Wav, Webm, Ogg, Aac }   // mp3, m4a/mp4, wav, webm, ogg, aac
 ```
 
 - L'adaptateur, dans `libs/runtime-rig`, appelle `POST {base}/v1/audio/transcriptions` en `multipart/form-data` (`file`, `model`). C'est la même route chez Mistral (Voxtral) et chez les serveurs compatibles OpenAI (Whisper). Il utilise la clé de l'organisation.
@@ -212,7 +212,7 @@ pub enum AudioMime { Mpeg, Mp4, Wav, Webm, Ogg }   // mp3, m4a/mp4, wav, webm, o
 
 ### Console
 
-- La zone de dépôt accepte aussi `.mp3`, `.m4a`, `.wav`, `.webm` et `.ogg`.
+- La zone de dépôt accepte aussi `.mp3`, `.m4a`, `.wav`, `.webm`, `.ogg` et `.aac`.
 - Pendant la transcription, la zone affiche « Transcription en cours… » avec le nom du fichier et un bouton « Annuler » qui interrompt la requête.
 - Le texte remplit le champ Transcript.
 - Paramètres › Modèles affiche le rôle « Transcripteur », facultatif. Sans transcripteur, la zone indique qu'il faut en choisir un et renvoie vers la page.
