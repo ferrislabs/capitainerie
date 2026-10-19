@@ -327,27 +327,29 @@ describe('ModelAssignmentsForm', () => {
 
 	it('offers any chat model to the Captain, who defaults to the Rédacteur', async () => {
 		const handlers = setup()
-		const select = screen.getByLabelText('Capitaine') as HTMLSelectElement
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Capitaine')
 
-		expect(optionValues(select)).toContain(`openai_compatible:${QWEN.id}`)
-		expect(optionValues(select)).not.toContain(`openai_compatible:${BGE.id}`)
-		expect(select.value).toBe('')
-		expect(select.selectedOptions[0].textContent).toBe('Le modèle du Rédacteur')
+		const values = await listValues(user, select)
+		expect(values).toContain(`openai_compatible:${QWEN.id}`)
+		expect(values).not.toContain(`openai_compatible:${BGE.id}`)
+		expect(textOf(select)).toBe('Le modèle du Rédacteur')
 		expect(
 			screen.getByText(/sans lui, le modèle du Rédacteur sert/),
 		).toBeTruthy()
 
-		await userEvent.selectOptions(select, `openai_compatible:${QWEN.id}`)
+		await chooseValue(user, select, `openai_compatible:${QWEN.id}`)
 		expect(handlers.onCaptainChange).toHaveBeenCalledWith(QWEN_REF)
 		expect(handlers.onReaderChange).not.toHaveBeenCalled()
 	})
 
 	it('clears the Captain with the empty choice', async () => {
 		const handlers = setup({ values: { captain: QWEN_REF } })
-		const select = screen.getByLabelText('Capitaine') as HTMLSelectElement
-		expect(select.value).toBe(`openai_compatible:${QWEN.id}`)
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Capitaine')
+		expect(textOf(select)).toContain(QWEN.id)
 
-		await userEvent.selectOptions(select, '')
+		await chooseValue(user, select, '')
 
 		expect(handlers.onCaptainChange).toHaveBeenCalledWith(undefined)
 	})
