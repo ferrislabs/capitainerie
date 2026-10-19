@@ -810,10 +810,12 @@ async fn an_unreachable_provider_is_reported_not_panicked() {
 }
 
 #[tokio::test]
-async fn voxtral_and_whisper_models_are_transcription_capable_and_nothing_else_is() {
+async fn voxtral_and_whisper_file_models_are_transcription_capable_and_nothing_else_is() {
     let mistral = FakeProvider::with(vec![json!({
         "data": [
             {"id": "voxtral-mini-latest", "capabilities": {"completion_chat": true}},
+            {"id": "voxtral-mini-realtime-latest", "capabilities": {}},
+            {"id": "voxtral-mini-tts-latest", "capabilities": {}},
             {"id": "mistral-large-latest", "capabilities": {"completion_chat": true}},
         ],
     })]);
