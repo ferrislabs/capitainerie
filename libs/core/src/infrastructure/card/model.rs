@@ -1,8 +1,8 @@
-use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, TranscriptId};
+use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId, TranscriptId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::domain::card::{Author, Card, CardTitle, Column, Provenance};
+use crate::domain::card::{Author, Card, CardComment, CardTitle, Column, Provenance};
 
 pub(super) struct CardRow {
     pub id: Uuid,
@@ -64,6 +64,32 @@ impl TryFrom<CardRow> for Card {
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
+    }
+}
+
+pub(super) struct CardCommentRow {
+    pub id: Uuid,
+    pub card_id: Uuid,
+    pub organization_id: Uuid,
+    pub author_subject: String,
+    pub author_actor: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<CardCommentRow> for CardComment {
+    fn from(row: CardCommentRow) -> Self {
+        Self {
+            id: CardCommentId(row.id),
+            card_id: CardId(row.card_id),
+            organization_id: OrganizationId(row.organization_id),
+            author: Author {
+                subject: row.author_subject,
+                actor: row.author_actor,
+            },
+            body: row.body,
+            created_at: row.created_at,
+        }
     }
 }
 

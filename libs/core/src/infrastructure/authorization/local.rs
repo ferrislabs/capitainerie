@@ -219,6 +219,15 @@ mod tests {
     }
 
     #[test]
+    fn a_human_comments_in_their_organization_only() {
+        assert!(allowed(Action::CardComment, None));
+        assert!(matches!(
+            decide(&request(Action::CardComment, None, false)),
+            Decision::Deny { .. }
+        ));
+    }
+
+    #[test]
     fn only_humans_take_a_card_out_of_proposed() {
         assert!(!allowed(
             Action::CardMove {

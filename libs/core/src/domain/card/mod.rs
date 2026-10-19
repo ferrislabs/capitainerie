@@ -1,3 +1,4 @@
+pub mod detail;
 pub mod ports;
 pub mod service;
 
@@ -89,7 +90,7 @@ impl TryFrom<String> for CardTitle {
 }
 
 pub const DESCRIPTION_MAX_CHARS: usize = 10_000;
-pub const COMMENT_MAX_CHARS: usize = 5_000;
+pub const COMMENT_MAX_CHARS: usize = 10_000;
 
 pub fn bounded_text(
     value: String,

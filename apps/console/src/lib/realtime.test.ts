@@ -194,6 +194,18 @@ describe('startRealtime', () => {
 		expect(invalidated(key('/api/v1/runs'))).toBe(false)
 	})
 
+	it('reloads the open card panel when a comment is added', () => {
+		start()
+		latest().receive({
+			op: 'event',
+			kind: 'card.commented',
+			card_id: 'c1',
+		})
+		expect(invalidated(key('/api/v1/cards/{card_id}', { card_id: 'c1' }))).toBe(
+			true,
+		)
+	})
+
 	it('does not touch the timeline for a card event without run', () => {
 		start()
 		latest().receive({ op: 'event', kind: 'card.updated', card_id: 'c1' })

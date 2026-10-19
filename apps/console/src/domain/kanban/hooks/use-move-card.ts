@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { tanstackApi } from '#/api'
+import type { Schemas } from '#/api/api.client'
+import { isCardQuery } from '#/domain/kanban/hooks/card-queries'
 import { CARDS_QUERY_KEY } from '#/domain/kanban/hooks/use-cards'
 import { isApiRequestError } from '#/lib/api-error'
 
@@ -16,13 +18,46 @@ export function useMoveCard() {
 	const mutation = useMutation({
 		...tanstackApi.mutation('post', '/api/v1/cards/{card_id}/move')
 			.mutationOptions,
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: CARDS_QUERY_KEY }),
-		onError: (error) => {
-			if (isApiRequestError(error) && error.status === 409) {
-				return queryClient.invalidateQueries({ queryKey: CARDS_QUERY_KEY })
+		onMutate: async (variables) => {
+			await queryClient.cancelQueries({ queryKey: CARDS_QUERY_KEY })
+			const previous =
+				queryClient.getQueryData<Schemas.CardListResponse>(CARDS_QUERY_KEY)
+			if (previous) {
+				queryClient.setQueryData<Schemas.CardListResponse>(CARDS_QUERY_KEY, {
+					...previous,
+					items: previous.items.map((card) =>
+						card.id === variables.path.card_id
+							? { ...card, column: variables.body.to }
+							: card,
+					),
+				})
 			}
+			return { previous }
 		},
+		onError: (_error, variables, context) => {
+			const original = context?.previous?.items.find(
+				(card) => card.id === variables.path.card_id,
+			)
+			if (original) {
+				queryClient.setQueryData<Schemas.CardListResponse>(
+					CARDS_QUERY_KEY,
+					(current) =>
+						current && {
+							...current,
+							items: current.items.map((card) =>
+								card.id === original.id
+									? { ...card, column: original.column }
+									: card,
+							),
+						},
+				)
+			}
+			return queryClient.invalidateQueries({ queryKey: CARDS_QUERY_KEY })
+		},
+		onSuccess: () =>
+			queryClient.invalidateQueries({
+				predicate: (query) => isCardQuery(query.queryKey),
+			}),
 	})
 
 	return {

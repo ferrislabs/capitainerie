@@ -77,7 +77,7 @@ pub struct UpdateCardInput {
 pub struct CommentInput {
     #[schemars(description = "UUID of the card to comment on.")]
     pub card_id: String,
-    #[schemars(description = "The comment, at most 5000 characters.")]
+    #[schemars(description = "The comment, at most 10000 characters.")]
     pub body: String,
     #[schemars(description = "UUID of the run you are working for, when you were given one.")]
     pub run_id: Option<String>,

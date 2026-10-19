@@ -103,4 +103,78 @@ describe('useMoveCard', () => {
 		await waitFor(() => expect(result.current.isError).toBe(true))
 		expect(result.current.errorMessage).toBe('Interdit')
 	})
+
+	function card(id: string, column: string) {
+		return { id, column, version: 3 }
+	}
+
+	function cachedColumns() {
+		const data = client.getQueryData<{
+			items: Array<{ id: string; column: string }>
+		}>(CARDS_QUERY_KEY)
+		return data?.items.map((item) => `${item.id}:${item.column}`)
+	}
+
+	it('moves the card in the cache before the server answers', async () => {
+		let answer: (response: Response) => void = () => {}
+		fetchMock.mockReturnValue(
+			new Promise<Response>((resolve) => {
+				answer = resolve
+			}),
+		)
+		client.setQueryData(CARDS_QUERY_KEY, {
+			items: [card('c1', 'todo'), card('c2', 'todo')],
+		})
+		const { result } = renderHook(() => useMoveCard(), { wrapper })
+
+		result.current.mutate({
+			path: { card_id: 'c1' },
+			body: { to: 'in_progress', expected_version: 3 },
+		})
+
+		await waitFor(() =>
+			expect(cachedColumns()).toEqual(['c1:in_progress', 'c2:todo']),
+		)
+		expect(result.current.pendingCardId).toBe('c1')
+		answer(json(200, { id: 'c1' }))
+		await waitFor(() => expect(result.current.isSuccess).toBe(true))
+	})
+
+	it('puts the card back and reloads the board on 409', async () => {
+		fetchMock.mockResolvedValue(
+			json(409, { code: 'conflict', status: 409, message: 'stale' }),
+		)
+		client.setQueryData(CARDS_QUERY_KEY, {
+			items: [card('c1', 'todo'), card('c2', 'done')],
+		})
+		const { result } = renderHook(() => useMoveCard(), { wrapper })
+
+		result.current.mutate({
+			path: { card_id: 'c1' },
+			body: { to: 'done', expected_version: 1 },
+		})
+
+		await waitFor(() => expect(result.current.isError).toBe(true))
+		expect(cachedColumns()).toEqual(['c1:todo', 'c2:done'])
+		await waitFor(() => expect(invalidated()).toBe(true))
+		expect(result.current.errorMessage).toBe(CONFLICT_MESSAGE)
+	})
+
+	it('puts the card back and keeps the message on another error', async () => {
+		fetchMock.mockResolvedValue(
+			json(403, { code: 'forbidden', status: 403, message: 'Interdit' }),
+		)
+		client.setQueryData(CARDS_QUERY_KEY, { items: [card('c1', 'proposed')] })
+		const { result } = renderHook(() => useMoveCard(), { wrapper })
+
+		result.current.mutate({
+			path: { card_id: 'c1' },
+			body: { to: 'done', expected_version: 3 },
+		})
+
+		await waitFor(() => expect(result.current.isError).toBe(true))
+		expect(cachedColumns()).toEqual(['c1:proposed'])
+		expect(result.current.errorMessage).toBe('Interdit')
+		await waitFor(() => expect(invalidated()).toBe(true))
+	})
 })

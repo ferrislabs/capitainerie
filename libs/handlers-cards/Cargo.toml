@@ -12,6 +12,7 @@ capitainerie-common.workspace = true
 capitainerie-core.workspace = true
 capitainerie-github.workspace = true
 capitainerie-handlers.workspace = true
+capitainerie-handlers-runs.workspace = true
 chrono.workspace = true
 serde.workspace = true
 utoipa.workspace = true

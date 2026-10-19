@@ -72,15 +72,11 @@ describe('CardItem', () => {
 		expect(onMove).toHaveBeenNthCalledWith(2, 'c1', 'rejected', 4)
 	})
 
-	it('offers a select of the other columns on other cards', async () => {
-		const { onMove } = setup(card({ column: 'todo' }))
+	it('leaves the move list to the card panel', () => {
+		setup(card({ column: 'todo' }))
 
 		expect(screen.queryByRole('button', { name: 'Valider' })).toBeNull()
-		const select = screen.getByLabelText('Déplacer vers…')
-		expect(screen.queryByRole('option', { name: 'À faire' })).toBeNull()
-		await userEvent.selectOptions(select, 'done')
-
-		expect(onMove).toHaveBeenCalledWith('c1', 'done', 4)
+		expect(screen.queryByLabelText('Déplacer vers…')).toBeNull()
 	})
 
 	it('disables actions while pending', () => {

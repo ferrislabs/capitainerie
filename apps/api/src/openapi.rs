@@ -6,10 +6,11 @@ use capitainerie_handlers_analytics::{
 };
 use capitainerie_handlers_cards::{
     self as cards,
+    comment_card::CommentCardRequest,
     execute_card::{ExecuteCardRequest, ExecuteCardResponse},
     list_cards::CardListResponse,
     move_card::MoveCardRequest,
-    response::{CardResponse, ColumnDto, ProvenanceResponse},
+    response::{CardDetailResponse, CardResponse, ColumnDto, CommentResponse, ProvenanceResponse},
 };
 use capitainerie_handlers_identity::{
     self as identity,
@@ -57,7 +58,9 @@ use utoipa::{
         runs::get_run::handler,
         runs::timeline::handler,
         cards::list_cards::handler,
+        cards::get_card::handler,
         cards::move_card::handler,
+        cards::comment_card::handler,
         cards::execute_card::handler,
         analytics::costs::handler,
         analytics::agents::handler,
@@ -97,6 +100,9 @@ use utoipa::{
         ColumnDto,
         ProvenanceResponse,
         MoveCardRequest,
+        CardDetailResponse,
+        CommentResponse,
+        CommentCardRequest,
         ExecuteCardRequest,
         ExecuteCardResponse,
         CostsResponse,
@@ -204,6 +210,22 @@ mod tests {
             .collect();
         assert_eq!(names, ["by", "from", "to"]);
         assert!(spec["paths"]["/api/v1/agents"]["get"].is_object());
+    }
+
+    #[test]
+    fn the_card_panel_endpoints_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/cards/{card_id}"]["get"].is_object());
+        assert!(paths["/api/v1/cards/{card_id}/comments"]["post"].is_object());
+        let detail = &spec["components"]["schemas"]["CardDetailResponse"]["properties"];
+        for field in ["card", "comments", "runs"] {
+            assert!(detail[field].is_object(), "{field}");
+        }
+        let comment = &spec["components"]["schemas"]["CommentResponse"]["properties"];
+        for field in ["id", "body", "author_subject", "author_actor", "created_at"] {
+            assert!(comment[field].is_object(), "{field}");
+        }
     }
 
     #[test]

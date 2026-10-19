@@ -200,7 +200,7 @@ where
             card_id: card.id,
             organization_id: card.organization_id,
             author: author(&subject),
-            body: bounded_text(body, COMMENT_MAX_CHARS, "comment", false)?,
+            body: bounded_text(body.trim().to_owned(), COMMENT_MAX_CHARS, "comment", false)?,
             created_at: Utc::now(),
         };
 
