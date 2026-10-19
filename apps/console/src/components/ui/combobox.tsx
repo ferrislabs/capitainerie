@@ -516,8 +516,11 @@ function Combobox(props: ComboboxProps) {
 						id={listId}
 						role="listbox"
 						aria-multiselectable={multiple || undefined}
-						aria-label={props['aria-label']}
-						aria-labelledby={control.labelId}
+						aria-label={
+							props['aria-label']
+								? `${props['aria-label']} : options`
+								: 'Options'
+						}
 						aria-busy={loading || undefined}
 						onWheel={(event) => event.stopPropagation()}
 						onTouchMove={(event) => event.stopPropagation()}

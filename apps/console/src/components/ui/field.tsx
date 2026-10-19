@@ -63,6 +63,7 @@ interface FieldProps {
 	max?: number
 	group?: boolean
 	hideLabel?: boolean
+	labelClassName?: string
 	className?: string
 	children: ReactNode
 }
@@ -105,6 +106,7 @@ function Field({
 	max,
 	group = false,
 	hideLabel = false,
+	labelClassName,
 	className,
 	children,
 }: FieldProps) {
@@ -166,6 +168,7 @@ function Field({
 							className={cn(
 								'flex items-center gap-1 text-sm leading-none font-medium',
 								hideLabel && 'sr-only',
+								labelClassName,
 							)}
 						>
 							{caption}
@@ -174,7 +177,7 @@ function Field({
 						<Label
 							id={labelId}
 							htmlFor={controlId}
-							className={cn('gap-1', hideLabel && 'sr-only')}
+							className={cn('gap-1', hideLabel && 'sr-only', labelClassName)}
 						>
 							{caption}
 						</Label>

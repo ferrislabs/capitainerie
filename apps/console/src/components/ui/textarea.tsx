@@ -50,7 +50,7 @@ function Textarea({
 	disabled,
 	required,
 	maxLength,
-	rows = 3,
+	rows,
 	ref,
 	'aria-describedby': describedBy,
 	'aria-invalid': ariaInvalid,
@@ -107,7 +107,7 @@ function Textarea({
 			}
 			className={cn(
 				'flex min-h-16 w-full resize-y rounded-md border border-input bg-card px-3 py-1.5 text-sm transition-[color,box-shadow,border-color] duration-150 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20',
-				grows && 'resize-none',
+				grows ? 'resize-none' : 'field-sizing-content',
 				className,
 			)}
 			{...props}
