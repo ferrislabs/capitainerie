@@ -9,7 +9,6 @@ use crate::domain::provider::ModelRef;
 pub const MAX_PDF_BYTES: usize = 25 * 1024 * 1024;
 
 const PDF_MAGIC: &[u8] = b"%PDF-";
-const DATA_URI_PREFIX: &str = "data:application/pdf;base64,";
 
 #[derive(Clone)]
 pub struct PdfDocument {
@@ -81,11 +80,16 @@ impl PdfDocument {
         }
     }
 
-    pub fn data_uri(&self) -> String {
-        let mut uri = String::with_capacity(DATA_URI_PREFIX.len() + self.bytes.len() * 4 / 3 + 4);
-        uri.push_str(DATA_URI_PREFIX);
-        STANDARD.encode_string(&self.bytes, &mut uri);
-        uri
+    pub fn append_base64(&self, out: &mut Vec<u8>) -> Result<(), CoreError> {
+        let start = out.len();
+        out.resize(
+            start + base64::encoded_len(self.bytes.len(), true).unwrap_or(0),
+            0,
+        );
+        STANDARD
+            .encode_slice(&self.bytes, &mut out[start..])
+            .map(|_| ())
+            .map_err(|_| CoreError::Internal("the PDF could not be encoded".into()))
     }
 }
 
@@ -136,11 +140,13 @@ mod tests {
     }
 
     #[test]
-    fn the_data_uri_carries_the_pdf_in_base64() {
+    fn the_pdf_is_appended_in_base64_after_what_the_buffer_holds() {
         let document = PdfDocument {
             file_name: "a.pdf".into(),
             bytes: Bytes::from_static(b"%PDF-1"),
         };
-        assert_eq!(document.data_uri(), "data:application/pdf;base64,JVBERi0x");
+        let mut out = b"x:".to_vec();
+        document.append_base64(&mut out).unwrap();
+        assert_eq!(out, b"x:JVBERi0x");
     }
 }

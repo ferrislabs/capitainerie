@@ -51,6 +51,7 @@ pub struct DocumentTextResponse {
         (status = 413, description = "The file is over 25 MiB", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 415, description = "The file is not a PDF", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "No file part, an unexpected part or an empty file", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 503, description = "Four PDFs are already being read", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 502, description = "The reader failed; its message is returned", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -67,6 +68,10 @@ pub async fn handler<R: DocumentReaderFactory + 'static>(
         .prepare_document_reading(caller.subject())
         .await
         .map_err(api_error)?;
+    let _permit = state
+        .permits
+        .try_acquire()
+        .map_err(|_| crate::busy("Trop de PDF en cours de lecture, réessayez dans un instant."))?;
     let declared = headers
         .get(CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())

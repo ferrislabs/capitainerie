@@ -264,3 +264,34 @@ async fn a_provider_answer_over_8_mib_is_refused_and_one_under_it_is_read() {
     );
     assert_eq!(accepted.text.len(), 2 * 1024 * 1024);
 }
+
+#[tokio::test]
+async fn pages_without_an_index_keep_the_order_they_arrived_in() {
+    let fake = Fake::new(
+        200,
+        &json!({"pages": [
+            {"index": 5, "markdown": "a"},
+            {"markdown": "b"},
+            {"index": 1, "markdown": "c"},
+        ]})
+        .to_string(),
+    );
+
+    let text = read(&fake, "k").await.unwrap();
+
+    assert_eq!(text.text, "a\n\nb\n\nc");
+}
+
+#[tokio::test]
+async fn control_characters_are_removed_from_a_provider_message() {
+    let fake = Fake::new(
+        400,
+        &json!({"message": "bad\u{1b}[31m red\r\nline\u{0}end"}).to_string(),
+    );
+
+    let error = read(&fake, "k").await.unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("bad[31m redlineend"), "{message}");
+    assert!(!message.chars().any(char::is_control), "{message}");
+}

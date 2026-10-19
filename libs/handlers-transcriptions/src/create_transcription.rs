@@ -49,6 +49,7 @@ pub struct TranscriptionResponse {
         (status = 413, description = "The file is over 25 MiB", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 415, description = "The format is not mp3, m4a, wav, webm, ogg or aac", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "No file part, an unexpected part or an empty file", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 503, description = "Four audio files are already being transcribed", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 502, description = "The provider failed; its message is returned", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -65,6 +66,9 @@ pub async fn handler<F: TranscriberFactory + 'static>(
         .prepare_transcription(caller.subject())
         .await
         .map_err(api_error)?;
+    let _permit = state.permits.try_acquire().map_err(|_| {
+        crate::busy("Trop d’audios en cours de transcription, réessayez dans un instant.")
+    })?;
     let declared = headers
         .get(CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())

@@ -38,6 +38,9 @@ pub enum ApiError {
     #[error("forbidden")]
     Forbidden(Option<String>),
 
+    #[error("busy: {0}")]
+    Busy(String),
+
     #[error("unavailable: {0}")]
     Unavailable(String),
 
@@ -63,7 +66,7 @@ impl ApiError {
             Self::UnsupportedMediaType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
-            Self::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Unavailable(_) | Self::Busy(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -80,6 +83,7 @@ impl ApiError {
             Self::BadGateway(_) => "bad_gateway",
             Self::Forbidden(_) => "forbidden",
             Self::Unavailable(_) => "unavailable",
+            Self::Busy(_) => "busy",
             Self::Internal(_) => "internal",
         }
     }
@@ -92,6 +96,7 @@ impl ApiError {
             | Self::PayloadTooLarge(message)
             | Self::UnsupportedMediaType(message)
             | Self::BadGateway(message)
+            | Self::Busy(message)
             | Self::ConflictCode { message, .. } => message.clone(),
             Self::Forbidden(Some(reason)) => reason.clone(),
             Self::Unavailable(_) => "unavailable".to_owned(),
@@ -192,6 +197,11 @@ mod tests {
                 ApiError::BadGateway("down".into()),
                 StatusCode::BAD_GATEWAY,
                 "bad_gateway",
+            ),
+            (
+                ApiError::Busy("later".into()),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "busy",
             ),
             (
                 ApiError::ConflictCode {

@@ -17,6 +17,12 @@ use crate::{documents_state::DocumentsState, state::TranscriptionsState};
 
 pub const TAG: &str = "transcriptions";
 
+pub const MAX_CONCURRENT_UPLOADS: usize = 4;
+
+pub fn busy(message: &str) -> capitainerie_handlers::ApiError {
+    capitainerie_handlers::ApiError::Busy(message.to_owned())
+}
+
 pub const MULTIPART_OVERHEAD: usize = 64 * 1024;
 
 pub fn router<S, F, R>(usecase: CapitainerieUseCase, factory: F, readers: R) -> Router<S>

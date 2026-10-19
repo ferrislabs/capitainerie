@@ -46,6 +46,7 @@ struct Call {
 struct FakeFactory {
     reply: Arc<Mutex<Option<Result<String, String>>>>,
     calls: Arc<Mutex<Vec<Call>>>,
+    gate: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 struct FakeTranscriber {
@@ -96,6 +97,9 @@ impl Transcriber for FakeTranscriber {
             mime: audio.mime,
             bytes: audio.bytes.to_vec(),
         });
+        if let Some(gate) = &self.factory.gate {
+            gate.acquire().await.unwrap().forget();
+        }
         match self.factory.reply.lock().unwrap().clone() {
             Some(Ok(text)) => Ok(TranscriptionText(text)),
             Some(Err(message)) => Err(CoreError::Internal(message)),
@@ -118,6 +122,7 @@ type ReaderReply = Result<(String, usize), String>;
 struct FakeReaders {
     reply: Arc<Mutex<Option<ReaderReply>>>,
     reads: Arc<Mutex<Vec<Read>>>,
+    gate: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 struct FakeReader {
@@ -166,6 +171,9 @@ impl DocumentReader for FakeReader {
             file_name: document.file_name,
             bytes: document.bytes.to_vec(),
         });
+        if let Some(gate) = &self.readers.gate {
+            gate.acquire().await.unwrap().forget();
+        }
         match self.readers.reply.lock().unwrap().clone() {
             Some(Ok((text, pages))) => Ok(DocumentText { text, pages }),
             Some(Err(message)) => Err(CoreError::Internal(message)),
@@ -210,11 +218,15 @@ fn database_url() -> Option<String> {
 }
 
 async fn pool() -> Option<PgPool> {
+    pool_of(2).await
+}
+
+async fn pool_of(connections: u32) -> Option<PgPool> {
     let Some(url) = database_url() else {
         eprintln!("skipped: DATABASE_URL is unset");
         return None;
     };
-    Some(postgres::connect(&url, 2).await.unwrap())
+    Some(postgres::connect(&url, connections).await.unwrap())
 }
 
 async fn organization(pool: &PgPool) -> Organization {
@@ -796,4 +808,80 @@ async fn a_reader_failure_is_a_502_that_carries_its_message() {
         "Le service de lecture des PDF est injoignable."
     );
     assert!(!body.to_string().contains("mistral-secret-key"));
+}
+
+async fn wait_for(count: impl Fn() -> usize, expected: usize) {
+    for _ in 0..500 {
+        if count() == expected {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("expected {expected} calls, got {}", count());
+}
+
+#[tokio::test]
+async fn a_fifth_pdf_is_a_503_at_once_and_the_slot_frees_when_one_finishes() {
+    let Some(pool) = pool_of(12).await else {
+        return;
+    };
+    let organization = organization(&pool).await;
+    configure_reader(&pool, &organization).await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let mut readers = FakeReaders::answering("ok", 1);
+    readers.gate = Some(gate.clone());
+    let url = serve_documents(&pool, caller(&organization, None), readers.clone()).await;
+    let running: Vec<_> = (0..4)
+        .map(|_| {
+            let url = url.clone();
+            tokio::spawn(async move {
+                post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await
+            })
+        })
+        .collect();
+    wait_for(|| readers.reads().len(), 4).await;
+
+    let (status, body) = post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await;
+
+    assert_eq!(status, 503);
+    assert_eq!(
+        body["message"],
+        "Trop de PDF en cours de lecture, réessayez dans un instant."
+    );
+    assert_eq!(readers.reads().len(), 4);
+    gate.add_permits(5);
+    for task in running {
+        assert_eq!(task.await.unwrap().0, 200);
+    }
+    let (after, _) = post(&url, file("a.pdf", "application/pdf", pdf_bytes(64))).await;
+    assert_eq!(after, 200);
+}
+
+#[tokio::test]
+async fn a_fifth_audio_is_a_503_at_once() {
+    let Some(pool) = pool_of(12).await else {
+        return;
+    };
+    let organization = organization(&pool).await;
+    configure_transcriber(&pool, &organization).await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let mut factory = FakeFactory::answering("ok");
+    factory.gate = Some(gate.clone());
+    let url = serve(&pool, caller(&organization, None), factory.clone()).await;
+    let running: Vec<_> = (0..4)
+        .map(|_| {
+            let url = url.clone();
+            tokio::spawn(async move { post(&url, file("a.mp3", "audio/mpeg", vec![1; 10])).await })
+        })
+        .collect();
+    wait_for(|| factory.calls().len(), 4).await;
+
+    let (status, body) = post(&url, file("a.mp3", "audio/mpeg", vec![1; 10])).await;
+
+    assert_eq!(status, 503);
+    assert_eq!(body["code"], "busy");
+    gate.add_permits(5);
+    for task in running {
+        assert_eq!(task.await.unwrap().0, 200);
+    }
 }
