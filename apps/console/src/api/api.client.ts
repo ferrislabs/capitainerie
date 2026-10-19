@@ -19,6 +19,7 @@ export namespace Schemas {
     initiated_by: string;
     pipeline: Array<string>;
     repository?: (string | null) | undefined;
+    repository_hint?: (string | null) | undefined;
     started_at?: (string | null) | undefined;
     status: RunStatusResponse;
     title?: (string | null) | undefined;
@@ -58,6 +59,7 @@ export namespace Schemas {
     description: string;
     id: CardId;
     provenance?: (null | ProvenanceResponse) | undefined;
+    repository_hint?: (string | null) | undefined;
     title: string;
     updated_at: string;
     version: number;
@@ -196,7 +198,13 @@ export namespace Schemas {
     steps: Array<StepResponse>;
     totals: UsageTotals;
   };
-  export type SubmitTranscriptRequest = { body: string; title: string };
+  export type SubmitTranscriptRequest = {
+    body: string;
+    meeting_date?: (string | null) | undefined;
+    participants?: (Array<string> | null) | undefined;
+    repository?: (string | null) | undefined;
+    title: string;
+  };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
   export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
 
