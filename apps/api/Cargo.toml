@@ -19,6 +19,7 @@ capitainerie-handlers.workspace = true
 capitainerie-handlers-analytics.workspace = true
 capitainerie-handlers-cards.workspace = true
 capitainerie-handlers-clients.workspace = true
+capitainerie-handlers-conversations.workspace = true
 capitainerie-handlers-identity.workspace = true
 capitainerie-handlers-integrations.workspace = true
 capitainerie-handlers-providers.workspace = true

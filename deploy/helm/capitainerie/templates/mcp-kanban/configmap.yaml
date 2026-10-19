@@ -10,7 +10,7 @@ data:
   MCP_PORT: {{ .Values.mcpKanban.port | quote }}
   MCP_PUBLIC_URL: {{ .Values.mcpKanban.publicUrl | quote }}
   MCP_AUDIENCE: {{ .Values.config.mcpAudience | quote }}
-  MCP_ACCEPTED_AGENTS: {{ join "," .Values.config.pipelineAgents | quote }}
+  MCP_ACCEPTED_AGENTS: {{ join "," (append .Values.config.pipelineAgents .Values.config.captainAgent) | quote }}
   DATABASE_MAX_CONNECTIONS: {{ .Values.config.databaseMaxConnections | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}

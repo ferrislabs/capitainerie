@@ -3,6 +3,7 @@ use capitainerie_common::CoreError;
 use crate::domain::{
     authorization::{AccessRequest, Action, Decision, Subject, ports::Authorizer},
     card::Column,
+    conversation::CAPTAIN_AGENT,
 };
 
 /// In-process stand-in for FerrisKey's AuthZEN PDP until its HTTP endpoint
@@ -23,6 +24,7 @@ fn decide(request: &AccessRequest) -> Decision {
     }
     match &request.subject.actor {
         None => decide_for_human(&request.subject, request.action),
+        Some(actor) if actor == CAPTAIN_AGENT => decide_for_captain(request.action),
         Some(actor) => decide_for_agent(actor, request.action),
     }
 }
@@ -57,6 +59,21 @@ fn decide_for_agent(actor: &str, action: Action) -> Decision {
         ),
         Action::CardMove { .. } => Decision::Allow,
         other => deny(&format!("agent {actor} may not {}", other.as_str())),
+    }
+}
+
+/// The Captain reads the board and the clients, proposes cards (attaching them
+/// to a client or project as it creates them) and comments on them: it never
+/// edits, moves, validates or executes anything, whatever the user may do.
+fn decide_for_captain(action: Action) -> Decision {
+    match action {
+        Action::CardCreate
+        | Action::CardRead
+        | Action::CardComment
+        | Action::CardLink
+        | Action::ClientRead
+        | Action::GithubRead => Decision::Allow,
+        other => deny(&format!("agent {CAPTAIN_AGENT} may not {}", other.as_str())),
     }
 }
 
@@ -321,5 +338,91 @@ mod tests {
             },
             AGENT
         ));
+    }
+
+    const CAPTAIN: Option<&str> = Some(CAPTAIN_AGENT);
+
+    #[test]
+    fn members_read_and_write_conversations_in_their_organization_only() {
+        for action in [Action::ConversationRead, Action::ConversationWrite] {
+            assert!(allowed(action, None));
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+        }
+        assert_eq!(Action::ConversationRead.as_str(), "conversation.read");
+        assert_eq!(Action::ConversationWrite.as_str(), "conversation.write");
+    }
+
+    #[test]
+    fn members_read_the_github_installation_and_only_the_captain_among_agents() {
+        assert!(allowed(Action::GithubRead, None));
+        assert!(allowed(Action::GithubRead, CAPTAIN));
+        assert!(!allowed(Action::GithubRead, AGENT));
+        assert!(!allowed(Action::GithubManage, CAPTAIN));
+    }
+
+    #[test]
+    fn no_agent_touches_conversations() {
+        for actor in [AGENT, CAPTAIN] {
+            for action in [Action::ConversationRead, Action::ConversationWrite] {
+                assert!(!allowed(action, actor));
+            }
+        }
+    }
+
+    #[test]
+    fn the_captain_reads_proposes_and_comments() {
+        for action in [
+            Action::CardRead,
+            Action::CardCreate,
+            Action::CardComment,
+            Action::CardLink,
+            Action::ClientRead,
+            Action::GithubRead,
+        ] {
+            assert!(allowed(action, CAPTAIN));
+            assert!(matches!(
+                decide(&request(action, CAPTAIN, false)),
+                Decision::Deny { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn the_captain_cannot_move_cards_out_of_proposed_or_execute_them() {
+        for admin in [false, true] {
+            for to in Column::ALL {
+                for from in Column::ALL {
+                    assert!(matches!(
+                        decide(&admin_request(
+                            Action::CardMove { from, to },
+                            CAPTAIN,
+                            admin
+                        )),
+                        Decision::Deny { .. }
+                    ));
+                }
+            }
+            for action in [
+                Action::CardExecute,
+                Action::CardEdit,
+                Action::ClientManage,
+                Action::MemberRead,
+                Action::GithubManage,
+                Action::TranscriptCreate,
+                Action::ProviderManage,
+                Action::ModelsAssign,
+            ] {
+                assert!(matches!(
+                    decide(&admin_request(action, CAPTAIN, admin)),
+                    Decision::Deny { .. }
+                ));
+            }
+        }
+        for column in Column::ALL {
+            assert!(!allowed(Action::CardUpdate { column }, CAPTAIN));
+        }
     }
 }

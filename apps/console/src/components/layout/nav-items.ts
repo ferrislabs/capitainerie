@@ -6,6 +6,7 @@ import {
 	Github,
 	House,
 	KeyRound,
+	MessageSquare,
 	Play,
 	Radio,
 	SquareKanban,
@@ -15,6 +16,7 @@ import {
 export interface NavItem {
 	to:
 		| '/'
+		| '/chat'
 		| '/runs'
 		| '/live'
 		| '/kanban'
@@ -38,6 +40,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 		label: 'Travail',
 		items: [
 			{ to: '/', label: 'Accueil', icon: House },
+			{ to: '/chat', label: 'Conversations', icon: MessageSquare },
 			{ to: '/runs', label: 'Runs', icon: Play },
 			{ to: '/kanban', label: 'Kanban', icon: SquareKanban },
 			{ to: '/clients', label: 'Clients', icon: Users },

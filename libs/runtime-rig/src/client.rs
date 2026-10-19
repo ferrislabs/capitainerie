@@ -74,9 +74,20 @@ impl Resolved {
     }
 }
 
+pub(crate) enum Endpoint {
+    Anthropic(Api),
+    OpenAi {
+        http: reqwest::Client,
+        url: String,
+        key: capitainerie_core::domain::agent::SecretToken,
+    },
+}
+
 pub(crate) struct Clients {
     http: reqwest::Client,
     environment: OpenAI,
+    environment_base: String,
+    environment_key: String,
     cache: Mutex<HashMap<ClientKey, Client>>,
 }
 
@@ -89,6 +100,8 @@ impl Clients {
         Ok(Self {
             http,
             environment,
+            environment_base: args.base_url.trim_end_matches('/').to_owned(),
+            environment_key: args.api_key.clone(),
             cache: Mutex::new(HashMap::new()),
         })
     }
@@ -131,6 +144,58 @@ impl Clients {
             provider: provider_name(access.kind),
             model,
         })
+    }
+
+    /// The raw connection to a model, for the calls that stream and need the
+    /// provider's own wire format.
+    pub(crate) fn endpoint(&self, target: &ModelTarget) -> Result<Endpoint, CoreError> {
+        let secret = |key: &str| {
+            capitainerie_core::domain::agent::SecretToken::new(match key {
+                "" => UNUSED_KEY,
+                key => key,
+            })
+        };
+        let Some(access) = &target.access else {
+            return match target.model.provider {
+                ProviderKind::OpenAiCompatible => Ok(Endpoint::OpenAi {
+                    http: self.http.clone(),
+                    url: format!("{}/chat/completions", self.environment_base),
+                    key: secret(&self.environment_key),
+                }),
+                kind => Err(CoreError::Invalid(format!(
+                    "no {} key configured for this organization",
+                    kind.as_str()
+                ))),
+            };
+        };
+        let base_url = access
+            .base_url
+            .as_deref()
+            .map(|url| url.trim_end_matches('/'));
+        match access.kind {
+            ProviderKind::Anthropic => Ok(Endpoint::Anthropic(Api::new(
+                self.http.clone(),
+                base_url.unwrap_or(ANTHROPIC_BASE),
+                access.secret.clone(),
+            ))),
+            ProviderKind::Mistral => Ok(Endpoint::OpenAi {
+                http: self.http.clone(),
+                url: format!("{}/v1/chat/completions", base_url.unwrap_or(MISTRAL_BASE)),
+                key: secret(access.secret.expose()),
+            }),
+            ProviderKind::OpenAiCompatible => {
+                let base = base_url.ok_or_else(|| {
+                    CoreError::Invalid(
+                        "the OpenAI-compatible provider has no base url configured".into(),
+                    )
+                })?;
+                Ok(Endpoint::OpenAi {
+                    http: self.http.clone(),
+                    url: format!("{base}/chat/completions"),
+                    key: secret(access.secret.expose()),
+                })
+            }
+        }
     }
 
     #[cfg(test)]

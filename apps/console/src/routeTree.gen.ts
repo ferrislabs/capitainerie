@@ -20,11 +20,13 @@ import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppAgentsRouteImport } from './routes/_app.agents'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
+import { Route as AppChatIndexRouteImport } from './routes/_app.chat.index'
 import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects_.$projectId'
 import { Route as AppClientsClientIdRouteImport } from './routes/_app.clients_.$clientId'
+import { Route as AppChatIdRouteImport } from './routes/_app.chat.$id'
 import { Route as AppSettingsIntegrationsIndexRouteImport } from './routes/_app.settings.integrations.index'
 import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
 import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
@@ -83,6 +85,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppChatIndexRoute = AppChatIndexRouteImport.update({
+  id: '/chat/',
+  path: '/chat/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsProvidersRoute = AppSettingsProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
@@ -106,6 +113,11 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
 const AppClientsClientIdRoute = AppClientsClientIdRouteImport.update({
   id: '/clients_/$clientId',
   path: '/clients/$clientId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppChatIdRoute = AppChatIdRouteImport.update({
+  id: '/chat/$id',
+  path: '/chat/$id',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsIntegrationsIndexRoute =
@@ -137,11 +149,13 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/chat/': typeof AppChatIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
   '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
@@ -156,11 +170,13 @@ export interface FileRoutesByTo {
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/': typeof AppIndexRoute
+  '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/chat': typeof AppChatIndexRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/integrations': typeof AppSettingsIntegrationsIndexRoute
   '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
@@ -178,11 +194,13 @@ export interface FileRoutesById {
   '/_app/runs': typeof AppRunsRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
+  '/_app/chat/$id': typeof AppChatIdRoute
   '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
   '/_app/projects_/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/runs_/$runId': typeof AppRunsRunIdRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
+  '/_app/chat/': typeof AppChatIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
   '/_app/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
@@ -200,11 +218,13 @@ export interface FileRouteTypes {
     | '/projects'
     | '/runs'
     | '/settings'
+    | '/chat/$id'
     | '/clients/$clientId'
     | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
+    | '/chat/'
     | '/settings/'
     | '/settings/integrations/'
     | '/settings/integrations/github/app-callback'
@@ -219,11 +239,13 @@ export interface FileRouteTypes {
     | '/projects'
     | '/runs'
     | '/'
+    | '/chat/$id'
     | '/clients/$clientId'
     | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
+    | '/chat'
     | '/settings'
     | '/settings/integrations'
     | '/settings/integrations/github/app-callback'
@@ -240,11 +262,13 @@ export interface FileRouteTypes {
     | '/_app/runs'
     | '/_app/settings'
     | '/_app/'
+    | '/_app/chat/$id'
     | '/_app/clients_/$clientId'
     | '/_app/projects_/$projectId'
     | '/_app/runs_/$runId'
     | '/_app/settings/models'
     | '/_app/settings/providers'
+    | '/_app/chat/'
     | '/_app/settings/'
     | '/_app/settings/integrations/'
     | '/_app/settings/integrations/github/app-callback'
@@ -335,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/chat/': {
+      id: '/_app/chat/'
+      path: '/chat'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof AppChatIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/providers': {
       id: '/_app/settings/providers'
       path: '/providers'
@@ -368,6 +399,13 @@ declare module '@tanstack/react-router' {
       path: '/clients/$clientId'
       fullPath: '/clients/$clientId'
       preLoaderRoute: typeof AppClientsClientIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/chat/$id': {
+      id: '/_app/chat/$id'
+      path: '/chat/$id'
+      fullPath: '/chat/$id'
+      preLoaderRoute: typeof AppChatIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/integrations/': {
@@ -427,9 +465,11 @@ interface AppRouteChildren {
   AppRunsRoute: typeof AppRunsRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
+  AppChatIdRoute: typeof AppChatIdRoute
   AppClientsClientIdRoute: typeof AppClientsClientIdRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppChatIndexRoute: typeof AppChatIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -441,9 +481,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppRunsRoute: AppRunsRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
+  AppChatIdRoute: AppChatIdRoute,
   AppClientsClientIdRoute: AppClientsClientIdRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppChatIndexRoute: AppChatIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

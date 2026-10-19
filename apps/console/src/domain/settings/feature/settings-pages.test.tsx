@@ -167,6 +167,7 @@ describe('settings pages', () => {
 			embeddings: { provider: 'openai_compatible', model: BGE.id },
 			transcriber: null,
 			reader: null,
+			captain: null,
 		})
 		await waitFor(() =>
 			expect(

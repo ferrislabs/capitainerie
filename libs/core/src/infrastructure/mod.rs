@@ -1,6 +1,7 @@
 pub mod authorization;
 pub mod card;
 pub mod client;
+pub mod conversation;
 pub mod crypto;
 pub mod delegation;
 pub mod event;

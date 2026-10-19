@@ -79,6 +79,7 @@ describe('AppRail', () => {
 			expect(screen.getByRole('list', { name: section })).toBeTruthy()
 		}
 		for (const label of [
+			'Conversations',
 			'Runs',
 			'En cours',
 			'Kanban',
@@ -94,6 +95,21 @@ describe('AppRail', () => {
 		).toBe('page')
 		expect(
 			screen.getByRole('link', { name: 'Runs' }).getAttribute('aria-current'),
+		).toBeNull()
+	})
+
+	it('marks a conversation as current under Conversations', async () => {
+		await renderRail('/chat/c1')
+
+		expect(
+			screen
+				.getByRole('link', { name: 'Conversations' })
+				.getAttribute('aria-current'),
+		).toBe('page')
+		expect(
+			screen
+				.getByRole('link', { name: 'Accueil' })
+				.getAttribute('aria-current'),
 		).toBeNull()
 	})
 

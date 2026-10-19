@@ -151,6 +151,40 @@ pub(crate) async fn call_tool(
     }
 }
 
+pub(crate) const RAW_MAX_CHARS: usize = 12_000;
+
+pub(crate) struct RawOutcome {
+    pub succeeded: bool,
+    pub text: String,
+}
+
+pub(crate) async fn call_tool_raw(
+    peer: &Peer<RoleClient>,
+    tool: &'static str,
+    arguments: Map<String, Value>,
+) -> RawOutcome {
+    let request = CallToolRequestParams::new(tool).with_arguments(arguments);
+    match peer.call_tool(request).await {
+        Ok(result) => match serde_json::to_value(&result) {
+            Ok(value) => RawOutcome {
+                succeeded: !value["isError"].as_bool().unwrap_or(false),
+                text: truncate_chars(
+                    value["content"][0]["text"].as_str().unwrap_or_default(),
+                    RAW_MAX_CHARS,
+                ),
+            },
+            Err(error) => RawOutcome {
+                succeeded: false,
+                text: format!("unreadable MCP result: {error}"),
+            },
+        },
+        Err(error) => RawOutcome {
+            succeeded: false,
+            text: truncate_chars(&error.to_string(), SUMMARY_MAX_CHARS),
+        },
+    }
+}
+
 pub(crate) fn outcome_of(result: &Value) -> CardOutcome {
     let text = result["content"][0]["text"].as_str().unwrap_or_default();
     let failed = result["isError"].as_bool().unwrap_or(false);

@@ -21,7 +21,10 @@ export interface RoleInfo {
 	capability: keyof Schemas.CapabilitiesResponse
 }
 
-export type RequiredRole = Exclude<AgentRole, 'transcriber' | 'reader'>
+export type RequiredRole = Exclude<
+	AgentRole,
+	'transcriber' | 'reader' | 'captain'
+>
 
 export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
 	'extractor',
@@ -33,6 +36,8 @@ export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
 export const TRANSCRIBER_ROLE = 'transcriber' satisfies AgentRole
 
 export const READER_ROLE = 'reader' satisfies AgentRole
+
+export const CAPTAIN_ROLE = 'captain' satisfies AgentRole
 
 export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 	extractor: {
@@ -61,6 +66,12 @@ export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 		description:
 			'Transforme un audio déposé en texte, que vous relisez avant de lancer le run. Facultatif : sans lui, seuls les fichiers texte sont acceptés.',
 		capability: 'transcription',
+	},
+	captain: {
+		label: 'Capitaine',
+		description:
+			'Répond dans le chat de l’accueil et propose des cartes ; il doit savoir appeler des outils. Facultatif : sans lui, le modèle du Rédacteur sert.',
+		capability: 'chat',
 	},
 	reader: {
 		label: 'Lecteur de PDF',
@@ -156,6 +167,7 @@ export function completeAssignments(
 		embeddings,
 		transcriber,
 		reader,
+		captain,
 		executor,
 	} = draft
 	if (!extractor || !judge || !writer || !embeddings) return undefined
@@ -166,6 +178,7 @@ export function completeAssignments(
 		embeddings,
 		transcriber: transcriber ?? null,
 		reader: reader ?? null,
+		captain: captain ?? null,
 		...(executor ? { executor } : {}),
 	}
 }
@@ -174,11 +187,12 @@ export function draftFrom(
 	saved: Schemas.ModelAssignmentsDto | null,
 ): AssignmentDraft {
 	if (saved === null) return {}
-	const { transcriber, reader, ...rest } = saved
+	const { transcriber, reader, captain, ...rest } = saved
 	return {
 		...rest,
 		...(transcriber ? { transcriber } : {}),
 		...(reader ? { reader } : {}),
+		...(captain ? { captain } : {}),
 	}
 }
 

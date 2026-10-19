@@ -3,6 +3,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { TableSkeleton } from '#/components/layout/table-skeleton'
+import { useNewConversation } from '#/domain/chat/hooks/use-new-conversation'
 import { firstName, greetingTitle } from '#/domain/home/greeting'
 import { useMonthCost } from '#/domain/home/hooks/use-month-cost'
 import { HomeCards } from '#/domain/home/ui/home-cards'
@@ -28,10 +29,25 @@ export function HomePage() {
 	const active = useActiveRuns()
 	const cost = useMonthCost()
 	const runs = useRuns()
+	const chat = useNewConversation()
 
 	return (
 		<Page>
-			<HomeChatSlot />
+			<HomeChatSlot
+				value={chat.value}
+				onChange={chat.setValue}
+				onSubmit={chat.submit}
+				isPending={chat.isPending}
+				errorMessage={chat.errorMessage}
+				voice={{
+					state: chat.voice.state,
+					supported: chat.voice.supported,
+					onToggle: chat.voice.toggle,
+					onCancel: chat.voice.cancel,
+				}}
+				voiceError={chat.voice.error}
+				model={chat.captain}
+			/>
 			<PageHeader
 				title={greetingTitle(new Date(), firstName(me.data))}
 				description="Ce qui demande votre attention et ce que font les agents."

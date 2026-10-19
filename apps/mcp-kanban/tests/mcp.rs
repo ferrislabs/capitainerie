@@ -7,7 +7,10 @@ use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier};
 use capitainerie_common::OrganizationId;
 use capitainerie_core::{
     CapitainerieUseCase,
-    domain::{authorization::Subject, run::service::SubmitTranscript},
+    domain::{
+        authorization::Subject, client::service::CreateClient, project::service::CreateProject,
+        run::service::SubmitTranscript,
+    },
     infrastructure::postgres,
 };
 use capitainerie_mcp_kanban::router;
@@ -27,6 +30,7 @@ use uuid::Uuid;
 const KEY_A_PEM: &str = include_str!("../../../libs/auth/tests/fixtures/test-only-key-a.pem");
 const KEY_A_JWK: &str = include_str!("../../../libs/auth/tests/fixtures/test-only-key-a.jwk.json");
 const AGENT: &str = "capitainerie-agent-writer";
+const CAPTAIN: &str = "capitainerie-agent-captain";
 const AUDIENCE: &str = "capitainerie-mcp";
 
 fn database_url() -> Option<String> {
@@ -110,7 +114,8 @@ async fn harness() -> Option<Harness> {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let verifier = FerrisKeyVerifier::with_audience(AcceptedClients::new([AGENT]), AUDIENCE);
+    let verifier =
+        FerrisKeyVerifier::with_audience(AcceptedClients::new([AGENT, CAPTAIN]), AUDIENCE);
     let usecase = CapitainerieUseCase::with_local_policies(pool);
     let app = router(usecase.clone(), verifier, base.clone());
     tokio::spawn(async move {
@@ -134,17 +139,21 @@ fn now() -> u64 {
 
 impl Harness {
     fn token(&self, audience: &str, delegated: bool) -> String {
+        self.token_of(AGENT, audience, delegated)
+    }
+
+    fn token_of(&self, agent: &str, audience: &str, delegated: bool) -> String {
         let mut claims = json!({
             "sub": "7b0f0c1e-0000-4000-8000-000000000001",
             "iss": self.issuer,
             "typ": "Bearer",
-            "azp": AGENT,
+            "azp": agent,
             "aud": [audience],
             "exp": now() + 300,
             "iat": now(),
         });
         if delegated {
-            claims["act"] = json!({"client_id": AGENT, "sub": "service-account-agent-writer"});
+            claims["act"] = json!({"client_id": agent, "sub": "service-account-agent"});
         }
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some("kid-a".to_owned());
@@ -170,6 +179,15 @@ impl Harness {
             .await
             .unwrap();
         submitted.transcript_id.0.to_string()
+    }
+
+    fn member(&self) -> Subject {
+        Subject {
+            id: "7b0f0c1e-0000-4000-8000-000000000001".into(),
+            organization_id: OrganizationId(self.organization_id),
+            actor: None,
+            is_admin: false,
+        }
     }
 
     async fn post_mcp(&self, token: Option<&str>) -> reqwest::Response {
@@ -288,7 +306,7 @@ async fn a_token_that_is_not_delegated_is_forbidden() {
 }
 
 #[tokio::test]
-async fn a_delegated_token_lists_the_four_tools() {
+async fn a_delegated_token_lists_the_seven_tools() {
     let Some(h) = harness().await else { return };
     let client = h.client(h.token(AUDIENCE, true)).await;
     let mut names: Vec<String> = client
@@ -301,7 +319,15 @@ async fn a_delegated_token_lists_the_four_tools() {
     names.sort();
     assert_eq!(
         names,
-        ["comment", "create_card", "move_card", "update_card"]
+        [
+            "comment",
+            "create_card",
+            "list_clients",
+            "list_projects",
+            "move_card",
+            "search_cards",
+            "update_card"
+        ]
     );
     client.cancel().await.unwrap();
 }
@@ -425,5 +451,212 @@ async fn an_agent_card_carries_its_details_and_an_out_of_window_deadline_is_refu
             "{refused:?}"
         );
     }
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn the_captain_proposes_without_a_transcript_searches_and_cannot_move_cards() {
+    let Some(h) = harness().await else { return };
+    let client = h.client(h.token_of(CAPTAIN, AUDIENCE, true)).await;
+
+    let created = client
+        .call_tool(call(
+            "create_card",
+            json!({"title": "Ajouter un README", "description": "Dépôt test d'Acme"}),
+        ))
+        .await
+        .unwrap();
+    assert_ne!(created.is_error, Some(true), "{created:?}");
+    let card = payload(&created);
+    assert_eq!(card["column"], "proposed");
+    let id = card["id"].as_str().unwrap().to_owned();
+
+    let found = client
+        .call_tool(call("search_cards", json!({"query": "readme acme"})))
+        .await
+        .unwrap();
+    assert_ne!(found.is_error, Some(true), "{found:?}");
+    let ids: Vec<_> = payload(&found)
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|card| card["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(ids, std::slice::from_ref(&id));
+
+    for to in ["todo", "rejected", "in_progress"] {
+        let moved = client
+            .call_tool(call(
+                "move_card",
+                json!({"card_id": id, "to": to, "expected_version": 1}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(moved.is_error, Some(true), "{to}: {moved:?}");
+    }
+    let updated = client
+        .call_tool(call(
+            "update_card",
+            json!({"card_id": id, "expected_version": 1, "title": "Autre"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(updated.is_error, Some(true), "{updated:?}");
+
+    let commented = client
+        .call_tool(call("comment", json!({"card_id": id, "body": "À valider"})))
+        .await
+        .unwrap();
+    assert_ne!(commented.is_error, Some(true), "{commented:?}");
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn the_captain_lists_clients_and_projects_and_files_a_card_under_a_project() {
+    let Some(h) = harness().await else { return };
+    let usecase = h.usecase.as_ref().unwrap();
+    let suffix = Uuid::now_v7().simple().to_string();
+    let acme = usecase
+        .create_client(
+            h.member(),
+            CreateClient {
+                name: format!("Acme {suffix}"),
+                aliases: vec!["Acme SA".into()],
+                notes: "secret notes".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let globex = usecase
+        .create_client(
+            h.member(),
+            CreateClient {
+                name: format!("Globex {suffix}"),
+                aliases: vec![],
+                notes: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let site = usecase
+        .create_project(
+            h.member(),
+            CreateProject {
+                client_id: Some(acme.id),
+                name: format!("Site {suffix}"),
+                aliases: vec![],
+                repository: Some("acme/site".into()),
+                description: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let client = h.client(h.token_of(CAPTAIN, AUDIENCE, true)).await;
+
+    let clients = client
+        .call_tool(call("list_clients", json!({"query": suffix})))
+        .await
+        .unwrap();
+    assert_ne!(clients.is_error, Some(true), "{clients:?}");
+    let clients = payload(&clients);
+    assert_eq!(clients.as_array().unwrap().len(), 2);
+    assert!(clients.to_string().contains("Acme SA"));
+    assert!(!clients.to_string().contains("secret notes"));
+
+    let projects = client
+        .call_tool(call(
+            "list_projects",
+            json!({"client_id": acme.id.0.to_string()}),
+        ))
+        .await
+        .unwrap();
+    let projects = payload(&projects);
+    assert_eq!(projects[0]["name"], format!("Site {suffix}"));
+    assert_eq!(projects[0]["client"]["id"], acme.id.0.to_string());
+    assert_eq!(projects[0]["repository"], "acme/site");
+    let none = client
+        .call_tool(call(
+            "list_projects",
+            json!({"client_id": globex.id.0.to_string()}),
+        ))
+        .await
+        .unwrap();
+    assert!(payload(&none).as_array().unwrap().is_empty());
+
+    let created = client
+        .call_tool(call(
+            "create_card",
+            json!({
+                "title": "Ajouter un README",
+                "description": "Pour Acme",
+                "project_id": site.id.0.to_string(),
+                "priority": "high",
+                "estimate": "s",
+                "acceptance_criteria": ["Le README décrit l'installation"],
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_ne!(created.is_error, Some(true), "{created:?}");
+    let card = payload(&created);
+    assert_eq!(card["column"], "proposed");
+    assert_eq!(card["project"]["id"], site.id.0.to_string());
+    assert_eq!(card["client"]["id"], acme.id.0.to_string());
+    assert_eq!(card["priority"], "high");
+    let id = card["id"].as_str().unwrap().to_owned();
+
+    let by_project = client
+        .call_tool(call(
+            "search_cards",
+            json!({"project_id": site.id.0.to_string()}),
+        ))
+        .await
+        .unwrap();
+    let ids: Vec<_> = payload(&by_project)
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|card| card["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(ids, std::slice::from_ref(&id));
+    let by_other_client = client
+        .call_tool(call(
+            "search_cards",
+            json!({"client_id": globex.id.0.to_string()}),
+        ))
+        .await
+        .unwrap();
+    assert!(payload(&by_other_client).as_array().unwrap().is_empty());
+
+    let mismatch = client
+        .call_tool(call(
+            "create_card",
+            json!({
+                "title": "Mal rangée",
+                "description": "x",
+                "project_id": site.id.0.to_string(),
+                "client_id": globex.id.0.to_string(),
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(mismatch.is_error, Some(true), "{mismatch:?}");
+    let unknown = client
+        .call_tool(call(
+            "create_card",
+            json!({
+                "title": "Client fantôme",
+                "description": "x",
+                "client_id": Uuid::now_v7().to_string(),
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(unknown.is_error, Some(true), "{unknown:?}");
+    let missing = client
+        .call_tool(call("search_cards", json!({"query": "fantôme"})))
+        .await
+        .unwrap();
+    assert!(payload(&missing).as_array().unwrap().is_empty());
     client.cancel().await.unwrap();
 }

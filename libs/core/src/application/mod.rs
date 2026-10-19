@@ -1,5 +1,6 @@
 mod card;
 mod client;
+mod conversation;
 mod document;
 mod execute_pipeline;
 mod execute_stream;

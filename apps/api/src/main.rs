@@ -8,16 +8,18 @@ use capitainerie_args::{
     AuthArgs, DatabaseArgs, DelegationArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
     ServerArgs,
 };
-use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyVerifier};
+use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyTokenExchange, FerrisKeyVerifier};
 use capitainerie_bus_iggy::IggyArgs;
 use capitainerie_core::{
     CapitainerieUseCase,
+    domain::conversation::CAPTAIN_AGENT,
     infrastructure::{crypto::SecretCipher, postgres},
 };
 use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Delegation};
 use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
+use capitainerie_runtime_rig::{LlmArgs, RigCaptain};
 use clap::Parser;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -37,6 +39,8 @@ struct Args {
     exchange: ExchangeArgs,
     #[command(flatten)]
     delegation: DelegationArgs,
+    #[command(flatten)]
+    llm: LlmArgs,
     #[command(flatten)]
     secrets: SecretsArgs,
     #[command(flatten)]
@@ -89,6 +93,17 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    let captain_exchanger = match &args.exchange.client_id {
+        Some(_) => {
+            let exchanger = args.exchange.exchanger()?;
+            ensure_captain_credentials(&exchanger)?;
+            Some(exchanger)
+        }
+        None => {
+            tracing::warn!("EXCHANGE_CLIENT_ID is unset: the Captain cannot act for anyone");
+            None
+        }
+    };
     let github = github_integration(
         &args.github,
         args.console_url.clone(),
@@ -115,9 +130,15 @@ async fn main() -> anyhow::Result<()> {
         realtime,
         analytics,
         catalog::build()?,
-        router::IntakeAdapters {
-            transcribers: catalog::build_transcribers()?,
-            document_readers: catalog::build_document_readers()?,
+        router::Adapters {
+            intake: router::IntakeAdapters {
+                transcribers: catalog::build_transcribers()?,
+                document_readers: catalog::build_document_readers()?,
+            },
+            captain: router::CaptainAdapters {
+                runtime: RigCaptain::new(&args.llm).context("building the Captain runtime")?,
+                exchanger: captain_exchanger,
+            },
         },
         github,
         &args.server.allowed_origins,
@@ -174,6 +195,14 @@ fn github_integration(
     })
 }
 
+fn ensure_captain_credentials(exchanger: &FerrisKeyTokenExchange) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        exchanger.has_agent(CAPTAIN_AGENT),
+        "the chat is enabled (EXCHANGE_CLIENT_ID is set) but AGENT_CREDENTIALS has no entry for {CAPTAIN_AGENT}: add `{CAPTAIN_AGENT}=<client secret>`, the bootstrap script prints it"
+    );
+    Ok(())
+}
+
 fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
     let accepted = AcceptedClients::new(auth.accepted_clients);
     match auth.audience {
@@ -187,6 +216,8 @@ fn verifier(auth: AuthArgs) -> FerrisKeyVerifier {
 
 #[cfg(test)]
 mod tests {
+    use capitainerie_auth::{ClientCredentials, FerrisKeyTokenExchange};
+    use capitainerie_core::domain::{agent::SecretToken, conversation::CAPTAIN_AGENT};
     use clap::CommandFactory;
 
     use super::Args;
@@ -194,5 +225,32 @@ mod tests {
     #[test]
     fn the_command_line_definition_is_valid() {
         Args::command().debug_assert();
+    }
+
+    #[test]
+    fn startup_refuses_a_chat_without_captain_credentials() {
+        let credentials = |id: &str| ClientCredentials {
+            client_id: id.to_owned(),
+            client_secret: SecretToken::new("s"),
+        };
+        let writer_only = FerrisKeyTokenExchange::new(
+            None,
+            vec![credentials("capitainerie-agent-writer")],
+            "mcp",
+        );
+        let both = FerrisKeyTokenExchange::new(
+            None,
+            vec![
+                credentials("capitainerie-agent-writer"),
+                credentials(CAPTAIN_AGENT),
+            ],
+            "mcp",
+        );
+
+        let refused = super::ensure_captain_credentials(&writer_only).unwrap_err();
+
+        assert!(refused.to_string().contains("capitainerie-agent-captain"));
+        assert!(refused.to_string().contains("AGENT_CREDENTIALS"));
+        assert!(super::ensure_captain_credentials(&both).is_ok());
     }
 }

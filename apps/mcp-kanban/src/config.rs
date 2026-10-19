@@ -24,7 +24,7 @@ pub struct Args {
         long = "mcp-accepted-agents",
         env = "MCP_ACCEPTED_AGENTS",
         value_delimiter = ',',
-        default_value = "capitainerie-agent-writer"
+        default_value = "capitainerie-agent-writer,capitainerie-agent-captain"
     )]
     pub accepted_agents: Vec<String>,
     #[command(flatten)]
@@ -50,7 +50,10 @@ mod tests {
         assert_eq!(args.port, 4101);
         assert_eq!(args.public_url, "http://localhost:4101");
         assert_eq!(args.audience, "capitainerie-mcp");
-        assert_eq!(args.accepted_agents, vec!["capitainerie-agent-writer"]);
+        assert_eq!(
+            args.accepted_agents,
+            vec!["capitainerie-agent-writer", "capitainerie-agent-captain"]
+        );
     }
 
     #[test]
