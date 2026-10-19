@@ -134,7 +134,9 @@ function Combobox(props: ComboboxProps) {
 	const selectedLabel = props.multiple
 		? undefined
 		: props.value === ''
-			? undefined
+			? placeholder === undefined
+				? noneOption?.label
+				: undefined
 			: labelOf(props.value)
 	const inputValue = query ?? selectedLabel ?? ''
 	const canClear = clearable && hasValue && !disabled
@@ -242,7 +244,7 @@ function Combobox(props: ComboboxProps) {
 			return
 		}
 		if (key === 'Home' || key === 'End') {
-			if (editable && inputValue !== '') return
+			if (editable && (query ?? '') !== '') return
 			event.preventDefault()
 			if (!open) setOpen(true)
 			const index = edgeIndex(flat, key === 'Home' ? 'first' : 'last')
@@ -274,6 +276,18 @@ function Combobox(props: ComboboxProps) {
 		}
 		if (key === 'Tab') {
 			close()
+			return
+		}
+		if (
+			editable &&
+			!multiple &&
+			query === null &&
+			inputValue !== '' &&
+			(key === 'Backspace' ||
+				key === 'Delete' ||
+				(key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey))
+		) {
+			setQuery('')
 			return
 		}
 		if (
@@ -409,8 +423,8 @@ function Combobox(props: ComboboxProps) {
 			<button
 				type="button"
 				tabIndex={-1}
+				aria-hidden="true"
 				disabled={disabled}
-				aria-label={open ? 'Masquer les options' : 'Afficher les options'}
 				onMouseDown={keepFocus}
 				onClick={() => {
 					if (open) close()

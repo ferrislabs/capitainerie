@@ -22,3 +22,19 @@ export function optionValues(): string[] {
 		.queryAllByRole('option')
 		.map((option) => option.getAttribute('data-value') ?? '')
 }
+
+export async function listValues(
+	user: UserEvent,
+	control: HTMLElement,
+): Promise<string[]> {
+	await user.click(control)
+	const values = optionValues().filter(Boolean)
+	await user.keyboard('{Escape}')
+	return values
+}
+
+export function textOf(control: HTMLElement): string {
+	return control instanceof HTMLInputElement
+		? control.value
+		: (control.textContent ?? '')
+}

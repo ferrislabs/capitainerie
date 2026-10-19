@@ -94,6 +94,17 @@ describe('Combobox', () => {
 		expect(optionNames()).toEqual(['Été'])
 	})
 
+	it('replaces the displayed label when typing over a selected value', async () => {
+		const user = userEvent.setup()
+		render(<Single initial="ancre" />)
+		const input = screen.getByRole('combobox') as HTMLInputElement
+		expect(input.value).toBe('Ancre')
+		await user.click(input)
+		await user.keyboard('cap')
+		expect(input.value).toBe('cap')
+		expect(optionNames()).toEqual(['Cap'])
+	})
+
 	it('shows the empty state when nothing matches', async () => {
 		const user = userEvent.setup()
 		render(<Single />)
