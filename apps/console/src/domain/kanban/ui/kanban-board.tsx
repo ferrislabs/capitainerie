@@ -41,6 +41,7 @@ interface Props {
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
 	onOpen: (cardId: string) => void
+	memberNames?: ReadonlyMap<string, string>
 }
 
 const collisionDetection: CollisionDetection = (args) => {
@@ -143,6 +144,7 @@ export function KanbanBoard({
 	onMove,
 	onExecute,
 	onOpen,
+	memberNames,
 }: Props) {
 	const sensors = useSensors(
 		useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -232,6 +234,7 @@ export function KanbanBoard({
 										onMove={onMove}
 										onExecute={onExecute}
 										onOpen={onOpen}
+										memberNames={memberNames}
 									/>
 								))}
 							</SortableContext>
@@ -247,6 +250,7 @@ export function KanbanBoard({
 						expanded={false}
 						onToggleExpanded={noop}
 						onMove={noop}
+						memberNames={memberNames}
 						dragging="overlay"
 					/>
 				) : null}

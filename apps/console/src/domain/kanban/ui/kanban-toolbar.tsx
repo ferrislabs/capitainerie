@@ -1,14 +1,13 @@
 import { FilterChip } from '#/components/layout/filter-chip'
-import type { CardFilters } from '#/domain/kanban/card-filters'
+import type { CardFilters, FilterOptions } from '#/domain/kanban/card-filters'
 
 interface Props {
 	filters: CardFilters
-	clients: ReadonlyArray<string>
-	projects: ReadonlyArray<string>
+	options: FilterOptions
 	onChange: (filters: CardFilters) => void
 }
 
-export function KanbanToolbar({ filters, clients, projects, onChange }: Props) {
+export function KanbanToolbar({ filters, options, onChange }: Props) {
 	return (
 		<search
 			aria-label="Filtrer les cartes"
@@ -16,15 +15,33 @@ export function KanbanToolbar({ filters, clients, projects, onChange }: Props) {
 		>
 			<FilterChip
 				label="Client"
-				options={clients}
+				options={options.clients}
 				selected={filters.clients}
 				onChange={(values) => onChange({ ...filters, clients: values })}
 			/>
 			<FilterChip
 				label="Projet"
-				options={projects}
+				options={options.projects}
 				selected={filters.projects}
 				onChange={(values) => onChange({ ...filters, projects: values })}
+			/>
+			<FilterChip
+				label="Priorité"
+				options={options.priorities}
+				selected={filters.priorities}
+				onChange={(values) => onChange({ ...filters, priorities: values })}
+			/>
+			<FilterChip
+				label="Responsable"
+				options={options.assignees}
+				selected={filters.assignees}
+				onChange={(values) => onChange({ ...filters, assignees: values })}
+			/>
+			<FilterChip
+				label="Étiquette"
+				options={options.labels}
+				selected={filters.labels}
+				onChange={(values) => onChange({ ...filters, labels: values })}
 			/>
 		</search>
 	)

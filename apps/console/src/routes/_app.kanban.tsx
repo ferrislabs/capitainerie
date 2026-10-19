@@ -8,7 +8,7 @@ export const Route = createFileRoute('/_app/kanban')({
 })
 
 function KanbanRoute() {
-	const { card, client, project } = Route.useSearch()
+	const { card, client, project, priority, assignee, label } = Route.useSearch()
 	const navigate = Route.useNavigate()
 	return (
 		<KanbanPage
@@ -19,7 +19,13 @@ function KanbanRoute() {
 					replace: cardId === undefined,
 				})
 			}
-			filters={{ clients: client ?? [], projects: project ?? [] }}
+			filters={{
+				clients: client ?? [],
+				projects: project ?? [],
+				priorities: priority ?? [],
+				assignees: assignee ?? [],
+				labels: label ?? [],
+			}}
 			onFiltersChange={(filters) =>
 				void navigate({
 					search: (previous) => ({

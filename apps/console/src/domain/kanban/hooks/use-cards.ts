@@ -13,7 +13,7 @@ export function cardsRefetchInterval(realtime: RealtimeState = 'offline') {
 export function useCards() {
 	const realtime = useRealtimeState()
 	return useQuery({
-		...tanstackApi.get('/api/v1/cards').queryOptions,
+		...tanstackApi.get('/api/v1/cards', { query: {} }).queryOptions,
 		refetchInterval: cardsRefetchInterval(realtime),
 	})
 }

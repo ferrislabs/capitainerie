@@ -24,6 +24,9 @@ function card(
 		version: 4,
 		created_at: new Date(Date.now() - 5 * 60_000).toISOString(),
 		updated_at: new Date().toISOString(),
+		acceptance_criteria: [],
+		priority: 'normal',
+		labels: [],
 		...overrides,
 	}
 }
@@ -195,5 +198,29 @@ describe('CardItem', () => {
 
 		expect(screen.queryByText('Client :')).toBeNull()
 		expect(screen.queryByText('Projet :')).toBeNull()
+	})
+
+	it('shows the details of the card in the meta zone', () => {
+		const { container } = render(
+			<CardItem
+				card={card({
+					priority: 'urgent',
+					assignee_subject: 'u1',
+					labels: ['infra'],
+					acceptance_criteria: [{ text: 'a', done: true }],
+				})}
+				isPending={false}
+				expanded={false}
+				onToggleExpanded={vi.fn()}
+				onMove={vi.fn()}
+				memberNames={new Map([['u1', 'Claire Martin']])}
+			/>,
+		)
+
+		const meta = container.querySelector('[data-zone="meta"]')
+		expect(meta?.textContent).toContain('Urgente')
+		expect(meta?.textContent).toContain('CM')
+		expect(meta?.textContent).toContain('infra')
+		expect(meta?.textContent).toContain('1/1')
 	})
 })

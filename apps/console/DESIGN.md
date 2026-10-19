@@ -251,6 +251,7 @@ A card is a block that leads somewhere or holds one fact: the home figures, the 
 - **Grid:** one column on small screens, two from 640px, as many as the content needs on wide ones (four on home, three in settings), 12px gap.
 - **Empty state:** the same surface with a dashed `input` frame, an icon, a title, one sentence and a single action that fixes the emptiness.
 - **Kanban card:** three zones, title, meta (description, quote, chips, date), footer (actions, only when there is one), 8px apart.
+- **Kanban card details:** in the meta zone, one row of signals. A priority badge only for urgent (danger) and high (neutral), always a word and an icon. A due date with a calendar icon, in `signal-danger` and followed by « en retard » once the day has passed. Criteria progress as `n/m`. Two labels then `+n`. The assignee's initials in a 20px square at the end of the row.
 
 ## Barre d'outils de filtres
 

@@ -12,6 +12,7 @@ interface Props {
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
 	onOpen: (cardId: string) => void
+	memberNames?: ReadonlyMap<string, string>
 }
 
 type KeyHandler = (event: KeyboardEvent<HTMLElement>) => void
@@ -26,6 +27,7 @@ export function DraggableCard({
 	onMove,
 	onExecute,
 	onOpen,
+	memberNames,
 }: Props) {
 	const { attributes, listeners, setNodeRef, isDragging } = useSortable({
 		id: card.id,
@@ -72,6 +74,7 @@ export function DraggableCard({
 				onToggleExpanded={onToggleExpanded}
 				onMove={onMove}
 				onExecute={onExecute}
+				memberNames={memberNames}
 				dragging={isDragging ? 'origin' : undefined}
 			/>
 		</div>

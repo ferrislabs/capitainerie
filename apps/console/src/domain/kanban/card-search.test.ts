@@ -18,4 +18,18 @@ describe('parseCardSearch', () => {
 		).toEqual({ client: ['Acme'], project: ['Site'] })
 		expect(parseCardSearch({ client: [], project: 4 })).toEqual({})
 	})
+
+	it('keeps the priority, assignee and label filters', () => {
+		expect(
+			parseCardSearch({
+				priority: ['Urgente', 'Haute'],
+				assignee: 'Claire',
+				label: ['infra', 'infra', ''],
+			}),
+		).toEqual({
+			priority: ['Urgente', 'Haute'],
+			assignee: ['Claire'],
+			label: ['infra'],
+		})
+	})
 })

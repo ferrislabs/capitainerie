@@ -2,10 +2,12 @@ import { useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { useClients, useProjects } from '#/domain/clients/hooks/use-directory'
 import { useMe } from '#/domain/identity/hooks/use-me'
+import type { CardPatch } from '#/domain/kanban/card-patch'
 import type { Column } from '#/domain/kanban/columns'
 import { executionPullRequest } from '#/domain/kanban/feature/execution-pull-request'
 import { useCardDetail } from '#/domain/kanban/hooks/use-card-detail'
 import { useCommentCard } from '#/domain/kanban/hooks/use-comment-card'
+import { useMembers } from '#/domain/kanban/hooks/use-members'
 import { usePatchCard } from '#/domain/kanban/hooks/use-patch-card'
 import { CardSheet, type CardSheetStatus } from '#/domain/kanban/ui/card-sheet'
 import { isApiRequestError } from '#/lib/api-error'
@@ -36,7 +38,9 @@ export function CardPanel({
 	const open = cardId !== undefined
 	const clients = useClients({ enabled: open })
 	const projects = useProjects({ enabled: open })
+	const members = useMembers({ enabled: open })
 	const [draft, setDraft] = useState('')
+	const [saving, setSaving] = useState<'link' | 'edit'>('link')
 
 	const card = listedCard ?? detail.data?.card
 
@@ -47,6 +51,15 @@ export function CardPanel({
 		}
 		if (detail.isError) return 'error'
 		return 'loading'
+	}
+
+	function save(kind: 'link' | 'edit', fields: CardPatch) {
+		if (!card) return
+		setSaving(kind)
+		patch.mutate({
+			path: { card_id: card.id },
+			body: { expected_version: card.version, ...fields },
+		})
 	}
 
 	function submitComment() {
@@ -75,14 +88,13 @@ export function CardPanel({
 			projects={projects.data?.items.map((item) => item.project) ?? []}
 			isLinking={patch.isPending}
 			linksReady={clients.isSuccess && projects.isSuccess}
-			linkError={patch.errorMessage}
-			onLink={(links) => {
-				if (!card) return
-				patch.mutate({
-					path: { card_id: card.id },
-					body: { expected_version: card.version, ...links },
-				})
-			}}
+			linkError={saving === 'link' ? patch.errorMessage : undefined}
+			onLink={(links) => save('link', links)}
+			members={members.data?.items ?? []}
+			membersReady={members.isSuccess}
+			isEditing={patch.isPending}
+			editError={saving === 'edit' ? patch.errorMessage : undefined}
+			onEdit={(fields) => save('edit', fields)}
 			onClose={onClose}
 			onMove={(to) => {
 				if (card) onMove(card.id, to, card.version)
