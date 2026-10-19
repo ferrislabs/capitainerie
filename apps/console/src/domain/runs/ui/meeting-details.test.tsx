@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MeetingDetails } from '#/domain/runs/ui/meeting-details'
+import { chooseValue } from '#/test-utils/combobox'
 
 function setup(overrides: Partial<Parameters<typeof MeetingDetails>[0]> = {}) {
 	const props = {
@@ -55,7 +56,8 @@ describe('MeetingDetails', () => {
 		})
 		const user = userEvent.setup()
 
-		await user.selectOptions(
+		await chooseValue(
+			user,
 			screen.getByLabelText('Dépôt par défaut'),
 			'acme/web',
 		)
@@ -100,12 +102,13 @@ describe('MeetingDetails', () => {
 		})
 		const user = userEvent.setup()
 
-		await user.selectOptions(screen.getByLabelText('Projet'), 'p1')
-		await user.selectOptions(screen.getByLabelText('Client'), 'cl1')
+		await user.click(screen.getByLabelText('Projet'))
+		expect(screen.queryByRole('option', { name: 'App' })).toBeNull()
+		await chooseValue(user, screen.getByLabelText('Projet'), 'p1')
+		await chooseValue(user, screen.getByLabelText('Client'), 'cl1')
 
 		expect(onProjectChange).toHaveBeenCalledWith('p1')
 		expect(onClientChange).toHaveBeenCalledWith('cl1')
-		expect(screen.queryByRole('option', { name: 'App' })).toBeNull()
 	})
 
 	it('hides the pickers without handlers', () => {
