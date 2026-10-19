@@ -1,4 +1,5 @@
 use capitainerie_common::{ClientId, CoreError, ProjectId};
+use capitainerie_events::card::{CardAuthor, CardUpdated};
 use chrono::Utc;
 
 use super::{Project, ProjectDetail, ProjectFilter, ProjectListing, ports::ProjectRepository};
@@ -10,6 +11,7 @@ use crate::domain::{
         links::{Change, active_client},
         ports::ClientRepository,
     },
+    event::ports::EventEmitter,
     execution::RepositoryRef,
     label::{Aliases, NOTES_MAX_CHARS, Name},
 };
@@ -33,22 +35,25 @@ pub struct UpdateProject {
     pub archived: Option<bool>,
 }
 
-pub struct ProjectService<'a, P, C, A> {
+pub struct ProjectService<'a, P, C, E, A> {
     projects: P,
     clients: C,
+    emitter: &'a E,
     authorizer: &'a A,
 }
 
-impl<'a, P, C, A> ProjectService<'a, P, C, A>
+impl<'a, P, C, E, A> ProjectService<'a, P, C, E, A>
 where
     P: ProjectRepository,
     C: ClientRepository,
+    E: EventEmitter,
     A: Authorizer,
 {
-    pub fn new(projects: P, clients: C, authorizer: &'a A) -> Self {
+    pub fn new(projects: P, clients: C, emitter: &'a E, authorizer: &'a A) -> Self {
         Self {
             projects,
             clients,
+            emitter,
             authorizer,
         }
     }
@@ -122,7 +127,7 @@ where
         command: UpdateProject,
     ) -> Result<Project, CoreError> {
         let organization_id = subject.organization_id;
-        self.require(subject, Action::ClientManage, Some(id))
+        self.require(subject.clone(), Action::ClientManage, Some(id))
             .await?;
         let mut project = self
             .projects
@@ -170,7 +175,19 @@ where
             _ => {}
         }
         project.updated_at = now;
-        self.projects.update(&project).await?;
+        let carried = self.projects.update(&project).await?;
+        for (card_id, version) in carried {
+            self.emitter.emit(&CardUpdated {
+                card_id: card_id.0,
+                organization_id: organization_id.0,
+                version,
+                run_id: None,
+                author: CardAuthor {
+                    subject: subject.id.clone(),
+                    actor: subject.actor.clone(),
+                },
+            })?;
+        }
         Ok(project)
     }
 
@@ -190,7 +207,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use capitainerie_common::OrganizationId;
+    use std::sync::Mutex;
+
+    use capitainerie_common::{CardId, OrganizationId};
+    use capitainerie_events::DomainEvent;
 
     use super::*;
     use crate::domain::{
@@ -202,6 +222,16 @@ mod tests {
         },
         project::ports::MockProjectRepository,
     };
+
+    #[derive(Default)]
+    struct RecordingEmitter(Mutex<Vec<String>>);
+
+    impl EventEmitter for RecordingEmitter {
+        fn emit<Ev: DomainEvent>(&self, _event: &Ev) -> Result<(), CoreError> {
+            self.0.lock().unwrap().push(Ev::KIND.to_owned());
+            Ok(())
+        }
+    }
 
     fn human(organization_id: OrganizationId) -> Subject {
         Subject {
@@ -249,11 +279,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
         let authorizer = allow();
+        let emitter = RecordingEmitter::default();
 
-        let created = ProjectService::new(projects, clients_knowing(acme.clone()), &authorizer)
-            .create(human(organization_id), creation(Some(acme.id)))
-            .await
-            .unwrap();
+        let created = ProjectService::new(
+            projects,
+            clients_knowing(acme.clone()),
+            &emitter,
+            &authorizer,
+        )
+        .create(human(organization_id), creation(Some(acme.id)))
+        .await
+        .unwrap();
 
         assert_eq!(created.client_id(), Some(acme.id));
         assert_eq!(created.repository.unwrap().to_string(), "acme/web");
@@ -265,10 +301,12 @@ mod tests {
         let mut archived = client(organization_id, "Vieux");
         archived.archived_at = Some(Utc::now());
         let authorizer = allow();
+        let emitter = RecordingEmitter::default();
         for id in [ClientId::new(), archived.id] {
             let error = ProjectService::new(
                 MockProjectRepository::new(),
                 clients_knowing(archived.clone()),
+                &emitter,
                 &authorizer,
             )
             .create(human(organization_id), creation(Some(id)))
@@ -281,11 +319,13 @@ mod tests {
     #[tokio::test]
     async fn a_bad_repository_is_invalid() {
         let authorizer = allow();
+        let emitter = RecordingEmitter::default();
         let mut command = creation(None);
         command.repository = Some("../etc".into());
         let error = ProjectService::new(
             MockProjectRepository::new(),
             MockClientRepository::new(),
+            &emitter,
             &authorizer,
         )
         .create(human(OrganizationId::new()), command)
@@ -309,23 +349,30 @@ mod tests {
         });
         projects
             .expect_update()
-            .returning(|_| Box::pin(async { Ok(()) }));
+            .returning(|_| Box::pin(async { Ok(vec![(CardId::new(), 4)]) }));
         let authorizer = allow();
+        let emitter = RecordingEmitter::default();
 
-        let moved = ProjectService::new(projects, clients_knowing(globex.clone()), &authorizer)
-            .update(
-                human(organization_id),
-                site.id,
-                UpdateProject {
-                    client_id: Change::Set(globex.id),
-                    repository: Change::Clear,
-                    ..UpdateProject::default()
-                },
-            )
-            .await
-            .unwrap();
+        let moved = ProjectService::new(
+            projects,
+            clients_knowing(globex.clone()),
+            &emitter,
+            &authorizer,
+        )
+        .update(
+            human(organization_id),
+            site.id,
+            UpdateProject {
+                client_id: Change::Set(globex.id),
+                repository: Change::Clear,
+                ..UpdateProject::default()
+            },
+        )
+        .await
+        .unwrap();
 
         assert_eq!(moved.client_id(), Some(globex.id));
         assert_eq!(moved.repository, None);
+        assert_eq!(*emitter.0.lock().unwrap(), [CardUpdated::KIND]);
     }
 }

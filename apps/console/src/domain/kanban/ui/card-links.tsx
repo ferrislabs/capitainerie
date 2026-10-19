@@ -12,6 +12,7 @@ interface Props {
 	clients: ReadonlyArray<Schemas.ClientResponse>
 	projects: ReadonlyArray<Schemas.ProjectResponse>
 	isPending: boolean
+	ready?: boolean
 	errorMessage: string | undefined
 	onLink: (patch: LinkPatch) => void
 }
@@ -24,6 +25,7 @@ export function CardLinks({
 	clients,
 	projects,
 	isPending,
+	ready = true,
 	errorMessage,
 	onLink,
 }: Props) {
@@ -36,7 +38,7 @@ export function CardLinks({
 					<select
 						aria-label="Client"
 						className={SELECT_CLASS}
-						disabled={isPending}
+						disabled={isPending || !ready}
 						value={card.client?.id ?? ''}
 						onChange={(event) =>
 							onLink(
@@ -61,7 +63,7 @@ export function CardLinks({
 					<select
 						aria-label="Projet"
 						className={SELECT_CLASS}
-						disabled={isPending}
+						disabled={isPending || !ready}
 						value={card.project?.id ?? ''}
 						onChange={(event) =>
 							onLink(

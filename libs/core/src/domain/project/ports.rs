@@ -1,4 +1,4 @@
-use capitainerie_common::{ClientId, CoreError, OrganizationId, ProjectId};
+use capitainerie_common::{CardId, ClientId, CoreError, OrganizationId, ProjectId};
 use chrono::{DateTime, Utc};
 
 use super::{Project, ProjectFilter, ProjectListing};
@@ -14,7 +14,10 @@ pub trait ProjectRepository: Send {
         id: ProjectId,
     ) -> impl Future<Output = Result<Option<Project>, CoreError>> + Send;
 
-    fn update(&mut self, project: &Project) -> impl Future<Output = Result<(), CoreError>> + Send;
+    fn update(
+        &mut self,
+        project: &Project,
+    ) -> impl Future<Output = Result<Vec<(CardId, i32)>, CoreError>> + Send;
 
     fn list(
         &mut self,

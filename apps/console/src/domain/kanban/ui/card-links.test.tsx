@@ -80,4 +80,25 @@ describe('CardLinks', () => {
 
 		expect(screen.getByText('La carte a changé, rechargée.')).toBeTruthy()
 	})
+
+	it('keeps both selects disabled until the lists have loaded', () => {
+		render(
+			<CardLinks
+				card={CARD}
+				clients={[]}
+				projects={[]}
+				isPending={false}
+				ready={false}
+				errorMessage={undefined}
+				onLink={vi.fn()}
+			/>,
+		)
+
+		expect(
+			(screen.getByLabelText('Client') as HTMLSelectElement).disabled,
+		).toBe(true)
+		expect(
+			(screen.getByLabelText('Projet') as HTMLSelectElement).disabled,
+		).toBe(true)
+	})
 })

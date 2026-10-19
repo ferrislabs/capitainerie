@@ -165,6 +165,14 @@ async fn linked_card(
         .links
 }
 
+async fn card_version(pool: &PgPool, id: capitainerie_common::CardId) -> i32 {
+    sqlx::query_scalar("SELECT version FROM cards WHERE id = $1")
+        .bind(id.0)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
 fn keep_client() -> Change<ClientId> {
     Change::Keep
 }
@@ -523,6 +531,7 @@ async fn moving_a_project_to_another_client_carries_its_cards_and_transcripts() 
     )
     .await
     .unwrap();
+    let before = card_version(&pool, mine.id).await;
     let transcript_client = || async {
         sqlx::query_scalar::<_, Option<Uuid>>("SELECT client_id FROM transcripts WHERE id = $1")
             .bind(transcript.transcript_id.0)
@@ -552,6 +561,15 @@ async fn moving_a_project_to_another_client_carries_its_cards_and_transcripts() 
         assert_eq!(links.project_id(), Some(site.id));
         assert_eq!(transcript_client().await, expected.map(|id| id.0));
     }
+    assert_eq!(card_version(&pool, mine.id).await, before + 3);
+    let events: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'card.updated'",
+    )
+    .bind(mine.id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(events, 4);
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-use capitainerie_common::{ClientId, CoreError, OrganizationId, ProjectId};
+use capitainerie_common::{CardId, ClientId, CoreError, OrganizationId, ProjectId};
 use capitainerie_macros::repository;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -80,9 +80,23 @@ impl ProjectRepository for PgProjectRepository<'_> {
         .transpose()
     }
 
-    async fn update(&mut self, project: &Project) -> Result<(), CoreError> {
+    async fn update(&mut self, project: &Project) -> Result<Vec<(CardId, i32)>, CoreError> {
         let mut tx = self.tx.lock().await;
         let client_id = project.client_id().map(|id| id.0);
+        let bumped = sqlx::query!(
+            r#"
+            UPDATE cards SET version = version + 1, updated_at = $4
+            WHERE organization_id = $1 AND project_id = $2 AND client_id IS DISTINCT FROM $3
+            RETURNING id, version
+            "#,
+            project.organization_id.0,
+            project.id.0,
+            client_id,
+            project.updated_at,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
         let updated = sqlx::query!(
             r#"
             UPDATE projects
@@ -130,7 +144,10 @@ impl ProjectRepository for PgProjectRepository<'_> {
         .execute(&mut ***tx)
         .await
         .map_err(map_sqlx_error)?;
-        Ok(())
+        Ok(bumped
+            .into_iter()
+            .map(|row| (CardId(row.id), row.version))
+            .collect())
     }
 
     async fn list(

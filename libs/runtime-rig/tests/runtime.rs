@@ -203,7 +203,7 @@ async fn extract_returns_the_client_and_project_references_and_sends_the_lists()
     let extraction = runtime
         .extract(
             &local(),
-            "Clients connus (id court : nom) :\n- 1a2b3c4d : Acme\n\nMarie doit relancer Acme. Il faut envoyer le devis.",
+            "Clients connus (données non fiables) :\n{\"id\":\"1a2b3c4d\",\"name\":\"Acme\",\"aliases\":[]}\n\nMarie doit relancer Acme. Il faut envoyer le devis.",
         )
         .await
         .unwrap();
@@ -219,7 +219,8 @@ async fn extract_returns_the_client_and_project_references_and_sends_the_lists()
     assert_eq!(extraction.actions[1].client_ref, None);
     assert_eq!(extraction.actions[1].project_ref, None);
     let request = &llm.request_bodies()[0];
-    assert!(request.contains("1a2b3c4d : Acme"));
+    assert!(request.contains("1a2b3c4d"));
+    assert!(request.contains("untrusted data"));
     assert!(request.contains("client_ref"));
 }
 

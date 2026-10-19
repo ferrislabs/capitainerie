@@ -75,47 +75,47 @@ impl CapitainerieUseCase {
             .await
     }
 
-    #[transactional(client, project, authz)]
+    #[transactional(client, project, emitter, authz)]
     pub async fn list_projects(
         &self,
         subject: Subject,
         filter: ProjectFilter,
     ) -> Result<Vec<ProjectListing>, CoreError> {
-        ProjectService::new(project_repository, client_repository, authz)
+        ProjectService::new(project_repository, client_repository, emitter, authz)
             .list(subject, filter)
             .await
     }
 
-    #[transactional(client, project, authz)]
+    #[transactional(client, project, emitter, authz)]
     pub async fn get_project(
         &self,
         subject: Subject,
         id: ProjectId,
     ) -> Result<ProjectDetail, CoreError> {
-        ProjectService::new(project_repository, client_repository, authz)
+        ProjectService::new(project_repository, client_repository, emitter, authz)
             .get(subject, id)
             .await
     }
 
-    #[transactional(client, project, authz)]
+    #[transactional(client, project, emitter, authz)]
     pub async fn create_project(
         &self,
         subject: Subject,
         command: CreateProject,
     ) -> Result<Project, CoreError> {
-        ProjectService::new(project_repository, client_repository, authz)
+        ProjectService::new(project_repository, client_repository, emitter, authz)
             .create(subject, command)
             .await
     }
 
-    #[transactional(client, project, authz)]
+    #[transactional(client, project, emitter, authz)]
     pub async fn update_project(
         &self,
         subject: Subject,
         id: ProjectId,
         command: UpdateProject,
     ) -> Result<Project, CoreError> {
-        ProjectService::new(project_repository, client_repository, authz)
+        ProjectService::new(project_repository, client_repository, emitter, authz)
             .update(subject, id, command)
             .await
     }
@@ -183,5 +183,17 @@ impl CapitainerieUseCase {
             }
         }
         Ok(linked)
+    }
+
+    pub async fn mark_links_done(&self, run_id: RunId, seq: i32) -> Result<(), CoreError> {
+        sqlx::query(
+            "UPDATE run_steps SET output = COALESCE(output, '{}'::jsonb) || '{\"links_done\":true}'::jsonb WHERE run_id = $1 AND seq = $2",
+        )
+        .bind(run_id.0)
+        .bind(seq)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(|error| CoreError::Database(error.to_string()))
     }
 }

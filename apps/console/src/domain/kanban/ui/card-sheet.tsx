@@ -45,6 +45,7 @@ interface Props {
 	clients?: ReadonlyArray<Schemas.ClientResponse>
 	projects?: ReadonlyArray<Schemas.ProjectResponse>
 	isLinking?: boolean
+	linksReady?: boolean
 	linkError?: string | undefined
 	onLink?: (patch: LinkPatch) => void
 	onClose: () => void
@@ -92,6 +93,7 @@ export function CardSheet({
 	clients = [],
 	projects = [],
 	isLinking = false,
+	linksReady = false,
 	linkError,
 	onLink,
 	onClose,
@@ -208,6 +210,7 @@ export function CardSheet({
 								clients={clients}
 								projects={projects}
 								isPending={isLinking}
+								ready={linksReady}
 								errorMessage={linkError}
 								onLink={onLink}
 							/>

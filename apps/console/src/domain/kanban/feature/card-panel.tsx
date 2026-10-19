@@ -74,6 +74,7 @@ export function CardPanel({
 			clients={clients.data?.items.map((item) => item.client) ?? []}
 			projects={projects.data?.items.map((item) => item.project) ?? []}
 			isLinking={patch.isPending}
+			linksReady={clients.isSuccess && projects.isSuccess}
 			linkError={patch.errorMessage}
 			onLink={(links) => {
 				if (!card) return
