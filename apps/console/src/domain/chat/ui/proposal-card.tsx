@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { Building2, FolderKanban, ListChecks } from 'lucide-react'
 import type { Schemas } from '#/api/api.client'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import type { ProposalView } from '#/domain/chat/chat-state'
+import { ESTIMATE_LABELS, PRIORITY_LABELS } from '#/domain/kanban/card-details'
 import { COLUMN_LABELS } from '#/domain/kanban/columns'
 
 interface Props {
@@ -24,6 +26,67 @@ const COLUMN_BADGES: Record<
 	in_progress: 'running',
 	done: 'success',
 	rejected: 'danger',
+}
+
+const PRIORITY_BADGES: Record<
+	Schemas.PriorityDto,
+	'danger' | 'attention' | 'muted' | undefined
+> = {
+	urgent: 'danger',
+	high: 'attention',
+	normal: undefined,
+	low: 'muted',
+}
+
+function Details({ card }: { card: Schemas.CardResponse }) {
+	const priority = PRIORITY_BADGES[card.priority]
+	const criteria = card.acceptance_criteria.length
+	if (
+		!card.client &&
+		!card.project &&
+		!priority &&
+		!card.estimate &&
+		criteria === 0
+	) {
+		return null
+	}
+	return (
+		<ul
+			aria-label="Détails de la carte"
+			className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+		>
+			{card.client ? (
+				<li className="inline-flex items-center gap-1">
+					<Building2 aria-hidden="true" className="size-3 shrink-0" />
+					<span className="sr-only">Client : </span>
+					{card.client.name}
+				</li>
+			) : null}
+			{card.project ? (
+				<li className="inline-flex items-center gap-1">
+					<FolderKanban aria-hidden="true" className="size-3 shrink-0" />
+					<span className="sr-only">Projet : </span>
+					{card.project.name}
+				</li>
+			) : null}
+			{priority ? (
+				<li>
+					<Badge variant={priority}>
+						Priorité {PRIORITY_LABELS[card.priority].toLowerCase()}
+					</Badge>
+				</li>
+			) : null}
+			{card.estimate ? (
+				<li className="figures">Estimation {ESTIMATE_LABELS[card.estimate]}</li>
+			) : null}
+			{criteria > 0 ? (
+				<li className="inline-flex items-center gap-1 figures">
+					<ListChecks aria-hidden="true" className="size-3 shrink-0" />
+					{criteria} {criteria > 1 ? 'critères' : 'critère'}
+				</li>
+			) : null}
+		</ul>
+	)
 }
 
 export function ProposalCard({
@@ -59,6 +122,7 @@ export function ProposalCard({
 						{card.description}
 					</p>
 				) : null}
+				{card ? <Details card={card} /> : null}
 			</div>
 			<div className="flex flex-wrap items-center gap-2">
 				{card?.column === 'proposed' ? (

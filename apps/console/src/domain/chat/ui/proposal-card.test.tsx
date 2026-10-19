@@ -27,6 +27,9 @@ function card(column: Schemas.ColumnDto): Schemas.CardResponse {
 		column,
 		created_by_subject: 'ada',
 		created_by_agent: 'capitainerie-agent-captain',
+		acceptance_criteria: [],
+		labels: [],
+		priority: 'normal',
 		version: 2,
 		created_at: '2026-10-19T10:00:00Z',
 		updated_at: '2026-10-19T10:00:00Z',
@@ -112,5 +115,36 @@ describe('ProposalCard', () => {
 		expect(screen.getByText('Ajouter un README')).toBeTruthy()
 		expect(screen.queryByRole('button')).toBeNull()
 		expect(screen.getByRole('link', { name: 'Ouvrir' })).toBeTruthy()
+	})
+
+	it('shows the client, the project, the priority, the estimate and the criteria', () => {
+		setup({
+			card: {
+				...card('proposed'),
+				client: { id: 'cl1', name: 'Acme' },
+				project: { id: 'p1', name: 'Site vitrine' },
+				priority: 'high',
+				estimate: 'm',
+				acceptance_criteria: [
+					{ text: 'Le README décrit l’installation', done: false },
+					{ text: 'Le README est relu', done: false },
+				],
+			},
+		})
+
+		const details = screen.getByRole('list', { name: 'Détails de la carte' })
+		expect(details.textContent).toContain('Client : Acme')
+		expect(details.textContent).toContain('Projet : Site vitrine')
+		expect(details.textContent).toContain('Priorité haute')
+		expect(details.textContent).toContain('Estimation M')
+		expect(details.textContent).toContain('2 critères')
+	})
+
+	it('shows no details for a plain card and no word for a normal priority', () => {
+		setup({ card: card('proposed') })
+
+		expect(
+			screen.queryByRole('list', { name: 'Détails de la carte' }),
+		).toBeNull()
 	})
 })

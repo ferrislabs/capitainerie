@@ -90,6 +90,13 @@ export namespace Schemas {
   };
   export type CardDetailResponse = { card: CardResponse; comments: Array<CommentResponse>; runs: Array<RunResponse> };
   export type CardListResponse = { items: Array<CardResponse> };
+  export type ChatToolCallResponse = {
+    arguments: string;
+    latency_ms: number;
+    name: string;
+    succeeded: boolean;
+    summary: string;
+  };
   export type ColumnCountResponse = { cards: number; column: ColumnDto };
   export type ClientResponse = {
     aliases: Array<string>;
@@ -122,6 +129,34 @@ export namespace Schemas {
   export type ClientListResponse = { items: Array<ClientListItemResponse> };
   export type CommentCardRequest = { body: string };
   export type ConnectGithubRequest = { code: string; installation_id: number; state: string };
+  export type ConversationId = string;
+  export type ConversationSummaryResponse = {
+    archived: boolean;
+    cost_micros: number;
+    created_at: string;
+    full: boolean;
+    id: ConversationId;
+    input_tokens: number;
+    model?: (string | null) | undefined;
+    output_tokens: number;
+    title: string;
+    updated_at: string;
+  };
+  export type ConversationListResponse = { conversations: Array<ConversationSummaryResponse> };
+  export type ProposedCardResponse = { card_id: string; title: string };
+  export type MessageRoleDto = "user" | "assistant" | "tool";
+  export type MessageStatusDto = "complete" | "interrupted" | "failed";
+  export type MessageResponse = {
+    cards: Array<ProposedCardResponse>;
+    created_at: string;
+    id: string;
+    role: MessageRoleDto;
+    seq: number;
+    status: MessageStatusDto;
+    text: string;
+    tool_calls: Array<ChatToolCallResponse>;
+  };
+  export type ConversationResponse = { conversation: ConversationSummaryResponse; messages: Array<MessageResponse> };
   export type CostDimensionParam = "agent" | "user" | "model" | "day";
   export type CostRowResponse = {
     cost_micros: number;
@@ -138,6 +173,7 @@ export namespace Schemas {
     name: string;
     notes?: (string | null) | undefined;
   };
+  export type CreateConversationRequest = { message: string };
   export type CreateGithubAppRequest = { code: string; state: string };
   export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
   export type CreateManifestRequest = { owner: ManifestOwner };
@@ -149,6 +185,7 @@ export namespace Schemas {
     repository?: (string | null) | undefined;
   };
   export type CreateTranscriptionRequest = { file: string };
+  export type CreatedConversationResponse = { id: ConversationId };
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -209,6 +246,7 @@ export namespace Schemas {
   export type ProviderKindDto = "anthropic" | "mistral" | "openai_compatible";
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
+    captain?: (null | ModelRefDto) | undefined;
     embeddings: ModelRefDto;
     executor?: (string | null) | undefined;
     extractor: ModelRefDto;
@@ -285,6 +323,7 @@ export namespace Schemas {
     steps: Array<StepResponse>;
     totals: UsageTotals;
   };
+  export type SendMessageRequest = Partial<{ message: string | null }>;
   export type SubmitTranscriptRequest = {
     body: string;
     client_id?: (null | ClientId) | undefined;
@@ -303,6 +342,7 @@ export namespace Schemas {
     name: string | null;
     notes: string | null;
   }>;
+  export type UpdateConversationRequest = Partial<{ archived: boolean | null; title: string | null }>;
   export type UpdateProjectRequest = Partial<{
     aliases: Array<string> | null;
     archived: boolean | null;
@@ -476,6 +516,76 @@ export namespace Endpoints {
     };
     responses: {
       200: Schemas.ClientResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListConversations = {
+    method: "GET";
+    path: "/api/v1/conversations";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ConversationListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateConversation = {
+    method: "POST";
+    path: "/api/v1/conversations";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateConversationRequest;
+    };
+    responses: {
+      201: Schemas.CreatedConversationResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetConversation = {
+    method: "GET";
+    path: "/api/v1/conversations/{id}";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+    };
+    responses: {
+      200: Schemas.ConversationResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateConversation = {
+    method: "PATCH";
+    path: "/api/v1/conversations/{id}";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+
+      body: Schemas.UpdateConversationRequest;
+    };
+    responses: {
+      200: Schemas.ConversationSummaryResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_SendConversationMessage = {
+    method: "POST";
+    path: "/api/v1/conversations/{id}/messages";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+
+      body: Schemas.SendMessageRequest;
+    };
+    responses: {
+      200: unknown;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -840,6 +950,8 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
     "/api/v1/clients": Endpoints.get_ListClients;
     "/api/v1/clients/{client_id}": Endpoints.get_GetClient;
+    "/api/v1/conversations": Endpoints.get_ListConversations;
+    "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
@@ -860,6 +972,7 @@ export type EndpointByMethod = {
   patch: {
     "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
     "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
+    "/api/v1/conversations/{id}": Endpoints.patch_UpdateConversation;
     "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
   };
   post: {
@@ -867,6 +980,8 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
     "/api/v1/clients": Endpoints.post_CreateClient;
+    "/api/v1/conversations": Endpoints.post_CreateConversation;
+    "/api/v1/conversations/{id}/messages": Endpoints.post_SendConversationMessage;
     "/api/v1/documents/text": Endpoints.post_ReadDocument;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
