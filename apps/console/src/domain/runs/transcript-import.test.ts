@@ -145,7 +145,14 @@ describe('file helpers', () => {
 	})
 
 	it('accepts the six audio formats up to 25 Mo', () => {
-		for (const name of ['a.mp3', 'a.m4a', 'a.WAV', 'a.webm', 'a.ogg', 'a.aac']) {
+		for (const name of [
+			'a.mp3',
+			'a.m4a',
+			'a.WAV',
+			'a.webm',
+			'a.ogg',
+			'a.aac',
+		]) {
 			expect(isAudioFile(name)).toBe(true)
 			expect(validateTranscriptFile({ name, size: MAX_AUDIO_BYTES })).toBe(
 				undefined,

@@ -83,7 +83,9 @@ describe('TranscriptDropzone', () => {
 		setup()
 
 		expect(
-			screen.getByText(/\.mp3, \.m4a, \.wav, \.webm, \.ogg ou \.aac, 25 Mo au plus/),
+			screen.getByText(
+				/\.mp3, \.m4a, \.wav, \.webm, \.ogg ou \.aac, 25 Mo au plus/,
+			),
 		).toBeTruthy()
 		expect(screen.queryByText(/Aucun transcripteur/)).toBeNull()
 	})
