@@ -8,6 +8,7 @@ use crate::{
     domain::{
         agent::SecretToken,
         authorization::{DecisionRecord, Subject, ports::DecisionLogRepository},
+        client::links::resolve_choice,
         delegation::ports::{DelegationVault, TokenExchanger},
         provider::ports::ModelAssignmentRepository,
         run::{
@@ -64,7 +65,7 @@ impl CapitainerieUseCase {
         self.submit_and_store(command, tokens, cipher).await
     }
 
-    #[transactional(transcript, run, model_assignment, emitter, authz)]
+    #[transactional(transcript, run, model_assignment, client, project, emitter, authz)]
     async fn submit_and_store(
         &self,
         command: SubmitTranscript,
@@ -75,9 +76,18 @@ impl CapitainerieUseCase {
         let models = model_assignment_repository
             .get(command.subject.organization_id)
             .await?;
+        let mut client_repository = client_repository;
+        let mut project_repository = project_repository;
+        let chosen = resolve_choice(
+            &mut client_repository,
+            &mut project_repository,
+            command.subject.organization_id,
+            command.choice,
+        )
+        .await?;
         let (transcript, run) =
             RunService::new(transcript_repository, run_repository, emitter, authz)
-                .submit_with_models(command, models)
+                .submit_linked(command, models, chosen)
                 .await?;
         let mut vault = PgDelegationVault::new(&tx, cipher);
         for (agent, token) in &tokens {
@@ -89,7 +99,7 @@ impl CapitainerieUseCase {
         })
     }
 
-    #[transactional(transcript, run, model_assignment, emitter, authz)]
+    #[transactional(transcript, run, model_assignment, client, project, emitter, authz)]
     pub async fn submit_transcript(
         &self,
         command: SubmitTranscript,
@@ -98,9 +108,18 @@ impl CapitainerieUseCase {
         let models = model_assignment_repository
             .get(command.subject.organization_id)
             .await?;
+        let mut client_repository = client_repository;
+        let mut project_repository = project_repository;
+        let chosen = resolve_choice(
+            &mut client_repository,
+            &mut project_repository,
+            command.subject.organization_id,
+            command.choice,
+        )
+        .await?;
         let (transcript, run) =
             RunService::new(transcript_repository, run_repository, emitter, authz)
-                .submit_with_models(command, models)
+                .submit_linked(command, models, chosen)
                 .await?;
         Ok(SubmittedTranscript {
             transcript_id: transcript.id,

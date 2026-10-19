@@ -1,6 +1,8 @@
 use capitainerie_common::{CardCommentId, CardId, RunId, TranscriptId};
 use capitainerie_core::domain::card::{Card, CardComment, Column, detail::CardDetail};
-use capitainerie_handlers_runs::response::RunResponse;
+use capitainerie_handlers_runs::response::{
+    ClientRefResponse, ProjectRefResponse, RunResponse, link_refs,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -35,6 +37,8 @@ pub struct CardResponse {
     /// Client id of the agent that proposed the card, when one did.
     pub created_by_agent: Option<String>,
     pub repository_hint: Option<String>,
+    pub client: Option<ClientRefResponse>,
+    pub project: Option<ProjectRefResponse>,
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -66,6 +70,7 @@ impl From<ColumnDto> for Column {
 
 impl From<Card> for CardResponse {
     fn from(card: Card) -> Self {
+        let (client, project) = link_refs(&card.links);
         Self {
             id: card.id,
             title: card.title.as_str().to_owned(),
@@ -81,6 +86,8 @@ impl From<Card> for CardResponse {
             created_by_subject: card.created_by.subject,
             created_by_agent: card.created_by.actor,
             repository_hint: card.repository_hint.map(|hint| hint.to_string()),
+            client,
+            project,
             version: card.version,
             created_at: card.created_at,
             updated_at: card.updated_at,

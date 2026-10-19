@@ -1,0 +1,98 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT p.id, p.organization_id, p.client_id, cl.name AS \"client_name?\", p.name, p.aliases,\n                   p.repository, p.description, p.created_by, p.created_at, p.updated_at, p.archived_at,\n                   (SELECT count(*) FROM cards k\n                     WHERE k.organization_id = p.organization_id AND k.project_id = p.id\n                       AND k.\"column\" IN ('proposed', 'todo', 'in_progress')) AS \"open_cards!\"\n            FROM projects p\n            LEFT JOIN clients cl ON cl.id = p.client_id\n            WHERE p.organization_id = $1\n              AND (p.archived_at IS NOT NULL) = $2\n              AND ($3::uuid IS NULL OR p.client_id = $3)\n              AND ($4::text IS NULL\n                   OR strpos(lower(p.name), lower($4)) > 0\n                   OR EXISTS (SELECT 1 FROM unnest(p.aliases) AS alias WHERE strpos(lower(alias), lower($4)) > 0))\n            ORDER BY lower(p.name), p.id\n            LIMIT $5\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "client_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "client_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "aliases",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "repository",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "open_cards!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Uuid",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "7f9dbe3ce6c59092082598c56130509a52c802c1338aa201a4f99397e9852800"
+}

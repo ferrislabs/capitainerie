@@ -1,11 +1,16 @@
-use capitainerie_common::{CoreError, OrganizationId, TranscriptId};
+use capitainerie_common::{ClientId, CoreError, OrganizationId, ProjectId, TranscriptId};
 use capitainerie_macros::repository;
 use chrono::{DateTime, NaiveDate, Utc};
 use uuid::Uuid;
 
 use crate::{
-    domain::transcript::{
-        MeetingMetadata, Transcript, TranscriptBody, TranscriptTitle, ports::TranscriptRepository,
+    domain::{
+        client::{ClientRef, links::Links},
+        project::ProjectRef,
+        transcript::{
+            MeetingMetadata, Transcript, TranscriptBody, TranscriptTitle,
+            ports::TranscriptRepository,
+        },
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
@@ -28,9 +33,9 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
             r#"
             INSERT INTO transcripts (
                 id, organization_id, submitted_by, title, body, created_at,
-                meeting_date, participants, repository
+                meeting_date, participants, repository, client_id, project_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
             transcript.id.0,
             transcript.organization_id.0,
@@ -45,6 +50,8 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
                 .repository
                 .as_ref()
                 .map(ToString::to_string),
+            transcript.links.client_id().map(|id| id.0),
+            transcript.links.project_id().map(|id| id.0),
         )
         .execute(&mut ***tx)
         .await
@@ -61,10 +68,13 @@ impl TranscriptRepository for PgTranscriptRepository<'_> {
         sqlx::query_as!(
             TranscriptRow,
             r#"
-            SELECT id, organization_id, submitted_by, title, body, created_at,
-                   meeting_date, participants, repository
-            FROM transcripts
-            WHERE organization_id = $1 AND id = $2
+            SELECT t.id, t.organization_id, t.submitted_by, t.title, t.body, t.created_at,
+                   t.meeting_date, t.participants, t.repository,
+                   t.client_id, cl.name AS "client_name?", t.project_id, p.name AS "project_name?"
+            FROM transcripts t
+            LEFT JOIN clients cl ON cl.id = t.client_id
+            LEFT JOIN projects p ON p.id = t.project_id
+            WHERE t.organization_id = $1 AND t.id = $2
             "#,
             organization_id.0,
             id.0,
@@ -87,6 +97,10 @@ struct TranscriptRow {
     meeting_date: Option<NaiveDate>,
     participants: Vec<String>,
     repository: Option<String>,
+    client_id: Option<Uuid>,
+    client_name: Option<String>,
+    project_id: Option<Uuid>,
+    project_name: Option<String>,
 }
 
 impl TryFrom<TranscriptRow> for Transcript {
@@ -108,6 +122,20 @@ impl TryFrom<TranscriptRow> for Transcript {
                 row.repository,
             )
             .map_err(stored)?,
+            links: Links::stored(
+                row.client_id
+                    .zip(row.client_name)
+                    .map(|(id, name)| ClientRef {
+                        id: ClientId(id),
+                        name,
+                    }),
+                row.project_id
+                    .zip(row.project_name)
+                    .map(|(id, name)| ProjectRef {
+                        id: ProjectId(id),
+                        name,
+                    }),
+            ),
             created_at: row.created_at,
         })
     }

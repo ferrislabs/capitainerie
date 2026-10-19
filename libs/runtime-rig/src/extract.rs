@@ -15,8 +15,7 @@ pub(crate) const RETRIES: usize = 2;
 const TEMPERATURE: f64 = 0.1;
 const MAX_TOKENS: u32 = 8192;
 
-const STRUCTURED_RULES: &str =
-    "\nAnswer with the JSON object only. Use an empty string for owner or due when there is none.";
+const STRUCTURED_RULES: &str = "\nAnswer with the JSON object only. Use an empty string for owner, due, client_ref or project_ref when there is none.";
 
 pub(crate) const SYSTEM_PROMPT: &str = "\
 Extract the action items from the meeting transcript the user sends: concrete things that someone committed to do or that the meeting says must be done.
@@ -25,12 +24,14 @@ Rules:
 - One action = one commitment. When a task is requested and then accepted (\"Can you open a ticket?\" / \"Yes, I will\"), or announced and then repeated, report it ONCE, and its owner is the person who commits. A general need (\"we should do X\") that a speaker then takes on is the same action as the one taken on. Two different tasks stay two actions.
 - Do not report an action that is cancelled, dropped or replaced later in the meeting. Do not report facts, status updates about the past, or opinions.
 - The transcript can start with header lines (\"Date de la réunion\", \"Participants\") followed by a blank line. They give context, such as the date a relative deadline refers to. They are not speaker turns: never quote them.
+- After the header, the message can list the known clients (\"Clients connus\") and projects (\"Projets connus\"), one per line as \"- <id> : <name> (alias : ...)\". The lists are context too, never quoted.
 - Write the answer in the language of the transcript.
 - title: a short imperative sentence naming the task, so that it can be understood without the transcript.
 - description: the useful context, plus the owner and the deadline when the transcript states them.
 - quote: the SHORTEST span of ONE speaker turn that states what is to be done, copied character for character from the transcript. Never include the speaker name or the \"Name :\" label. Never paraphrase, never correct typos or punctuation. When the commitment is only a short answer (\"Yes, I will do it today\"), quote the sentence of the request that names the task instead.
 - owner: the person who commits to the task, as named in the transcript. The person who asks or assigns is NOT the owner; the person who accepts is. If the task is stated with \"on\", \"il faut\" or \"il faudrait\" and nobody takes it, omit the owner. Never guess an owner.
 - due: the deadline as said in the transcript (\"vendredi\", \"demain matin\"), otherwise omit it.
+- client_ref and project_ref: the 8-character id of a listed client or project, ONLY when the action clearly concerns it, by its name or one of its aliases. Copy the id exactly as listed. Omit them when the lists are absent, when nothing matches or when you are unsure: never invent an id, never guess.
 - Do not report the same action twice.
 - Do not invent actions. If the transcript contains no action item, return an empty list.
 
@@ -73,6 +74,16 @@ pub(crate) struct Action {
     #[schemars(description = "Deadline, when stated.")]
     #[serde(default)]
     pub due: Option<String>,
+    #[schemars(
+        description = "The id of the listed client this action concerns; omit when unsure or when no client is listed."
+    )]
+    #[serde(default)]
+    pub client_ref: Option<String>,
+    #[schemars(
+        description = "The id of the listed project this action concerns; omit when unsure or when no project is listed."
+    )]
+    #[serde(default)]
+    pub project_ref: Option<String>,
 }
 
 fn text<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
@@ -87,6 +98,8 @@ impl From<Action> for ExtractedAction {
             quote: action.quote,
             owner: action.owner.filter(|owner| !owner.trim().is_empty()),
             due: action.due.filter(|due| !due.trim().is_empty()),
+            client_ref: action.client_ref.filter(|id| !id.trim().is_empty()),
+            project_ref: action.project_ref.filter(|id| !id.trim().is_empty()),
         }
     }
 }
@@ -121,8 +134,10 @@ fn schema() -> Value {
                         "quote": text("The shortest span of one speaker turn that states what is to be done, copied character for character, without the speaker name."),
                         "owner": text("The person who commits to the task; empty for an unassigned task."),
                         "due": text("Deadline, when stated; empty otherwise."),
+                        "client_ref": text("The id of the listed client this action concerns; empty when unsure or when no client is listed."),
+                        "project_ref": text("The id of the listed project this action concerns; empty when unsure or when no project is listed."),
                     },
-                    "required": ["title", "description", "quote", "owner", "due"],
+                    "required": ["title", "description", "quote", "owner", "due", "client_ref", "project_ref"],
                     "additionalProperties": false,
                 },
             },
@@ -202,5 +217,43 @@ mod tests {
         .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(parsed.actions[0].description, "");
         assert_eq!(parsed.actions[0].owner, None);
+        assert_eq!(parsed.actions[0].client_ref, None);
+        assert_eq!(parsed.actions[0].project_ref, None);
+    }
+
+    #[test]
+    fn references_are_kept_and_blank_ones_dropped() {
+        let parsed: Actions = serde_json::from_str(
+            r#"{"actions":[
+                {"title":"T","quote":"Q","client_ref":"1a2b3c4d","project_ref":"  "},
+                {"title":"U","quote":"R","client_ref":null}
+            ]}"#,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let actions: Vec<ExtractedAction> = parsed.actions.into_iter().map(Into::into).collect();
+        assert_eq!(actions[0].client_ref.as_deref(), Some("1a2b3c4d"));
+        assert_eq!(actions[0].project_ref, None);
+        assert_eq!(actions[1].client_ref, None);
+    }
+
+    #[test]
+    fn the_anthropic_schema_asks_for_both_references() {
+        let schema = schema();
+        let item = &schema["properties"]["actions"]["items"];
+        for field in ["client_ref", "project_ref"] {
+            assert!(item["properties"][field].is_object(), "{field}");
+            assert!(
+                item["required"]
+                    .as_array()
+                    .is_some_and(|required| { required.iter().any(|name| name == field) })
+            );
+        }
+    }
+
+    #[test]
+    fn the_system_prompt_explains_the_lists_and_the_references() {
+        assert!(SYSTEM_PROMPT.contains("Clients connus"));
+        assert!(SYSTEM_PROMPT.contains("client_ref"));
+        assert!(SYSTEM_PROMPT.contains("never invent an id"));
     }
 }

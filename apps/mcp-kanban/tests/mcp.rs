@@ -165,6 +165,7 @@ impl Harness {
                 title: "Weekly".into(),
                 body: body.into(),
                 metadata: Default::default(),
+                choice: Default::default(),
             })
             .await
             .unwrap();

@@ -231,6 +231,8 @@ async fn live_judge_separates_the_same_task_from_a_related_one() {
                 quote: title.into(),
                 owner: None,
                 due: None,
+                client_ref: None,
+                project_ref: None,
             },
             start: 0,
             end: 1,

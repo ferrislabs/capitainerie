@@ -26,13 +26,16 @@ pub enum CoreError {
 
 macro_rules! id {
     ($name:ident) => {
+        id!($name, Uuid::now_v7);
+    };
+    ($name:ident, $generate:path) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
         #[serde(transparent)]
         pub struct $name(pub Uuid);
 
         impl $name {
             pub fn new() -> Self {
-                Self(Uuid::now_v7())
+                Self($generate())
             }
         }
 
@@ -56,6 +59,8 @@ id!(RunId);
 id!(CardId);
 id!(CardCommentId);
 id!(StepId);
+id!(ClientId, Uuid::new_v4);
+id!(ProjectId, Uuid::new_v4);
 
 #[cfg(test)]
 mod tests {

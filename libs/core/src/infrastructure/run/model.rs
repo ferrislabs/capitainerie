@@ -1,9 +1,13 @@
-use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, StepId, TranscriptId};
+use capitainerie_common::{
+    CardId, ClientId, CoreError, OrganizationId, ProjectId, RunId, StepId, TranscriptId,
+};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{
     agent::Usage,
+    client::{ClientRef, links::Links},
+    project::ProjectRef,
     run::{
         Run, RunOverview, RunStatus, RunSubject, StepKind,
         step::{Step, StepStatus},
@@ -28,6 +32,10 @@ pub(super) struct RunOverviewRow {
     pub models: Option<serde_json::Value>,
     pub title: Option<String>,
     pub repository_hint: Option<String>,
+    pub client_id: Option<Uuid>,
+    pub client_name: Option<String>,
+    pub project_id: Option<Uuid>,
+    pub project_name: Option<String>,
 }
 
 fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
@@ -86,6 +94,20 @@ impl TryFrom<RunOverviewRow> for RunOverview {
                 .map(|value| value.parse())
                 .transpose()
                 .map_err(|error| CoreError::Internal(format!("stored repository hint: {error}")))?,
+            links: Links::stored(
+                row.client_id
+                    .zip(row.client_name)
+                    .map(|(id, name)| ClientRef {
+                        id: ClientId(id),
+                        name,
+                    }),
+                row.project_id
+                    .zip(row.project_name)
+                    .map(|(id, name)| ProjectRef {
+                        id: ProjectId(id),
+                        name,
+                    }),
+            ),
         })
     }
 }

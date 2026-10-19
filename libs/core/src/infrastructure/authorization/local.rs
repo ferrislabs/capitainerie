@@ -278,6 +278,28 @@ mod tests {
     }
 
     #[test]
+    fn members_manage_clients_and_link_cards_but_agents_never_do() {
+        for action in [Action::ClientRead, Action::ClientManage, Action::CardLink] {
+            assert!(allowed(action, None));
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+            for actor in [AGENT, Some(crate::domain::execution::EXECUTOR_AGENT)] {
+                for admin in [false, true] {
+                    assert!(matches!(
+                        decide(&admin_request(action, actor, admin)),
+                        Decision::Deny { .. }
+                    ));
+                }
+            }
+        }
+        assert_eq!(Action::ClientRead.as_str(), "client.read");
+        assert_eq!(Action::ClientManage.as_str(), "client.manage");
+        assert_eq!(Action::CardLink.as_str(), "card.update");
+    }
+
+    #[test]
     fn agents_leave_settled_cards_alone() {
         assert!(allowed(
             Action::CardUpdate {

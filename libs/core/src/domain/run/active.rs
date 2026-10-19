@@ -62,6 +62,7 @@ mod tests {
             run,
             title: None,
             repository_hint: None,
+            links: Default::default(),
         }
     }
 

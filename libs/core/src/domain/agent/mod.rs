@@ -32,6 +32,10 @@ pub struct ExtractedAction {
     pub quote: String,
     pub owner: Option<String>,
     pub due: Option<String>,
+    #[serde(default)]
+    pub client_ref: Option<String>,
+    #[serde(default)]
+    pub project_ref: Option<String>,
 }
 
 /// An extracted action anchored in the transcript.

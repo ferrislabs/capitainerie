@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE cards SET client_id = $3\n            WHERE organization_id = $1 AND project_id = $2 AND client_id IS DISTINCT FROM $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8eb7d3386b835b067d27308f08b4a0df5d89c333b73cabda607029162313a89e"
+}

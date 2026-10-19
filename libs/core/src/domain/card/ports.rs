@@ -1,6 +1,7 @@
-use capitainerie_common::{CardId, CoreError, OrganizationId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 
 use super::{Card, CardComment};
+use crate::domain::client::links::Links;
 
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
 pub trait CardRepository: Send {
@@ -22,6 +23,14 @@ pub trait CardRepository: Send {
     /// Saves `card`, whose version was already incremented, only if the stored
     /// version is still `card.version - 1`; `Conflict` otherwise.
     fn update(&mut self, card: &Card) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    fn link_run_cards(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+        span: Option<(u32, u32)>,
+        links: &Links,
+    ) -> impl Future<Output = Result<Vec<(CardId, i32)>, CoreError>> + Send;
 
     fn list(
         &mut self,

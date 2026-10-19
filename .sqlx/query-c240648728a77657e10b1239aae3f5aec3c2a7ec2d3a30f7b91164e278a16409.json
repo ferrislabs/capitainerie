@@ -1,0 +1,95 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT p.id, p.organization_id, p.client_id, cl.name AS \"client_name?\", p.name, p.aliases,\n                   p.repository, p.description, p.created_by, p.created_at, p.updated_at, p.archived_at,\n                   GREATEST(\n                       p.updated_at,\n                       COALESCE((SELECT max(k.updated_at) FROM cards k\n                                  WHERE k.organization_id = p.organization_id AND k.project_id = p.id), p.updated_at),\n                       COALESCE((SELECT max(t.created_at) FROM transcripts t\n                                  WHERE t.organization_id = p.organization_id AND t.project_id = p.id), p.updated_at)\n                   ) AS \"used_at!\"\n            FROM projects p\n            LEFT JOIN clients cl ON cl.id = p.client_id\n            WHERE p.organization_id = $1 AND p.archived_at IS NULL AND cl.archived_at IS NULL\n            ORDER BY \"used_at!\" DESC, p.id\n            LIMIT $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "client_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "client_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "aliases",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "repository",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "used_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "c240648728a77657e10b1239aae3f5aec3c2a7ec2d3a30f7b91164e278a16409"
+}

@@ -115,6 +115,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             repository_hint: None,
+            links: Default::default(),
         }
     }
 
@@ -132,6 +133,7 @@ mod tests {
             run,
             title: None,
             repository_hint: None,
+            links: Default::default(),
         }
     }
 

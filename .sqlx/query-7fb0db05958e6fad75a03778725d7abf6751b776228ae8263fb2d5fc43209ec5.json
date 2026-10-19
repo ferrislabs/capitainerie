@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   t.repository AS repository_hint\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            WHERE r.organization_id = $1 AND r.card_id = $2\n            ORDER BY r.created_at DESC, r.id DESC\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   COALESCE(t.client_id, c.client_id) AS \"client_id?\", cl.name AS \"client_name?\",\n                   COALESCE(t.project_id, c.project_id) AS \"project_id?\", p.name AS \"project_name?\"\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)\n            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)\n            WHERE r.organization_id = $1 AND r.status IN ('queued', 'running')\n            ORDER BY r.created_at, r.id\n            LIMIT $2\n            ",
   "describe": {
     "columns": [
       {
@@ -85,14 +85,34 @@
       },
       {
         "ordinal": 16,
-        "name": "repository_hint",
+        "name": "repository_hint?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "client_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 18,
+        "name": "client_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "project_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 20,
+        "name": "project_name?",
         "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Int8"
       ]
     },
     "nullable": [
@@ -112,8 +132,12 @@
       true,
       true,
       null,
-      true
+      null,
+      null,
+      false,
+      null,
+      false
     ]
   },
-  "hash": "6fa18c6efc5d91c544351122018d90622c37a76f68c15ecbebbcbd460e876f31"
+  "hash": "7fb0db05958e6fad75a03778725d7abf6751b776228ae8263fb2d5fc43209ec5"
 }

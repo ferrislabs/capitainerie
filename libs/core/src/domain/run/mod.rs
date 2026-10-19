@@ -8,7 +8,7 @@ use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, TranscriptId
 use capitainerie_events::run::RunQueued;
 use chrono::{DateTime, Utc};
 
-use crate::domain::execution::RepositoryRef;
+use crate::domain::{client::links::Links, execution::RepositoryRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
@@ -62,6 +62,7 @@ pub struct RunOverview {
     pub run: Run,
     pub title: Option<String>,
     pub repository_hint: Option<RepositoryRef>,
+    pub links: Links,
 }
 
 impl Run {

@@ -19,7 +19,9 @@ use capitainerie_core::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
+        client::{Client, service::CreateClient},
         execution::GithubAppCredentials,
+        project::{Project, service::CreateProject},
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
@@ -645,4 +647,280 @@ async fn an_agent_cannot_comment_through_the_http_route() {
     assert_eq!(response.status(), 403);
     assert_eq!(fixture.stored_comments(card.id).await, 0);
     assert_eq!(fixture.commented_events(card.id).await, 0);
+}
+
+impl Fixture {
+    async fn patch(&self, card_id: CardId, body: Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .patch(format!("{}/api/v1/cards/{}", self.base, card_id.0))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn client_in(&self, organization_id: OrganizationId, name: &str) -> Client {
+        self.usecase
+            .create_client(
+                Subject {
+                    organization_id,
+                    ..self.subject(false)
+                },
+                CreateClient {
+                    name: name.into(),
+                    aliases: vec![],
+                    notes: String::new(),
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn project_in(
+        &self,
+        organization_id: OrganizationId,
+        name: &str,
+        client: Option<&Client>,
+    ) -> Project {
+        self.usecase
+            .create_project(
+                Subject {
+                    organization_id,
+                    ..self.subject(false)
+                },
+                CreateProject {
+                    client_id: client.map(|client| client.id),
+                    name: name.into(),
+                    aliases: vec![],
+                    repository: None,
+                    description: String::new(),
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn foreign_organization(&self) -> OrganizationId {
+        let id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO organizations (id, slug, name, issuer_url) VALUES ($1, $2, 'Other', $3)",
+        )
+        .bind(id)
+        .bind(format!("other-{}", id.simple()))
+        .bind(format!("http://idp.test/realms/other-{}", id.simple()))
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        OrganizationId(id)
+    }
+
+    async fn stored_version(&self, card_id: CardId) -> i32 {
+        sqlx::query_scalar("SELECT version FROM cards WHERE id = $1")
+            .bind(card_id.0)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn patching_links_a_card_and_null_clears_while_absent_keeps() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let org = fixture.organization.id;
+    let acme = fixture.client_in(org, "Acme").await;
+    let site = fixture.project_in(org, "Site", Some(&acme)).await;
+    let card = fixture.proposed_card().await;
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "client_id": acme.id.0}),
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["client"], json!({"id": acme.id.0, "name": "Acme"}));
+    assert_eq!(body["project"], Value::Null);
+    assert_eq!(body["version"], card.version + 1);
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version + 1, "project_id": site.id.0}),
+        )
+        .await;
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["project"], json!({"id": site.id.0, "name": "Site"}));
+    assert_eq!(body["client"]["name"], "Acme");
+
+    let refused = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version + 2, "client_id": null}),
+        )
+        .await;
+    assert_eq!(refused.status(), 422);
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version + 2, "project_id": null}),
+        )
+        .await;
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["project"], Value::Null);
+    assert_eq!(body["client"]["name"], "Acme");
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version + 3, "client_id": null}),
+        )
+        .await;
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["client"], Value::Null);
+    assert_eq!(body["project"], Value::Null);
+
+    let detail: Value = reqwest::get(format!("{}/api/v1/cards/{}", fixture.base, card.id.0))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(detail["card"]["client"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_linked_card_shows_its_client_and_project_on_the_board() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let org = fixture.organization.id;
+    let acme = fixture.client_in(org, "Acme").await;
+    let site = fixture.project_in(org, "Site", Some(&acme)).await;
+    let card = fixture.proposed_card().await;
+    fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "project_id": site.id.0}),
+        )
+        .await;
+
+    let board: Value = reqwest::get(format!("{}/api/v1/cards", fixture.base))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(board["items"][0]["client"]["name"], "Acme");
+    assert_eq!(board["items"][0]["project"]["name"], "Site");
+}
+
+#[tokio::test]
+async fn a_stale_version_is_a_409_and_changes_nothing() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let acme = fixture.client_in(fixture.organization.id, "Acme").await;
+    let card = fixture.proposed_card().await;
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version + 7, "client_id": acme.id.0}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 409);
+    assert_eq!(fixture.stored_version(card.id).await, card.version);
+    let linked: Option<Uuid> = sqlx::query_scalar("SELECT client_id FROM cards WHERE id = $1")
+        .bind(card.id.0)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(linked, None);
+}
+
+#[tokio::test]
+async fn another_organizations_unknown_or_mismatched_links_are_a_422() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let org = fixture.organization.id;
+    let other = fixture.foreign_organization().await;
+    let foreign_client = fixture.client_in(other, "Globex").await;
+    let foreign_project = fixture
+        .project_in(other, "App", Some(&foreign_client))
+        .await;
+    let acme = fixture.client_in(org, "Acme").await;
+    let globex = fixture.client_in(org, "Globex SA").await;
+    let site = fixture.project_in(org, "Site", Some(&acme)).await;
+    let card = fixture.proposed_card().await;
+    let version = card.version;
+
+    for body in [
+        json!({"expected_version": version, "client_id": foreign_client.id.0}),
+        json!({"expected_version": version, "project_id": foreign_project.id.0}),
+        json!({"expected_version": version, "client_id": Uuid::now_v7()}),
+        json!({"expected_version": version, "project_id": Uuid::now_v7()}),
+        json!({"expected_version": version, "client_id": globex.id.0, "project_id": site.id.0}),
+        json!({"expected_version": version}),
+    ] {
+        let response = fixture.patch(card.id, body.clone()).await;
+        assert_eq!(response.status(), 422, "{body}");
+    }
+    assert_eq!(fixture.stored_version(card.id).await, version);
+
+    let missing = fixture
+        .patch(
+            CardId::new(),
+            json!({"expected_version": 1, "client_id": acme.id.0}),
+        )
+        .await;
+    assert_eq!(missing.status(), 404);
+    let foreign_card = fixture
+        .usecase
+        .create_card(
+            Subject {
+                organization_id: other,
+                ..fixture.subject(false)
+            },
+            CreateCard {
+                title: "Autre".into(),
+                description: String::new(),
+                provenance: None,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let response = fixture
+        .patch(
+            foreign_card.id,
+            json!({"expected_version": 1, "client_id": acme.id.0}),
+        )
+        .await;
+    assert_eq!(response.status(), 404);
+}
+
+#[tokio::test]
+async fn an_agent_cannot_link_a_card() {
+    let Some(fixture) = fixture_as(Github::Absent, Some("capitainerie-agent-writer")).await else {
+        return;
+    };
+    let acme = fixture.client_in(fixture.organization.id, "Acme").await;
+    let card = fixture.proposed_card().await;
+
+    let response = fixture
+        .patch(
+            card.id,
+            json!({"expected_version": card.version, "client_id": acme.id.0}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(fixture.stored_version(card.id).await, card.version);
 }

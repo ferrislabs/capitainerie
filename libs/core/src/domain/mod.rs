@@ -1,11 +1,14 @@
 pub mod agent;
 pub mod authorization;
 pub mod card;
+pub mod client;
 pub mod delegation;
 pub mod document;
 pub mod event;
 pub mod execution;
+pub mod label;
 pub mod organization;
+pub mod project;
 pub mod provider;
 pub mod run;
 pub mod similarity;

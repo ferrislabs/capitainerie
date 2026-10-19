@@ -17,7 +17,15 @@ use capitainerie_core::{
             WriteReport, WriteRequest, ports::AgentRuntime,
         },
         authorization::Subject,
+        card::service::{CreateCard, ProvenanceInput},
+        client::{
+            Client,
+            catalog::short_id,
+            links::LinkChoice,
+            service::{CreateClient, UpdateClient},
+        },
         delegation::{DelegatedToken, ports::TokenExchanger},
+        project::{Project, service::CreateProject},
         provider::{
             ModelAssignments, ModelRef, ModelTarget, ProviderAccess, ProviderKind,
             service::PutProvider,
@@ -58,12 +66,30 @@ struct FakeRuntime {
     targets: Arc<std::sync::Mutex<Vec<(&'static str, ModelTarget)>>>,
     echo_model: bool,
     prompts: Arc<std::sync::Mutex<Vec<String>>>,
+    refs: Option<(Option<String>, Option<String>)>,
+    cards_for: Option<(CapitainerieUseCase, OrganizationId)>,
 }
 
 impl FakeRuntime {
     fn judging(same_task: bool) -> Self {
         Self {
             judge: Some(same_task),
+            ..Self::default()
+        }
+    }
+
+    fn detecting(
+        client_ref: Option<&str>,
+        project_ref: Option<&str>,
+        usecase: &CapitainerieUseCase,
+        organization_id: OrganizationId,
+    ) -> Self {
+        Self {
+            refs: Some((
+                client_ref.map(str::to_owned),
+                project_ref.map(str::to_owned),
+            )),
+            cards_for: Some((usecase.clone(), organization_id)),
             ..Self::default()
         }
     }
@@ -84,6 +110,8 @@ fn two_located() -> Vec<ExtractedAction> {
             quote: "migrer la CI vers les runners ARM".into(),
             owner: None,
             due: None,
+            client_ref: None,
+            project_ref: None,
         },
         ExtractedAction {
             title: "Prendre en charge".into(),
@@ -91,6 +119,8 @@ fn two_located() -> Vec<ExtractedAction> {
             quote: "je m’en charge".into(),
             owner: Some("Malik".into()),
             due: None,
+            client_ref: None,
+            project_ref: None,
         },
     ]
 }
@@ -130,6 +160,8 @@ impl AgentRuntime for FakeRuntime {
                     quote: "Il faut migrer la CI vers les  runners ARM".into(),
                     owner: Some("Malik".into()),
                     due: Some("fin octobre".into()),
+                    client_ref: self.refs.as_ref().and_then(|refs| refs.0.clone()),
+                    project_ref: self.refs.as_ref().and_then(|refs| refs.1.clone()),
                 },
                 ExtractedAction {
                     title: "Inventé".into(),
@@ -137,6 +169,8 @@ impl AgentRuntime for FakeRuntime {
                     quote: "personne n'a dit ça".into(),
                     owner: None,
                     due: None,
+                    client_ref: None,
+                    project_ref: None,
                 },
             ],
             usage: Usage {
@@ -194,6 +228,31 @@ impl AgentRuntime for FakeRuntime {
                 summary: action.action.title.clone(),
             }))
             .collect();
+        if let Some((usecase, organization_id)) = &self.cards_for {
+            for located in &request.actions {
+                usecase
+                    .create_card(
+                        Subject {
+                            id: "user-1".into(),
+                            organization_id: *organization_id,
+                            actor: Some(WRITER.into()),
+                            is_admin: false,
+                        },
+                        CreateCard {
+                            title: located.action.title.clone(),
+                            description: located.action.description.clone(),
+                            provenance: Some(ProvenanceInput {
+                                transcript_id: request.transcript_id,
+                                start: located.start,
+                                end: located.end,
+                                quote: located.action.quote.clone(),
+                            }),
+                            run_id: Some(request.run_id),
+                        },
+                    )
+                    .await?;
+            }
+        }
         let request_has_actions = !request.actions.is_empty();
         self.writes.lock().unwrap().push(request);
         let usage = if request_has_actions {
@@ -385,6 +444,15 @@ async fn submit_with(
     organization_id: OrganizationId,
     metadata: MeetingMetadata,
 ) -> capitainerie_core::SubmittedTranscript {
+    submit_choosing(usecase, organization_id, metadata, LinkChoice::default()).await
+}
+
+async fn submit_choosing(
+    usecase: &CapitainerieUseCase,
+    organization_id: OrganizationId,
+    metadata: MeetingMetadata,
+    choice: LinkChoice,
+) -> capitainerie_core::SubmittedTranscript {
     usecase
         .submit_transcript_delegated(
             SubmitTranscript {
@@ -397,6 +465,7 @@ async fn submit_with(
                 title: "Rétro".into(),
                 body: BODY.into(),
                 metadata,
+                choice,
             },
             AgentDelegation {
                 exchanger: &FakeExchanger,
@@ -583,6 +652,7 @@ async fn without_a_delegation_the_run_fails_and_says_why() {
             title: "Rétro".into(),
             body: BODY.into(),
             metadata: Default::default(),
+            choice: Default::default(),
         })
         .await
         .unwrap();
@@ -1086,5 +1156,242 @@ async fn a_model_of_a_provider_without_a_key_fails_the_step_with_a_clear_message
     assert_eq!(
         steps(&pool, submitted.run_id.0).await,
         [("extract".to_owned(), "failed".to_owned(), 0)]
+    );
+}
+
+fn subject(organization_id: OrganizationId) -> Subject {
+    Subject {
+        id: "user-1".into(),
+        organization_id,
+        actor: None,
+        is_admin: false,
+    }
+}
+
+async fn client(
+    usecase: &CapitainerieUseCase,
+    organization_id: OrganizationId,
+    name: &str,
+) -> Client {
+    usecase
+        .create_client(
+            subject(organization_id),
+            CreateClient {
+                name: name.into(),
+                aliases: vec![],
+                notes: String::new(),
+            },
+        )
+        .await
+        .unwrap()
+}
+
+async fn project_of(
+    usecase: &CapitainerieUseCase,
+    organization_id: OrganizationId,
+    name: &str,
+    client: &Client,
+) -> Project {
+    usecase
+        .create_project(
+            subject(organization_id),
+            CreateProject {
+                client_id: Some(client.id),
+                name: name.into(),
+                aliases: vec![],
+                repository: None,
+                description: String::new(),
+            },
+        )
+        .await
+        .unwrap()
+}
+
+async fn linked(pool: &PgPool, run_id: Uuid) -> Vec<(Option<Uuid>, Option<Uuid>)> {
+    sqlx::query_as("SELECT client_id, project_id FROM cards WHERE created_by_run = $1")
+        .bind(run_id)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+async fn execute_choosing(
+    usecase: &CapitainerieUseCase,
+    runtime: &FakeRuntime,
+    organization_id: OrganizationId,
+    choice: LinkChoice,
+) -> capitainerie_core::SubmittedTranscript {
+    let submitted = submit_choosing(usecase, organization_id, Default::default(), choice).await;
+    pipeline_for(usecase, runtime, &FakeVectors::knowing(CardId::new(), 0.5))
+        .execute(submitted.run_id, None)
+        .await
+        .unwrap();
+    submitted
+}
+
+#[tokio::test]
+async fn the_extractor_lists_the_known_clients_and_a_detected_one_links_the_card() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let acme = client(&usecase, organization_id, "Acme").await;
+    client(&usecase, organization_id, "Globex").await;
+    let runtime =
+        FakeRuntime::detecting(Some(&short_id(acme.id.0)), None, &usecase, organization_id);
+
+    let submitted =
+        execute_choosing(&usecase, &runtime, organization_id, LinkChoice::default()).await;
+
+    let prompt = runtime.prompts.lock().unwrap()[0].clone();
+    assert!(prompt.contains(&format!("- {} : Acme", short_id(acme.id.0))));
+    assert!(prompt.contains("Globex"));
+    assert!(prompt.ends_with(BODY));
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    assert_eq!(
+        linked(&pool, submitted.run_id.0).await,
+        [(Some(acme.id.0), None)]
+    );
+}
+
+#[tokio::test]
+async fn a_detected_project_brings_its_client() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let acme = client(&usecase, organization_id, "Acme").await;
+    let site = project_of(&usecase, organization_id, "Site", &acme).await;
+    let runtime =
+        FakeRuntime::detecting(None, Some(&short_id(site.id.0)), &usecase, organization_id);
+
+    let submitted =
+        execute_choosing(&usecase, &runtime, organization_id, LinkChoice::default()).await;
+
+    assert_eq!(
+        linked(&pool, submitted.run_id.0).await,
+        [(Some(acme.id.0), Some(site.id.0))]
+    );
+}
+
+#[tokio::test]
+async fn an_unknown_reference_is_ignored_and_nothing_is_created() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    client(&usecase, organization_id, "Acme").await;
+    let runtime = FakeRuntime::detecting(
+        Some("deadbeef"),
+        Some("cafebabe"),
+        &usecase,
+        organization_id,
+    );
+
+    let submitted =
+        execute_choosing(&usecase, &runtime, organization_id, LinkChoice::default()).await;
+
+    assert_eq!(status(&pool, submitted.run_id.0).await, "succeeded");
+    assert_eq!(linked(&pool, submitted.run_id.0).await, [(None, None)]);
+    let clients: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM clients WHERE organization_id = $1")
+            .bind(organization_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let projects: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM projects WHERE organization_id = $1")
+            .bind(organization_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((clients, projects), (1, 0));
+}
+
+#[tokio::test]
+async fn an_archived_client_is_neither_listed_nor_linked() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let acme = client(&usecase, organization_id, "Acme").await;
+    usecase
+        .update_client(
+            subject(organization_id),
+            acme.id,
+            UpdateClient {
+                archived: Some(true),
+                ..UpdateClient::default()
+            },
+        )
+        .await
+        .unwrap();
+    let runtime =
+        FakeRuntime::detecting(Some(&short_id(acme.id.0)), None, &usecase, organization_id);
+
+    let submitted =
+        execute_choosing(&usecase, &runtime, organization_id, LinkChoice::default()).await;
+
+    assert_eq!(runtime.prompts.lock().unwrap()[0], BODY);
+    assert_eq!(linked(&pool, submitted.run_id.0).await, [(None, None)]);
+}
+
+#[tokio::test]
+async fn the_choice_made_at_intake_wins_over_detection_and_turns_it_off() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let acme = client(&usecase, organization_id, "Acme").await;
+    let globex = client(&usecase, organization_id, "Globex").await;
+    let runtime =
+        FakeRuntime::detecting(Some(&short_id(acme.id.0)), None, &usecase, organization_id);
+
+    let submitted = execute_choosing(
+        &usecase,
+        &runtime,
+        organization_id,
+        LinkChoice {
+            client_id: Some(globex.id),
+            project_id: None,
+        },
+    )
+    .await;
+
+    assert_eq!(runtime.prompts.lock().unwrap()[0], BODY);
+    assert_eq!(
+        linked(&pool, submitted.run_id.0).await,
+        [(Some(globex.id.0), None)]
+    );
+}
+
+#[tokio::test]
+async fn a_chosen_project_applies_to_every_card_with_its_client() {
+    let Some((pool, usecase, organization_id)) = setup().await else {
+        return;
+    };
+    let acme = client(&usecase, organization_id, "Acme").await;
+    let globex = client(&usecase, organization_id, "Globex").await;
+    let site = project_of(&usecase, organization_id, "Site", &acme).await;
+    let mut runtime = FakeRuntime::detecting(
+        Some(&short_id(globex.id.0)),
+        None,
+        &usecase,
+        organization_id,
+    );
+    runtime.two_actions = true;
+
+    let submitted = execute_choosing(
+        &usecase,
+        &runtime,
+        organization_id,
+        LinkChoice {
+            client_id: None,
+            project_id: Some(site.id),
+        },
+    )
+    .await;
+
+    assert_eq!(
+        linked(&pool, submitted.run_id.0).await,
+        [
+            (Some(acme.id.0), Some(site.id.0)),
+            (Some(acme.id.0), Some(site.id.0))
+        ]
     );
 }

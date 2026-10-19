@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE cards\n            SET client_id = $5, project_id = $6, version = version + 1, updated_at = now()\n            WHERE organization_id = $1 AND created_by_run = $2\n              AND client_id IS NULL AND project_id IS NULL\n              AND ($3::int IS NULL OR (provenance_start = $3 AND provenance_end = $4))\n            RETURNING id, version\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "486564e2341f37004672c324a143005112c2b5260b32fab66275061c9659812a"
+}

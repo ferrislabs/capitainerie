@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT c.id, c.organization_id, c.name, c.aliases, c.notes, c.created_by,\n                   c.created_at, c.updated_at, c.archived_at,\n                   GREATEST(\n                       c.updated_at,\n                       COALESCE((SELECT max(k.updated_at) FROM cards k\n                                  WHERE k.organization_id = c.organization_id AND k.client_id = c.id), c.updated_at),\n                       COALESCE((SELECT max(t.created_at) FROM transcripts t\n                                  WHERE t.organization_id = c.organization_id AND t.client_id = c.id), c.updated_at)\n                   ) AS \"used_at!\"\n            FROM clients c\n            WHERE c.organization_id = $1 AND c.archived_at IS NULL\n            ORDER BY \"used_at!\" DESC, c.id\n            LIMIT $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "aliases",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "used_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "538b89ec48fad0fec7a246674491b63dfa7f53b0d5c8eee1838e37ad6c128c20"
+}

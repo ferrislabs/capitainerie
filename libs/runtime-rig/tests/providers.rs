@@ -40,6 +40,8 @@ fn located(title: &str, quote: &str, start: u32, end: u32) -> LocatedAction {
             quote: quote.into(),
             owner: None,
             due: None,
+            client_ref: None,
+            project_ref: None,
         },
         start,
         end,

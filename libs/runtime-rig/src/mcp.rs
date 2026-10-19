@@ -161,6 +161,8 @@ mod tests {
                 quote: "relancer Acme".into(),
                 owner: None,
                 due: None,
+                client_ref: None,
+                project_ref: None,
             },
             start: 4,
             end: 17,

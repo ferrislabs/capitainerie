@@ -988,6 +988,7 @@ mod tests {
             created_at: now,
             updated_at: now,
             repository_hint: None,
+            links: Default::default(),
         }
     }
 

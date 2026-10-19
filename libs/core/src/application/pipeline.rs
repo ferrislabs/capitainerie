@@ -7,11 +7,12 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use tracing::Instrument;
 
-use super::CapitainerieUseCase;
+use super::{CapitainerieUseCase, RunCardLinks};
 use crate::{
     domain::{
         agent::{DuplicateAction, LocatedAction, SecretToken, WriteRequest, ports::AgentRuntime},
         card::{Card, ports::CardRepository},
+        client::catalog::Catalog,
         delegation::ports::{DelegationVault, TokenExchanger},
         event::ports::EventEmitter,
         organization::ports::OrganizationRepository,
@@ -581,17 +582,23 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         seq: i32,
     ) -> Result<Vec<LocatedAction>, CoreError> {
         let body = context.transcript.body.as_str();
-        let prompt = context.transcript.metadata.prompt_for(body);
         let step = self.new_step(context, seq, StepKind::Extract, Some("extractor".into()), 1);
         self.usecase
             .record_step(context.run.clone(), step.clone())
             .await?;
         let started = Instant::now();
         let extracted = match self.target(context, AgentRole::Extractor).await {
-            Ok(target) => {
-                self.with_retries(|_| self.runtime.extract(&target, &prompt))
-                    .await
-            }
+            Ok(target) => match self.detectable(context).await {
+                Ok(catalog) => {
+                    let prompt = context
+                        .transcript
+                        .metadata
+                        .prompt_with(body, catalog.as_ref());
+                    self.with_retries(|_| self.runtime.extract(&target, &prompt))
+                        .await
+                }
+                Err(error) => Err(error),
+            },
             Err(error) => Err(error),
         };
         let result = extracted.map(|extraction| {
@@ -629,6 +636,64 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
             _ => restore_actions(&step),
+        }
+    }
+
+    async fn detectable(&self, context: &RunContext) -> Result<Option<Catalog>, CoreError> {
+        if !context.transcript.links.is_empty() {
+            return Ok(None);
+        }
+        self.usecase
+            .detection_catalog(context.run.organization_id)
+            .await
+            .map(Some)
+    }
+
+    async fn links_for(
+        &self,
+        context: &RunContext,
+        actions: &[LocatedAction],
+    ) -> Result<Vec<RunCardLinks>, CoreError> {
+        if !context.transcript.links.is_empty() {
+            return Ok(vec![RunCardLinks {
+                span: None,
+                links: context.transcript.links.clone(),
+            }]);
+        }
+        let catalog = self
+            .usecase
+            .detection_catalog(context.run.organization_id)
+            .await?;
+        Ok(actions
+            .iter()
+            .map(|located| RunCardLinks {
+                span: Some((located.start, located.end)),
+                links: catalog.resolve(
+                    located.action.client_ref.as_deref(),
+                    located.action.project_ref.as_deref(),
+                ),
+            })
+            .collect())
+    }
+
+    async fn link_cards(&self, context: &RunContext, actions: &[LocatedAction]) {
+        let linked = match self.links_for(context, actions).await {
+            Ok(batches) => {
+                self.usecase
+                    .link_run_cards(
+                        context.run.organization_id,
+                        context.run.id,
+                        &context.run.initiated_by,
+                        &self.config.writer_agent,
+                        batches,
+                    )
+                    .await
+            }
+            Err(error) => Err(error),
+        };
+        match linked {
+            Ok(count) => tracing::info!(count, "cards linked to a client or project"),
+            Err(error) => tracing::warn!(%error, "the cards could not be linked"),
         }
     }
 
@@ -730,7 +795,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let started = Instant::now();
         let result = match self.target(context, AgentRole::Writer).await {
             Ok(target) => {
-                self.write_attempts(context, &target, &writer, actions, duplicates)
+                self.write_attempts(context, &target, &writer, &actions, &duplicates)
                     .await
             }
             Err(error) => Err(error),
@@ -738,7 +803,10 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         let step = self.finish_step(context, step, started, result).await?;
         match step.status {
             StepStatus::Failed => Err(CoreError::Internal(step.error.unwrap_or_default())),
-            _ => Ok(()),
+            _ => {
+                self.link_cards(context, &actions).await;
+                Ok(())
+            }
         }
     }
 
@@ -747,8 +815,8 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
         context: &RunContext,
         target: &ModelTarget,
         writer: &str,
-        actions: Vec<LocatedAction>,
-        duplicates: Vec<DuplicateAction>,
+        actions: &[LocatedAction],
+        duplicates: &[DuplicateAction],
     ) -> Result<(serde_json::Value, crate::domain::agent::Usage, StepStatus), CoreError> {
         let delegation = self
             .usecase
@@ -776,8 +844,8 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                         WriteRequest {
                             run_id: context.run.id,
                             transcript_id: context.transcript.id,
-                            actions: actions.clone(),
-                            duplicates: duplicates.clone(),
+                            actions: actions.to_vec(),
+                            duplicates: duplicates.to_vec(),
                             mcp_token: SecretToken::new(mcp_token.token.expose()),
                             traceparent: capitainerie_telemetry::current_traceparent(),
                         },
@@ -977,6 +1045,8 @@ mod tests {
                 quote: "q".into(),
                 owner: None,
                 due: None,
+                client_ref: None,
+                project_ref: None,
             },
             start: 0,
             end: 1,

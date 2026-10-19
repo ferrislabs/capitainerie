@@ -1,0 +1,85 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT c.id, c.organization_id, c.name, c.aliases, c.notes, c.created_by,\n                   c.created_at, c.updated_at, c.archived_at,\n                   (SELECT count(*) FROM projects p\n                     WHERE p.organization_id = c.organization_id AND p.client_id = c.id\n                       AND p.archived_at IS NULL) AS \"projects!\",\n                   (SELECT count(*) FROM cards k\n                     WHERE k.organization_id = c.organization_id AND k.client_id = c.id\n                       AND k.\"column\" IN ('proposed', 'todo', 'in_progress')) AS \"open_cards!\"\n            FROM clients c\n            WHERE c.organization_id = $1\n              AND (c.archived_at IS NOT NULL) = $2\n              AND ($3::text IS NULL\n                   OR strpos(lower(c.name), lower($3)) > 0\n                   OR EXISTS (SELECT 1 FROM unnest(c.aliases) AS alias WHERE strpos(lower(alias), lower($3)) > 0))\n            ORDER BY lower(c.name), c.id\n            LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "aliases",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "archived_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "projects!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "open_cards!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "6353dfe2fb052099cc2982339d1dd173f01782aa580192fcc68b5020b551ba86"
+}
