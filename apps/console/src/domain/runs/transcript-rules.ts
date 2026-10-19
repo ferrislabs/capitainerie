@@ -2,7 +2,7 @@ export const TITLE_MAX_LENGTH = 200
 export const BODY_MAX_LENGTH = 200000
 
 export function validateTitle(value: string): string | undefined {
-	const length = value.trim().length
+	const length = [...value.trim()].length
 	if (length === 0) return 'Le titre est obligatoire.'
 	if (length > TITLE_MAX_LENGTH) {
 		return `Le titre ne doit pas dépasser ${TITLE_MAX_LENGTH} caractères.`
@@ -12,7 +12,7 @@ export function validateTitle(value: string): string | undefined {
 
 export function validateBody(value: string): string | undefined {
 	if (value.trim().length === 0) return 'Le transcript est obligatoire.'
-	if (value.length > BODY_MAX_LENGTH) {
+	if ([...value].length > BODY_MAX_LENGTH) {
 		return `Le transcript ne doit pas dépasser ${BODY_MAX_LENGTH} caractères.`
 	}
 	return undefined
@@ -26,9 +26,13 @@ export function mergeParticipants(
 	names: readonly string[],
 ): string[] {
 	const next = [...current]
+	const seen = new Set(next.map((name) => name.toLowerCase()))
 	for (const part of names) {
-		const name = part.trim()
-		if (name !== '' && !next.includes(name)) next.push(name)
+		const name = part.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
+		if (name !== '' && !seen.has(name.toLowerCase())) {
+			seen.add(name.toLowerCase())
+			next.push(name)
+		}
 	}
 	return next
 }
@@ -46,7 +50,7 @@ export function validateParticipants(
 	if (participants.length > PARTICIPANTS_MAX) {
 		return `Pas plus de ${PARTICIPANTS_MAX} participants.`
 	}
-	if (participants.some((name) => name.length > PARTICIPANT_MAX_LENGTH)) {
+	if (participants.some((name) => [...name].length > PARTICIPANT_MAX_LENGTH)) {
 		return `Un nom ne doit pas dépasser ${PARTICIPANT_MAX_LENGTH} caractères.`
 	}
 	return undefined

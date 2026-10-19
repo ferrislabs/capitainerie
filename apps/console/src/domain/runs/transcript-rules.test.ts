@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
 	addParticipants,
+	mergeParticipants,
 	PARTICIPANT_MAX_LENGTH,
 	PARTICIPANTS_MAX,
 	validateParticipants,
@@ -52,5 +53,26 @@ describe('validateRepository', () => {
 		for (const value of ['acme', 'acme/', '/web', 'a/b/c', 'a b/c']) {
 			expect(validateRepository(value)).toMatch(/propriétaire\/nom/)
 		}
+	})
+})
+
+describe('code point counting', () => {
+	it('counts an emoji as one character', () => {
+		const emoji = '😀'.repeat(PARTICIPANT_MAX_LENGTH)
+		expect(validateParticipants([emoji])).toBe(undefined)
+		expect(validateParticipants([`${emoji}😀`])).toMatch(/100 caractères/)
+	})
+})
+
+describe('mergeParticipants', () => {
+	it('deduplicates case-insensitively and keeps the first spelling', () => {
+		expect(mergeParticipants(['Alice'], ['alice', 'Bob', 'BOB'])).toEqual([
+			'Alice',
+			'Bob',
+		])
+	})
+
+	it('drops commas from detected names', () => {
+		expect(mergeParticipants([], ['Dupont, Jean'])).toEqual(['Dupont Jean'])
 	})
 })

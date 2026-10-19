@@ -1,6 +1,10 @@
 import { type DragEvent, useState } from 'react'
 
-export function useFileDrop(onFile: (file: File) => void, disabled: boolean) {
+export function useFileDrop(
+	onFile: (file: File) => void,
+	onReject: (message: string) => void,
+	disabled: boolean,
+) {
 	const [isDragging, setIsDragging] = useState(false)
 
 	return {
@@ -22,8 +26,14 @@ export function useFileDrop(onFile: (file: File) => void, disabled: boolean) {
 			onDrop(event: DragEvent<HTMLElement>) {
 				event.preventDefault()
 				setIsDragging(false)
-				const file = event.dataTransfer.files[0]
-				if (file && !disabled) onFile(file)
+				if (disabled) return
+				const files = event.dataTransfer.files
+				if (files.length > 1) {
+					onReject('Un seul fichier à la fois')
+					return
+				}
+				const file = files[0]
+				if (file) onFile(file)
 			},
 		},
 	}

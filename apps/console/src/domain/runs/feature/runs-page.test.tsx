@@ -119,4 +119,63 @@ describe('RunsPage intake', () => {
 			/Format non pris en charge/,
 		)
 	})
+
+	it('restores the previous text and keeps participants that were already there', async () => {
+		const user = userEvent.setup()
+		render(<RunsPage />, { wrapper: harness.wrapper })
+		await user.type(screen.getByLabelText('Transcript'), 'Brouillon')
+		await user.type(screen.getByLabelText('Participants'), 'alice,')
+
+		await user.upload(
+			screen.getByLabelText(/Glissez un fichier ici/),
+			new File([VTT], 'a.vtt'),
+		)
+		expect(screen.getByRole('button', { name: 'Retirer Bob' })).toBeTruthy()
+		expect(screen.queryByRole('button', { name: 'Retirer Alice' })).toBeNull()
+		await user.click(screen.getByRole('button', { name: 'Retirer' }))
+
+		expect(
+			(screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+		).toBe('Brouillon')
+		expect(screen.getByRole('button', { name: 'Retirer alice' })).toBeTruthy()
+		expect(screen.queryByRole('button', { name: 'Retirer Bob' })).toBeNull()
+	})
+
+	it('refuses a file that is not UTF-8 and keeps the current import', async () => {
+		const user = userEvent.setup()
+		render(<RunsPage />, { wrapper: harness.wrapper })
+		await user.upload(
+			screen.getByLabelText(/Glissez un fichier ici/),
+			new File([VTT], 'a.vtt'),
+		)
+
+		await user.upload(
+			screen.getByLabelText(/Glissez un fichier ici/),
+			new File([new Uint8Array([0xff, 0xfe, 0x41])], 'b.txt'),
+		)
+
+		expect((await screen.findByRole('alert')).textContent).toBe(
+			"Le fichier n'est pas en UTF-8.",
+		)
+		expect(
+			(screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+		).toContain('Alice : On livre vendredi.')
+	})
+
+	it('refuses an import above the transcript limit', async () => {
+		const user = userEvent.setup()
+		render(<RunsPage />, { wrapper: harness.wrapper })
+
+		await user.upload(
+			screen.getByLabelText(/Glissez un fichier ici/),
+			new File(['a'.repeat(200001)], 'big.txt'),
+		)
+
+		expect((await screen.findByRole('alert')).textContent).toMatch(
+			/200000 caractères/,
+		)
+		expect(
+			(screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+		).toBe('')
+	})
 })

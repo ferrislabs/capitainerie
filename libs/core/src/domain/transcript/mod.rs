@@ -42,7 +42,7 @@ impl MeetingMetadata {
                 Self::MAX_PARTICIPANTS
             )));
         }
-        let participants = participants
+        let mut participants: Vec<String> = participants
             .iter()
             .map(|name| {
                 let name = name.trim();
@@ -55,9 +55,19 @@ impl MeetingMetadata {
                         Self::MAX_PARTICIPANT_CHARS
                     )));
                 }
+                if name
+                    .chars()
+                    .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | ','))
+                {
+                    return Err(CoreError::Invalid(
+                        "a participant name contains a comma or a control character".into(),
+                    ));
+                }
                 Ok(name.to_owned())
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<_, _>>()?;
+        let mut seen = std::collections::HashSet::new();
+        participants.retain(|name| seen.insert(name.to_lowercase()));
         let repository = repository
             .map(|value| value.trim().parse::<RepositoryRef>())
             .transpose()?;
@@ -249,5 +259,34 @@ mod tests {
             metadata.header().unwrap(),
             "Date de la réunion : 2026-10-19"
         );
+    }
+
+    #[test]
+    fn participant_names_cannot_carry_line_breaks_or_commas() {
+        for name in [
+            "A\nB",
+            "A\rB",
+            "A\u{2028}B",
+            "A\u{2029}B",
+            "A\u{0}B",
+            "A\tB",
+            "Dupont, Jean",
+        ] {
+            assert!(
+                MeetingMetadata::new(None, Some(vec![name.to_owned()]), None).is_err(),
+                "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn participants_are_deduplicated_case_insensitively_keeping_the_first() {
+        let metadata = MeetingMetadata::new(
+            None,
+            names(&["Alice", "bob", "ALICE", " Bob ", "Claire"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(metadata.participants, ["Alice", "bob", "Claire"]);
     }
 }

@@ -15,7 +15,7 @@ function dragEvent(files: File[] = []) {
 describe('useFileDrop', () => {
 	it('flags the drag and forwards the first dropped file', () => {
 		const onFile = vi.fn()
-		const { result } = renderHook(() => useFileDrop(onFile, false))
+		const { result } = renderHook(() => useFileDrop(onFile, vi.fn(), false))
 		const file = new File(['x'], 'a.txt')
 
 		act(() => result.current.handlers.onDragEnter(dragEvent()))
@@ -29,7 +29,7 @@ describe('useFileDrop', () => {
 	})
 
 	it('clears the flag when the pointer leaves', () => {
-		const { result } = renderHook(() => useFileDrop(vi.fn(), false))
+		const { result } = renderHook(() => useFileDrop(vi.fn(), vi.fn(), false))
 
 		act(() => result.current.handlers.onDragEnter(dragEvent()))
 		act(() => result.current.handlers.onDragLeave(dragEvent()))
@@ -39,7 +39,7 @@ describe('useFileDrop', () => {
 
 	it('ignores everything while disabled', () => {
 		const onFile = vi.fn()
-		const { result } = renderHook(() => useFileDrop(onFile, true))
+		const { result } = renderHook(() => useFileDrop(onFile, vi.fn(), true))
 
 		act(() => result.current.handlers.onDragEnter(dragEvent()))
 		act(() =>
@@ -47,6 +47,21 @@ describe('useFileDrop', () => {
 		)
 
 		expect(result.current.isDragging).toBe(false)
+		expect(onFile).not.toHaveBeenCalled()
+	})
+
+	it('rejects several files at once without importing any', () => {
+		const onFile = vi.fn()
+		const onReject = vi.fn()
+		const { result } = renderHook(() => useFileDrop(onFile, onReject, false))
+
+		act(() =>
+			result.current.handlers.onDrop(
+				dragEvent([new File(['x'], 'a.txt'), new File(['y'], 'b.txt')]),
+			),
+		)
+
+		expect(onReject).toHaveBeenCalledWith('Un seul fichier à la fois')
 		expect(onFile).not.toHaveBeenCalled()
 	})
 })

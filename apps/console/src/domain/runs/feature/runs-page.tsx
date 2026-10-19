@@ -33,7 +33,9 @@ import { SubmitTranscriptForm } from '#/domain/runs/ui/submit-transcript-form'
 interface ImportedState {
 	name: string
 	characters: number
-	participants: string[]
+	detected: number
+	previousBody: string
+	added: string[]
 }
 
 export function RunsPage() {
@@ -102,38 +104,60 @@ export function RunsPage() {
 			setFileError(problem)
 			return
 		}
-		const result = importTranscript(file.name, await file.text())
+		let content: string
+		try {
+			content = new TextDecoder('utf-8', { fatal: true }).decode(
+				await file.arrayBuffer(),
+			)
+		} catch {
+			setFileError("Le fichier n'est pas en UTF-8.")
+			return
+		}
+		const result = importTranscript(file.name, content)
 		if (result.text.trim() === '') {
 			setFileError('Ce fichier ne contient aucun texte exploitable.')
 			return
 		}
+		const characters = [...result.text].length
+		if (characters > BODY_MAX_LENGTH) {
+			setFileError(
+				`Le transcript ne doit pas dépasser ${BODY_MAX_LENGTH} caractères.`,
+			)
+			return
+		}
 		setFileError(undefined)
+		const before = form.getFieldValue('participants')
+		const merged = mergeParticipants(before, result.participants)
+		const known = new Set(before.map((name) => name.toLowerCase()))
+		const added = [
+			...(imported?.added ?? []),
+			...merged.filter((name) => !known.has(name.toLowerCase())),
+		]
+		setImported({
+			name: file.name,
+			characters,
+			detected: result.participants.length,
+			previousBody: imported
+				? imported.previousBody
+				: form.getFieldValue('body'),
+			added,
+		})
 		form.setFieldValue('body', result.text)
 		if (form.getFieldValue('title').trim() === '') {
 			form.setFieldValue('title', titleFromFileName(file.name))
 		}
-		form.setFieldValue(
-			'participants',
-			mergeParticipants(
-				form.getFieldValue('participants'),
-				result.participants,
-			),
-		)
-		setImported({
-			name: file.name,
-			characters: result.text.length,
-			participants: result.participants,
-		})
+		form.setFieldValue('participants', merged)
 	}
 
 	function removeImport() {
 		if (!imported) return
-		form.setFieldValue('body', '')
+		form.setFieldValue('body', imported.previousBody)
+		const added = new Set(imported.added.map((name) => name.toLowerCase()))
 		form.setFieldValue(
 			'participants',
 			form
 				.getFieldValue('participants')
-				.filter((name) => !imported.participants.includes(name)),
+				.filter((name) => !added.has(name.toLowerCase())),
 		)
 		setImported(undefined)
 		setFileError(undefined)
@@ -164,7 +188,7 @@ export function RunsPage() {
 		setParticipantDraft(value.slice(comma + 1))
 	}
 
-	const drop = useFileDrop(handleFile, submit.isPending)
+	const drop = useFileDrop(handleFile, setFileError, submit.isPending)
 
 	function handleSubmit() {
 		form.handleSubmit().catch(() => undefined)
@@ -199,7 +223,7 @@ export function RunsPage() {
 							imported: imported && {
 								name: imported.name,
 								characters: imported.characters,
-								participants: imported.participants.length,
+								participants: imported.detected,
 							},
 							error: fileError,
 							isDragging: drop.isDragging,
