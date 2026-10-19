@@ -1,5 +1,41 @@
 export namespace Schemas {
   // <Schemas>
+  export type ActiveStepResponse = {
+    agent?: (string | null) | undefined;
+    kind: string;
+    model?: (string | null) | undefined;
+    started_at: string;
+  };
+  export type CardId = string;
+  export type RunId = string;
+  export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  export type TranscriptId = string;
+  export type RunResponse = {
+    card_id?: (null | CardId) | undefined;
+    created_at: string;
+    failure?: (string | null) | undefined;
+    finished_at?: (string | null) | undefined;
+    id: RunId;
+    initiated_by: string;
+    pipeline: Array<string>;
+    repository?: (string | null) | undefined;
+    started_at?: (string | null) | undefined;
+    status: RunStatusResponse;
+    title?: (string | null) | undefined;
+    trace_id?: (string | null) | undefined;
+    transcript_id?: (null | TranscriptId) | undefined;
+    transcript_title?: (string | null) | undefined;
+  };
+  export type ActiveRunResponse = {
+    cost_micros: number;
+    current_step?: (null | ActiveStepResponse) | undefined;
+    input_tokens: number;
+    output_tokens: number;
+    run: RunResponse;
+    steps_done: number;
+    steps_total: number;
+  };
+  export type ActiveRunListResponse = { items: Array<ActiveRunResponse> };
   export type AgentResponse = {
     agent: string;
     cost_micros: number;
@@ -12,9 +48,6 @@ export namespace Schemas {
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean };
   export type CardCommentId = string;
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
-  export type RunId = string;
-  export type CardId = string;
-  export type TranscriptId = string;
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
   export type CardResponse = {
     column: ColumnDto;
@@ -35,23 +68,6 @@ export namespace Schemas {
     body: string;
     created_at: string;
     id: CardCommentId;
-  };
-  export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-  export type RunResponse = {
-    card_id?: (null | CardId) | undefined;
-    created_at: string;
-    failure?: (string | null) | undefined;
-    finished_at?: (string | null) | undefined;
-    id: RunId;
-    initiated_by: string;
-    pipeline: Array<string>;
-    repository?: (string | null) | undefined;
-    started_at?: (string | null) | undefined;
-    status: RunStatusResponse;
-    title?: (string | null) | undefined;
-    trace_id?: (string | null) | undefined;
-    transcript_id?: (null | TranscriptId) | undefined;
-    transcript_title?: (string | null) | undefined;
   };
   export type CardDetailResponse = { card: CardResponse; comments: Array<CommentResponse>; runs: Array<RunResponse> };
   export type CardListResponse = { items: Array<CardResponse> };
@@ -469,6 +485,13 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunListResponse; 401: Schemas.ApiErrorResponse };
   };
+  export type get_ListActiveRuns = {
+    method: "GET";
+    path: "/api/v1/runs/active";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.ActiveRunListResponse; 401: Schemas.ApiErrorResponse };
+  };
   export type get_GetRun = {
     method: "GET";
     path: "/api/v1/runs/{run_id}";
@@ -534,6 +557,7 @@ export type EndpointByMethod = {
     "/api/v1/models": Endpoints.get_ListModels;
     "/api/v1/providers": Endpoints.get_ListProviders;
     "/api/v1/runs": Endpoints.get_ListRuns;
+    "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/health/live": Endpoints.get_GetLiveness;
