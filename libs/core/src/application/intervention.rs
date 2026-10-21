@@ -2,7 +2,7 @@ use capitainerie_common::{
     CardCommentId, CardId, CoreError, IntegrationInstanceId, OrganizationId, RunId,
 };
 use capitainerie_macros::transactional;
-use chrono::Utc;
+use chrono::{SubsecRound, Utc};
 
 use super::{CapitainerieUseCase, execution::COMMENT_ID_FIELD};
 use crate::{
@@ -130,7 +130,7 @@ impl CapitainerieUseCase {
         )
         .await?;
 
-        let now = Utc::now();
+        let now = Utc::now().trunc_subsecs(6);
         let (mut run, queued) =
             Run::queue_intervention(organization_id, card_id, subject.id.clone(), now);
         run.models = model_assignment_repository.get(organization_id).await?;
