@@ -10,6 +10,7 @@ use capitainerie_handlers::{AppState, auth::authenticate, health};
 use capitainerie_handlers_conversations::ConversationsState;
 use capitainerie_handlers_integrations::GithubIntegration;
 use capitainerie_handlers_realtime::Gateway;
+use capitainerie_integrations::HttpConnector;
 use tower_http::{
     cors::{AllowHeaders, AllowMethods, CorsLayer},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
@@ -30,9 +31,14 @@ pub struct IntakeAdapters<T, D> {
     pub document_readers: D,
 }
 
+pub struct IntegrationAdapters {
+    pub connector: HttpConnector,
+}
+
 pub struct Adapters<T, D, R, X> {
     pub intake: IntakeAdapters<T, D>,
     pub captain: CaptainAdapters<R, X>,
+    pub integrations: IntegrationAdapters,
 }
 
 pub fn router<
@@ -85,6 +91,7 @@ pub fn router<
         .merge(capitainerie_handlers_integrations::router(
             state.usecase.clone(),
             github,
+            adapters.integrations.connector,
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
 

@@ -5,8 +5,8 @@ mod router;
 use anyhow::Context;
 use capitainerie_analytics::{AnalyticsArgs, DataFusionAnalytics, Dataset};
 use capitainerie_args::{
-    AuthArgs, DatabaseArgs, DelegationArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
-    ServerArgs,
+    AuthArgs, DatabaseArgs, DelegationArgs, GithubArgs, IntegrationsArgs, LogArgs,
+    ObservabilityArgs, SecretsArgs, ServerArgs,
 };
 use capitainerie_auth::{AcceptedClients, ExchangeArgs, FerrisKeyTokenExchange, FerrisKeyVerifier};
 use capitainerie_bus_iggy::IggyArgs;
@@ -19,6 +19,7 @@ use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Delegation};
 use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
+use capitainerie_integrations::{HttpConnector, NetworkPolicy};
 use capitainerie_runtime_rig::{LlmArgs, RigCaptain};
 use clap::Parser;
 use std::sync::Arc;
@@ -45,6 +46,8 @@ struct Args {
     secrets: SecretsArgs,
     #[command(flatten)]
     github: GithubArgs,
+    #[command(flatten)]
+    integrations: IntegrationsArgs,
     #[arg(id = "console_url", long = "console-url", env = "CONSOLE_URL")]
     console_url: Option<String>,
     #[command(flatten)]
@@ -110,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
         args.secrets.key.as_deref(),
         usecase.clone(),
     )?;
+    let connector = integrations_connector(&args.integrations)?;
     let state = AppState {
         usecase,
         verifier: verifier(args.auth),
@@ -139,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
                 runtime: RigCaptain::new(&args.llm).context("building the Captain runtime")?,
                 exchanger: captain_exchanger,
             },
+            integrations: router::IntegrationAdapters { connector },
         },
         github,
         &args.server.allowed_origins,
@@ -193,6 +198,24 @@ fn github_integration(
         signer,
         console_url,
     })
+}
+
+fn integrations_connector(args: &IntegrationsArgs) -> anyhow::Result<HttpConnector> {
+    if args.allow_insecure_http {
+        tracing::warn!(
+            "INTEGRATIONS_ALLOW_INSECURE_HTTP is on: instances may be reached over plain http"
+        );
+    }
+    if args.allow_private_networks {
+        tracing::warn!(
+            "INTEGRATIONS_ALLOW_PRIVATE_NETWORKS is on: instances may be reached on private, loopback and link-local addresses"
+        );
+    }
+    HttpConnector::new(NetworkPolicy {
+        allow_insecure_http: args.allow_insecure_http,
+        allow_private_networks: args.allow_private_networks,
+    })
+    .context("building the integrations connector")
 }
 
 fn ensure_captain_credentials(exchanger: &FerrisKeyTokenExchange) -> anyhow::Result<()> {

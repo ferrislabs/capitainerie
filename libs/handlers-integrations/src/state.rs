@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use capitainerie_github::GithubApps;
+use capitainerie_integrations::HttpConnector;
 
 use crate::{error::IntegrationError, signer::StateSigner};
 
@@ -42,4 +43,5 @@ impl GithubIntegration {
 pub struct IntegrationsState {
     pub usecase: capitainerie_core::CapitainerieUseCase,
     pub github: GithubIntegration,
+    pub connector: HttpConnector,
 }
