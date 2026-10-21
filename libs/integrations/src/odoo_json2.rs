@@ -1,9 +1,12 @@
-use capitainerie_core::domain::integration::{ConnectorFailure, InstanceConnection, ProbeReport};
+use capitainerie_core::domain::integration::{
+    ConnectorFailure, InstanceConnection, ProbeReport, action::ActionRequest,
+};
 use reqwest::Client;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::Value;
 
 use crate::guard::{clean_version, remote_failure, secret_header, send};
+use crate::odoo::{self, Json2Body, OdooCall, Transport};
 
 const UNKNOWN_VERSION: &str = "19+";
 
@@ -47,6 +50,10 @@ impl<'a> OdooJson2<'a> {
         }
     }
 
+    pub(crate) async fn perform(&self, request: &ActionRequest) -> Result<Value, ConnectorFailure> {
+        odoo::perform(self, request).await
+    }
+
     async fn server_version(&self) -> Option<String> {
         let answer = send(
             self.client
@@ -62,5 +69,36 @@ impl<'a> OdooJson2<'a> {
             .and_then(Value::as_str)
             .filter(|version| !version.is_empty())
             .map(clean_version)
+    }
+}
+
+impl Transport for OdooJson2<'_> {
+    async fn execute(&self, call: &OdooCall<'_>) -> Result<Value, ConnectorFailure> {
+        if !call.args.is_empty() {
+            return Err(ConnectorFailure::NotSupported(
+                "positional arguments are not supported by JSON-2: use kwargs".into(),
+            ));
+        }
+        let secret = self.connection.secret.expose();
+        let mut request = self
+            .client
+            .post(
+                self.connection
+                    .base_url
+                    .join(&format!("json/2/{}/{}", call.model, call.method)),
+            )
+            .header(AUTHORIZATION, secret_header("bearer ", secret)?)
+            .json(&Json2Body(call));
+        if let Some(database) = &self.connection.database {
+            request = request.header("X-Odoo-Database", database);
+        }
+        let answer = send(request).await?;
+        match answer.status.as_u16() {
+            200 => answer.json().ok_or_else(|| {
+                ConnectorFailure::Protocol("the server did not answer with JSON".into())
+            }),
+            401 | 403 => Err(ConnectorFailure::Unauthorized),
+            _ => Err(remote_failure(&answer, secret)),
+        }
     }
 }
