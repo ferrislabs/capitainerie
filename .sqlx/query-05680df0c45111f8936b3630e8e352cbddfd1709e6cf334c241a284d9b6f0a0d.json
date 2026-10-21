@@ -1,0 +1,149 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, organization_id, run_id, card_id, instance_id, subject, actor, tool,\n                   access, target, arguments, outcome, reason_code, reason, state_before,\n                   state_after, revertible, reverts_action_id, reverted_by_action_id,\n                   latency_ms, created_at, finished_at\n            FROM integration_actions\n            WHERE organization_id = $1 AND card_id = $2\n            ORDER BY created_at, id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "run_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "instance_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "subject",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "actor",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "tool",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "access",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "target",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "arguments",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "outcome",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "reason_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "state_before",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 15,
+        "name": "state_after",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 16,
+        "name": "revertible",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "reverts_action_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 18,
+        "name": "reverted_by_action_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 19,
+        "name": "latency_ms",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 20,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 21,
+        "name": "finished_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "05680df0c45111f8936b3630e8e352cbddfd1709e6cf334c241a284d9b6f0a0d"
+}
