@@ -81,6 +81,7 @@ impl From<RunOverview> for RunResponse {
                 repository,
                 ..
             } => (None, Some(*card_id), Some(repository.to_string())),
+            RunSubject::Intervention { card_id } => (None, Some(*card_id), None),
         };
         let transcript_title = transcript_id.and(title.clone());
         let (client, project) = link_refs(&links);

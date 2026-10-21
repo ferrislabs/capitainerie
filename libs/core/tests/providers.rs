@@ -119,6 +119,7 @@ fn assignments(chat: ModelRef) -> ModelAssignments {
         transcriber: None,
         reader: None,
         captain: None,
+        integrator: None,
         executor: Default::default(),
     }
 }

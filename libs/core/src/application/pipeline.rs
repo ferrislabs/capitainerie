@@ -488,7 +488,7 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                         let (new, _) = split_actions(&actions, dedup.as_ref());
                         self.finish_links(context, done, &new, shown.as_ref()).await;
                     }
-                    StepKind::Execute => {}
+                    StepKind::Execute | StepKind::Intervene => {}
                 }
                 continue;
             }
@@ -502,10 +502,11 @@ impl<R: AgentRuntime, X: TokenExchanger, E: Embedder, V: VectorStore> MeetingPip
                     self.write(context, seq, new, duplicates, shown.as_ref())
                         .await?;
                 }
-                StepKind::Execute => {
-                    return Err(CoreError::Invalid(
-                        "the meeting pipeline cannot run an execute step".into(),
-                    ));
+                StepKind::Execute | StepKind::Intervene => {
+                    return Err(CoreError::Invalid(format!(
+                        "the meeting pipeline cannot run an {} step",
+                        kind.as_str()
+                    )));
                 }
             }
         }
