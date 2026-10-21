@@ -53,7 +53,7 @@ use capitainerie_handlers_integrations::{
     IntegrationActionListResponse, IntegrationActionResponse, IntegrationEnvironmentDto,
     IntegrationInstanceListResponse, IntegrationInstanceResponse, IntegrationKindDto,
     ManifestOwner, ManifestResponse, RepositoryListResponse, RepositoryResponse,
-    UpdateIntegrationInstanceRequest,
+    RevertIntegrationActionRequest, UpdateIntegrationInstanceRequest,
 };
 use capitainerie_handlers_providers::{
     self as providers,
@@ -140,6 +140,7 @@ use utoipa::{
         integrations::instances::check::handler,
         integrations::actions::list_for_card::handler,
         integrations::actions::list_for_run::handler,
+        integrations::actions::revert::handler,
         conversations::create_conversation::handler,
         conversations::list_conversations::handler,
         conversations::get_conversation::handler,
@@ -244,6 +245,7 @@ use utoipa::{
         ActionOutcomeDto,
         IntegrationActionResponse,
         IntegrationActionListResponse,
+        RevertIntegrationActionRequest,
         CreateConversationRequest,
         CreatedConversationResponse,
         UpdateConversationRequest,
@@ -676,6 +678,34 @@ mod tests {
             assert!(action[field].is_object(), "{field}");
         }
         assert!(schemas["IntegrationActionListResponse"]["properties"]["items"].is_object());
+    }
+
+    #[test]
+    fn the_revert_endpoint_is_documented_with_its_refusals_and_without_a_snapshot() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let schemas = &spec["components"]["schemas"];
+        let revert = &spec["paths"]["/api/v1/integration-actions/{id}/revert"]["post"];
+
+        assert_eq!(revert["operationId"], "revertIntegrationAction");
+        for status in ["200", "401", "403", "404", "409", "422"] {
+            assert!(revert["responses"][status].is_object(), "{status}");
+        }
+        assert!(
+            schemas["RevertIntegrationActionRequest"]["properties"]["confirm_production"]
+                .is_object()
+        );
+        let required = schemas["RevertIntegrationActionRequest"]["required"].as_array();
+        assert!(required.is_none_or(|fields| fields.is_empty()));
+        let mut reachable = std::collections::BTreeSet::new();
+        referenced_schemas(&spec, &revert["responses"], &mut reachable);
+        assert!(reachable.contains("IntegrationActionListResponse"));
+        assert!(reachable.contains("IntegrationActionResponse"));
+        for name in reachable {
+            assert!(
+                schemas[name]["properties"].get("snapshot").is_none(),
+                "{name} has a snapshot property"
+            );
+        }
     }
 
     #[test]
