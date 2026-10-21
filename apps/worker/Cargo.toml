@@ -14,6 +14,7 @@ capitainerie-common.workspace = true
 capitainerie-core.workspace = true
 capitainerie-events.workspace = true
 capitainerie-github.workspace = true
+capitainerie-integrations.workspace = true
 capitainerie-runner-kube.workspace = true
 capitainerie-runtime-rig.workspace = true
 capitainerie-telemetry.workspace = true
