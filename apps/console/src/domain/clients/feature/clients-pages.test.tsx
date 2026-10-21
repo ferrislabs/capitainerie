@@ -8,6 +8,7 @@ import { ClientDetailPage } from '#/domain/clients/feature/client-detail-page'
 import { ClientsPage } from '#/domain/clients/feature/clients-page'
 import { ProjectDetailPage } from '#/domain/clients/feature/project-detail-page'
 import { ProjectsPage } from '#/domain/clients/feature/projects-page'
+import { ADMIN_ROLE } from '#/domain/identity/roles'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
 import { clearAuth, setAuth } from '#/store/auth.store'
 
@@ -93,6 +94,29 @@ const RUN = {
 	project: null,
 } as Schemas.RunResponse
 
+const ODOO: Schemas.IntegrationInstanceResponse = {
+	id: 'i1',
+	client_id: 'cl1',
+	kind: 'odoo_json2',
+	name: 'Odoo prod',
+	environment: 'production',
+	base_url: 'https://acme.odoo.com',
+	database: null,
+	login: null,
+	secret_preview: '…c3d4',
+	server_version: '19.0',
+	checked_at: '2026-10-20T08:00:00Z',
+	created_by: 'ada',
+	created_at: '2026-10-16T09:00:00Z',
+	updated_at: '2026-10-16T09:00:00Z',
+	archived_at: null,
+}
+
+function tokenWithRoles(roles: Array<string>) {
+	const payload = btoa(JSON.stringify({ realm_access: { roles } }))
+	return `e30.${payload.replace(/=+$/, '')}.sig`
+}
+
 type Route = (init: RequestInit, url: URL) => Response
 
 describe('clients and projects pages', () => {
@@ -124,6 +148,7 @@ describe('clients and projects pages', () => {
 			json(200, { items: [{ project: SITE, open_cards: 1 }] }),
 		'GET /api/v1/cards': () => json(200, { items: [CARD] }),
 		'GET /api/v1/runs': () => json(200, { items: [RUN], total: 1 }),
+		'GET /api/v1/clients/cl1/integrations': () => json(200, { items: [] }),
 	}
 
 	beforeEach(() => {
@@ -267,6 +292,71 @@ describe('clients and projects pages', () => {
 			within(todo).getByRole('link', { name: 'Relancer Acme' }),
 		).toBeTruthy()
 		expect(await screen.findByText('Point Acme')).toBeTruthy()
+	})
+
+	it('lists the integrations of a client, read-only for a member', async () => {
+		serve({
+			...base,
+			'GET /api/v1/clients/cl1': () =>
+				json(200, { client: ACME, projects: [], cards: COUNTS }),
+			'GET /api/v1/clients/cl1/integrations': () =>
+				json(200, { items: [ODOO] }),
+		})
+		render(<ClientDetailPage clientId="cl1" />, { wrapper: harness.wrapper })
+
+		expect(
+			await screen.findByRole('heading', { name: 'Intégrations' }),
+		).toBeTruthy()
+		const row = (await screen.findByText('Odoo prod')).closest(
+			'tr',
+		) as HTMLElement
+		expect(within(row).getByText('Odoo 19 et plus')).toBeTruthy()
+		expect(within(row).getByText('…c3d4')).toBeTruthy()
+		expect(
+			screen.queryByRole('button', { name: 'Ajouter une intégration' }),
+		).toBeNull()
+		expect(within(row).queryByRole('button')).toBeNull()
+	})
+
+	it('lets an administrator add an integration from the client page', async () => {
+		setAuth({ accessToken: tokenWithRoles([ADMIN_ROLE]) })
+		serve({
+			...base,
+			'GET /api/v1/clients/cl1': () =>
+				json(200, { client: ACME, projects: [], cards: COUNTS }),
+		})
+		render(<ClientDetailPage clientId="cl1" />, { wrapper: harness.wrapper })
+
+		expect(await screen.findByText('Aucune intégration')).toBeTruthy()
+		expect(
+			screen.getByRole('button', { name: 'Ajouter une intégration' }),
+		).toBeTruthy()
+	})
+
+	it('cannot add an integration to an archived client', async () => {
+		setAuth({ accessToken: tokenWithRoles([ADMIN_ROLE]) })
+		serve({
+			...base,
+			'GET /api/v1/clients/cl1': () =>
+				json(200, {
+					client: { ...ACME, archived: true },
+					projects: [],
+					cards: COUNTS,
+				}),
+		})
+		render(<ClientDetailPage clientId="cl1" />, { wrapper: harness.wrapper })
+
+		const add = await screen.findByRole('button', {
+			name: 'Ajouter une intégration',
+		})
+		expect((add as HTMLButtonElement).disabled).toBe(true)
+		expect(
+			(
+				screen.getByRole('button', {
+					name: 'Nouveau projet',
+				}) as HTMLButtonElement
+			).disabled,
+		).toBe(true)
 	})
 
 	it('archives a client', async () => {
