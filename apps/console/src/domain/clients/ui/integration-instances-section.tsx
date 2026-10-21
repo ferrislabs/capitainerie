@@ -4,7 +4,6 @@ import type { Schemas } from '#/api/api.client'
 import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import {
@@ -29,26 +28,17 @@ import {
 	integrationPatch,
 } from '#/domain/clients/integration-form'
 import {
-	ENVIRONMENT_LABELS,
 	KIND_LABELS,
 	serverVersionLabel,
 } from '#/domain/clients/integration-labels'
 import { ArchiveIntegrationDialog } from '#/domain/clients/ui/archive-integration-dialog'
 import { IntegrationInstanceDialog } from '#/domain/clients/ui/integration-instance-dialog'
 import { useIsAdmin } from '#/domain/identity/hooks/use-is-admin'
+import { EnvironmentBadge } from '#/domain/integrations/environment-badge'
 
 type Instance = Schemas.IntegrationInstanceResponse
 type CheckResult = Schemas.CheckIntegrationInstanceResponse
 type Panel = 'add' | 'edit' | 'archive'
-
-const ENVIRONMENT_VARIANTS: Record<
-	Schemas.IntegrationEnvironmentDto,
-	'danger' | 'attention' | 'neutral'
-> = {
-	production: 'danger',
-	staging: 'attention',
-	development: 'neutral',
-}
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {
 	dateStyle: 'short',
@@ -218,11 +208,7 @@ export function IntegrationInstancesSection({ clientId, archived }: Props) {
 											{KIND_LABELS[instance.kind]}
 										</TableCell>
 										<TableCell>
-											<Badge
-												variant={ENVIRONMENT_VARIANTS[instance.environment]}
-											>
-												{ENVIRONMENT_LABELS[instance.environment]}
-											</Badge>
+											<EnvironmentBadge environment={instance.environment} />
 										</TableCell>
 										<TableCell
 											className="max-w-[18rem] truncate font-mono text-xs"

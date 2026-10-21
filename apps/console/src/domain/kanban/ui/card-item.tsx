@@ -1,6 +1,7 @@
 import type { Schemas } from '#/api/api.client'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
+import { InterveneButton } from '#/domain/integrations/intervene/intervene-button'
 import { assigneeName } from '#/domain/kanban/card-details'
 import { agentName, type Column } from '#/domain/kanban/columns'
 import { relativeDate } from '#/domain/kanban/relative-date'
@@ -15,6 +16,7 @@ interface Props {
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
+	onIntervene?: (card: Schemas.CardResponse) => void
 	dragging?: 'origin' | 'overlay'
 	memberNames?: ReadonlyMap<string, string>
 }
@@ -28,6 +30,7 @@ export function CardItem({
 	onToggleExpanded,
 	onMove,
 	onExecute,
+	onIntervene,
 	dragging,
 	memberNames,
 }: Props) {
@@ -123,18 +126,29 @@ export function CardItem({
 					</Button>
 				</div>
 			) : null}
-			{card.column === 'todo' && onExecute ? (
-				<div data-zone="footer" className="flex">
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-auto min-h-7 w-full py-1 whitespace-normal"
-						disabled={isPending}
-						onClick={() => onExecute(card)}
-					>
-						Confier à Claude Code
-					</Button>
+			{card.column === 'todo' && (onExecute || onIntervene) ? (
+				<div data-zone="footer" className="flex flex-col gap-1.5">
+					{onExecute ? (
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							className="h-auto min-h-7 w-full py-1 whitespace-normal"
+							disabled={isPending}
+							onClick={() => onExecute(card)}
+						>
+							Confier à Claude Code
+						</Button>
+					) : null}
+					{onIntervene ? (
+						<InterveneButton
+							card={card}
+							disabled={isPending}
+							className="w-full"
+							buttonClassName="h-auto min-h-7 w-full py-1 whitespace-normal"
+							onIntervene={onIntervene}
+						/>
+					) : null}
 				</div>
 			) : null}
 		</article>

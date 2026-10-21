@@ -61,6 +61,61 @@ const COMMENT: Schemas.CommentResponse = {
 	created_at: '2026-10-16T10:00:00Z',
 }
 
+const ACME = { id: 'cl1', name: 'Acme' }
+
+const ODOO_STAGING: Schemas.IntegrationInstanceResponse = {
+	id: 'i2',
+	client_id: 'cl1',
+	kind: 'odoo_jsonrpc',
+	name: 'Odoo recette',
+	environment: 'staging',
+	base_url: 'https://recette.acme.test',
+	database: 'acme',
+	login: 'api@acme.test',
+	secret_preview: '…9f8e',
+	server_version: '17.0',
+	checked_at: null,
+	created_by: 'ada',
+	created_at: '2026-10-16T09:00:00Z',
+	updated_at: '2026-10-16T09:00:00Z',
+	archived_at: null,
+}
+
+const INTERVENTION_RUN: Schemas.RunResponse = {
+	id: 'r5',
+	status: 'succeeded',
+	card_id: 'c1',
+	client: ACME,
+	title: null,
+	repository: null,
+	initiated_by: 'ada',
+	pipeline: ['intervene'],
+	failure: null,
+	created_at: '2026-10-16T12:00:00Z',
+	started_at: '2026-10-16T12:00:01Z',
+	finished_at: '2026-10-16T12:01:00Z',
+	trace_id: null,
+}
+
+const REFUSED_ACTION: Schemas.IntegrationActionResponse = {
+	id: 'a1',
+	run_id: 'r5',
+	card_id: 'c1',
+	instance_id: 'i2',
+	instance_name: 'Odoo recette',
+	instance_environment: 'staging',
+	instance_kind: 'odoo_jsonrpc',
+	actor: 'capitainerie-agent-integrator',
+	tool: 'odoo_write',
+	access: 'write',
+	target: { model: 'res.partner', ids: [2] },
+	arguments: { model: 'res.partner', ids: [2], values: { name: 'Acme' } },
+	outcome: 'denied',
+	reason_code: 'write_not_granted',
+	revertible: false,
+	created_at: '2026-10-16T12:00:30Z',
+}
+
 const DETAIL: Schemas.CardDetailResponse = {
 	card: CARD,
 	comments: [COMMENT],
@@ -366,5 +421,122 @@ describe('KanbanPage card panel', () => {
 			await within(panel).findByText('La carte a changé, rechargée.'),
 		).toBeTruthy()
 		await waitFor(() => expect(boards).toBeGreaterThan(before))
+	})
+
+	it('explains in the panel why a card without client cannot go to the Intervenant', async () => {
+		serve(base())
+		render(<KanbanPage openCardId="c1" onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+		const panel = await screen.findByRole('dialog')
+
+		const button = (await within(panel).findByRole('button', {
+			name: 'Confier à l’Intervenant',
+		})) as HTMLButtonElement
+
+		expect(button.disabled).toBe(true)
+		expect(
+			within(panel).getByText('Rattachez d’abord la carte à un client'),
+		).toBeTruthy()
+	})
+
+	it('hands a card to the Intervenant from the board and follows the run', async () => {
+		const bodies: Array<unknown> = []
+		const linked = { ...CARD, client: ACME }
+		serve(
+			base({
+				'GET /api/v1/cards': () => json(200, { items: [linked] }),
+				'GET /api/v1/clients/cl1/integrations': () =>
+					json(200, { items: [ODOO_STAGING] }),
+				'POST /api/v1/cards/c1/interventions': (init) => {
+					bodies.push(JSON.parse(String(init.body)))
+					return json(202, {
+						card: { ...linked, column: 'in_progress', version: 5 },
+						run_id: 'run-9',
+					})
+				},
+			}),
+		)
+		const user = userEvent.setup()
+		render(<KanbanPage openCardId={undefined} onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+
+		const button = await screen.findByRole('button', {
+			name: 'Confier à l’Intervenant',
+		})
+		await waitFor(() =>
+			expect((button as HTMLButtonElement).disabled).toBe(false),
+		)
+		await user.click(button)
+		const dialog = await screen.findByRole('dialog')
+		await user.click(
+			within(
+				await within(dialog).findByRole('radiogroup', { name: 'Odoo recette' }),
+			).getByRole('radio', { name: 'Lecture' }),
+		)
+		await user.click(within(dialog).getByRole('button', { name: 'Confier' }))
+
+		expect(
+			await screen.findByText(/Carte confiée à l’Intervenant/),
+		).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'Suivre l’intervention' })
+				.getAttribute('href'),
+		).toBe('/runs/$runId')
+		expect(bodies).toEqual([
+			{ grants: [{ instance_id: 'i2', access: 'read' }], expected_version: 4 },
+		])
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+	})
+
+	it('reads the journal of the Intervenant on the card', async () => {
+		serve(
+			base({
+				'GET /api/v1/cards/c1': () =>
+					json(200, { ...DETAIL, runs: [ORIGIN_RUN, INTERVENTION_RUN] }),
+				'GET /api/v1/cards/c1/integration-actions': () =>
+					json(200, { items: [REFUSED_ACTION] }),
+			}),
+		)
+		render(<KanbanPage openCardId="c1" onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+		const panel = await screen.findByRole('dialog')
+
+		expect(
+			await within(panel).findByRole('heading', {
+				name: 'Journal des intégrations',
+			}),
+		).toBeTruthy()
+		expect(within(panel).getByText('Odoo · modifier')).toBeTruthy()
+		expect(within(panel).getByText('Refusée')).toBeTruthy()
+		expect(
+			within(panel).getByText('écriture non autorisée sur cette instance'),
+		).toBeTruthy()
+		expect(
+			within(panel).getByRole('link', { name: 'Intervention' }),
+		).toBeTruthy()
+	})
+
+	it('has no journal without an intervention run', async () => {
+		serve(base())
+		render(<KanbanPage openCardId="c1" onOpenCard={vi.fn()} />, {
+			wrapper: harness.wrapper,
+		})
+		const panel = await screen.findByRole('dialog')
+		await within(panel).findByText('Mentionné à nouveau en réunion')
+
+		expect(
+			within(panel).queryByRole('heading', {
+				name: 'Journal des intégrations',
+			}),
+		).toBeNull()
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				(url as URL).pathname.endsWith('/integration-actions'),
+			),
+		).toBe(false)
 	})
 })

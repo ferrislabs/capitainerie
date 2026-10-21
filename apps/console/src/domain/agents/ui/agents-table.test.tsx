@@ -106,4 +106,21 @@ describe('AgentsTable', () => {
 		expect(await screen.findByText('Copié')).toBeTruthy()
 		expect(screen.getByText('Copié').getAttribute('aria-live')).toBe('polite')
 	})
+
+	it('shows the writer model as a fallback for an unset Captain and Intervenant', () => {
+		render(
+			<AgentsTable
+				rows={buildRows(
+					[
+						agent('capitainerie-agent-captain'),
+						agent('capitainerie-agent-integrator'),
+					],
+					ASSIGNMENTS,
+				)}
+				onOpen={vi.fn()}
+			/>,
+		)
+
+		expect(screen.getAllByText('claude-haiku (Rédacteur)')).toHaveLength(2)
+	})
 })

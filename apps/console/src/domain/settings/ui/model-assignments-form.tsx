@@ -14,6 +14,7 @@ import {
 	EXECUTOR_INFO,
 	executorModels,
 	groupByProvider,
+	INTEGRATOR_ROLE,
 	type ModelRef,
 	modelRefKey,
 	parseModelRefKey,
@@ -38,6 +39,7 @@ interface Props {
 	onTranscriberChange: (value: ModelRef | undefined) => void
 	onReaderChange: (value: ModelRef | undefined) => void
 	onCaptainChange: (value: ModelRef | undefined) => void
+	onIntegratorChange: (value: ModelRef | undefined) => void
 	onExecutorChange: (model: string) => void
 	onSubmit: () => void
 }
@@ -139,6 +141,7 @@ export function ModelAssignmentsForm({
 	onTranscriberChange,
 	onReaderChange,
 	onCaptainChange,
+	onIntegratorChange,
 	onExecutorChange,
 	onSubmit,
 }: Props) {
@@ -152,6 +155,8 @@ export function ModelAssignmentsForm({
 	const readerOptions = compatibleModels(models, READER_ROLE)
 	const captainInfo = ROLE_INFO[CAPTAIN_ROLE]
 	const captainOptions = compatibleModels(models, CAPTAIN_ROLE)
+	const integratorInfo = ROLE_INFO[INTEGRATOR_ROLE]
+	const integratorOptions = compatibleModels(models, INTEGRATOR_ROLE)
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -283,6 +288,16 @@ export function ModelAssignmentsForm({
 					noneLabel="Le modèle du Rédacteur"
 					disabled={!isAdmin || isPending}
 					onChange={onCaptainChange}
+				/>
+				<OptionalRoleRow
+					id="assignment-integrator"
+					info={integratorInfo}
+					options={integratorOptions}
+					value={values[INTEGRATOR_ROLE]}
+					noModelLabel="Aucun modèle de chat"
+					noneLabel="Le modèle du Rédacteur"
+					disabled={!isAdmin || isPending}
+					onChange={onIntegratorChange}
 				/>
 				<li className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-center md:gap-6">
 					<div className="flex min-w-0 flex-col gap-0.5">

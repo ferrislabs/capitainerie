@@ -2,7 +2,7 @@ import type { Schemas } from '#/api/api.client'
 import {
 	type AgentSource,
 	agentInfo,
-	agentModel,
+	agentModelChoice,
 } from '#/domain/agents/catalog'
 import type { ModelAssignments } from '#/domain/settings/roles'
 
@@ -12,6 +12,7 @@ export interface AgentRow {
 	description: string | undefined
 	source: AgentSource | undefined
 	model: string | undefined
+	modelFallback: boolean
 }
 
 export interface AgentFilters {
@@ -28,14 +29,21 @@ export function buildRows(
 ): ReadonlyArray<AgentRow> {
 	return agents.map((agent) => {
 		const info = agentInfo(agent.agent)
+		const choice = agentModelChoice(agent.agent, assignments)
 		return {
 			agent,
 			name: info?.name ?? agent.agent,
 			description: info?.description,
 			source: info?.source,
-			model: agentModel(agent.agent, assignments),
+			model: choice?.model,
+			modelFallback: choice?.fallback ?? false,
 		}
 	})
+}
+
+export function modelLabel(row: AgentRow): string {
+	if (row.model === undefined) return '—'
+	return row.modelFallback ? `${row.model} (Rédacteur)` : row.model
 }
 
 function fold(text: string): string {

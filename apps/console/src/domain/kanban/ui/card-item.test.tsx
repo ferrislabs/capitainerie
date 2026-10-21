@@ -174,6 +174,57 @@ describe('CardItem', () => {
 		}
 	})
 
+	it('offers to hand a todo card to the Intervenant, with the reason when it cannot', async () => {
+		const todo = card({ column: 'todo' })
+		const onIntervene = vi.fn()
+		render(
+			<CardItem
+				card={todo}
+				isPending={false}
+				expanded={false}
+				onToggleExpanded={vi.fn()}
+				onMove={vi.fn()}
+				onExecute={vi.fn()}
+				onIntervene={onIntervene}
+			/>,
+		)
+
+		const button = screen.getByRole('button', {
+			name: 'Confier à l’Intervenant',
+		}) as HTMLButtonElement
+		expect(button.disabled).toBe(true)
+		expect(
+			screen.getByText('Rattachez d’abord la carte à un client'),
+		).toBeTruthy()
+		expect(
+			screen.getByRole('button', { name: 'Confier à Claude Code' }),
+		).toBeTruthy()
+	})
+
+	it('offers the Intervenant on todo cards only', () => {
+		for (const column of [
+			'proposed',
+			'in_progress',
+			'done',
+			'rejected',
+		] as const) {
+			const { unmount } = render(
+				<CardItem
+					card={card({ column })}
+					isPending={false}
+					expanded={false}
+					onToggleExpanded={vi.fn()}
+					onMove={vi.fn()}
+					onIntervene={vi.fn()}
+				/>,
+			)
+			expect(
+				screen.queryByRole('button', { name: 'Confier à l’Intervenant' }),
+			).toBeNull()
+			unmount()
+		}
+	})
+
 	it('shows the client and the project in the meta zone', () => {
 		const { container } = render(
 			<CardItem

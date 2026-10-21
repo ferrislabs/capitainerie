@@ -11,6 +11,7 @@ interface Props {
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
+	onIntervene?: (card: Schemas.CardResponse) => void
 	onOpen: (cardId: string) => void
 	memberNames?: ReadonlyMap<string, string>
 }
@@ -26,6 +27,7 @@ export function DraggableCard({
 	onToggleExpanded,
 	onMove,
 	onExecute,
+	onIntervene,
 	onOpen,
 	memberNames,
 }: Props) {
@@ -74,6 +76,7 @@ export function DraggableCard({
 				onToggleExpanded={onToggleExpanded}
 				onMove={onMove}
 				onExecute={onExecute}
+				onIntervene={onIntervene}
 				memberNames={memberNames}
 				dragging={isDragging ? 'origin' : undefined}
 			/>

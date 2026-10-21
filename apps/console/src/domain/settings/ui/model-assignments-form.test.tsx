@@ -27,6 +27,7 @@ function setup(
 		onTranscriberChange: vi.fn(),
 		onReaderChange: vi.fn(),
 		onCaptainChange: vi.fn(),
+		onIntegratorChange: vi.fn(),
 		onExecutorChange: vi.fn(),
 		onSubmit: vi.fn(),
 	}
@@ -343,5 +344,32 @@ describe('ModelAssignmentsForm', () => {
 		await userEvent.selectOptions(select, '')
 
 		expect(handlers.onCaptainChange).toHaveBeenCalledWith(undefined)
+	})
+
+	it('offers any chat model to the Intervenant, who defaults to the Rédacteur', async () => {
+		const handlers = setup()
+		const select = screen.getByLabelText('Intervenant') as HTMLSelectElement
+
+		expect(optionValues(select)).toContain(`openai_compatible:${QWEN.id}`)
+		expect(optionValues(select)).not.toContain(`openai_compatible:${BGE.id}`)
+		expect(select.value).toBe('')
+		expect(select.selectedOptions[0].textContent).toBe('Le modèle du Rédacteur')
+		expect(
+			screen.getByText(/Agit sur les Odoo et n8n des clients/),
+		).toBeTruthy()
+
+		await userEvent.selectOptions(select, `openai_compatible:${QWEN.id}`)
+		expect(handlers.onIntegratorChange).toHaveBeenCalledWith(QWEN_REF)
+		expect(handlers.onCaptainChange).not.toHaveBeenCalled()
+	})
+
+	it('clears the Intervenant with the empty choice', async () => {
+		const handlers = setup({ values: { integrator: QWEN_REF } })
+		const select = screen.getByLabelText('Intervenant') as HTMLSelectElement
+		expect(select.value).toBe(`openai_compatible:${QWEN.id}`)
+
+		await userEvent.selectOptions(select, '')
+
+		expect(handlers.onIntegratorChange).toHaveBeenCalledWith(undefined)
 	})
 })

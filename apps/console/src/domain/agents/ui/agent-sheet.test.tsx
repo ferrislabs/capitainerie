@@ -24,7 +24,37 @@ const [row] = buildRows(
 	},
 )
 
+const [captain] = buildRows(
+	[
+		{
+			agent: 'capitainerie-agent-captain',
+			runs: 2,
+			last_seen: '2026-10-16T20:05:19Z',
+			input_tokens: 10,
+			output_tokens: 5,
+			cost_micros: 100,
+		},
+	],
+	{
+		extractor: { provider: 'anthropic', model: 'a' },
+		judge: { provider: 'anthropic', model: 'a' },
+		writer: { provider: 'anthropic', model: 'claude-haiku' },
+		embeddings: { provider: 'mistral', model: 'e' },
+		captain: null,
+	},
+)
+
 describe('AgentSheet', () => {
+	it('names the Captain and shows the writer model it falls back to', async () => {
+		await renderAtPath(
+			<AgentSheet row={captain} onClose={vi.fn()} />,
+			'/agents',
+		)
+
+		expect(screen.getByText('Capitaine')).toBeTruthy()
+		expect(screen.getByText('claude-haiku (Rédacteur)')).toBeTruthy()
+	})
+
 	it('shows role, model and stats and says the runs list is missing', async () => {
 		await renderAtPath(<AgentSheet row={row} onClose={vi.fn()} />, '/agents')
 
