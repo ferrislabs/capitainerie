@@ -37,6 +37,33 @@ impl<'tx, 'c> PgIntegrationInstanceRepository<'tx, 'c> {
     }
 }
 
+impl PgIntegrationInstanceRepository<'_, '_> {
+    pub(crate) async fn held_by_an_open_intervention(
+        &self,
+        organization_id: OrganizationId,
+        id: IntegrationInstanceId,
+    ) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM intervention_grants
+                JOIN runs ON runs.id = intervention_grants.run_id
+                WHERE runs.organization_id = $1
+                  AND intervention_grants.instance_id = $2
+                  AND runs.status IN ('queued', 'running')
+            ) AS "held!"
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .fetch_one(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)
+    }
+}
+
 fn binding(organization_id: OrganizationId, id: IntegrationInstanceId) -> Vec<u8> {
     format!("{organization_id}/integration_instance/{id}/secret").into_bytes()
 }

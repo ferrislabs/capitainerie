@@ -8,6 +8,10 @@ use capitainerie_core::{
     domain::{
         agent::SecretToken,
         authorization::Subject,
+        card::{
+            Card, Column,
+            service::{CreateCard, MoveCard},
+        },
         client::{
             Client,
             service::{CreateClient, UpdateClient},
@@ -15,7 +19,8 @@ use capitainerie_core::{
         integration::{
             BaseUrl, ConnectorFailure, Environment, InstanceConnection, InstanceError,
             InstanceName, IntegrationInstance, IntegrationKind, ProbeReport,
-            action::ActionRequest,
+            action::{Access, ActionRequest},
+            intervention::ConfideCard,
             ports::{IntegrationConnector, IntegrationInstanceRepository},
             service::{CreateInstance, UpdateInstance},
         },
@@ -131,6 +136,10 @@ impl ScriptedConnector {
 
     fn last_probe(&self) -> InstanceConnection {
         self.probed.lock().unwrap().last().cloned().unwrap()
+    }
+
+    fn all_probes(&self) -> Vec<InstanceConnection> {
+        self.probed.lock().unwrap().clone()
     }
 }
 
@@ -569,7 +578,7 @@ async fn only_a_name_or_an_environment_change_skips_the_probe() {
             admin,
             created.id,
             UpdateInstance {
-                base_url: Some("https://odoo2.acme.test".into()),
+                base_url: Some("https://odoo.acme.test/odoo".into()),
                 ..UpdateInstance::default()
             },
             &connector,
@@ -579,7 +588,7 @@ async fn only_a_name_or_an_environment_change_skips_the_probe() {
     assert_eq!(connector.probes(), 2);
     assert_eq!(
         connector.last_probe().base_url.as_str(),
-        "https://odoo2.acme.test"
+        "https://odoo.acme.test/odoo"
     );
     assert_eq!(connector.last_probe().secret.expose(), KEY);
     assert_eq!(moved.server_version.as_deref(), Some("19.0+e"));
@@ -588,8 +597,86 @@ async fn only_a_name_or_an_environment_change_skips_the_probe() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(connection.base_url.as_str(), "https://odoo2.acme.test");
+    assert_eq!(connection.base_url.as_str(), "https://odoo.acme.test/odoo");
     assert_eq!(connection.secret.expose(), KEY);
+}
+
+#[tokio::test]
+async fn the_stored_secret_never_reaches_a_new_address_or_database() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let acme = client(&usecase, organization_id, "Acme").await;
+    let connector = ScriptedConnector::healthy();
+    let admin = subject(organization_id, true);
+    let created = add(&usecase, organization_id, &acme, "Odoo prod", &connector).await;
+    let attempt = |change: UpdateInstance| {
+        usecase.update_integration_instance(admin.clone(), created.id, change, &connector)
+    };
+
+    for base_url in [
+        "https://attacker.test",
+        "http://odoo.acme.test",
+        "https://odoo.acme.test:8443",
+    ] {
+        let refused = attempt(UpdateInstance {
+            base_url: Some(base_url.into()),
+            ..UpdateInstance::default()
+        })
+        .await;
+        assert!(
+            matches!(refused, Err(InstanceError::Core(CoreError::Invalid(_)))),
+            "{base_url}: {refused:?}"
+        );
+    }
+    let refused = attempt(UpdateInstance {
+        database: Some("acme".into()),
+        ..UpdateInstance::default()
+    })
+    .await;
+    assert!(matches!(
+        refused,
+        Err(InstanceError::Core(CoreError::Invalid(_)))
+    ));
+    assert_eq!(connector.probes(), 1);
+    let kept = opened(&pool, organization_id, created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.base_url.as_str(), "https://odoo.acme.test");
+    assert_eq!(kept.database, None);
+    assert_eq!(kept.secret.expose(), KEY);
+
+    let moved = attempt(UpdateInstance {
+        base_url: Some("https://odoo2.acme.test".into()),
+        secret: Some(SecretToken::new("a-brand-new-key-9999")),
+        ..UpdateInstance::default()
+    })
+    .await
+    .unwrap();
+    attempt(UpdateInstance {
+        base_url: Some("https://odoo2.acme.test/odoo".into()),
+        ..UpdateInstance::default()
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(moved.base_url.as_str(), "https://odoo2.acme.test");
+    let probes = connector.all_probes();
+    assert_eq!(probes.len(), 3);
+    for probe in probes
+        .iter()
+        .filter(|probe| probe.base_url.host() != "odoo.acme.test")
+    {
+        assert_eq!(probe.secret.expose(), "a-brand-new-key-9999");
+    }
+    assert_eq!(probes[0].secret.expose(), KEY);
+    let connection = opened(&pool, organization_id, created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(connection.base_url.as_str(), "https://odoo2.acme.test/odoo");
+    assert_eq!(connection.secret.expose(), "a-brand-new-key-9999");
 }
 
 #[tokio::test]
@@ -755,6 +842,115 @@ async fn an_archived_instance_is_hidden_unless_asked_for_and_can_no_longer_chang
         Err(InstanceError::Core(CoreError::Invalid(_)))
     ));
     assert_eq!(connector.probes(), 2);
+}
+
+async fn todo_card(
+    usecase: &CapitainerieUseCase,
+    organization_id: OrganizationId,
+    client: &Client,
+) -> Card {
+    let proposed = usecase
+        .create_card_linked(
+            subject(organization_id, false),
+            CreateCard {
+                title: "Vérifier les factures d'avril".into(),
+                description: String::new(),
+                provenance: None,
+                run_id: None,
+                attributes: Default::default(),
+            },
+            Some(client.id),
+            None,
+        )
+        .await
+        .unwrap();
+    usecase
+        .move_card(
+            subject(organization_id, false),
+            proposed.id,
+            MoveCard {
+                to: Column::Todo,
+                expected_version: proposed.version,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn an_instance_granted_to_a_queued_or_running_intervention_cannot_be_archived() {
+    let Some(pool) = pool().await else { return };
+    let organization_id = organization(&pool).await;
+    let usecase = usecase(&pool);
+    let acme = client(&usecase, organization_id, "Acme").await;
+    let connector = ScriptedConnector::healthy();
+    let admin = subject(organization_id, true);
+    let granted = add(&usecase, organization_id, &acme, "Odoo prod", &connector).await;
+    let spare = add(&usecase, organization_id, &acme, "Odoo staging", &connector).await;
+    let card = todo_card(&usecase, organization_id, &acme).await;
+    let started = usecase
+        .confide_card_to_integrator(
+            subject(organization_id, false),
+            card.id,
+            ConfideCard {
+                instructions: String::new(),
+                grants: vec![(granted.id, Access::Read)],
+                confirm_production_writes: false,
+                expected_version: card.version,
+            },
+        )
+        .await
+        .unwrap();
+    let set_status = |status: &'static str| {
+        sqlx::query("UPDATE runs SET status = $2 WHERE id = $1")
+            .bind(started.run_id.0)
+            .bind(status)
+            .execute(&pool)
+    };
+
+    let queued = usecase
+        .archive_integration_instance(admin.clone(), granted.id)
+        .await;
+    set_status("running").await.unwrap();
+    let running = usecase
+        .archive_integration_instance(admin.clone(), granted.id)
+        .await;
+    let ungranted = usecase
+        .archive_integration_instance(admin.clone(), spare.id)
+        .await
+        .unwrap();
+    let stranger = usecase
+        .archive_integration_instance(subject(organization(&pool).await, true), granted.id)
+        .await;
+    let kept = usecase
+        .list_integration_instances(admin.clone(), acme.id, false)
+        .await
+        .unwrap();
+
+    for refused in [queued, running] {
+        assert!(
+            matches!(&refused, Err(CoreError::Conflict(code)) if code == "instance_in_use"),
+            "{refused:?}"
+        );
+    }
+    assert!(ungranted.is_archived());
+    assert!(matches!(stranger, Err(CoreError::NotFound)));
+    assert_eq!(kept, vec![granted.clone()]);
+
+    for status in ["succeeded", "failed", "cancelled"] {
+        set_status(status).await.unwrap();
+        let archived = usecase
+            .archive_integration_instance(admin.clone(), granted.id)
+            .await
+            .unwrap();
+        assert!(archived.is_archived(), "{status}");
+        sqlx::query("UPDATE integration_instances SET archived_at = NULL WHERE id = $1")
+            .bind(granted.id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]

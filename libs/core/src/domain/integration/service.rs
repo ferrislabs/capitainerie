@@ -15,6 +15,10 @@ use crate::domain::{
 pub const DATABASE_MAX_CHARS: usize = 63;
 pub const LOGIN_MAX_CHARS: usize = 254;
 pub const SECRET_MAX_CHARS: usize = 4096;
+pub const INSTANCE_IN_USE: &str = "instance_in_use";
+
+const NEW_SECRET_REQUIRED: &str =
+    "a new secret is required when the address, the database or the login changes";
 
 #[derive(Debug, Clone)]
 pub struct CreateInstance {
@@ -194,7 +198,8 @@ where
                     .into(),
             ));
         }
-        let mut reaches_other_server = false;
+        let mut needs_probe = false;
+        let mut leaves_credentials = false;
         if let Some(name) = command.name {
             instance.name = InstanceName::try_from(name)?;
         }
@@ -203,11 +208,14 @@ where
         }
         if let Some(base_url) = command.base_url {
             let base_url = BaseUrl::try_from(base_url)?;
-            reaches_other_server |= base_url != instance.base_url;
+            needs_probe |= base_url != instance.base_url;
+            leaves_credentials |= !same_origin(&base_url, &instance.base_url);
             instance.base_url = base_url;
         }
-        reaches_other_server |= replace(&mut instance.database, command.database);
-        reaches_other_server |= replace(&mut instance.login, command.login);
+        let database_changed = replace(&mut instance.database, command.database);
+        let login_changed = replace(&mut instance.login, command.login);
+        needs_probe |= database_changed || login_changed;
+        leaves_credentials |= database_changed || login_changed;
         let (database, login) = credentials(
             instance.kind,
             instance.database.take(),
@@ -223,7 +231,10 @@ where
                 instance.secret_preview = secret_preview(secret.expose());
                 Some(secret)
             }
-            None if reaches_other_server => Some(
+            None if leaves_credentials => {
+                return Err(CoreError::Invalid(NEW_SECRET_REQUIRED.into()));
+            }
+            None if needs_probe => Some(
                 self.instances
                     .connection(organization_id, id)
                     .await?
@@ -298,6 +309,7 @@ where
         mut self,
         subject: Subject,
         id: IntegrationInstanceId,
+        held_by_an_intervention: bool,
     ) -> Result<IntegrationInstance, CoreError> {
         let organization_id = subject.organization_id;
         self.require(subject, Action::IntegrationManage, Some(id))
@@ -309,6 +321,9 @@ where
             .ok_or(CoreError::NotFound)?;
         if instance.is_archived() {
             return Ok(instance);
+        }
+        if held_by_an_intervention {
+            return Err(CoreError::Conflict(INSTANCE_IN_USE.into()));
         }
         let now = Utc::now();
         instance.archived_at = Some(now);
@@ -351,6 +366,25 @@ fn refuse_archived(instance: &IntegrationInstance) -> Result<(), CoreError> {
         )));
     }
     Ok(())
+}
+
+fn same_origin(left: &BaseUrl, right: &BaseUrl) -> bool {
+    left.is_https() == right.is_https()
+        && left.host().eq_ignore_ascii_case(right.host())
+        && port_of(left) == port_of(right)
+}
+
+fn port_of(url: &BaseUrl) -> u16 {
+    let default = if url.is_https() { 443 } else { 80 };
+    let Some((_, rest)) = url.as_str().split_once("://") else {
+        return default;
+    };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    authority
+        .get(url.host().len()..)
+        .and_then(|port| port.strip_prefix(':'))
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(default)
 }
 
 fn present(value: Option<String>) -> Option<String> {
@@ -602,7 +636,7 @@ mod tests {
                 .await
                 .map(|_| ()),
             fresh().prepare_check(who.clone(), id).await.map(|_| ()),
-            fresh().archive(who, id).await.map(|_| ()),
+            fresh().archive(who, id, false).await.map(|_| ()),
         ];
 
         for outcome in outcomes {
@@ -630,7 +664,7 @@ mod tests {
             MockClientRepository::new(),
             &authorizer,
         )
-        .archive(member.clone(), id)
+        .archive(member.clone(), id, false)
         .await;
         let mut instances = MockIntegrationInstanceRepository::new();
         let listed_instance = stored(organization_id, acme.id, IntegrationKind::N8n);
@@ -1005,43 +1039,167 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_new_url_database_or_login_is_probed_with_the_stored_secret() {
-        let prepared = updated(
+    async fn a_change_of_path_alone_is_probed_with_the_stored_secret() {
+        for base_url in [
+            "https://odoo.acme.test/odoo",
+            "HTTPS://ODOO.ACME.TEST:443/",
+            "https://odoo.acme.test:443",
+        ] {
+            let prepared = updated(
+                IntegrationKind::OdooJson2,
+                UpdateInstance {
+                    base_url: Some(base_url.into()),
+                    ..UpdateInstance::default()
+                },
+            )
+            .await
+            .unwrap();
+
+            let probe = prepared.probe.as_ref().unwrap();
+            assert_eq!(probe.secret.expose(), "stored-secret-value", "{base_url}");
+            assert!(!prepared.new_secret);
+            assert!(prepared.sealed_secret().is_none());
+        }
+    }
+
+    async fn refused_without_a_secret(kind: IntegrationKind, command: UpdateInstance) -> CoreError {
+        let authorizer = allow();
+        let organization_id = OrganizationId::new();
+        let instance = stored(organization_id, ClientId::new(), kind);
+        service(finding(&instance), MockClientRepository::new(), &authorizer)
+            .prepare_update(subject(organization_id, true), instance.id, command)
+            .await
+            .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn a_new_origin_database_or_login_needs_a_new_secret_and_never_reads_the_stored_one() {
+        let cases = [
+            (
+                IntegrationKind::OdooJson2,
+                UpdateInstance {
+                    base_url: Some("https://odoo2.acme.test".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJson2,
+                UpdateInstance {
+                    base_url: Some("http://odoo.acme.test".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJson2,
+                UpdateInstance {
+                    base_url: Some("https://odoo.acme.test:8443/odoo".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJson2,
+                UpdateInstance {
+                    database: Some("acme".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJsonRpc,
+                UpdateInstance {
+                    database: Some("other".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJsonRpc,
+                UpdateInstance {
+                    login: Some("robot".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+            (
+                IntegrationKind::OdooJsonRpc,
+                UpdateInstance {
+                    name: Some("Odoo recette".into()),
+                    base_url: Some("https://elsewhere.test".into()),
+                    login: Some("robot".into()),
+                    ..UpdateInstance::default()
+                },
+            ),
+        ];
+
+        for (kind, command) in cases {
+            let label = format!("{kind:?} {command:?}");
+            let error = refused_without_a_secret(kind, command).await;
+            assert!(
+                matches!(&error, CoreError::Invalid(message) if message == NEW_SECRET_REQUIRED),
+                "{label}: {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_new_origin_database_or_login_is_probed_with_the_new_secret() {
+        let new_key = || Some(SecretToken::new("brand-new-key-1234"));
+        let moved = updated(
             IntegrationKind::OdooJson2,
             UpdateInstance {
                 base_url: Some("https://odoo2.acme.test".into()),
+                secret: new_key(),
                 ..UpdateInstance::default()
             },
         )
         .await
         .unwrap();
-        let probe = prepared.probe.as_ref().unwrap();
+        let probe = moved.probe.as_ref().unwrap();
         assert_eq!(probe.base_url.as_str(), "https://odoo2.acme.test");
-        assert_eq!(probe.secret.expose(), "stored-secret-value");
-        assert!(!prepared.new_secret);
-        assert!(prepared.sealed_secret().is_none());
+        assert_eq!(probe.secret.expose(), "brand-new-key-1234");
+        assert!(moved.new_secret);
 
         let database = updated(
             IntegrationKind::OdooJson2,
             UpdateInstance {
                 database: Some("acme".into()),
+                secret: new_key(),
                 ..UpdateInstance::default()
             },
         )
         .await
         .unwrap();
-        assert_eq!(database.probe.unwrap().database.as_deref(), Some("acme"));
+        let probe = database.probe.as_ref().unwrap();
+        assert_eq!(probe.database.as_deref(), Some("acme"));
+        assert_eq!(probe.secret.expose(), "brand-new-key-1234");
 
         let login = updated(
             IntegrationKind::OdooJsonRpc,
             UpdateInstance {
                 login: Some("robot".into()),
+                secret: new_key(),
                 ..UpdateInstance::default()
             },
         )
         .await
         .unwrap();
-        assert_eq!(login.probe.unwrap().login.as_deref(), Some("robot"));
+        let probe = login.probe.as_ref().unwrap();
+        assert_eq!(probe.login.as_deref(), Some("robot"));
+        assert_eq!(probe.secret.expose(), "brand-new-key-1234");
+    }
+
+    #[tokio::test]
+    async fn the_same_database_and_login_do_not_ask_for_a_secret() {
+        let prepared = updated(
+            IntegrationKind::OdooJsonRpc,
+            UpdateInstance {
+                database: Some(" acme ".into()),
+                login: Some("api".into()),
+                ..UpdateInstance::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(prepared.probe.is_none());
+        assert!(!prepared.new_secret);
     }
 
     #[tokio::test]
@@ -1080,7 +1238,7 @@ mod tests {
         let url_only = updated(
             IntegrationKind::OdooJson2,
             UpdateInstance {
-                base_url: Some("https://odoo2.acme.test".into()),
+                base_url: Some("https://odoo.acme.test/odoo".into()),
                 ..UpdateInstance::default()
             },
         )
@@ -1202,15 +1360,14 @@ mod tests {
         let organization_id = OrganizationId::new();
         let mut instance = stored(organization_id, ClientId::new(), IntegrationKind::OdooJson2);
         instance.database = Some("acme".into());
-        let mut instances = finding(&instance);
-        with_stored_connection(&mut instances, &instance);
 
-        let prepared = service(instances, MockClientRepository::new(), &authorizer)
+        let prepared = service(finding(&instance), MockClientRepository::new(), &authorizer)
             .prepare_update(
                 subject(organization_id, true),
                 instance.id,
                 UpdateInstance {
                     database: Some("".into()),
+                    secret: Some(SecretToken::new("brand-new-key-1234")),
                     ..UpdateInstance::default()
                 },
             )
@@ -1316,16 +1473,66 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(()) }));
 
         let archived = service(instances, MockClientRepository::new(), &authorizer)
-            .archive(subject(organization_id, true), instance.id)
+            .archive(subject(organization_id, true), instance.id, false)
             .await
             .unwrap();
         assert!(archived.is_archived());
         assert_eq!(archived.archived_at, Some(archived.updated_at));
 
         let again = service(finding(&archived), MockClientRepository::new(), &authorizer)
-            .archive(subject(organization_id, true), instance.id)
+            .archive(subject(organization_id, true), instance.id, false)
             .await
             .unwrap();
         assert_eq!(again.archived_at, archived.archived_at);
+    }
+
+    #[tokio::test]
+    async fn an_instance_held_by_an_open_intervention_is_not_archived() {
+        let authorizer = allow();
+        let organization_id = OrganizationId::new();
+        let instance = stored(organization_id, ClientId::new(), IntegrationKind::N8n);
+
+        let error = service(finding(&instance), MockClientRepository::new(), &authorizer)
+            .archive(subject(organization_id, true), instance.id, true)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, CoreError::Conflict(code) if code == INSTANCE_IN_USE));
+    }
+
+    #[tokio::test]
+    async fn an_archived_instance_stays_archived_whatever_holds_it() {
+        let authorizer = allow();
+        let organization_id = OrganizationId::new();
+        let mut instance = stored(organization_id, ClientId::new(), IntegrationKind::N8n);
+        instance.archived_at = Some(Utc::now());
+
+        let again = service(finding(&instance), MockClientRepository::new(), &authorizer)
+            .archive(subject(organization_id, true), instance.id, true)
+            .await
+            .unwrap();
+
+        assert_eq!(again, instance);
+    }
+
+    #[tokio::test]
+    async fn a_denied_caller_learns_nothing_about_an_instance_held_by_an_intervention() {
+        let authorizer = deny();
+        let organization_id = OrganizationId::new();
+
+        let error = service(
+            MockIntegrationInstanceRepository::new(),
+            MockClientRepository::new(),
+            &authorizer,
+        )
+        .archive(
+            subject(organization_id, false),
+            IntegrationInstanceId::new(),
+            true,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(error, CoreError::Forbidden { .. }));
     }
 }

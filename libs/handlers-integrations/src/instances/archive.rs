@@ -1,9 +1,22 @@
 use axum::{Extension, Json, extract::State};
-use capitainerie_common::IntegrationInstanceId;
-use capitainerie_handlers::Caller;
+use capitainerie_common::{CoreError, IntegrationInstanceId};
+use capitainerie_core::domain::integration::service::INSTANCE_IN_USE;
+use capitainerie_handlers::{ApiError, Caller};
 
 use super::{dto::IntegrationInstanceResponse, update::IntegrationInstancePath};
 use crate::{IntegrationError, state::IntegrationsState};
+
+fn failure(error: CoreError) -> IntegrationError {
+    match error {
+        CoreError::Conflict(code) if code == INSTANCE_IN_USE => {
+            IntegrationError::Api(ApiError::ConflictCode {
+                code: INSTANCE_IN_USE,
+                message: "a queued or running intervention holds a grant on this instance".into(),
+            })
+        }
+        other => other.into(),
+    }
+}
 
 #[utoipa::path(
     delete,
@@ -16,6 +29,7 @@ use crate::{IntegrationError, state::IntegrationsState};
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The caller is not an organization admin", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such instance in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 409, description = "instance_in_use: a queued or running intervention holds a grant on this instance", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -27,6 +41,7 @@ pub async fn handler(
     let instance = state
         .usecase
         .archive_integration_instance(caller.subject(), id)
-        .await?;
+        .await
+        .map_err(failure)?;
     Ok(Json(instance.into()))
 }

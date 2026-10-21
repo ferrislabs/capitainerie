@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE integration_actions\n            SET revert_claimed_at = NULL\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8b80b91194d4abcd8ce5854b3cf4e1ff1dbc384e01384d72a73c333b3fa9c724"
+}
