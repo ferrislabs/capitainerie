@@ -6,6 +6,7 @@ pub mod journal;
 pub mod perform;
 pub mod ports;
 pub mod redact;
+pub mod revert;
 pub mod service;
 
 use capitainerie_common::{ClientId, CoreError, IntegrationInstanceId, OrganizationId};

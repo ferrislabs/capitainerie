@@ -256,13 +256,12 @@ impl CapitainerieUseCase {
         let started = Instant::now();
         let result = connector.perform(connection, &request).await;
         let latency_ms = elapsed_ms(started);
-        let after = match result
-            .as_ref()
-            .ok()
-            .and_then(|value| request.after_read(value))
-        {
-            Some(read) => connector.perform(connection, &read).await.ok(),
-            None => None,
+        let after = match result.as_ref() {
+            Ok(value) => match request.after_read(value) {
+                Some(read) => connector.perform(connection, &read).await.ok(),
+                None => Some(value.clone()),
+            },
+            Err(_) => None,
         };
         let completed = entry.complete(pending, &result, after.as_ref(), latency_ms, Utc::now());
         self.complete_integration_action(&completed).await?;
