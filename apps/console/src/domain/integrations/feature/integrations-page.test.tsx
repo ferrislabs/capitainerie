@@ -1,11 +1,28 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '#/api'
 import { ADMIN_ROLE } from '#/domain/identity/roles'
 import { IntegrationsPage } from '#/domain/integrations/feature/integrations-page'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
 import { clearAuth, setAuth } from '#/store/auth.store'
+
+vi.mock('@tanstack/react-router', () => ({
+	Link: ({
+		to,
+		children,
+		...rest
+	}: {
+		to: string
+		children: ReactNode
+		className?: string
+	}) => (
+		<a href={to} className={rest.className}>
+			{children}
+		</a>
+	),
+}))
 
 function tokenWithRoles(roles: Array<string>) {
 	const payload = btoa(JSON.stringify({ realm_access: { roles } }))
@@ -281,6 +298,21 @@ describe('IntegrationsPage', () => {
 		expect(await screen.findByText('acme', { selector: 'dd' })).toBeTruthy()
 		expect(screen.getByText('GitHub est connecté.')).toBeTruthy()
 		expect(screen.queryByRole('button')).toBeNull()
+	})
+
+	it('points Odoo and n8n to the client pages', async () => {
+		setAuth({ accessToken: tokenWithRoles(['member']) })
+		fetchMock.mockResolvedValue(json(200, NO_APP))
+		render(<IntegrationsPage />, { wrapper: harness.wrapper })
+
+		const line = await screen.findByText(
+			'Odoo et n8n se connectent client par client, depuis la fiche de chaque client.',
+		)
+		expect(
+			within(line.closest('p') as HTMLElement)
+				.getByRole('link')
+				.getAttribute('href'),
+		).toBe('/clients')
 	})
 
 	it('shows an error when the state cannot be loaded', async () => {
