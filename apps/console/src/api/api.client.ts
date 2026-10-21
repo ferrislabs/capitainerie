@@ -1,5 +1,7 @@
 export namespace Schemas {
   // <Schemas>
+  export type ActionAccessDto = "read" | "write";
+  export type ActionOutcomeDto = "pending" | "succeeded" | "denied" | "failed";
   export type ActiveStepResponse = {
     agent?: (string | null) | undefined;
     kind: string;
@@ -262,8 +264,44 @@ export namespace Schemas {
     app: null | GithubAppResponse;
     installation: null | GithubInstallationResponse;
   }>;
+  export type GrantAccessDto = "read" | "write";
   export type InstallUrlResponse = { url: string };
+  export type InstanceGrantRequest = { access: GrantAccessDto; instance_id: IntegrationInstanceId };
+  export type IntegrationActionId = string;
+  export type IntegrationActionResponse = {
+    access: ActionAccessDto;
+    actor: string;
+    after?: unknown | undefined;
+    arguments: unknown;
+    before?: unknown | undefined;
+    card_id?: (null | CardId) | undefined;
+    created_at: string;
+    finished_at?: (string | null) | undefined;
+    id: IntegrationActionId;
+    instance_environment: IntegrationEnvironmentDto;
+    instance_id: IntegrationInstanceId;
+    instance_kind: IntegrationKindDto;
+    instance_name: string;
+    latency_ms?: (number | null) | undefined;
+    outcome: ActionOutcomeDto;
+    reason?: (string | null) | undefined;
+    reason_code?: (string | null) | undefined;
+    reverted_by_action_id?: (null | IntegrationActionId) | undefined;
+    revertible: boolean;
+    reverts_action_id?: (null | IntegrationActionId) | undefined;
+    run_id?: (null | RunId) | undefined;
+    target: unknown;
+    tool: string;
+  };
+  export type IntegrationActionListResponse = { items: Array<IntegrationActionResponse> };
   export type IntegrationInstanceListResponse = { items: Array<IntegrationInstanceResponse> };
+  export type InterveneCardRequest = {
+    confirm_production_writes?: boolean | undefined;
+    expected_version: number;
+    grants: Array<InstanceGrantRequest>;
+    instructions?: (string | null) | undefined;
+  };
+  export type InterveneCardResponse = { card: CardResponse; run_id: RunId };
   export type ManifestResponse = { action_url: string; manifest: string; state: string };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
@@ -288,6 +326,7 @@ export namespace Schemas {
     embeddings: ModelRefDto;
     executor?: (string | null) | undefined;
     extractor: ModelRefDto;
+    integrator?: (null | ModelRefDto) | undefined;
     judge: ModelRefDto;
     reader?: (null | ModelRefDto) | undefined;
     transcriber?: (null | ModelRefDto) | undefined;
@@ -489,6 +528,38 @@ export namespace Endpoints {
     };
     responses: {
       202: Schemas.ExecuteCardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListCardIntegrationActions = {
+    method: "GET";
+    path: "/api/v1/cards/{card_id}/integration-actions";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+    };
+    responses: {
+      200: Schemas.IntegrationActionListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_InterveneCard = {
+    method: "POST";
+    path: "/api/v1/cards/{card_id}/interventions";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.InterveneCardRequest;
+    };
+    responses: {
+      202: Schemas.InterveneCardResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -1007,6 +1078,20 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
   };
+  export type get_ListRunIntegrationActions = {
+    method: "GET";
+    path: "/api/v1/runs/{run_id}/integration-actions";
+    requestFormat: "json";
+    parameters: {
+      path: { run_id: string };
+    };
+    responses: {
+      200: Schemas.IntegrationActionListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_GetRunTimeline = {
     method: "GET";
     path: "/api/v1/runs/{run_id}/timeline";
@@ -1074,6 +1159,7 @@ export type EndpointByMethod = {
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
+    "/api/v1/cards/{card_id}/integration-actions": Endpoints.get_ListCardIntegrationActions;
     "/api/v1/clients": Endpoints.get_ListClients;
     "/api/v1/clients/{client_id}": Endpoints.get_GetClient;
     "/api/v1/clients/{client_id}/integrations": Endpoints.get_ListIntegrationInstances;
@@ -1092,6 +1178,7 @@ export type EndpointByMethod = {
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
+    "/api/v1/runs/{run_id}/integration-actions": Endpoints.get_ListRunIntegrationActions;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
@@ -1106,6 +1193,7 @@ export type EndpointByMethod = {
   post: {
     "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
+    "/api/v1/cards/{card_id}/interventions": Endpoints.post_InterveneCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
     "/api/v1/clients": Endpoints.post_CreateClient;
     "/api/v1/clients/{client_id}/integrations": Endpoints.post_CreateIntegrationInstance;
