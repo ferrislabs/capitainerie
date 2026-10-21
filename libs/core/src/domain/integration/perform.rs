@@ -183,7 +183,7 @@ impl Entry<'_> {
             before: None,
             after: None,
             revertible: false,
-            reverts_action_id: None,
+            reverts_action_id: self.context.reverts_action_id,
             reverted_by_action_id: None,
             latency_ms: None,
             created_at: now,
@@ -271,9 +271,10 @@ impl Entry<'_> {
         match result {
             Ok(_) => {
                 pending.outcome = Outcome::Succeeded;
-                pending.revertible = self
-                    .request
-                    .is_revertible(self.instance.server_version.as_deref());
+                pending.revertible = self.context.reverts_action_id.is_none()
+                    && self
+                        .request
+                        .is_revertible(self.instance.server_version.as_deref());
             }
             Err(failure) => {
                 self.explain(
@@ -393,6 +394,7 @@ mod tests {
             card_id: None,
             client_id,
             grants,
+            reverts_action_id: None,
         }
     }
 
