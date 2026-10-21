@@ -1,10 +1,9 @@
 use capitainerie_common::{ClientId, CoreError, IntegrationInstanceId};
-use chrono::Utc;
 
 use super::{
     BaseUrl, ConnectorFailure, Environment, InstanceConnection, InstanceError, InstanceName,
     IntegrationInstance, IntegrationKind, ProbeReport, clean_odoo_field,
-    ports::IntegrationInstanceRepository, secret_preview,
+    ports::IntegrationInstanceRepository, secret_preview, stamp,
 };
 use crate::domain::{
     agent::SecretToken,
@@ -123,7 +122,7 @@ where
                 client.name.as_str()
             )));
         }
-        let now = Utc::now();
+        let now = stamp();
         let instance = IntegrationInstance {
             id: IntegrationInstanceId::new(),
             organization_id,
@@ -159,7 +158,7 @@ where
             connection,
         } = prepared;
         instance.server_version = Some(report.server_version);
-        instance.checked_at = Some(Utc::now());
+        instance.checked_at = Some(stamp());
         self.instances
             .insert(&instance, &connection.secret)
             .await
@@ -215,7 +214,7 @@ where
         )?;
         instance.database = database;
         instance.login = login;
-        instance.updated_at = Utc::now();
+        instance.updated_at = stamp();
         let new_secret = command.secret.is_some();
         let secret = match command.secret {
             Some(secret) => {
@@ -247,7 +246,7 @@ where
     ) -> Result<IntegrationInstance, InstanceError> {
         if let Some(report) = report {
             prepared.instance.server_version = Some(report.server_version);
-            prepared.instance.checked_at = Some(Utc::now());
+            prepared.instance.checked_at = Some(stamp());
         }
         self.instances
             .update(&prepared.instance, prepared.sealed_secret())
@@ -286,7 +285,7 @@ where
         mut instance: IntegrationInstance,
         outcome: &Result<ProbeReport, ConnectorFailure>,
     ) -> Result<IntegrationInstance, CoreError> {
-        instance.checked_at = Some(Utc::now());
+        instance.checked_at = Some(stamp());
         if let Ok(report) = outcome {
             instance.server_version = Some(report.server_version.clone());
         }
@@ -310,7 +309,7 @@ where
         if instance.is_archived() {
             return Ok(instance);
         }
-        let now = Utc::now();
+        let now = stamp();
         instance.archived_at = Some(now);
         instance.updated_at = now;
         self.instances.update(&instance, None).await?;
@@ -434,6 +433,8 @@ fn checked_secret(secret: &SecretToken) -> Result<(), CoreError> {
 #[cfg(test)]
 mod tests {
     use capitainerie_common::OrganizationId;
+
+    use chrono::Utc;
 
     use super::*;
     use crate::{
