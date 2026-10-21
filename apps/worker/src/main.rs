@@ -6,13 +6,16 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use capitainerie_args::{
-    DatabaseArgs, DelegationArgs, ExecutorArgs, GithubArgs, LogArgs, ObservabilityArgs, SecretsArgs,
+    DatabaseArgs, DelegationArgs, ExecutorArgs, GithubArgs, IntegrationsArgs, LogArgs,
+    ObservabilityArgs, SecretsArgs,
 };
 use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
-    CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor, MeetingPipeline, PipelineConfig,
+    CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor, InterventionConfig,
+    InterventionPipeline, MeetingPipeline, PipelineConfig,
     domain::{
+        integration::intervention::INTERVENTION_DEADLINE,
         provider::ModelAssignments,
         run::step::Pricing,
         similarity::{DEFAULT_DEDUP_GRAY_FLOOR, DEFAULT_DEDUP_THRESHOLD},
@@ -24,9 +27,10 @@ use capitainerie_core::{
     },
 };
 use capitainerie_github::{GithubApps, GithubBases};
+use capitainerie_integrations::{HttpConnector, NetworkPolicy};
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
 use capitainerie_runtime_rig::{
-    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, claude_prices,
+    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, RigIntegrator, claude_prices,
 };
 use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
@@ -95,6 +99,8 @@ struct Args {
     executor: ExecutorArgs,
     #[command(flatten)]
     github: GithubArgs,
+    #[command(flatten)]
+    integrations: IntegrationsArgs,
     /// Base URL of the console, to link a card from its pull request.
     #[arg(long = "console-url", env = "CONSOLE_URL")]
     console_url: Option<String>,
@@ -178,6 +184,17 @@ async fn main() -> anyhow::Result<()> {
         },
     );
     let executor = executor_from(&args, usecase.clone()).await;
+    let intervention = InterventionPipeline::new(
+        usecase.clone(),
+        RigIntegrator::new(&args.llm)?,
+        integrations_connector(&args.integrations)?,
+        InterventionConfig {
+            stale_after: INTERVENTION_DEADLINE + Duration::from_secs(5 * 60),
+            default_models: default_models.clone(),
+            console_url: args.console_url.clone(),
+            deadline: INTERVENTION_DEADLINE,
+        },
+    );
     let execution = ExecutePipeline::new(
         usecase,
         executor,
@@ -193,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
             prices: claude_prices(),
         },
     );
-    let pipeline = Dispatcher::new(meeting, execution);
+    let pipeline = Dispatcher::new(meeting, execution, intervention);
     let orchestrator = Orchestrator::new(
         Arc::new(pipeline),
         bus.clone(),
@@ -227,6 +244,24 @@ async fn main() -> anyhow::Result<()> {
     orchestrated?;
     tracing::info!("worker stopped");
     Ok(())
+}
+
+fn integrations_connector(args: &IntegrationsArgs) -> anyhow::Result<HttpConnector> {
+    if args.allow_insecure_http {
+        tracing::warn!(
+            "INTEGRATIONS_ALLOW_INSECURE_HTTP is on: instances may be reached over plain http"
+        );
+    }
+    if args.allow_private_networks {
+        tracing::warn!(
+            "INTEGRATIONS_ALLOW_PRIVATE_NETWORKS is on: instances may be reached on private, loopback and link-local addresses"
+        );
+    }
+    HttpConnector::new(NetworkPolicy {
+        allow_insecure_http: args.allow_insecure_http,
+        allow_private_networks: args.allow_private_networks,
+    })
+    .context("building the integrations connector")
 }
 
 async fn executor_from(
