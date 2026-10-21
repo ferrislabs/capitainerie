@@ -9,9 +9,15 @@ interface Props {
 	items: ReadonlyArray<Schemas.IntegrationActionResponse> | undefined
 	isError: boolean
 	headingLevel: 'h2' | 'h3'
+	locked: boolean
 }
 
-export function JournalSection({ items, isError, headingLevel }: Props) {
+export function JournalSection({
+	items,
+	isError,
+	headingLevel,
+	locked,
+}: Props) {
 	if (isError) {
 		return (
 			<SectionCard title={JOURNAL_TITLE} headingLevel={headingLevel}>
@@ -25,7 +31,7 @@ export function JournalSection({ items, isError, headingLevel }: Props) {
 
 	return (
 		<SectionCard title={JOURNAL_TITLE} headingLevel={headingLevel} flush>
-			<IntegrationJournal actions={items} />
+			<IntegrationJournal actions={items} revert={{ locked }} />
 		</SectionCard>
 	)
 }
