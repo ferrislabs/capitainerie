@@ -40,6 +40,7 @@ interface Props {
 	onToggleExpanded: (cardId: string) => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute?: (card: Schemas.CardResponse) => void
+	onIntervene?: (card: Schemas.CardResponse) => void
 	onOpen: (cardId: string) => void
 	memberNames?: ReadonlyMap<string, string>
 }
@@ -143,6 +144,7 @@ export function KanbanBoard({
 	onToggleExpanded,
 	onMove,
 	onExecute,
+	onIntervene,
 	onOpen,
 	memberNames,
 }: Props) {
@@ -233,6 +235,7 @@ export function KanbanBoard({
 										onToggleExpanded={onToggleExpanded}
 										onMove={onMove}
 										onExecute={onExecute}
+										onIntervene={onIntervene}
 										onOpen={onOpen}
 										memberNames={memberNames}
 									/>

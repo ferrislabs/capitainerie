@@ -27,6 +27,15 @@ export const ENVIRONMENT_LABELS: Record<
 	development: 'Développement',
 }
 
+export const ENVIRONMENT_VARIANTS: Record<
+	Schemas.IntegrationEnvironmentDto,
+	'danger' | 'attention' | 'neutral'
+> = {
+	production: 'danger',
+	staging: 'attention',
+	development: 'neutral',
+}
+
 export function serverVersionLabel(
 	kind: Schemas.IntegrationKindDto,
 	version: string | null | undefined,

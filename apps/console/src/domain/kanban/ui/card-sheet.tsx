@@ -15,6 +15,7 @@ import {
 	SheetTitle,
 } from '#/components/ui/sheet'
 import { Skeleton } from '#/components/ui/skeleton'
+import { InterveneButton } from '#/domain/integrations/intervene/intervene-button'
 import { canDrop } from '#/domain/kanban/can-drop'
 import type { CardPatch } from '#/domain/kanban/card-patch'
 import {
@@ -49,6 +50,7 @@ interface Props {
 	isCommenting: boolean
 	commentError: string | undefined
 	runExtra: (run: Schemas.RunResponse) => ReactNode
+	journal?: ReactNode
 	clients?: ReadonlyArray<Schemas.ClientResponse>
 	projects?: ReadonlyArray<Schemas.ProjectResponse>
 	isLinking?: boolean
@@ -63,6 +65,7 @@ interface Props {
 	onClose: () => void
 	onMove: (to: Column) => void
 	onExecute: (card: Schemas.CardResponse) => void
+	onIntervene?: (card: Schemas.CardResponse) => void
 	onDraftChange: (value: string) => void
 	onSubmitComment: () => void
 }
@@ -102,6 +105,7 @@ export function CardSheet({
 	isCommenting,
 	commentError,
 	runExtra,
+	journal,
 	clients = [],
 	projects = [],
 	isLinking = false,
@@ -116,6 +120,7 @@ export function CardSheet({
 	onClose,
 	onMove,
 	onExecute,
+	onIntervene,
 	onDraftChange,
 	onSubmitComment,
 }: Props) {
@@ -264,20 +269,30 @@ export function CardSheet({
 							/>
 						) : null}
 						{card.column === 'todo' ? (
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								className="w-fit"
-								disabled={isMoving}
-								onClick={() => onExecute(card)}
-							>
-								Confier à Claude Code
-							</Button>
+							<div className="flex flex-wrap items-start gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									className="w-fit"
+									disabled={isMoving}
+									onClick={() => onExecute(card)}
+								>
+									Confier à Claude Code
+								</Button>
+								{onIntervene ? (
+									<InterveneButton
+										card={card}
+										disabled={isMoving}
+										onIntervene={onIntervene}
+									/>
+								) : null}
+							</div>
 						) : null}
 						{status === 'ready' ? (
 							<>
 								<CardRuns runs={runs} runExtra={runExtra} />
+								{journal}
 								<CardComments
 									comments={comments}
 									currentSubject={currentSubject}

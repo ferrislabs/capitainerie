@@ -171,6 +171,7 @@ describe('settings pages', () => {
 			transcriber: null,
 			reader: null,
 			captain: null,
+			integrator: null,
 		})
 		await waitFor(() =>
 			expect(
@@ -328,5 +329,58 @@ describe('settings pages', () => {
 
 		await waitFor(() => expect(puts).toHaveLength(2))
 		expect(puts[1]).toMatchObject({ reader: null })
+	})
+
+	it('assigns, then clears, the optional Intervenant', async () => {
+		setAuth({ accessToken: tokenWithRoles([ADMIN_ROLE]) })
+		const ref = { provider: 'openai_compatible', model: QWEN.id }
+		let saved: unknown = {
+			extractor: ref,
+			judge: ref,
+			writer: ref,
+			embeddings: { provider: 'openai_compatible', model: BGE.id },
+		}
+		const puts: Array<unknown> = []
+		fetchMock.mockImplementation(
+			routes({
+				'GET /api/v1/providers': () =>
+					json(200, { providers: [COMPATIBLE_PROVIDER] }),
+				'GET /api/v1/models': () =>
+					json(200, { models: [QWEN, BGE, SONNET], errors: [] }),
+				'GET /api/v1/model-assignments': () =>
+					json(200, { assignments: saved }),
+				'PUT /api/v1/model-assignments': (init) => {
+					saved = JSON.parse(String(init.body))
+					puts.push(saved)
+					return json(200, { assignments: saved })
+				},
+			}),
+		)
+		const user = userEvent.setup()
+		render(<ModelsPage />, { wrapper: harness.wrapper })
+
+		const integrator = (await screen.findByLabelText(
+			'Intervenant',
+		)) as HTMLSelectElement
+		expect(integrator.value).toBe('')
+		await user.selectOptions(integrator, 'anthropic:claude-sonnet-5')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		await waitFor(() => expect(puts).toHaveLength(1))
+		expect(puts[0]).toMatchObject({
+			integrator: { provider: 'anthropic', model: SONNET.id },
+			captain: null,
+		})
+		await waitFor(() =>
+			expect(
+				(screen.getByLabelText('Intervenant') as HTMLSelectElement).value,
+			).toBe('anthropic:claude-sonnet-5'),
+		)
+
+		await user.selectOptions(screen.getByLabelText('Intervenant'), '')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		await waitFor(() => expect(puts).toHaveLength(2))
+		expect(puts[1]).toMatchObject({ integrator: null })
 	})
 })
