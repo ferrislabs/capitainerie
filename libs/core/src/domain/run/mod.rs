@@ -25,6 +25,7 @@ pub enum StepKind {
     Deduplicate,
     Write,
     Execute,
+    Intervene,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +35,9 @@ pub enum RunSubject {
         card_id: CardId,
         repository: RepositoryRef,
         base_branch: String,
+    },
+    Intervention {
+        card_id: CardId,
     },
 }
 
@@ -104,6 +108,23 @@ impl Run {
             },
             initiated_by,
             Self::EXECUTION_PIPELINE.to_vec(),
+            now,
+        )
+    }
+
+    pub const INTERVENTION_PIPELINE: [StepKind; 1] = [StepKind::Intervene];
+
+    pub fn queue_intervention(
+        organization_id: OrganizationId,
+        card_id: CardId,
+        initiated_by: String,
+        now: DateTime<Utc>,
+    ) -> (Self, RunQueued) {
+        Self::queued(
+            organization_id,
+            RunSubject::Intervention { card_id },
+            initiated_by,
+            Self::INTERVENTION_PIPELINE.to_vec(),
             now,
         )
     }
@@ -190,14 +211,14 @@ impl RunSubject {
     pub fn transcript_id(&self) -> Option<TranscriptId> {
         match self {
             Self::Transcript(id) => Some(*id),
-            Self::Card { .. } => None,
+            Self::Card { .. } | Self::Intervention { .. } => None,
         }
     }
 
     pub fn card_id(&self) -> Option<CardId> {
         match self {
             Self::Transcript(_) => None,
-            Self::Card { card_id, .. } => Some(*card_id),
+            Self::Card { card_id, .. } | Self::Intervention { card_id } => Some(*card_id),
         }
     }
 }
@@ -236,6 +257,7 @@ impl StepKind {
             Self::Deduplicate => "deduplicate",
             Self::Write => "write",
             Self::Execute => "execute",
+            Self::Intervene => "intervene",
         }
     }
 }
@@ -249,6 +271,7 @@ impl TryFrom<&str> for StepKind {
             "deduplicate" => Ok(Self::Deduplicate),
             "write" => Ok(Self::Write),
             "execute" => Ok(Self::Execute),
+            "intervene" => Ok(Self::Intervene),
             other => Err(CoreError::Internal(format!("unknown step kind {other}"))),
         }
     }

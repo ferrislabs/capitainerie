@@ -129,12 +129,25 @@ impl CapitainerieUseCase {
     }
 
     pub async fn is_execution_run(&self, id: RunId) -> Result<bool, CoreError> {
-        sqlx::query_scalar::<_, bool>("SELECT card_id IS NOT NULL FROM runs WHERE id = $1")
-            .bind(id.0)
-            .fetch_optional(&self.pool)
-            .await
-            .map(|found| found.unwrap_or(false))
-            .map_err(|error| CoreError::Database(error.to_string()))
+        sqlx::query_scalar::<_, bool>(
+            "SELECT card_id IS NOT NULL AND repository IS NOT NULL FROM runs WHERE id = $1",
+        )
+        .bind(id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map(|found| found.unwrap_or(false))
+        .map_err(|error| CoreError::Database(error.to_string()))
+    }
+
+    pub async fn is_intervention_run(&self, id: RunId) -> Result<bool, CoreError> {
+        sqlx::query_scalar::<_, bool>(
+            "SELECT card_id IS NOT NULL AND repository IS NULL FROM runs WHERE id = $1",
+        )
+        .bind(id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map(|found| found.unwrap_or(false))
+        .map_err(|error| CoreError::Database(error.to_string()))
     }
 
     #[transactional(task_grant)]

@@ -460,6 +460,7 @@ mod tests {
             transcriber: None,
             reader: None,
             captain: None,
+            integrator: None,
             executor: Default::default(),
         }
     }

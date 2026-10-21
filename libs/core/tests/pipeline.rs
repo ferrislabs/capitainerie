@@ -1009,6 +1009,7 @@ fn claude_for_the_agents() -> ModelAssignments {
         transcriber: None,
         reader: None,
         captain: None,
+        integrator: None,
         executor: Default::default(),
     }
 }
