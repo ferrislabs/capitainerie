@@ -16,6 +16,8 @@ export function integrationFailureMessage(
 			return 'Adresse refusée par la garde réseau (adresse privée ou http)'
 		case 'instance_name_taken':
 			return 'Ce client a déjà une intégration de ce nom'
+		case 'instance_in_use':
+			return 'Une intervention en cours utilise cette intégration : attendez sa fin pour l’archiver.'
 		default:
 			return message
 	}
