@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { IntegrationJournal } from '#/domain/integrations/journal/integration-journal'
+import { createTestClient } from '#/domain/settings/hooks/test-utils'
 
 type Action = Schemas.IntegrationActionResponse
 
@@ -241,5 +242,78 @@ describe('IntegrationJournal', () => {
 		expect(
 			within(third).getByText('Restauration d’une autre action'),
 		).toBeTruthy()
+	})
+
+	describe('restoration', () => {
+		const RESTORE = 'Restaurer l’état d’avant'
+
+		function renderOpen(
+			actions: ReadonlyArray<Action>,
+			revert: { locked: boolean } = { locked: false },
+		) {
+			const harness = createTestClient()
+			render(<IntegrationJournal actions={actions} revert={revert} />, {
+				wrapper: harness.wrapper,
+			})
+		}
+
+		async function open() {
+			await userEvent.click(
+				screen.getAllByRole('button', { name: /Odoo · / })[0],
+			)
+		}
+
+		it('offers the restoration on an expanded, revertible and succeeded action only', async () => {
+			renderOpen([action()])
+			expect(screen.queryByRole('button', { name: RESTORE })).toBeNull()
+
+			await open()
+
+			expect(screen.getByRole('button', { name: RESTORE })).toBeTruthy()
+		})
+
+		it('stays out of the way when it cannot apply', async () => {
+			const cases: Array<Partial<Action>> = [
+				{ revertible: false },
+				{ outcome: 'failed' },
+				{ outcome: 'denied' },
+				{ reverted_by_action_id: 'a2' },
+				{ reverts_action_id: 'a0' },
+			]
+			for (const overrides of cases) {
+				const { unmount } = render(
+					<IntegrationJournal
+						actions={[action(overrides)]}
+						revert={{ locked: false }}
+					/>,
+					{ wrapper: createTestClient().wrapper },
+				)
+				await open()
+				expect(screen.queryByRole('button', { name: RESTORE })).toBeNull()
+				unmount()
+			}
+		})
+
+		it('is not offered when the journal is read-only', async () => {
+			render(<IntegrationJournal actions={[action()]} />)
+
+			await open()
+
+			expect(screen.queryByRole('button', { name: RESTORE })).toBeNull()
+		})
+
+		it('is disabled with a reason while the intervention runs', async () => {
+			renderOpen([action()], { locked: true })
+
+			await open()
+
+			expect(
+				(screen.getByRole('button', { name: RESTORE }) as HTMLButtonElement)
+					.disabled,
+			).toBe(true)
+			expect(
+				screen.getByText('L’intervention est encore en cours'),
+			).toBeTruthy()
+		})
 	})
 })
