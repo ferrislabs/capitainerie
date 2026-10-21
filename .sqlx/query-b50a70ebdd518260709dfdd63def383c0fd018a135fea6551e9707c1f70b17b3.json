@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE integration_instances\n            SET name = $3, environment = $4, base_url = $5, database = $6, login = $7,\n                secret_nonce = COALESCE($8, secret_nonce),\n                secret_ciphertext = COALESCE($9, secret_ciphertext),\n                secret_preview = $10, server_version = $11, checked_at = $12,\n                updated_at = $13, archived_at = $14\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b50a70ebdd518260709dfdd63def383c0fd018a135fea6551e9707c1f70b17b3"
+}

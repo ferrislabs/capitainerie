@@ -7,6 +7,7 @@ pub mod delegation;
 pub mod document;
 pub mod event;
 pub mod execution;
+pub mod integration;
 pub mod label;
 pub mod member;
 pub mod organization;

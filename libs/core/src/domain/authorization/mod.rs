@@ -53,6 +53,8 @@ pub enum Action {
     GithubRead,
     ConversationRead,
     ConversationWrite,
+    IntegrationRead,
+    IntegrationManage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +79,7 @@ pub enum ResourceKind {
     Project,
     Member,
     Conversation,
+    IntegrationInstance,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,12 +88,13 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 5] = [
+pub const READ_ACTIONS: [&str; 6] = [
     "run.read",
     "card.read",
     "provider.read",
     "conversation.read",
     "github.read",
+    "integration.read",
 ];
 
 impl Action {
@@ -120,6 +124,8 @@ impl Action {
             Self::GithubRead => "github.read",
             Self::ConversationRead => "conversation.read",
             Self::ConversationWrite => "conversation.write",
+            Self::IntegrationRead => "integration.read",
+            Self::IntegrationManage => "integration.manage",
         }
     }
 }
@@ -140,6 +146,7 @@ impl ResourceKind {
             Self::Project => "project",
             Self::Member => "member",
             Self::Conversation => "conversation",
+            Self::IntegrationInstance => "integration_instance",
         }
     }
 }
