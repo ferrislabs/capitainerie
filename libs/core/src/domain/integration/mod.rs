@@ -2,7 +2,7 @@ pub mod ports;
 pub mod service;
 
 use capitainerie_common::{ClientId, CoreError, IntegrationInstanceId, OrganizationId};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SubsecRound, Utc};
 
 use crate::domain::{agent::SecretToken, label::clean_label};
 
@@ -280,6 +280,10 @@ pub enum InstanceError {
     Connector(#[from] ConnectorFailure),
     #[error("this client already has an instance named {0}")]
     NameTaken(String),
+}
+
+pub fn stamp() -> DateTime<Utc> {
+    Utc::now().trunc_subsecs(6)
 }
 
 pub fn secret_preview(secret: &str) -> String {
