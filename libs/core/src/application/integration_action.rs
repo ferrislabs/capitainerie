@@ -2,7 +2,6 @@ use std::time::Instant;
 
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::transactional;
-use chrono::Utc;
 
 use super::CapitainerieUseCase;
 use crate::{
@@ -18,6 +17,7 @@ use crate::{
                 IntegrationActionRepository, IntegrationConnector, IntegrationInstanceRepository,
             },
             redact::restore_masked,
+            stamp,
         },
         run::ports::RunRepository,
     },
@@ -166,7 +166,7 @@ impl CapitainerieUseCase {
                 request: &call.request,
                 secret: "",
             };
-            let row = entry.denied(&denial, Utc::now());
+            let row = entry.denied(&denial, stamp());
             PgIntegrationActionRepository::new(&tx, self.secrets.as_deref())
                 .insert(&row, None)
                 .await?;
@@ -212,7 +212,7 @@ impl CapitainerieUseCase {
     ) -> Result<ActionOutcome, CoreError> {
         let started = Instant::now();
         let result = connector.perform(connection, entry.request).await;
-        let row = entry.read(&result, elapsed_ms(started), Utc::now());
+        let row = entry.read(&result, elapsed_ms(started), stamp());
         self.record_integration_action(&row, None).await?;
         Ok(entry.conclude(&row, result.as_ref().ok(), false))
     }
@@ -230,7 +230,7 @@ impl CapitainerieUseCase {
                 match connector.perform(connection, &read).await {
                     Ok(state) => Some(state),
                     Err(failure) => {
-                        let row = entry.unreadable(&failure, elapsed_ms(started), Utc::now());
+                        let row = entry.unreadable(&failure, elapsed_ms(started), stamp());
                         self.record_integration_action(&row, None).await?;
                         return Ok(entry.conclude(&row, None, false));
                     }
@@ -241,7 +241,7 @@ impl CapitainerieUseCase {
         let checked = publication_guard(entry.instance, &request, before.as_ref())
             .and_then(|()| restore_masked(&mut request, before.as_ref()));
         if let Err(denial) = checked {
-            let row = entry.denied(&denial, Utc::now());
+            let row = entry.denied(&denial, stamp());
             self.record_integration_action(&row, None).await?;
             return Ok(entry.conclude(&row, None, false));
         }
@@ -250,7 +250,7 @@ impl CapitainerieUseCase {
             request: &request,
             ..*entry
         };
-        let pending = entry.pending(before.as_ref(), Utc::now());
+        let pending = entry.pending(before.as_ref(), stamp());
         self.record_integration_action(&pending, before.as_ref())
             .await?;
         let started = Instant::now();
@@ -264,7 +264,7 @@ impl CapitainerieUseCase {
             Some(read) => connector.perform(connection, &read).await.ok(),
             None => None,
         };
-        let completed = entry.complete(pending, &result, after.as_ref(), latency_ms, Utc::now());
+        let completed = entry.complete(pending, &result, after.as_ref(), latency_ms, stamp());
         self.complete_integration_action(&completed).await?;
         Ok(entry.conclude(&completed, result.as_ref().ok(), true))
     }
