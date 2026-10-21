@@ -13,7 +13,7 @@ use capitainerie_core::{
         client::{Client, service::CreateClient},
         integration::{
             ConnectorFailure, InstanceConnection, IntegrationInstance, ProbeReport,
-            ports::IntegrationConnector, service::CreateInstance,
+            action::ActionRequest, ports::IntegrationConnector, service::CreateInstance,
         },
     },
     infrastructure::{crypto::SecretCipher, postgres},
@@ -113,6 +113,13 @@ impl IntegrationConnector for Healthy {
             server_version: "19.0".into(),
             warning: None,
         })
+    }
+    async fn perform(
+        &self,
+        _connection: &InstanceConnection,
+        _request: &ActionRequest,
+    ) -> Result<serde_json::Value, ConnectorFailure> {
+        Err(ConnectorFailure::NotSupported("not scripted".into()))
     }
 }
 
