@@ -18,8 +18,28 @@ pub const SENSITIVE_ODOO_MODELS: [&str; 6] = [
     "auth.oauth.provider",
 ];
 
+pub const WRITE_FORBIDDEN_ODOO_PREFIX: &str = "ir.actions.";
+
+pub const WRITE_FORBIDDEN_ODOO_MODELS: [&str; 11] = [
+    "ir.cron",
+    "base.automation",
+    "res.users",
+    "res.groups",
+    "ir.rule",
+    "ir.model.access",
+    "ir.module.module",
+    "ir.model",
+    "ir.model.fields",
+    "ir.ui.view",
+    "ir.ui.menu",
+];
+
 pub fn is_sensitive_model(model: &str) -> bool {
     SENSITIVE_ODOO_MODELS.contains(&model)
+}
+
+pub fn is_write_forbidden_model(model: &str) -> bool {
+    model.starts_with(WRITE_FORBIDDEN_ODOO_PREFIX) || WRITE_FORBIDDEN_ODOO_MODELS.contains(&model)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,5 +216,40 @@ mod tests {
     fn sensitive_models_are_listed_exactly() {
         assert!(is_sensitive_model("ir.config_parameter"));
         assert!(!is_sensitive_model("res.partner"));
+    }
+
+    #[test]
+    fn models_that_run_code_or_change_rights_are_forbidden_for_writing() {
+        for model in [
+            "ir.actions.server",
+            "ir.actions.act_window",
+            "ir.actions.report",
+            "ir.cron",
+            "base.automation",
+            "res.users",
+            "res.groups",
+            "ir.rule",
+            "ir.model.access",
+            "ir.module.module",
+            "ir.model",
+            "ir.model.fields",
+            "ir.ui.view",
+            "ir.ui.menu",
+        ] {
+            assert!(is_write_forbidden_model(model), "{model}");
+        }
+        for model in [
+            "res.partner",
+            "sale.order",
+            "ir.attachment",
+            "ir.model.data",
+            "ir.cron.trigger",
+            "res.users.log",
+            "ir.rule.extra",
+            "base.automation.line",
+            "ir.ui.view.custom",
+        ] {
+            assert!(!is_write_forbidden_model(model), "{model}");
+        }
     }
 }

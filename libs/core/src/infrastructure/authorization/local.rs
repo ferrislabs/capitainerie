@@ -110,7 +110,10 @@ mod tests {
     use capitainerie_common::OrganizationId;
 
     use super::*;
-    use crate::domain::authorization::{ResourceKind, Subject};
+    use crate::domain::{
+        authorization::{ResourceKind, Subject},
+        integration::action::Access,
+    };
 
     fn request(action: Action, actor: Option<&str>, same_org: bool) -> AccessRequest {
         let organization_id = OrganizationId::new();
@@ -441,6 +444,138 @@ mod tests {
         }
         for column in Column::ALL {
             assert!(!allowed(Action::CardUpdate { column }, CAPTAIN));
+        }
+    }
+
+    const INTEGRATOR: Option<&str> = Some(INTEGRATOR_AGENT);
+
+    #[test]
+    fn the_integrator_calls_integrations_reads_and_comments_on_its_card() {
+        for action in [
+            Action::IntegrationCall {
+                access: Access::Read,
+            },
+            Action::IntegrationCall {
+                access: Access::Write,
+            },
+            Action::CardRead,
+            Action::CardComment,
+        ] {
+            assert!(allowed(action, INTEGRATOR), "{action:?}");
+            assert!(
+                matches!(
+                    decide(&request(action, INTEGRATOR, false)),
+                    Decision::Deny { .. }
+                ),
+                "{action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_integrator_never_moves_edits_creates_or_manages() {
+        for admin in [false, true] {
+            for from in Column::ALL {
+                for to in Column::ALL {
+                    assert!(
+                        matches!(
+                            decide(&admin_request(
+                                Action::CardMove { from, to },
+                                INTEGRATOR,
+                                admin
+                            )),
+                            Decision::Deny { .. }
+                        ),
+                        "{from:?} -> {to:?}"
+                    );
+                }
+            }
+            for column in Column::ALL {
+                assert!(matches!(
+                    decide(&admin_request(
+                        Action::CardUpdate { column },
+                        INTEGRATOR,
+                        admin
+                    )),
+                    Decision::Deny { .. }
+                ));
+            }
+            for action in [
+                Action::CardCreate,
+                Action::CardIntervene,
+                Action::IntegrationRevert,
+                Action::IntegrationManage,
+            ] {
+                assert!(
+                    matches!(
+                        decide(&admin_request(action, INTEGRATOR, admin)),
+                        Decision::Deny { .. }
+                    ),
+                    "{action:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_integrator_denial_names_the_agent_and_the_action() {
+        let Decision::Deny { reason } = decide(&request(
+            Action::CardMove {
+                from: Column::Todo,
+                to: Column::Done,
+            },
+            INTEGRATOR,
+            true,
+        )) else {
+            panic!("a denial is expected");
+        };
+
+        assert!(reason.contains(INTEGRATOR_AGENT), "{reason}");
+        assert!(reason.contains("card.move"), "{reason}");
+    }
+
+    #[test]
+    fn the_captain_and_generic_agents_never_call_or_revert_integrations() {
+        for actor in [
+            CAPTAIN,
+            AGENT,
+            Some(crate::domain::execution::EXECUTOR_AGENT),
+        ] {
+            for action in [
+                Action::IntegrationCall {
+                    access: Access::Read,
+                },
+                Action::IntegrationCall {
+                    access: Access::Write,
+                },
+                Action::IntegrationRevert,
+            ] {
+                for admin in [false, true] {
+                    assert!(
+                        matches!(
+                            decide(&admin_request(action, actor, admin)),
+                            Decision::Deny { .. }
+                        ),
+                        "{actor:?} {action:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_human_calls_and_reverts_integrations_in_their_organization_only() {
+        for action in [
+            Action::IntegrationCall {
+                access: Access::Write,
+            },
+            Action::IntegrationRevert,
+        ] {
+            assert!(allowed(action, None));
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
         }
     }
 }
