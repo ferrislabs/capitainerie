@@ -1,3 +1,4 @@
+pub mod actions;
 pub mod callback;
 pub mod create_app;
 pub mod create_manifest;
@@ -18,6 +19,9 @@ use axum_extra::routing::RouterExt;
 use capitainerie_core::CapitainerieUseCase;
 use capitainerie_integrations::HttpConnector;
 
+pub use actions::dto::{
+    ActionAccessDto, ActionOutcomeDto, IntegrationActionListResponse, IntegrationActionResponse,
+};
 pub use dto::{
     ConnectGithubRequest, CreateGithubAppRequest, CreateManifestRequest, GithubAppResponse,
     GithubInstallationResponse, GithubIntegrationResponse, InstallUrlResponse, ManifestOwner,
@@ -55,6 +59,8 @@ where
         .typed_patch(instances::update::handler)
         .typed_delete(instances::archive::handler)
         .typed_post(instances::check::handler)
+        .typed_get(actions::list_for_card::handler)
+        .typed_get(actions::list_for_run::handler)
         .with_state(IntegrationsState {
             usecase,
             github,

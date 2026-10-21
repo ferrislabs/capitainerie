@@ -1,6 +1,7 @@
 pub mod comment_card;
 pub mod execute_card;
 pub mod get_card;
+pub mod intervene_card;
 pub mod list_cards;
 pub mod move_card;
 pub mod patch_card;
@@ -25,5 +26,6 @@ pub fn router(github: Arc<GithubApps>) -> Router<AppState> {
         .typed_post(move_card::handler)
         .typed_post(comment_card::handler)
         .typed_post(execute_card::handler)
+        .typed_post(intervene_card::handler)
         .layer(Extension(CodeHostHandle(github)))
 }

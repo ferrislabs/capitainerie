@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO interventions (\n                run_id, organization_id, card_id, client_id, instructions, created_by, created_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "30f6a29c589ae7429217d0330b1ca1911d5b8b183e73e70ad7c3401ca1ad6d67"
+}

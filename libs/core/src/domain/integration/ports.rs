@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use super::{
     ConnectorFailure, InstanceConnection, IntegrationInstance, ProbeReport, action::ActionRequest,
-    journal::IntegrationAction,
+    intervention::Intervention, journal::IntegrationAction,
 };
 use crate::domain::agent::SecretToken;
 
@@ -108,4 +108,18 @@ pub trait IntegrationActionRepository: Send {
         organization_id: OrganizationId,
         run_id: RunId,
     ) -> impl Future<Output = Result<i64, CoreError>> + Send;
+}
+
+#[cfg_attr(any(test, feature = "mock"), mockall::automock)]
+pub trait InterventionRepository: Send {
+    fn insert(
+        &mut self,
+        intervention: &Intervention,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    fn find(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> impl Future<Output = Result<Option<Intervention>, CoreError>> + Send;
 }
