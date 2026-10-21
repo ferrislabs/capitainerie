@@ -64,6 +64,7 @@ id!(ProjectId, Uuid::new_v4);
 id!(ConversationId);
 id!(ConversationMessageId);
 id!(IntegrationInstanceId);
+id!(IntegrationActionId);
 
 #[cfg(test)]
 mod tests {
