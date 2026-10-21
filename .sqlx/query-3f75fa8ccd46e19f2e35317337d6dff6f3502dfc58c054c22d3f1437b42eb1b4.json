@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT instance_id, access\n            FROM intervention_grants\n            WHERE run_id = $1\n            ORDER BY instance_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instance_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "access",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3f75fa8ccd46e19f2e35317337d6dff6f3502dfc58c054c22d3f1437b42eb1b4"
+}
