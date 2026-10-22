@@ -1,5 +1,7 @@
 pub mod action;
 mod catalog;
+pub mod confide;
+pub mod intervention;
 pub mod journal;
 pub mod perform;
 pub mod ports;

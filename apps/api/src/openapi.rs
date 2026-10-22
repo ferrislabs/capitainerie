@@ -8,6 +8,9 @@ use capitainerie_handlers_cards::{
     self as cards,
     comment_card::CommentCardRequest,
     execute_card::{ExecuteCardRequest, ExecuteCardResponse},
+    intervene_card::{
+        GrantAccessDto, InstanceGrantRequest, InterveneCardRequest, InterveneCardResponse,
+    },
     list_cards::CardListResponse,
     move_card::MoveCardRequest,
     patch_card::PatchCardRequest,
@@ -43,12 +46,14 @@ use capitainerie_handlers_identity::{
     me::{MeOrganization, MeResponse},
 };
 use capitainerie_handlers_integrations::{
-    self as integrations, CheckIntegrationInstanceResponse, ConnectGithubRequest,
-    CreateGithubAppRequest, CreateIntegrationInstanceRequest, CreateManifestRequest,
-    GithubAppResponse, GithubInstallationResponse, GithubIntegrationResponse, InstallUrlResponse,
-    InstanceFailureResponse, IntegrationEnvironmentDto, IntegrationInstanceListResponse,
-    IntegrationInstanceResponse, IntegrationKindDto, ManifestOwner, ManifestResponse,
-    RepositoryListResponse, RepositoryResponse, UpdateIntegrationInstanceRequest,
+    self as integrations, ActionAccessDto, ActionOutcomeDto, CheckIntegrationInstanceResponse,
+    ConnectGithubRequest, CreateGithubAppRequest, CreateIntegrationInstanceRequest,
+    CreateManifestRequest, GithubAppResponse, GithubInstallationResponse,
+    GithubIntegrationResponse, InstallUrlResponse, InstanceFailureResponse,
+    IntegrationActionListResponse, IntegrationActionResponse, IntegrationEnvironmentDto,
+    IntegrationInstanceListResponse, IntegrationInstanceResponse, IntegrationKindDto,
+    ManifestOwner, ManifestResponse, RepositoryListResponse, RepositoryResponse,
+    UpdateIntegrationInstanceRequest,
 };
 use capitainerie_handlers_providers::{
     self as providers,
@@ -100,6 +105,7 @@ use utoipa::{
         cards::patch_card::handler,
         cards::comment_card::handler,
         cards::execute_card::handler,
+        cards::intervene_card::handler,
         clients::list_clients::handler,
         clients::create_client::handler,
         clients::get_client::handler,
@@ -132,6 +138,8 @@ use utoipa::{
         integrations::instances::update::handler,
         integrations::instances::archive::handler,
         integrations::instances::check::handler,
+        integrations::actions::list_for_card::handler,
+        integrations::actions::list_for_run::handler,
         conversations::create_conversation::handler,
         conversations::list_conversations::handler,
         conversations::get_conversation::handler,
@@ -187,6 +195,10 @@ use utoipa::{
         CommentCardRequest,
         ExecuteCardRequest,
         ExecuteCardResponse,
+        GrantAccessDto,
+        InstanceGrantRequest,
+        InterveneCardRequest,
+        InterveneCardResponse,
         CostsResponse,
         CostRowResponse,
         CostTotals,
@@ -228,6 +240,10 @@ use utoipa::{
         UpdateIntegrationInstanceRequest,
         CheckIntegrationInstanceResponse,
         InstanceFailureResponse,
+        ActionAccessDto,
+        ActionOutcomeDto,
+        IntegrationActionResponse,
+        IntegrationActionListResponse,
         CreateConversationRequest,
         CreatedConversationResponse,
         UpdateConversationRequest,
@@ -559,6 +575,107 @@ mod tests {
                 "{status}"
             );
         }
+    }
+
+    #[test]
+    fn the_intervention_and_journal_endpoints_are_documented_without_a_snapshot() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        let schemas = &spec["components"]["schemas"];
+
+        let confide = &paths["/api/v1/cards/{card_id}/interventions"]["post"];
+        assert_eq!(confide["operationId"], "interveneCard");
+        for status in ["202", "403", "404", "409", "422"] {
+            assert!(confide["responses"][status].is_object(), "{status}");
+        }
+        let request = &schemas["InterveneCardRequest"];
+        for field in [
+            "instructions",
+            "grants",
+            "confirm_production_writes",
+            "expected_version",
+        ] {
+            assert!(request["properties"][field].is_object(), "{field}");
+        }
+        let required: Vec<_> = request["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field.as_str().unwrap())
+            .collect();
+        assert!(required.contains(&"grants"));
+        assert!(required.contains(&"expected_version"));
+        assert!(!required.contains(&"instructions"));
+        assert!(!required.contains(&"confirm_production_writes"));
+        let grant = &schemas["InstanceGrantRequest"]["properties"];
+        assert!(grant["instance_id"].is_object());
+        assert!(grant["access"].is_object());
+        for field in ["run_id", "card"] {
+            assert!(
+                schemas["InterveneCardResponse"]["properties"][field].is_object(),
+                "{field}"
+            );
+        }
+
+        let journal = [
+            (
+                "/api/v1/cards/{card_id}/integration-actions",
+                "listCardIntegrationActions",
+            ),
+            (
+                "/api/v1/runs/{run_id}/integration-actions",
+                "listRunIntegrationActions",
+            ),
+        ];
+        for (path, operation_id) in journal {
+            let operation = &paths[path]["get"];
+            assert_eq!(operation["operationId"], operation_id, "{path}");
+            for status in ["200", "403", "404"] {
+                assert!(
+                    operation["responses"][status].is_object(),
+                    "{path} {status}"
+                );
+            }
+            let mut reachable = std::collections::BTreeSet::new();
+            referenced_schemas(&spec, &operation["responses"], &mut reachable);
+            assert!(reachable.contains("IntegrationActionResponse"), "{path}");
+            for name in reachable {
+                let properties = &schemas[name]["properties"];
+                assert!(
+                    properties.get("snapshot").is_none(),
+                    "{name} reachable from {path} has a snapshot property"
+                );
+            }
+        }
+        let action = &schemas["IntegrationActionResponse"]["properties"];
+        for field in [
+            "id",
+            "run_id",
+            "card_id",
+            "instance_id",
+            "instance_name",
+            "instance_environment",
+            "instance_kind",
+            "actor",
+            "tool",
+            "access",
+            "target",
+            "arguments",
+            "outcome",
+            "reason_code",
+            "reason",
+            "before",
+            "after",
+            "revertible",
+            "reverts_action_id",
+            "reverted_by_action_id",
+            "latency_ms",
+            "created_at",
+            "finished_at",
+        ] {
+            assert!(action[field].is_object(), "{field}");
+        }
+        assert!(schemas["IntegrationActionListResponse"]["properties"]["items"].is_object());
     }
 
     #[test]

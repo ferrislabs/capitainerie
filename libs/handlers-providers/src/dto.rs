@@ -217,6 +217,13 @@ pub struct ModelAssignmentsDto {
     #[serde(default, deserialize_with = "present_or_null")]
     #[schema(value_type = Option<ModelRefDto>)]
     pub captain: Option<Option<ModelRefDto>>,
+    /// The model of the Intervenant, the agent that acts on a client's Odoo and
+    /// n8n instances (a chat model that calls tools). On a PUT, an absent key
+    /// keeps the current one and an explicit `null` clears it; without one,
+    /// the writer's model serves.
+    #[serde(default, deserialize_with = "present_or_null")]
+    #[schema(value_type = Option<ModelRefDto>)]
+    pub integrator: Option<Option<ModelRefDto>>,
     /// The Anthropic model Claude Code runs on. When absent on a PUT, the
     /// current value (or the default) is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,6 +248,7 @@ impl From<ModelAssignments> for ModelAssignmentsDto {
             transcriber: Some(assignments.transcriber.map(Into::into)),
             reader: Some(assignments.reader.map(Into::into)),
             captain: Some(assignments.captain.map(Into::into)),
+            integrator: Some(assignments.integrator.map(Into::into)),
             executor: Some(assignments.executor.as_str().to_owned()),
         }
     }
@@ -267,6 +275,10 @@ impl ModelAssignmentsDto {
             Some(chosen) => chosen.map(Into::into),
             None => current.and_then(|c| c.captain.clone()),
         };
+        let integrator = match self.integrator {
+            Some(chosen) => chosen.map(Into::into),
+            None => current.and_then(|c| c.integrator.clone()),
+        };
         Ok(ModelAssignments {
             extractor: self.extractor.into(),
             judge: self.judge.into(),
@@ -275,6 +287,7 @@ impl ModelAssignmentsDto {
             transcriber,
             reader,
             captain,
+            integrator,
             executor,
         })
     }

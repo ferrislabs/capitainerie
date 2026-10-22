@@ -26,6 +26,7 @@ pub enum AgentRole {
     Transcriber,
     Reader,
     Captain,
+    Integrator,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -48,6 +49,8 @@ pub struct ModelAssignments {
     pub reader: Option<ModelRef>,
     #[serde(default)]
     pub captain: Option<ModelRef>,
+    #[serde(default)]
+    pub integrator: Option<ModelRef>,
     /// Always an Anthropic model; runs queued before it existed take the default.
     #[serde(default)]
     pub executor: ExecutorModel,
@@ -139,7 +142,7 @@ impl TryFrom<&str> for ProviderKind {
 }
 
 impl AgentRole {
-    pub const ALL: [AgentRole; 7] = [
+    pub const ALL: [AgentRole; 8] = [
         Self::Extractor,
         Self::Judge,
         Self::Writer,
@@ -147,6 +150,7 @@ impl AgentRole {
         Self::Transcriber,
         Self::Reader,
         Self::Captain,
+        Self::Integrator,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -158,6 +162,7 @@ impl AgentRole {
             Self::Transcriber => "transcriber",
             Self::Reader => "reader",
             Self::Captain => "captain",
+            Self::Integrator => "integrator",
         }
     }
 }
@@ -172,6 +177,7 @@ impl ModelAssignments {
             AgentRole::Transcriber => self.transcriber.as_ref(),
             AgentRole::Reader => self.reader.as_ref(),
             AgentRole::Captain => self.captain.as_ref().or(Some(&self.writer)),
+            AgentRole::Integrator => self.integrator.as_ref().or(Some(&self.writer)),
         }
     }
 
@@ -215,6 +221,7 @@ impl ModelAssignments {
             transcriber: None,
             reader: None,
             captain: None,
+            integrator: None,
             executor: ExecutorModel::default(),
         }
     }

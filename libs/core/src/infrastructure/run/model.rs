@@ -53,6 +53,9 @@ fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
             repository: repository.parse()?,
             base_branch: base_branch.clone(),
         }),
+        (None, Some(card_id), None, None) => Ok(RunSubject::Intervention {
+            card_id: CardId(card_id),
+        }),
         _ => Err(CoreError::Internal(format!(
             "run {} has no valid subject",
             row.id
