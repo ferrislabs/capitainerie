@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM integration_actions\n            WHERE organization_id = $1 AND run_id = $2 AND access = 'write'\n              AND outcome IN ('pending', 'succeeded', 'failed')\n              AND reason_code IS DISTINCT FROM 'before_unreadable'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ebd6b92e08c877d5eea33fec2d429fbe228bd1bcc21bdc62ce2aad774882892a"
+}

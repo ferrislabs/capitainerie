@@ -6,13 +6,15 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+base64.workspace = true
 capitainerie-common.workspace = true
 capitainerie-core.workspace = true
+pdf-extract.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["net", "time"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]
