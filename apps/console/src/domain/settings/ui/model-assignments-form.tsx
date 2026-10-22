@@ -1,8 +1,9 @@
-import { ChevronDown } from 'lucide-react'
 import type { FormEvent } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
+import { Combobox } from '#/components/ui/combobox'
+import type { ComboboxItem } from '#/components/ui/combobox-model'
 import { PROVIDER_INFO } from '#/domain/settings/providers'
 import {
 	AGENT_ROLES,
@@ -48,6 +49,32 @@ function optionLabel(model: Schemas.ModelResponse): string {
 		: model.id
 }
 
+function unavailableLabel(ref: ModelRef): string {
+	return `${ref.model} (${PROVIDER_INFO[ref.provider].label}, indisponible)`
+}
+
+function modelItems(
+	options: ReadonlyArray<Schemas.ModelResponse>,
+	unavailable: ModelRef | undefined,
+): ComboboxItem[] {
+	const groups = groupByProvider(options).map((group) => ({
+		label: PROVIDER_INFO[group.provider].label,
+		options: group.items.map((model) => ({
+			value: modelRefKey(catalogRef(model)),
+			label: optionLabel(model),
+		})),
+	}))
+	return unavailable
+		? [
+				{
+					value: modelRefKey(unavailable),
+					label: unavailableLabel(unavailable),
+				},
+				...groups,
+			]
+		: groups
+}
+
 interface OptionalRoleRowProps {
 	id: string
 	info: RoleInfo
@@ -83,43 +110,16 @@ function OptionalRoleRow({
 					{info.description}
 				</p>
 			</div>
-			<div className="relative">
-				<select
-					id={id}
-					aria-describedby={`${id}-description`}
-					className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-					disabled={disabled || empty}
-					value={key}
-					onChange={(event) => onChange(parseModelRefKey(event.target.value))}
-				>
-					<option value="">{empty ? noModelLabel : noneLabel}</option>
-					{value && !known ? (
-						<option value={key}>
-							{value.model} ({PROVIDER_INFO[value.provider].label},
-							indisponible)
-						</option>
-					) : null}
-					{groupByProvider(options).map((group) => (
-						<optgroup
-							key={group.provider}
-							label={PROVIDER_INFO[group.provider].label}
-						>
-							{group.items.map((model) => (
-								<option
-									key={modelRefKey(catalogRef(model))}
-									value={modelRefKey(catalogRef(model))}
-								>
-									{optionLabel(model)}
-								</option>
-							))}
-						</optgroup>
-					))}
-				</select>
-				<ChevronDown
-					aria-hidden="true"
-					className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-				/>
-			</div>
+			<Combobox
+				id={id}
+				aria-describedby={`${id}-description`}
+				className="font-mono text-xs"
+				disabled={disabled || empty}
+				items={modelItems(options, value && !known ? value : undefined)}
+				value={key}
+				onValueChange={(next) => onChange(parseModelRefKey(next))}
+				noneLabel={empty ? noModelLabel : noneLabel}
+			/>
 		</li>
 	)
 }
@@ -205,52 +205,26 @@ export function ModelAssignmentsForm({
 									{info.description}
 								</p>
 							</div>
-							<div className="relative">
-								<select
-									id={selectId}
-									aria-describedby={`${selectId}-description`}
-									className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-									disabled={!isAdmin || isPending || empty}
-									value={currentKey}
-									onChange={(event) => {
-										const ref = parseModelRefKey(event.target.value)
-										if (ref) onChange(role, ref)
-									}}
-								>
-									{currentKey === '' ? (
-										<option value="" disabled>
-											{empty
-												? `Aucun modèle ${info.capability === 'chat' ? 'de chat' : 'd’embeddings'}`
-												: 'Choisir un modèle…'}
-										</option>
-									) : null}
-									{current && !isKnown ? (
-										<option value={currentKey}>
-											{current.model} ({PROVIDER_INFO[current.provider].label},
-											indisponible)
-										</option>
-									) : null}
-									{groupByProvider(options).map((group) => (
-										<optgroup
-											key={group.provider}
-											label={PROVIDER_INFO[group.provider].label}
-										>
-											{group.items.map((model) => (
-												<option
-													key={modelRefKey(catalogRef(model))}
-													value={modelRefKey(catalogRef(model))}
-												>
-													{optionLabel(model)}
-												</option>
-											))}
-										</optgroup>
-									))}
-								</select>
-								<ChevronDown
-									aria-hidden="true"
-									className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-								/>
-							</div>
+							<Combobox
+								id={selectId}
+								aria-describedby={`${selectId}-description`}
+								className="font-mono text-xs"
+								disabled={!isAdmin || isPending || empty}
+								items={modelItems(
+									options,
+									current && !isKnown ? current : undefined,
+								)}
+								value={currentKey}
+								onValueChange={(next) => {
+									const ref = parseModelRefKey(next)
+									if (ref) onChange(role, ref)
+								}}
+								placeholder={
+									empty
+										? `Aucun modèle ${info.capability === 'chat' ? 'de chat' : 'd’embeddings'}`
+										: 'Choisir un modèle…'
+								}
+							/>
 						</li>
 					)
 				})}
@@ -299,36 +273,28 @@ export function ModelAssignmentsForm({
 							{EXECUTOR_INFO.description}
 						</p>
 					</div>
-					<div className="relative">
-						<select
-							id="assignment-executor"
-							aria-describedby="assignment-executor-description"
-							className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={!isAdmin || isPending || executorEmpty}
-							value={executor}
-							onChange={(event) => {
-								if (event.target.value) onExecutorChange(event.target.value)
-							}}
-						>
-							{executor === '' ? (
-								<option value="" disabled>
-									{executorEmpty ? 'Aucun modèle Claude' : 'Choisir un modèle…'}
-								</option>
-							) : null}
-							{executor !== '' && !executorKnown ? (
-								<option value={executor}>{executor} (indisponible)</option>
-							) : null}
-							{executorOptions.map((model) => (
-								<option key={model.id} value={model.id}>
-									{optionLabel(model)}
-								</option>
-							))}
-						</select>
-						<ChevronDown
-							aria-hidden="true"
-							className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-						/>
-					</div>
+					<Combobox
+						id="assignment-executor"
+						aria-describedby="assignment-executor-description"
+						className="font-mono text-xs"
+						disabled={!isAdmin || isPending || executorEmpty}
+						items={[
+							...(executor !== '' && !executorKnown
+								? [{ value: executor, label: `${executor} (indisponible)` }]
+								: []),
+							...executorOptions.map((model) => ({
+								value: model.id,
+								label: optionLabel(model),
+							})),
+						]}
+						value={executor}
+						onValueChange={(next) => {
+							if (next) onExecutorChange(next)
+						}}
+						placeholder={
+							executorEmpty ? 'Aucun modèle Claude' : 'Choisir un modèle…'
+						}
+					/>
 				</li>
 			</ul>
 			{embeddingsChanged || errorMessage || successMessage || isAdmin ? (

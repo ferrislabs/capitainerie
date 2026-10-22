@@ -17,6 +17,7 @@ import {
 	WHISPER,
 } from '#/domain/settings/test-fixtures'
 import { clearAuth, setAuth } from '#/store/auth.store'
+import { chooseValue, textOf } from '#/test-utils/combobox'
 
 vi.mock('@tanstack/react-router', () => ({
 	Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
@@ -147,13 +148,15 @@ describe('settings pages', () => {
 		).toBeTruthy()
 		const save = screen.getByRole('button', { name: 'Enregistrer' })
 		for (const label of ['Extracteur', 'Juge de doublons', 'Rédacteur']) {
-			await user.selectOptions(
+			await chooseValue(
+				user,
 				screen.getByLabelText(label),
 				'openai_compatible:qwen2.5:7b-instruct',
 			)
 		}
 		expect((save as HTMLButtonElement).disabled).toBe(true)
-		await user.selectOptions(
+		await chooseValue(
+			user,
 			screen.getByLabelText('Embeddings'),
 			'openai_compatible:bge-m3:latest',
 		)
@@ -213,7 +216,7 @@ describe('settings pages', () => {
 			(screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement)
 				.disabled,
 		).toBe(true)
-		await user.selectOptions(executor, 'claude-sonnet-5')
+		await chooseValue(user, executor, 'claude-sonnet-5')
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		expect(await screen.findByText(/Modèles enregistrés/)).toBeTruthy()
@@ -251,11 +254,9 @@ describe('settings pages', () => {
 		const user = userEvent.setup()
 		render(<ModelsPage />, { wrapper: harness.wrapper })
 
-		const transcriber = (await screen.findByLabelText(
-			'Transcripteur',
-		)) as HTMLSelectElement
-		expect(transcriber.value).toBe('')
-		await user.selectOptions(transcriber, 'mistral:voxtral-mini-latest')
+		const transcriber = await screen.findByLabelText('Transcripteur')
+		expect(textOf(transcriber)).toBe('Aucun transcripteur')
+		await chooseValue(user, transcriber, 'mistral:voxtral-mini-latest')
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		await waitFor(() => expect(puts).toHaveLength(1))
@@ -263,12 +264,12 @@ describe('settings pages', () => {
 			transcriber: { provider: 'mistral', model: VOXTRAL.id },
 		})
 		await waitFor(() =>
-			expect(
-				(screen.getByLabelText('Transcripteur') as HTMLSelectElement).value,
-			).toBe('mistral:voxtral-mini-latest'),
+			expect(textOf(screen.getByLabelText('Transcripteur'))).toContain(
+				'voxtral-mini-latest',
+			),
 		)
 
-		await user.selectOptions(screen.getByLabelText('Transcripteur'), '')
+		await chooseValue(user, screen.getByLabelText('Transcripteur'), '')
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		await waitFor(() => expect(puts).toHaveLength(2))
@@ -306,11 +307,9 @@ describe('settings pages', () => {
 		const user = userEvent.setup()
 		render(<ModelsPage />, { wrapper: harness.wrapper })
 
-		const reader = (await screen.findByLabelText(
-			'Lecteur de PDF',
-		)) as HTMLSelectElement
-		expect(reader.value).toBe('')
-		await user.selectOptions(reader, 'mistral:mistral-ocr-latest')
+		const reader = await screen.findByLabelText('Lecteur de PDF')
+		expect(textOf(reader)).toBe('Aucun lecteur de PDF')
+		await chooseValue(user, reader, 'mistral:mistral-ocr-latest')
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		await waitFor(() => expect(puts).toHaveLength(1))
@@ -319,12 +318,12 @@ describe('settings pages', () => {
 			transcriber: null,
 		})
 		await waitFor(() =>
-			expect(
-				(screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement).value,
-			).toBe('mistral:mistral-ocr-latest'),
+			expect(textOf(screen.getByLabelText('Lecteur de PDF'))).toContain(
+				'mistral-ocr-latest',
+			),
 		)
 
-		await user.selectOptions(screen.getByLabelText('Lecteur de PDF'), '')
+		await chooseValue(user, screen.getByLabelText('Lecteur de PDF'), '')
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
 		await waitFor(() => expect(puts).toHaveLength(2))

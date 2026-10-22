@@ -2,8 +2,9 @@ import { Github } from 'lucide-react'
 import type { FormEvent } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
+import { Field } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '#/components/ui/radio-group'
 
 export type OwnerKind = 'user' | 'organization'
 
@@ -50,37 +51,23 @@ export function GithubAppForm({
 				l’organisation. GitHub vous demandera de la valider ; aucune clé n’est à
 				copier.
 			</p>
-			<fieldset className="flex flex-col gap-2">
-				<legend className="mb-1 text-sm font-medium">
-					Propriétaire de l’application
-				</legend>
-				{(
-					[
-						['user', 'Compte personnel'],
-						['organization', 'Organisation GitHub'],
-					] as const
-				).map(([kind, label]) => (
-					<label key={kind} className="flex items-center gap-2 text-sm">
-						<input
-							type="radio"
-							name="github-app-owner"
-							value={kind}
-							checked={ownerKind === kind}
-							disabled={isPending}
-							onChange={() => onOwnerKindChange(kind)}
-							className="size-4 accent-primary"
-						/>
-						{label}
-					</label>
-				))}
-			</fieldset>
+			<Field label="Propriétaire de l’application" group>
+				<RadioGroup
+					value={ownerKind}
+					onValueChange={(kind) => onOwnerKindChange(kind as OwnerKind)}
+					disabled={isPending}
+				>
+					<RadioGroupItem value="user" label="Compte personnel" />
+					<RadioGroupItem value="organization" label="Organisation GitHub" />
+				</RadioGroup>
+			</Field>
 			{ownerKind === 'organization' ? (
-				<div className="flex w-full max-w-sm flex-col gap-1.5">
-					<Label htmlFor="github-owner-login">
-						Login de l’organisation GitHub
-					</Label>
+				<Field
+					label="Login de l’organisation GitHub"
+					id="github-owner-login"
+					className="w-full max-w-sm"
+				>
 					<Input
-						id="github-owner-login"
 						autoComplete="off"
 						spellCheck={false}
 						className="font-mono"
@@ -88,9 +75,9 @@ export function GithubAppForm({
 						value={login}
 						onChange={(event) => onLoginChange(event.target.value)}
 						disabled={isPending}
-						aria-invalid={login !== '' && !valid}
+						invalid={login !== '' && !valid}
 					/>
-				</div>
+				</Field>
 			) : null}
 			<Button type="submit" disabled={isPending || !valid}>
 				<Github aria-hidden="true" />

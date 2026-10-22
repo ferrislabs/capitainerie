@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ADMIN_ONLY_MODELS } from '#/domain/settings/providers'
@@ -15,6 +15,7 @@ import {
 	WHISPER,
 } from '#/domain/settings/test-fixtures'
 import { ModelAssignmentsForm } from '#/domain/settings/ui/model-assignments-form'
+import { chooseValue, listValues, textOf } from '#/test-utils/combobox'
 
 const QWEN_REF = { provider: 'openai_compatible', model: QWEN.id } as const
 const BGE_REF = { provider: 'openai_compatible', model: BGE.id } as const
@@ -47,33 +48,33 @@ function setup(
 	return handlers
 }
 
-function optionValues(select: HTMLElement) {
-	return within(select)
-		.getAllByRole('option')
-		.map((option) => (option as HTMLOptionElement).value)
-		.filter(Boolean)
-}
-
 describe('ModelAssignmentsForm', () => {
-	it('lists only compatible models per role, grouped by provider', () => {
+	it('lists only compatible models per role, grouped by provider', async () => {
 		setup()
+		const user = userEvent.setup()
 
 		for (const label of ['Extracteur', 'Juge de doublons', 'Rédacteur']) {
 			const select = screen.getByLabelText(label)
-			expect(optionValues(select)).toEqual([
+			expect(await listValues(user, select)).toEqual([
 				'anthropic:claude-sonnet-5',
 				'openai_compatible:qwen2.5:7b-instruct',
 			])
 		}
 		const embeddings = screen.getByLabelText('Embeddings')
-		expect(optionValues(embeddings)).toEqual([
+		await user.click(embeddings)
+		expect(
+			screen
+				.getAllByRole('group')
+				.map((group) => group.textContent?.slice(0, 20)),
+		).toHaveLength(2)
+		expect(screen.getByRole('group', { name: 'Mistral' })).toBeTruthy()
+		expect(
+			screen.getByRole('group', { name: 'Compatible OpenAI' }),
+		).toBeTruthy()
+		await user.keyboard('{Escape}')
+		expect(await listValues(user, embeddings)).toEqual([
 			'mistral:mistral-embed',
 			'openai_compatible:bge-m3:latest',
-		])
-		const groups = embeddings.querySelectorAll('optgroup')
-		expect([...groups].map((group) => group.label)).toEqual([
-			'Mistral',
-			'Compatible OpenAI',
 		])
 	})
 
@@ -89,7 +90,8 @@ describe('ModelAssignmentsForm', () => {
 		})
 		const user = userEvent.setup()
 
-		await user.selectOptions(
+		await chooseValue(
+			user,
 			screen.getByLabelText('Extracteur'),
 			'anthropic:claude-sonnet-5',
 		)
@@ -120,11 +122,11 @@ describe('ModelAssignmentsForm', () => {
 		expect(screen.getByText(ADMIN_ONLY_MODELS)).toBeTruthy()
 		expect(screen.queryByRole('button')).toBeNull()
 		expect(
-			(screen.getByLabelText('Extracteur') as HTMLSelectElement).disabled,
+			(screen.getByLabelText('Extracteur') as HTMLInputElement).disabled,
 		).toBe(true)
-		expect(
-			(screen.getByLabelText('Extracteur') as HTMLSelectElement).value,
-		).toBe('openai_compatible:qwen2.5:7b-instruct')
+		expect(textOf(screen.getByLabelText('Extracteur'))).toContain(
+			'qwen2.5:7b-instruct',
+		)
 	})
 
 	it('keeps a saved model that the catalog no longer lists', () => {
@@ -132,9 +134,8 @@ describe('ModelAssignmentsForm', () => {
 			values: { writer: { provider: 'anthropic', model: 'claude-old' } },
 		})
 
-		const writer = screen.getByLabelText('Rédacteur') as HTMLSelectElement
-		expect(writer.value).toBe('anthropic:claude-old')
-		expect(writer.selectedOptions[0].textContent).toContain('indisponible')
+		const writer = screen.getByLabelText('Rédacteur')
+		expect(textOf(writer)).toBe('claude-old (Claude (Anthropic), indisponible)')
 	})
 
 	it('shows the reindex warning, the error and the success message', () => {
@@ -158,9 +159,9 @@ describe('ModelAssignmentsForm', () => {
 	it('says when no compatible model exists', () => {
 		setup({ models: [QWEN] })
 
-		const embeddings = screen.getByLabelText('Embeddings') as HTMLSelectElement
+		const embeddings = screen.getByLabelText('Embeddings') as HTMLInputElement
 		expect(embeddings.disabled).toBe(true)
-		expect(embeddings.textContent).toContain('Aucun modèle d’embeddings')
+		expect(embeddings.placeholder).toContain('Aucun modèle d’embeddings')
 	})
 
 	it('offers only Claude models to the executor and reports the choice', async () => {
@@ -174,32 +175,35 @@ describe('ModelAssignmentsForm', () => {
 				CLAUDE_LOOKALIKE,
 			],
 		})
+		const user = userEvent.setup()
 		const select = screen.getByLabelText('Exécutant')
 
-		expect(optionValues(select)).toEqual(['claude-sonnet-5', 'claude-haiku-5'])
+		expect(await listValues(user, select)).toEqual([
+			'claude-sonnet-5',
+			'claude-haiku-5',
+		])
 		expect(
 			screen.getByText(
 				'Claude Code, sur les cartes confiées. Modèles Claude uniquement.',
 			),
 		).toBeTruthy()
 
-		await userEvent.selectOptions(select, 'claude-haiku-5')
+		await chooseValue(user, select, 'claude-haiku-5')
 		expect(handlers.onExecutorChange).toHaveBeenCalledWith('claude-haiku-5')
 	})
 
 	it('shows the saved executor, even when the catalog dropped it', () => {
 		setup({ values: { executor: 'claude-old' } })
 
-		const executor = screen.getByLabelText('Exécutant') as HTMLSelectElement
-		expect(executor.value).toBe('claude-old')
-		expect(executor.selectedOptions[0].textContent).toContain('indisponible')
+		const executor = screen.getByLabelText('Exécutant')
+		expect(textOf(executor)).toBe('claude-old (indisponible)')
 	})
 
 	it('says when the catalog has no Claude model, and locks members out', () => {
 		setup({ models: [QWEN, BGE] })
-		const executor = screen.getByLabelText('Exécutant') as HTMLSelectElement
+		const executor = screen.getByLabelText('Exécutant') as HTMLInputElement
 		expect(executor.disabled).toBe(true)
-		expect(executor.textContent).toContain('Aucun modèle Claude')
+		expect(executor.placeholder).toContain('Aucun modèle Claude')
 	})
 
 	it('offers the transcriber only transcription models of mistral or openai_compatible', async () => {
@@ -216,16 +220,16 @@ describe('ModelAssignmentsForm', () => {
 		const handlers = setup({
 			models: [QWEN, BGE, SONNET, VOXTRAL, WHISPER, anthropicTranscriber],
 		})
-		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Transcripteur')
 
-		expect(optionValues(select)).toEqual([
+		expect(await listValues(user, select)).toEqual([
 			'mistral:voxtral-mini-latest',
 			'openai_compatible:whisper-large-v3',
 		])
-		expect(select.value).toBe('')
-		expect(select.selectedOptions[0].textContent).toBe('Aucun transcripteur')
+		expect(textOf(select)).toBe('Aucun transcripteur')
 
-		await userEvent.selectOptions(select, 'mistral:voxtral-mini-latest')
+		await chooseValue(user, select, 'mistral:voxtral-mini-latest')
 		expect(handlers.onTranscriberChange).toHaveBeenCalledWith({
 			provider: 'mistral',
 			model: 'voxtral-mini-latest',
@@ -237,19 +241,20 @@ describe('ModelAssignmentsForm', () => {
 			models: [VOXTRAL],
 			values: { transcriber: { provider: 'mistral', model: VOXTRAL.id } },
 		})
-		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
-		expect(select.value).toBe('mistral:voxtral-mini-latest')
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Transcripteur')
+		expect(textOf(select)).toContain('voxtral-mini-latest')
 
-		await userEvent.selectOptions(select, '')
+		await chooseValue(user, select, '')
 
 		expect(handlers.onTranscriberChange).toHaveBeenCalledWith(undefined)
 	})
 
 	it('says when no model can transcribe', () => {
 		setup({ models: [QWEN, BGE] })
-		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
+		const select = screen.getByLabelText('Transcripteur') as HTMLInputElement
 		expect(select.disabled).toBe(true)
-		expect(select.textContent).toContain('Aucun modèle de transcription')
+		expect(textOf(select)).toContain('Aucun modèle de transcription')
 		expect(
 			screen.getByText(/Facultatif : sans lui, seuls les fichiers texte/),
 		).toBeTruthy()
@@ -261,9 +266,8 @@ describe('ModelAssignmentsForm', () => {
 			values: { transcriber: { provider: 'mistral', model: 'voxtral-old' } },
 		})
 
-		const select = screen.getByLabelText('Transcripteur') as HTMLSelectElement
-		expect(select.value).toBe('mistral:voxtral-old')
-		expect(select.selectedOptions[0].textContent).toContain('indisponible')
+		const select = screen.getByLabelText('Transcripteur')
+		expect(textOf(select)).toBe('voxtral-old (Mistral, indisponible)')
 	})
 
 	it('offers the PDF reader only OCR models of mistral', async () => {
@@ -280,13 +284,15 @@ describe('ModelAssignmentsForm', () => {
 		const handlers = setup({
 			models: [QWEN, BGE, SONNET, VOXTRAL, MISTRAL_OCR, otherOcr],
 		})
-		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Lecteur de PDF')
 
-		expect(optionValues(select)).toEqual(['mistral:mistral-ocr-latest'])
-		expect(select.value).toBe('')
-		expect(select.selectedOptions[0].textContent).toBe('Aucun lecteur de PDF')
+		expect(await listValues(user, select)).toEqual([
+			'mistral:mistral-ocr-latest',
+		])
+		expect(textOf(select)).toBe('Aucun lecteur de PDF')
 
-		await userEvent.selectOptions(select, 'mistral:mistral-ocr-latest')
+		await chooseValue(user, select, 'mistral:mistral-ocr-latest')
 		expect(handlers.onReaderChange).toHaveBeenCalledWith({
 			provider: 'mistral',
 			model: 'mistral-ocr-latest',
@@ -299,20 +305,21 @@ describe('ModelAssignmentsForm', () => {
 			models: [MISTRAL_OCR],
 			values: { reader: { provider: 'mistral', model: MISTRAL_OCR.id } },
 		})
-		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
-		expect(select.value).toBe('mistral:mistral-ocr-latest')
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Lecteur de PDF')
+		expect(textOf(select)).toContain('mistral-ocr-latest')
 
-		await userEvent.selectOptions(select, '')
+		await chooseValue(user, select, '')
 
 		expect(handlers.onReaderChange).toHaveBeenCalledWith(undefined)
 	})
 
 	it('says when no model can read a PDF', () => {
 		setup({ models: [QWEN, BGE] })
-		const select = screen.getByLabelText('Lecteur de PDF') as HTMLSelectElement
+		const select = screen.getByLabelText('Lecteur de PDF') as HTMLInputElement
 
 		expect(select.disabled).toBe(true)
-		expect(select.textContent).toContain('Aucun modèle OCR')
+		expect(textOf(select)).toContain('Aucun modèle OCR')
 		expect(
 			screen.getByText(/Facultatif : sans lui, les PDF sont refusés/),
 		).toBeTruthy()
@@ -320,27 +327,29 @@ describe('ModelAssignmentsForm', () => {
 
 	it('offers any chat model to the Captain, who defaults to the Rédacteur', async () => {
 		const handlers = setup()
-		const select = screen.getByLabelText('Capitaine') as HTMLSelectElement
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Capitaine')
 
-		expect(optionValues(select)).toContain(`openai_compatible:${QWEN.id}`)
-		expect(optionValues(select)).not.toContain(`openai_compatible:${BGE.id}`)
-		expect(select.value).toBe('')
-		expect(select.selectedOptions[0].textContent).toBe('Le modèle du Rédacteur')
+		const values = await listValues(user, select)
+		expect(values).toContain(`openai_compatible:${QWEN.id}`)
+		expect(values).not.toContain(`openai_compatible:${BGE.id}`)
+		expect(textOf(select)).toBe('Le modèle du Rédacteur')
 		expect(
 			screen.getByText(/sans lui, le modèle du Rédacteur sert/),
 		).toBeTruthy()
 
-		await userEvent.selectOptions(select, `openai_compatible:${QWEN.id}`)
+		await chooseValue(user, select, `openai_compatible:${QWEN.id}`)
 		expect(handlers.onCaptainChange).toHaveBeenCalledWith(QWEN_REF)
 		expect(handlers.onReaderChange).not.toHaveBeenCalled()
 	})
 
 	it('clears the Captain with the empty choice', async () => {
 		const handlers = setup({ values: { captain: QWEN_REF } })
-		const select = screen.getByLabelText('Capitaine') as HTMLSelectElement
-		expect(select.value).toBe(`openai_compatible:${QWEN.id}`)
+		const user = userEvent.setup()
+		const select = screen.getByLabelText('Capitaine')
+		expect(textOf(select)).toContain(QWEN.id)
 
-		await userEvent.selectOptions(select, '')
+		await chooseValue(user, select, '')
 
 		expect(handlers.onCaptainChange).toHaveBeenCalledWith(undefined)
 	})

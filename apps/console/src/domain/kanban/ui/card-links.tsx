@@ -1,5 +1,7 @@
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
+import { Combobox } from '#/components/ui/combobox'
+import { Field } from '#/components/ui/field'
 import {
 	clientOptions,
 	type LinkPatch,
@@ -17,8 +19,7 @@ interface Props {
 	onLink: (patch: LinkPatch) => void
 }
 
-const SELECT_CLASS =
-	'h-8 w-full rounded-md border border-input bg-card px-2 text-[13px] text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:opacity-60'
+const LABEL_CLASS = 'text-xs font-normal text-muted-foreground'
 
 export function CardLinks({
 	card,
@@ -33,56 +34,36 @@ export function CardLinks({
 		<section className="flex flex-col gap-2">
 			<h3 className="text-[15px] font-semibold">Rattachement</h3>
 			<div className="grid gap-3 sm:grid-cols-2">
-				<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-					Client
-					<select
-						aria-label="Client"
-						className={SELECT_CLASS}
+				<Field label="Client" id="card-client" labelClassName={LABEL_CLASS}>
+					<Combobox
+						size="sm"
 						disabled={isPending || !ready}
+						items={clientOptions(card, clients).map((client) => ({
+							value: client.id,
+							label: client.name,
+						}))}
 						value={card.client?.id ?? ''}
-						onChange={(event) =>
-							onLink(
-								linkPatch(
-									card,
-									{ field: 'client', id: event.target.value },
-									projects,
-								),
-							)
+						noneLabel="Aucun"
+						onValueChange={(id) =>
+							onLink(linkPatch(card, { field: 'client', id }, projects))
 						}
-					>
-						<option value="">Aucun</option>
-						{clientOptions(card, clients).map((client) => (
-							<option key={client.id} value={client.id}>
-								{client.name}
-							</option>
-						))}
-					</select>
-				</label>
-				<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-					Projet
-					<select
-						aria-label="Projet"
-						className={SELECT_CLASS}
+					/>
+				</Field>
+				<Field label="Projet" id="card-project" labelClassName={LABEL_CLASS}>
+					<Combobox
+						size="sm"
 						disabled={isPending || !ready}
+						items={projectOptions(card, projects).map((project) => ({
+							value: project.id,
+							label: project.name,
+						}))}
 						value={card.project?.id ?? ''}
-						onChange={(event) =>
-							onLink(
-								linkPatch(
-									card,
-									{ field: 'project', id: event.target.value },
-									projects,
-								),
-							)
+						noneLabel="Aucun"
+						onValueChange={(id) =>
+							onLink(linkPatch(card, { field: 'project', id }, projects))
 						}
-					>
-						<option value="">Aucun</option>
-						{projectOptions(card, projects).map((project) => (
-							<option key={project.id} value={project.id}>
-								{project.name}
-							</option>
-						))}
-					</select>
-				</label>
+					/>
+				</Field>
 			</div>
 			{errorMessage ? (
 				<InlineAlert tone="danger">{errorMessage}</InlineAlert>

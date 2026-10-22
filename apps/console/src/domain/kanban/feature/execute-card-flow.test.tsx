@@ -7,6 +7,7 @@ import type { Schemas } from '#/api/api.client'
 import { ExecuteCardFlow } from '#/domain/kanban/feature/execute-card-flow'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
 import { clearAuth, setAuth } from '#/store/auth.store'
+import { chooseValue } from '#/test-utils/combobox'
 
 vi.mock('@tanstack/react-router', () => ({
 	Link: ({ to, children }: { to: string; children: ReactNode }) => (
@@ -88,7 +89,7 @@ describe('ExecuteCardFlow', () => {
 			},
 		)
 
-		await user.selectOptions(await screen.findByLabelText('Dépôt'), 'acme/web')
+		await chooseValue(user, await screen.findByLabelText('Dépôt'), 'acme/web')
 		await user.click(screen.getByRole('button', { name: 'Confier' }))
 
 		await waitFor(() => expect(onStarted).toHaveBeenCalledWith('run-9'))
@@ -172,7 +173,7 @@ describe('ExecuteCardFlow', () => {
 			},
 		)
 
-		await user.selectOptions(await screen.findByLabelText('Dépôt'), 'acme/web')
+		await chooseValue(user, await screen.findByLabelText('Dépôt'), 'acme/web')
 		await user.click(screen.getByRole('button', { name: 'Confier' }))
 
 		expect(

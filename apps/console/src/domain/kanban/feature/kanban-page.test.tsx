@@ -7,6 +7,7 @@ import type { Schemas } from '#/api/api.client'
 import { KanbanPage } from '#/domain/kanban/feature/kanban-page'
 import { createTestClient, json } from '#/domain/settings/hooks/test-utils'
 import { clearAuth, setAuth } from '#/store/auth.store'
+import { chooseValue } from '#/test-utils/combobox'
 
 vi.mock('@tanstack/react-router', () => ({
 	Link: ({ to, children }: { to: string; children: ReactNode }) => (
@@ -272,7 +273,8 @@ describe('KanbanPage card panel', () => {
 		})
 		const panel = await screen.findByRole('dialog')
 
-		await user.selectOptions(
+		await chooseValue(
+			user,
 			await within(panel).findByLabelText('Déplacer vers…'),
 			'done',
 		)
@@ -309,7 +311,8 @@ describe('KanbanPage card panel', () => {
 		})
 		const panel = await screen.findByRole('dialog')
 
-		await user.selectOptions(
+		await chooseValue(
+			user,
 			await within(panel).findByLabelText('Priorité'),
 			'urgent',
 		)
@@ -328,10 +331,12 @@ describe('KanbanPage card panel', () => {
 		await user.type(title, 'Corriger le gros bug')
 		await user.click(within(panel).getByRole('button', { name: 'Enregistrer' }))
 		await waitFor(() => expect(bodies).toHaveLength(2))
-		const responsable = await within(panel).findByRole('option', {
-			name: 'Claire Martin',
-		})
-		expect(responsable).toBeTruthy()
+		const assignee = within(panel).getByLabelText('Responsable')
+		await waitFor(() => expect(assignee).toHaveProperty('disabled', false))
+		await user.click(assignee)
+		expect(
+			await screen.findByRole('option', { name: 'Claire Martin' }),
+		).toBeTruthy()
 
 		expect(bodies[0]).toEqual({ expected_version: 4, priority: 'urgent' })
 		expect(bodies[1]).toEqual({
@@ -360,7 +365,7 @@ describe('KanbanPage card panel', () => {
 		await within(panel).findByText('Le détail complet de la carte')
 		const before = boards
 
-		await user.selectOptions(within(panel).getByLabelText('Priorité'), 'high')
+		await chooseValue(user, within(panel).getByLabelText('Priorité'), 'high')
 
 		expect(
 			await within(panel).findByText('La carte a changé, rechargée.'),

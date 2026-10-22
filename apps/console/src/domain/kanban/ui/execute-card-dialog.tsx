@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronDown } from 'lucide-react'
 import type { FormEvent } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Button } from '#/components/ui/button'
+import { Combobox } from '#/components/ui/combobox'
 import {
 	Dialog,
 	DialogContent,
@@ -12,7 +12,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '#/components/ui/dialog'
-import { Label } from '#/components/ui/label'
+import { Field } from '#/components/ui/field'
 import { Skeleton } from '#/components/ui/skeleton'
 
 export type RepositoriesState =
@@ -79,31 +79,20 @@ function RepositoryField({
 	if (state.kind !== 'ready') return null
 
 	return (
-		<div className="flex flex-col gap-1.5">
-			<Label htmlFor="execute-repository">Dépôt</Label>
-			<div className="relative">
-				<select
-					id="execute-repository"
-					className="h-8 w-full appearance-none truncate rounded-md border border-input bg-card pr-8 pl-3 font-mono text-xs text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-					disabled={disabled}
-					value={value}
-					onChange={(event) => onChange(event.target.value)}
-				>
-					<option value="" disabled>
-						Choisir un dépôt…
-					</option>
-					{state.repositories.map((repository) => (
-						<option key={repository.full_name} value={repository.full_name}>
-							{repository.full_name}
-						</option>
-					))}
-				</select>
-				<ChevronDown
-					aria-hidden="true"
-					className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-				/>
-			</div>
-		</div>
+		<Field label="Dépôt" id="execute-repository">
+			<Combobox
+				className="font-mono text-xs"
+				disabled={disabled}
+				items={state.repositories.map((repository) => ({
+					value: repository.full_name,
+					label: repository.full_name,
+				}))}
+				value={value}
+				onValueChange={onChange}
+				placeholder="Choisir un dépôt…"
+				emptyText="Aucun dépôt ne correspond"
+			/>
+		</Field>
 	)
 }
 

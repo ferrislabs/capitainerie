@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { CardFields, EditableDescription } from '#/domain/kanban/ui/card-fields'
+import { chooseValue } from '#/test-utils/combobox'
 
 const MEMBERS = [
 	{ subject: 'u1', name: 'Claire Martin', email: null, last_seen_at: 'x' },
@@ -43,8 +44,16 @@ describe('CardFields', () => {
 	it('saves the priority and the estimate as soon as they change', async () => {
 		const onEdit = setup()
 
-		await userEvent.selectOptions(screen.getByLabelText('Priorité'), 'urgent')
-		await userEvent.selectOptions(screen.getByLabelText('Estimation'), 'xl')
+		await chooseValue(
+			userEvent.setup(),
+			screen.getByLabelText('Priorité'),
+			'urgent',
+		)
+		await chooseValue(
+			userEvent.setup(),
+			screen.getByLabelText('Estimation'),
+			'xl',
+		)
 
 		expect(onEdit).toHaveBeenNthCalledWith(1, { priority: 'urgent' })
 		expect(onEdit).toHaveBeenNthCalledWith(2, { estimate: 'xl' })
@@ -53,7 +62,11 @@ describe('CardFields', () => {
 	it('clears the estimate with null', async () => {
 		const onEdit = setup({ ...CARD, estimate: 'm' })
 
-		await userEvent.selectOptions(screen.getByLabelText('Estimation'), '')
+		await chooseValue(
+			userEvent.setup(),
+			screen.getByLabelText('Estimation'),
+			'',
+		)
 
 		expect(onEdit).toHaveBeenCalledWith({ estimate: null })
 	})
@@ -76,20 +89,26 @@ describe('CardFields', () => {
 
 	it('picks the responsable among the members', async () => {
 		const onEdit = setup()
+		const user = userEvent.setup()
 		const select = screen.getByLabelText('Responsable')
-		const options = [...select.querySelectorAll('option')].map(
-			(option) => option.textContent,
-		)
+		await user.click(select)
+		const options = screen
+			.getAllByRole('option')
+			.map((option) => option.textContent)
 		expect(options).toEqual(['Aucun', 'Claire Martin', 'Bastien'])
 
-		await userEvent.selectOptions(select, 'u2')
+		await chooseValue(user, select, 'u2')
 		expect(onEdit).toHaveBeenCalledWith({ assignee_subject: 'u2' })
 	})
 
 	it('clears the responsable with null', async () => {
 		const onEdit = setup({ ...CARD, assignee_subject: 'u1' })
 
-		await userEvent.selectOptions(screen.getByLabelText('Responsable'), '')
+		await chooseValue(
+			userEvent.setup(),
+			screen.getByLabelText('Responsable'),
+			'',
+		)
 
 		expect(onEdit).toHaveBeenCalledWith({ assignee_subject: null })
 	})
