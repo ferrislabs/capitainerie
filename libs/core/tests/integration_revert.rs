@@ -512,16 +512,16 @@ async fn restoring_an_n8n_update_sends_the_old_workflow_and_links_both_rows() {
 }
 
 #[tokio::test]
-async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record_without_leaking_them() {
+async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record() {
     let Some(world) = world().await else { return };
     let odoo = world.odoo().await;
     let before = json!([
-        {"id": 7, "name": "Acme", "parent_id": [3, "Boss"], "category_id": [1, 2], "api_key": "k-old"},
-        {"id": 8, "name": "Beta", "parent_id": false, "category_id": [], "api_key": "k-old"}
+        {"id": 7, "name": "Acme", "parent_id": [3, "Boss"], "category_id": [1, 2]},
+        {"id": 8, "name": "Beta", "parent_id": false, "category_id": []}
     ]);
     let after = json!([
-        {"id": 7, "name": "Acme SA", "parent_id": [9, "Mère"], "category_id": [4], "api_key": "k-new"},
-        {"id": 8, "name": "Acme SA", "parent_id": [9, "Mère"], "category_id": [4], "api_key": "k-new"}
+        {"id": 7, "name": "Acme SA", "parent_id": [9, "Mère"], "category_id": [4]},
+        {"id": 8, "name": "Acme SA", "parent_id": [9, "Mère"], "category_id": [4]}
     ]);
     let connector = Scripted::new()
         .answer("odoo_read", before.clone())
@@ -535,8 +535,7 @@ async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record_witho
                 json!({
                     "name": "Acme SA",
                     "parent_id": 9,
-                    "category_id": [[6, 0, [4]]],
-                    "api_key": "k-new"
+                    "category_id": [[6, 0, [4]]]
                 }),
             ),
             &connector,
@@ -574,19 +573,19 @@ async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record_witho
     assert_eq!(ids, &[7, 8]);
     let mut fields = fields.clone();
     fields.sort();
-    assert_eq!(fields, ["api_key", "category_id", "name", "parent_id"]);
+    assert_eq!(fields, ["category_id", "name", "parent_id"]);
     assert_eq!(
         requests[2],
         odoo_write(
             &[7],
-            json!({"name": "Acme", "parent_id": 3, "category_id": [[6, 0, [1, 2]]], "api_key": "k-old"})
+            json!({"name": "Acme", "parent_id": 3, "category_id": [[6, 0, [1, 2]]]})
         )
     );
     assert_eq!(
         requests[5],
         odoo_write(
             &[8],
-            json!({"name": "Beta", "parent_id": false, "category_id": [[6, 0, []]], "api_key": "k-old"})
+            json!({"name": "Beta", "parent_id": false, "category_id": [[6, 0, []]]})
         )
     );
     assert_eq!(rows.len(), 2);
@@ -597,7 +596,6 @@ async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record_witho
         world.row(action).await.reverted_by_action_id,
         Some(rows[0].id)
     );
-    assert_eq!(rows[0].arguments["values"]["api_key"], MASK);
     let shown = serde_json::to_string(
         &world
             .journal()
@@ -607,7 +605,7 @@ async fn restoring_an_odoo_write_puts_the_old_values_back_record_by_record_witho
             .collect::<Vec<_>>(),
     )
     .unwrap();
-    assert!(!shown.contains("k-old") && !shown.contains("k-new") && !shown.contains(KEY));
+    assert!(!shown.contains(KEY));
 }
 
 #[tokio::test]
@@ -1198,4 +1196,330 @@ async fn a_restoration_failing_midway_keeps_its_rows_and_leaves_the_original_unr
     let original = world.row(action).await;
     assert!(original.reverted_by_action_id.is_none());
     assert_eq!(world.journal().await.len(), 3);
+}
+
+impl World {
+    async fn claimed(&self, id: IntegrationActionId) -> bool {
+        sqlx::query_scalar(
+            "SELECT revert_claimed_at IS NOT NULL FROM integration_actions WHERE id = $1",
+        )
+        .bind(id.0)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap()
+    }
+}
+
+fn restore_answers(connector: Scripted) -> Scripted {
+    let after = workflow(new_nodes(), true, T1, "v2");
+    let restored_state = workflow(old_nodes(), true, T2, "v3");
+    connector
+        .answer("n8n_get_workflow", after.clone())
+        .answer("n8n_get_workflow", after)
+        .answer("n8n_update_workflow", restored_state.clone())
+        .answer("n8n_get_workflow", restored_state)
+}
+
+#[tokio::test]
+async fn two_simultaneous_restorations_of_one_action_write_only_once() {
+    let Some(world) = world().await else { return };
+    let n8n = world.n8n().await;
+    let Updated {
+        action,
+        connector,
+        mark,
+    } = updated_workflow(&world, &n8n).await;
+    let connector = restore_answers(connector);
+    world.end_run("succeeded").await;
+
+    let (first, second) = tokio::join!(
+        world.revert(action, false, &connector),
+        world.revert(action, false, &connector)
+    );
+
+    let (restored, refused) = match (first, second) {
+        (Ok(rows), Err(error)) | (Err(error), Ok(rows)) => (rows, error),
+        other => panic!("exactly one restoration must go through, got {other:?}"),
+    };
+    assert!(matches!(
+        refused,
+        RevertError::Refused(RevertRefusal::AlreadyReverted)
+    ));
+    assert_eq!(restored.len(), 1);
+    assert_eq!(
+        connector
+            .tools_since(mark)
+            .iter()
+            .filter(|tool| **tool == "n8n_update_workflow")
+            .count(),
+        1
+    );
+    assert_eq!(world.journal().await.len(), 2);
+    let marked = world.row(action).await;
+    assert_eq!(marked.reverted_by_action_id, Some(restored[0].id));
+    assert!(!world.claimed(action).await);
+}
+
+#[tokio::test]
+async fn a_reserved_action_is_refused_until_the_reservation_expires() {
+    let Some(world) = world().await else { return };
+    let n8n = world.n8n().await;
+    let Updated {
+        action,
+        connector,
+        mark,
+    } = updated_workflow(&world, &n8n).await;
+    world.end_run("succeeded").await;
+    sqlx::query("UPDATE integration_actions SET revert_claimed_at = now() WHERE id = $1")
+        .bind(action.0)
+        .execute(&world.pool)
+        .await
+        .unwrap();
+
+    let fresh = world.revert(action, false, &connector).await;
+
+    assert_eq!(refusal(fresh), RevertRefusal::AlreadyReverted);
+    assert!(connector.since(mark).is_empty());
+    assert!(world.claimed(action).await);
+
+    sqlx::query(
+        "UPDATE integration_actions SET revert_claimed_at = now() - interval '11 minutes' WHERE id = $1",
+    )
+    .bind(action.0)
+    .execute(&world.pool)
+    .await
+    .unwrap();
+    let connector = restore_answers(connector);
+
+    let rows = world.restore(action, &connector).await;
+
+    assert_eq!(rows.len(), 1);
+    assert!(!world.claimed(action).await);
+    assert_eq!(
+        world.row(action).await.reverted_by_action_id,
+        Some(rows[0].id)
+    );
+}
+
+#[tokio::test]
+async fn a_refused_or_failed_restoration_gives_the_action_back() {
+    let Some(world) = world().await else { return };
+    let n8n = world.n8n().await;
+    let Updated {
+        action,
+        connector,
+        mark: _,
+    } = updated_workflow(&world, &n8n).await;
+    world.end_run("succeeded").await;
+    let after = workflow(new_nodes(), true, T1, "v2");
+
+    let connector = connector.answer("n8n_get_workflow", workflow(new_nodes(), true, T2, "v3"));
+    let changed = world.revert(action, false, &connector).await;
+    assert_eq!(refusal(changed), RevertRefusal::ChangedSince);
+    assert!(!world.claimed(action).await);
+
+    let connector = connector.fail("n8n_get_workflow", ConnectorFailure::Timeout);
+    let unreadable = world.revert(action, false, &connector).await;
+    assert!(matches!(
+        unreadable,
+        Err(RevertError::Connector(ConnectorFailure::Timeout))
+    ));
+    assert!(!world.claimed(action).await);
+
+    let connector = connector
+        .answer("n8n_get_workflow", after.clone())
+        .answer("n8n_get_workflow", after.clone())
+        .fail("n8n_update_workflow", ConnectorFailure::Timeout);
+    let failed = world.restore(action, &connector).await;
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].outcome, Outcome::Failed);
+    assert!(!world.claimed(action).await);
+    assert!(world.row(action).await.reverted_by_action_id.is_none());
+
+    let connector = connector
+        .answer("n8n_get_workflow", after.clone())
+        .answer("n8n_get_workflow", after)
+        .answer("n8n_update_workflow", workflow(old_nodes(), true, T2, "v4"))
+        .answer("n8n_get_workflow", workflow(old_nodes(), true, T2, "v4"));
+    let rows = world.restore(action, &connector).await;
+    assert_eq!(rows[0].outcome, Outcome::Succeeded);
+    assert_eq!(
+        world.row(action).await.reverted_by_action_id,
+        Some(rows[0].id)
+    );
+    assert!(!world.claimed(action).await);
+}
+
+#[tokio::test]
+async fn a_refusal_before_the_reservation_leaves_nothing_reserved() {
+    let Some(world) = world().await else { return };
+    let n8n = world.n8n().await;
+    let Updated {
+        action, connector, ..
+    } = updated_workflow(&world, &n8n).await;
+
+    let running = world.revert(action, false, &connector).await;
+    let unconfirmed = {
+        world.end_run("succeeded").await;
+        sqlx::query("UPDATE integration_instances SET environment = 'production' WHERE id = $1")
+            .bind(n8n.id.0)
+            .execute(&world.pool)
+            .await
+            .unwrap();
+        world.revert(action, false, &connector).await
+    };
+
+    assert_eq!(refusal(running), RevertRefusal::InterventionRunning);
+    assert_eq!(
+        refusal(unconfirmed),
+        RevertRefusal::ProductionWriteNotConfirmed
+    );
+    assert!(!world.claimed(action).await);
+}
+
+async fn half_restored(
+    world: &World,
+    odoo: &IntegrationInstance,
+) -> (IntegrationActionId, Scripted, Value, Value) {
+    let before = json!([{"id": 7, "name": "Acme"}, {"id": 8, "name": "Beta"}]);
+    let after = json!([{"id": 7, "name": "Acme SA"}, {"id": 8, "name": "Acme SA"}]);
+    let connector = Scripted::new()
+        .answer("odoo_read", before.clone())
+        .answer("odoo_write", json!(true))
+        .answer("odoo_read", after.clone());
+    let action = world
+        .act(
+            odoo,
+            odoo_write(&[7, 8], json!({"name": "Acme SA"})),
+            &connector,
+        )
+        .await;
+    let connector = connector
+        .answer("odoo_read", after.clone())
+        .answer("odoo_read", json!([after[0]]))
+        .answer("odoo_write", json!(true))
+        .answer("odoo_read", json!([before[0]]))
+        .answer("odoo_read", json!([after[1]]))
+        .fail("odoo_write", ConnectorFailure::Timeout);
+    world.end_run("succeeded").await;
+    let rows = world.restore(action, &connector).await;
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].outcome, Outcome::Failed);
+    assert!(!world.claimed(action).await);
+    (action, connector, before, after)
+}
+
+#[tokio::test]
+async fn an_odoo_restoration_stopped_on_its_second_record_resumes_where_it_stopped() {
+    let Some(world) = world().await else { return };
+    let odoo = world.odoo().await;
+    let (action, connector, before, after) = half_restored(&world, &odoo).await;
+    let mark = connector.mark();
+    let connector = connector
+        .answer("odoo_read", json!([before[0], after[1]]))
+        .answer("odoo_read", json!([after[1]]))
+        .answer("odoo_write", json!(true))
+        .answer("odoo_read", json!([before[1]]));
+
+    let rows = world.restore(action, &connector).await;
+
+    assert_eq!(
+        connector.tools_since(mark),
+        ["odoo_read", "odoo_read", "odoo_write", "odoo_read"]
+    );
+    assert_eq!(
+        connector.since(mark)[2],
+        odoo_write(&[8], json!({"name": "Beta"}))
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].outcome, Outcome::Succeeded);
+    assert_eq!(rows[0].reverts_action_id, Some(action));
+    assert_eq!(
+        world.row(action).await.reverted_by_action_id,
+        Some(rows[0].id)
+    );
+    assert_eq!(world.journal().await.len(), 4);
+    assert!(!world.claimed(action).await);
+}
+
+#[tokio::test]
+async fn an_odoo_restoration_with_every_record_already_back_writes_nothing_and_closes_the_original()
+{
+    let Some(world) = world().await else { return };
+    let odoo = world.odoo().await;
+    let (action, connector, before, _) = half_restored(&world, &odoo).await;
+    let mark = connector.mark();
+    let connector = connector.answer("odoo_read", before.clone());
+
+    let rows = world.restore(action, &connector).await;
+
+    assert_eq!(connector.tools_since(mark), ["odoo_read"]);
+    assert!(rows.is_empty());
+    let journal = world.journal().await;
+    assert_eq!(journal.len(), 3);
+    let first_restoration = journal
+        .iter()
+        .find(|row| row.reverts_action_id == Some(action) && row.outcome == Outcome::Succeeded)
+        .unwrap();
+    assert_eq!(
+        world.row(action).await.reverted_by_action_id,
+        Some(first_restoration.id)
+    );
+    assert!(!world.claimed(action).await);
+    let again = world.revert(action, false, &connector).await;
+    assert_eq!(refusal(again), RevertRefusal::AlreadyReverted);
+}
+
+#[tokio::test]
+async fn an_odoo_restoration_with_a_record_neither_as_written_nor_as_before_is_changed_since() {
+    let Some(world) = world().await else { return };
+    let odoo = world.odoo().await;
+    let (action, connector, before, _) = half_restored(&world, &odoo).await;
+    let mark = connector.mark();
+    let connector = connector.answer(
+        "odoo_read",
+        json!([before[0], {"id": 8, "name": "Renommé ailleurs"}]),
+    );
+
+    let result = world.revert(action, false, &connector).await;
+
+    assert_eq!(refusal(result), RevertRefusal::ChangedSince);
+    assert_eq!(connector.tools_since(mark), ["odoo_read"]);
+    assert!(!world.claimed(action).await);
+    assert!(world.row(action).await.reverted_by_action_id.is_none());
+}
+
+#[tokio::test]
+async fn an_odoo_write_of_a_masked_field_cannot_be_restored() {
+    let Some(world) = world().await else { return };
+    let odoo = world.odoo().await;
+    let connector = Scripted::new()
+        .answer(
+            "odoo_read",
+            json!([{"id": 7, "name": "Acme", "api_key": "k-old"}]),
+        )
+        .answer("odoo_write", json!(true))
+        .answer(
+            "odoo_read",
+            json!([{"id": 7, "name": "Acme", "api_key": "k-new"}]),
+        );
+    let action = world
+        .act(
+            &odoo,
+            odoo_write(&[7], json!({"api_key": "k-new"})),
+            &connector,
+        )
+        .await;
+    let mark = connector.mark();
+    world.end_run("succeeded").await;
+
+    let result = world.revert(action, false, &connector).await;
+
+    assert_eq!(refusal(result), RevertRefusal::NotRevertible);
+    assert!(connector.since(mark).is_empty());
+    assert!(!world.claimed(action).await);
+    let row = world.row(action).await;
+    assert_eq!(row.arguments["values"]["api_key"], MASK);
+    let shown = serde_json::to_string(&(&row.arguments, &row.before, &row.after)).unwrap();
+    assert!(!shown.contains("k-old") && !shown.contains("k-new"));
 }

@@ -5,7 +5,7 @@ use super::{action::ActionRequest, journal::Denial};
 pub const MASK: &str = "[masqué]";
 pub const MODEL_RESULT_MAX_CHARS: usize = 24_000;
 
-const SECRET_KEYS: [&str; 12] = [
+const SECRET_KEYS: [&str; 16] = [
     "password",
     "passwd",
     "secret",
@@ -18,6 +18,10 @@ const SECRET_KEYS: [&str; 12] = [
     "x_api_key",
     "private_key",
     "authorization",
+    "oauth_access_token",
+    "totp_secret",
+    "new_password",
+    "password_crypt",
 ];
 
 pub fn is_secret_key(key: &str) -> bool {
@@ -91,7 +95,7 @@ pub fn restore_masked(request: &mut ActionRequest, before: Option<&Value>) -> Re
             let settings_ok = match settings {
                 Some(map) => {
                     let mut value = Value::Object(std::mem::take(map));
-                    let ok = restore_in_place(
+                    let ok = restore_checked(
                         &mut value,
                         before.and_then(|workflow| workflow.get("settings")),
                     );
@@ -127,6 +131,15 @@ pub fn restore_masked(request: &mut ActionRequest, before: Option<&Value>) -> Re
     }
 }
 
+fn is_mask(value: &Value) -> bool {
+    matches!(value, Value::String(text) if text == MASK)
+}
+
+fn restore_checked(target: &mut Value, original: Option<&Value>) -> bool {
+    let expected = redact(target);
+    restore_in_place(target, original) && redact(target) == expected
+}
+
 fn restore_in_place(target: &mut Value, original: Option<&Value>) -> bool {
     match target {
         Value::String(text) if text == MASK => match original {
@@ -136,14 +149,33 @@ fn restore_in_place(target: &mut Value, original: Option<&Value>) -> bool {
             }
             _ => false,
         },
-        Value::Object(map) => map.iter_mut().all(|(key, value)| {
-            restore_in_place(value, original.and_then(|original| original.get(key)))
-        }),
+        Value::Object(map) => restore_object(map, original),
         Value::Array(items) => items.iter_mut().enumerate().all(|(index, value)| {
-            restore_in_place(value, original.and_then(|original| original.get(index)))
+            !is_mask(value)
+                && restore_in_place(value, original.and_then(|original| original.get(index)))
         }),
         _ => true,
     }
+}
+
+fn restore_object(map: &mut Map<String, Value>, original: Option<&Value>) -> bool {
+    let keeps_secret_name = map.get("name").and_then(Value::as_str).is_some_and(|name| {
+        is_secret_key(name)
+            && original
+                .and_then(|original| original.get("name"))
+                .and_then(Value::as_str)
+                == Some(name)
+    });
+    map.iter_mut().all(|(key, value)| {
+        let stays_masked = is_secret_key(key) || (key == "value" && keeps_secret_name);
+        if is_mask(value) && !stays_masked {
+            return false;
+        }
+        restore_in_place(
+            value,
+            original.and_then(|original| original.get(key.as_str())),
+        )
+    })
 }
 
 fn restore_odoo_values(values: &mut Map<String, Value>, before: Option<&Value>) -> bool {
@@ -192,8 +224,28 @@ fn restore_n8n_nodes(nodes: &mut [Value], before: Option<&Value>) -> bool {
                         .find(|candidate| same_node(candidate, node, "name"))
                 })
         });
-        restore_in_place(node, original)
+        match original {
+            Some(original) => {
+                same_destination(original, node) && restore_checked(node, Some(original))
+            }
+            None => false,
+        }
     })
+}
+
+const DESTINATIONS: [&str; 5] = [
+    "/parameters/url",
+    "/parameters/baseUrl",
+    "/parameters/host",
+    "/parameters/options/proxy",
+    "/credentials",
+];
+
+fn same_destination(original: &Value, node: &Value) -> bool {
+    original.get("type") == node.get("type")
+        && DESTINATIONS
+            .iter()
+            .all(|pointer| original.pointer(pointer) == node.pointer(pointer))
 }
 
 fn same_node(candidate: &Value, node: &Value, key: &str) -> bool {
@@ -380,5 +432,294 @@ mod tests {
             restore_masked(&mut request, Some(&before)),
             Err(Denial::MaskedValueWithoutOriginal)
         );
+    }
+
+    fn call_node(id: &str, url: &str, kind: &str, header: &str) -> Value {
+        json!({
+            "id": id,
+            "name": "Call",
+            "type": kind,
+            "parameters": {
+                "url": url,
+                "headerParameters": {"parameters": [{"name": header, "value": MASK}]}
+            }
+        })
+    }
+
+    fn update_with(node: Value) -> ActionRequest {
+        ActionRequest::N8nUpdateWorkflow {
+            workflow_id: N8nId::try_from("w1").unwrap(),
+            name: None,
+            nodes: vec![node],
+            connections: Map::new(),
+            settings: None,
+            publish: false,
+        }
+    }
+
+    fn call_before() -> Value {
+        json!({"nodes": [{
+            "id": "b",
+            "name": "Call",
+            "type": "n8n-nodes-base.httpRequest",
+            "parameters": {
+                "url": "https://api.acme.test/v1",
+                "headerParameters": {"parameters": [
+                    {"name": "Authorization", "value": "Bearer real"}
+                ]}
+            }
+        }]})
+    }
+
+    #[test]
+    fn a_masked_header_keeps_its_value_when_the_node_is_unchanged() {
+        let mut request = update_with(call_node(
+            "b",
+            "https://api.acme.test/v1",
+            "n8n-nodes-base.httpRequest",
+            "Authorization",
+        ));
+        restore_masked(&mut request, Some(&call_before())).unwrap();
+        let ActionRequest::N8nUpdateWorkflow { nodes, .. } = request else {
+            unreachable!()
+        };
+        assert_eq!(
+            nodes[0]["parameters"]["headerParameters"]["parameters"][0]["value"],
+            "Bearer real"
+        );
+        assert_eq!(
+            redact(&nodes[0])["parameters"]["headerParameters"]["parameters"][0]["value"],
+            MASK
+        );
+    }
+
+    #[test]
+    fn a_masked_header_in_a_node_sent_through_a_new_proxy_is_refused() {
+        let mut node = call_node(
+            "b",
+            "https://api.acme.test/v1",
+            "n8n-nodes-base.httpRequest",
+            "Authorization",
+        );
+        node["parameters"]["options"] = json!({"proxy": "http://attacker.test:8080"});
+        let mut request = update_with(node);
+        assert_eq!(
+            restore_masked(&mut request, Some(&call_before())),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_header_renamed_to_a_plain_name_is_refused() {
+        let mut request = update_with(call_node(
+            "b",
+            "https://api.acme.test/v1",
+            "n8n-nodes-base.httpRequest",
+            "X-Foo",
+        ));
+        assert_eq!(
+            restore_masked(&mut request, Some(&call_before())),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_header_renamed_to_another_secret_name_is_refused() {
+        let mut request = update_with(call_node(
+            "b",
+            "https://api.acme.test/v1",
+            "n8n-nodes-base.httpRequest",
+            "X-Api-Key",
+        ));
+        assert_eq!(
+            restore_masked(&mut request, Some(&call_before())),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_header_moved_to_another_index_is_refused() {
+        let before = json!({"nodes": [{
+            "id": "b",
+            "name": "Call",
+            "parameters": {"headerParameters": {"parameters": [
+                {"name": "Accept", "value": "application/json"},
+                {"name": "Authorization", "value": "Bearer real"}
+            ]}}
+        }]});
+        let mut request = update_with(json!({
+            "id": "b",
+            "name": "Call",
+            "parameters": {"headerParameters": {"parameters": [
+                {"name": "Authorization", "value": MASK},
+                {"name": "Accept", "value": "application/json"}
+            ]}}
+        }));
+        assert_eq!(
+            restore_masked(&mut request, Some(&before)),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_value_in_a_node_whose_url_changed_is_refused() {
+        for url in ["https://evil.test/v1", "https://api.acme.test/v2"] {
+            let mut request = update_with(call_node(
+                "b",
+                url,
+                "n8n-nodes-base.httpRequest",
+                "Authorization",
+            ));
+            assert_eq!(
+                restore_masked(&mut request, Some(&call_before())),
+                Err(Denial::MaskedValueWithoutOriginal),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_masked_value_in_a_node_that_gained_or_lost_a_url_is_refused() {
+        let mut gained = update_with(json!({
+            "id": "b",
+            "name": "Call",
+            "parameters": {
+                "url": "https://evil.test",
+                "apiKey": MASK
+            }
+        }));
+        let without_url = json!({"nodes": [{
+            "id": "b",
+            "name": "Call",
+            "parameters": {"apiKey": "sk-live"}
+        }]});
+        assert_eq!(
+            restore_masked(&mut gained, Some(&without_url)),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+        let mut lost = update_with(json!({
+            "id": "b",
+            "name": "Call",
+            "parameters": {"apiKey": MASK}
+        }));
+        let with_url = json!({"nodes": [{
+            "id": "b",
+            "name": "Call",
+            "parameters": {"url": "https://api.acme.test", "apiKey": "sk-live"}
+        }]});
+        assert_eq!(
+            restore_masked(&mut lost, Some(&with_url)),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_value_in_a_node_whose_type_changed_is_refused() {
+        let mut request = update_with(call_node(
+            "b",
+            "https://api.acme.test/v1",
+            "n8n-nodes-base.webhook",
+            "Authorization",
+        ));
+        assert_eq!(
+            restore_masked(&mut request, Some(&call_before())),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_changed_url_or_type_does_not_matter_in_a_node_without_masked_values() {
+        let mut request = update_with(json!({
+            "id": "b",
+            "name": "Call",
+            "type": "n8n-nodes-base.webhook",
+            "parameters": {"url": "https://other.test"}
+        }));
+        restore_masked(&mut request, Some(&call_before())).unwrap();
+    }
+
+    #[test]
+    fn a_masked_settings_value_follows_the_same_rules() {
+        let before = json!({"settings": {"headers": [
+            {"name": "Authorization", "value": "Bearer real"}
+        ]}});
+        let settings = |header: &str| {
+            json!({"headers": [{"name": header, "value": MASK}]})
+                .as_object()
+                .unwrap()
+                .clone()
+        };
+        let request = |header: &str| ActionRequest::N8nUpdateWorkflow {
+            workflow_id: N8nId::try_from("w1").unwrap(),
+            name: None,
+            nodes: vec![],
+            connections: Map::new(),
+            settings: Some(settings(header)),
+            publish: false,
+        };
+        let mut kept = request("Authorization");
+        restore_masked(&mut kept, Some(&before)).unwrap();
+        let ActionRequest::N8nUpdateWorkflow { settings, .. } = kept else {
+            unreachable!()
+        };
+        assert_eq!(settings.unwrap()["headers"][0]["value"], "Bearer real");
+        let mut renamed = request("X-Foo");
+        assert_eq!(
+            restore_masked(&mut renamed, Some(&before)),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn a_masked_value_under_a_plain_key_is_refused() {
+        let mut request = update_with(json!({
+            "id": "b",
+            "name": "Call",
+            "type": "n8n-nodes-base.httpRequest",
+            "parameters": {"url": "https://api.acme.test/v1", "path": MASK}
+        }));
+        let before = json!({"nodes": [{
+            "id": "b",
+            "name": "Call",
+            "type": "n8n-nodes-base.httpRequest",
+            "parameters": {"url": "https://api.acme.test/v1", "path": "/private"}
+        }]});
+        assert_eq!(
+            restore_masked(&mut request, Some(&before)),
+            Err(Denial::MaskedValueWithoutOriginal)
+        );
+    }
+
+    #[test]
+    fn odoo_values_are_restored_by_field_whatever_the_field_is_called() {
+        let mut request = ActionRequest::OdooWrite {
+            model: model("res.partner"),
+            ids: vec![1],
+            values: json!({"x_note": MASK, "totp_secret": MASK})
+                .as_object()
+                .unwrap()
+                .clone(),
+        };
+        let before = json!([{"id": 1, "x_note": "memo", "totp_secret": "JBSW"}]);
+        restore_masked(&mut request, Some(&before)).unwrap();
+        let ActionRequest::OdooWrite { values, .. } = request else {
+            unreachable!()
+        };
+        assert_eq!(values["x_note"], "memo");
+        assert_eq!(values["totp_secret"], "JBSW");
+    }
+
+    #[test]
+    fn the_extra_secret_keys_are_masked() {
+        for key in [
+            "oauth_access_token",
+            "totp_secret",
+            "new_password",
+            "password_crypt",
+            "OAuth-Access-Token",
+        ] {
+            assert!(is_secret_key(key), "{key}");
+            assert_eq!(redact(&json!({key: "s3cret"}))[key], MASK, "{key}");
+        }
     }
 }

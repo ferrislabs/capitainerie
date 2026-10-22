@@ -7,6 +7,7 @@ use capitainerie_core::domain::{
         ChatMessage, ChatRole, ToolSpec, TurnEnd, TurnEvent, TurnLimits, TurnSink, TurnState,
     },
     conversation::{ProposedCard, ToolRecord},
+    integration::redact::redact,
 };
 use serde_json::Value;
 
@@ -110,7 +111,7 @@ pub(crate) fn messages_of(history: &[ChatMessage]) -> Vec<Msg> {
 }
 
 pub(crate) fn summarize_arguments(arguments: &Value) -> String {
-    truncate_chars(&arguments.to_string(), ARGUMENTS_MAX_CHARS)
+    truncate_chars(&redact(arguments).to_string(), ARGUMENTS_MAX_CHARS)
 }
 
 fn latency_ms(started: Instant) -> u64 {
@@ -603,5 +604,58 @@ pub(crate) mod tests {
         assert_eq!(state.tool_calls.len(), 1);
         assert_eq!(state.cards, [card]);
         assert_eq!(provider.1.lock().unwrap().len(), 1, "no further model call");
+    }
+
+    #[test]
+    fn a_secret_argument_is_summarized_masked_at_any_depth() {
+        let summary = summarize_arguments(&json!({
+            "model": "res.users",
+            "values": {"password": "hunter2", "name": "Acme"},
+            "headers": [{"name": "Authorization", "value": "Bearer real"}]
+        }));
+
+        assert!(summary.contains("[masqué]"));
+        assert!(summary.contains("Acme"));
+        assert!(!summary.contains("hunter2"));
+        assert!(!summary.contains("Bearer real"));
+    }
+
+    #[tokio::test]
+    async fn a_secret_argument_reaches_neither_the_event_nor_the_recorded_step() {
+        let provider = Script::of(vec![
+            vec![Step::Call(
+                "c1",
+                "search_cards",
+                json!({"password": "hunter2", "query": "acme"}),
+            )],
+            vec![Step::Text("Fait.")],
+        ]);
+        let sink = Sink::default();
+        let mut state = TurnState::default();
+
+        run(
+            &provider,
+            &backend(None),
+            "system",
+            &history(),
+            TurnLimits::default(),
+            &sink,
+            &mut state,
+        )
+        .await
+        .unwrap();
+
+        let events = sink.events.lock().unwrap().clone();
+        assert!(
+            matches!(&events[0], TurnEvent::ToolStarted { arguments, .. }
+            if arguments == "{\"password\":\"[masqué]\",\"query\":\"acme\"}")
+        );
+        assert_eq!(
+            state.tool_calls[0].arguments,
+            "{\"password\":\"[masqué]\",\"query\":\"acme\"}"
+        );
+        let seen = provider.1.lock().unwrap();
+        assert!(matches!(&seen[1].0[1], Msg::Assistant { calls, .. }
+            if calls[0].input["password"] == "hunter2"));
     }
 }

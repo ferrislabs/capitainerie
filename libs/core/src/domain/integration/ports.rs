@@ -103,6 +103,18 @@ pub trait IntegrationActionRepository: Send {
         by: IntegrationActionId,
     ) -> impl Future<Output = Result<bool, CoreError>> + Send;
 
+    fn claim_revert(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> impl Future<Output = Result<bool, CoreError>> + Send;
+
+    fn release_revert(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
     fn count_writes_not_denied(
         &mut self,
         organization_id: OrganizationId,

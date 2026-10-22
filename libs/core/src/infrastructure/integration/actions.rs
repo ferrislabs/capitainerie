@@ -262,7 +262,7 @@ impl IntegrationActionRepository for PgIntegrationActionRepository<'_, '_> {
         let updated = sqlx::query!(
             r#"
             UPDATE integration_actions
-            SET reverted_by_action_id = $3
+            SET reverted_by_action_id = $3, revert_claimed_at = NULL
             WHERE organization_id = $1 AND id = $2 AND reverted_by_action_id IS NULL
             "#,
             organization_id.0,
@@ -273,6 +273,49 @@ impl IntegrationActionRepository for PgIntegrationActionRepository<'_, '_> {
         .await
         .map_err(map_sqlx_error)?;
         Ok(updated.rows_affected() > 0)
+    }
+
+    async fn claim_revert(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        let claimed = sqlx::query!(
+            r#"
+            UPDATE integration_actions
+            SET revert_claimed_at = now()
+            WHERE organization_id = $1 AND id = $2 AND reverted_by_action_id IS NULL
+              AND (revert_claimed_at IS NULL OR revert_claimed_at < now() - interval '10 minutes')
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(claimed.rows_affected() == 1)
+    }
+
+    async fn release_revert(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> Result<(), CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            UPDATE integration_actions
+            SET revert_claimed_at = NULL
+            WHERE organization_id = $1 AND id = $2
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|_| ())
+        .map_err(map_sqlx_error)
     }
 
     async fn count_writes_not_denied(

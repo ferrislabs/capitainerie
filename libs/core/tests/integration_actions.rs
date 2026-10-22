@@ -460,7 +460,8 @@ fn workflow(active: bool) -> Value {
         "name": "Relance factures",
         "active": active,
         "settings": {"executionOrder": "v1"},
-        "nodes": []
+        "nodes": [],
+        "connections": {}
     })
 }
 
@@ -570,7 +571,7 @@ async fn a_write_reads_then_writes_then_reads_with_the_pending_row_and_sealed_co
     assert_eq!(Some(row.id), outcome.action_id);
     assert_eq!(row.outcome, Outcome::Succeeded);
     assert_eq!(row.access, Access::Write);
-    assert!(row.revertible);
+    assert!(!row.revertible);
     assert!(row.latency_ms.is_some() && row.finished_at.is_some());
     assert_eq!(row.arguments["values"]["api_key"], MASK);
     assert_eq!(row.arguments["values"]["name"], "Acme");

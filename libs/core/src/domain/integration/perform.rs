@@ -4,12 +4,13 @@ use serde_json::Value;
 
 use super::{
     ConnectorFailure, IntegrationInstance,
-    action::{ActionCall, ActionRequest},
+    action::{Access, ActionCall, ActionRequest},
     journal::{
         ActionContext, ActionOutcome, Denial, IntegrationAction, Outcome, ensure_granted,
-        is_sensitive_model,
+        is_sensitive_model, is_write_forbidden_model,
     },
     redact::{MASK, for_model, redact},
+    revert,
 };
 use crate::domain::authorization::Decision;
 
@@ -53,8 +54,11 @@ pub fn ensure_allowed(
     if call.request.family() != instance.kind.family() {
         return Err(Denial::ToolNotForInstance);
     }
+    let writes = call.request.access() == Access::Write;
     match call.request.odoo_model() {
-        Some(model) if is_sensitive_model(model) => Err(Denial::SensitiveModel(model.to_owned())),
+        Some(model) if is_sensitive_model(model) || (writes && is_write_forbidden_model(model)) => {
+            Err(Denial::SensitiveModel(model.to_owned()))
+        }
         _ => Ok(()),
     }
 }
@@ -264,17 +268,17 @@ impl Entry<'_> {
         &self,
         mut pending: IntegrationAction,
         result: &Result<Value, ConnectorFailure>,
+        snapshot: Option<&Value>,
         after: Option<&Value>,
         latency_ms: i64,
         now: DateTime<Utc>,
     ) -> IntegrationAction {
-        match result {
+        let server_version = self.instance.server_version.as_deref();
+        let allowed = match result {
             Ok(_) => {
                 pending.outcome = Outcome::Succeeded;
-                pending.revertible = self.context.reverts_action_id.is_none()
-                    && self
-                        .request
-                        .is_revertible(self.instance.server_version.as_deref());
+                self.context.reverts_action_id.is_none()
+                    && self.request.is_revertible(server_version)
             }
             Err(failure) => {
                 self.explain(
@@ -283,11 +287,16 @@ impl Entry<'_> {
                     failure.code(),
                     &failure.to_string(),
                 );
+                false
             }
-        }
+        };
         pending.after = after.map(|state| self.shown(state));
         pending.latency_ms = Some(latency_ms);
         pending.finished_at = Some(now);
+        pending.revertible = allowed;
+        if allowed {
+            pending.revertible = revert::plan(&pending, snapshot, server_version).is_ok();
+        }
         pending
     }
 
@@ -344,7 +353,7 @@ mod tests {
         integration::{
             BaseUrl, ConnectorFailure, Environment, InstanceName, IntegrationInstance,
             IntegrationKind,
-            action::{Access, ActionCall, ActionRequest, N8nId, OdooModel},
+            action::{Access, ActionCall, ActionRequest, N8nId, OdooMethod, OdooModel},
             journal::{ActionContext, Denial, Grant, INTEGRATOR_AGENT, Outcome},
             redact::MASK,
         },
@@ -661,6 +670,91 @@ mod tests {
     }
 
     #[test]
+    fn writes_on_models_that_run_code_or_change_rights_are_refused_but_reads_stay_open() {
+        let world = World::new();
+        let odoo = world.odoo();
+        let context = world.context(vec![grant(&odoo, Access::Write)]);
+        let values = json!({"name": "x"}).as_object().unwrap().clone();
+        for name in [
+            "res.users",
+            "ir.cron",
+            "ir.actions.server",
+            "ir.model.access",
+        ] {
+            let writes = [
+                ActionRequest::OdooCreate {
+                    model: model(name),
+                    values: values.clone(),
+                },
+                ActionRequest::OdooWrite {
+                    model: model(name),
+                    ids: vec![1],
+                    values: values.clone(),
+                },
+                ActionRequest::OdooDelete {
+                    model: model(name),
+                    ids: vec![1],
+                },
+                ActionRequest::OdooCallMethod {
+                    model: model(name),
+                    method: OdooMethod::try_from("run").unwrap(),
+                    ids: vec![1],
+                    args: vec![],
+                    kwargs: Default::default(),
+                },
+            ];
+            for write in writes {
+                assert_eq!(
+                    check(&Decision::Allow, &context, Some(&odoo), &call(&odoo, write)),
+                    Err(Denial::SensitiveModel(name.into())),
+                    "{name}"
+                );
+            }
+            let reads = [
+                ActionRequest::OdooDescribeModel { model: model(name) },
+                ActionRequest::OdooCount {
+                    model: model(name),
+                    domain: vec![],
+                },
+                ActionRequest::OdooRead {
+                    model: model(name),
+                    ids: vec![1],
+                    fields: vec![],
+                },
+            ];
+            for read in reads {
+                assert_eq!(
+                    check(&Decision::Allow, &context, Some(&odoo), &call(&odoo, read)),
+                    Ok(()),
+                    "{name}"
+                );
+            }
+        }
+        assert_eq!(
+            check(
+                &Decision::Allow,
+                &context,
+                Some(&odoo),
+                &call(&odoo, write_partner(json!({"name": "Acme"})))
+            ),
+            Ok(())
+        );
+        let attachment = ActionRequest::OdooCreate {
+            model: model("ir.attachment"),
+            values,
+        };
+        assert_eq!(
+            check(
+                &Decision::Allow,
+                &context,
+                Some(&odoo),
+                &call(&odoo, attachment)
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn n8n_1x_refuses_to_change_a_published_workflow_without_publish() {
         let world = World::new();
         let one = world.n8n("1");
@@ -854,21 +948,24 @@ mod tests {
         let context = world.context(vec![grant(&odoo, Access::Write)]);
         let request = write_partner(json!({"name": "Acme"}));
         let entry = entry(&context, &odoo, &request);
+        let snapshot = json!([{"id": 7, "name": "Old", "api_key": "k-before"}]);
         let after = json!([{"id": 7, "name": "Acme", "api_key": "k-after"}]);
 
         let succeeded = entry.complete(
-            entry.pending(None, Utc::now()),
+            entry.pending(Some(&snapshot), Utc::now()),
             &Ok(json!(true)),
+            Some(&snapshot),
             Some(&after),
             40,
             Utc::now(),
         );
         let failed = entry.complete(
-            entry.pending(None, Utc::now()),
+            entry.pending(Some(&snapshot), Utc::now()),
             &Err(ConnectorFailure::Remote {
                 status: 500,
                 message: "boom".into(),
             }),
+            Some(&snapshot),
             None,
             40,
             Utc::now(),
@@ -891,6 +988,59 @@ mod tests {
     }
 
     #[test]
+    fn a_completed_write_without_a_restore_plan_is_not_revertible() {
+        let world = World::new();
+        let odoo = world.odoo();
+        let context = world.context(vec![grant(&odoo, Access::Write)]);
+        let request = write_partner(json!({"name": "Acme"}));
+        let entry = entry(&context, &odoo, &request);
+        let snapshot = json!([{"id": 7, "name": "Old"}]);
+        let after = json!([{"id": 7, "name": "Acme"}]);
+        let complete = |snapshot: Option<&Value>, after: Option<&Value>| {
+            entry
+                .complete(
+                    entry.pending(snapshot, Utc::now()),
+                    &Ok(json!(true)),
+                    snapshot,
+                    after,
+                    1,
+                    Utc::now(),
+                )
+                .revertible
+        };
+
+        assert!(complete(Some(&snapshot), Some(&after)));
+        assert!(!complete(None, Some(&after)));
+        assert!(!complete(Some(&snapshot), None));
+        assert!(!complete(Some(&json!([])), Some(&after)));
+        assert!(!complete(Some(&json!({"id": 7})), Some(&after)));
+    }
+
+    #[test]
+    fn a_restoring_action_is_never_revertible() {
+        let world = World::new();
+        let odoo = world.odoo();
+        let mut context = world.context(vec![grant(&odoo, Access::Write)]);
+        context.reverts_action_id = Some(IntegrationActionId::new());
+        let request = write_partner(json!({"name": "Acme"}));
+        let entry = entry(&context, &odoo, &request);
+        let snapshot = json!([{"id": 7, "name": "Old"}]);
+        let after = json!([{"id": 7, "name": "Acme"}]);
+
+        let row = entry.complete(
+            entry.pending(Some(&snapshot), Utc::now()),
+            &Ok(json!(true)),
+            Some(&snapshot),
+            Some(&after),
+            1,
+            Utc::now(),
+        );
+
+        assert_eq!(row.outcome, Outcome::Succeeded);
+        assert!(!row.revertible);
+    }
+
+    #[test]
     fn creating_a_workflow_is_revertible_on_n8n_2_only() {
         let world = World::new();
         let request = ActionRequest::N8nCreateWorkflow {
@@ -899,23 +1049,26 @@ mod tests {
             connections: Default::default(),
             settings: Default::default(),
         };
-        let revertible = |version: &str| {
+        let created = json!({"id": "wf9"});
+        let revertible = |version: &str, after: Option<&Value>| {
             let n8n = world.n8n(version);
             let context = world.context(vec![grant(&n8n, Access::Write)]);
             let entry = entry(&context, &n8n, &request);
             entry
                 .complete(
                     entry.pending(None, Utc::now()),
-                    &Ok(json!({"id": "wf9"})),
+                    &Ok(created.clone()),
                     None,
+                    after,
                     5,
                     Utc::now(),
                 )
                 .revertible
         };
 
-        assert!(revertible("2"));
-        assert!(!revertible("1"));
+        assert!(revertible("2", Some(&created)));
+        assert!(!revertible("1", Some(&created)));
+        assert!(!revertible("2", None));
     }
 
     #[test]
@@ -975,6 +1128,7 @@ mod tests {
             entry.pending(Some(&leaky), Utc::now()),
             &Ok(leaky.clone()),
             Some(&leaky),
+            Some(&leaky),
             1,
             Utc::now(),
         );
@@ -998,6 +1152,7 @@ mod tests {
             entry.pending(None, Utc::now()),
             &Ok(result.clone()),
             None,
+            None,
             2,
             Utc::now(),
         );
@@ -1005,6 +1160,7 @@ mod tests {
         let failed = entry.complete(
             entry.pending(None, Utc::now()),
             &Err(ConnectorFailure::Timeout),
+            None,
             None,
             2,
             Utc::now(),

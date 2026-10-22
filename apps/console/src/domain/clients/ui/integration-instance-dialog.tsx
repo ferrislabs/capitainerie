@@ -15,6 +15,7 @@ import { Label } from '#/components/ui/label'
 import {
 	EMPTY_VALUES,
 	type IntegrationValues,
+	requiresNewSecret,
 	usesDatabase,
 	usesLogin,
 	validateIntegration,
@@ -29,6 +30,9 @@ import {
 
 const SELECT_CLASS =
 	'h-8 w-full rounded-md border border-input bg-card px-3 text-sm text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:opacity-60'
+
+const NEW_KEY_HELP =
+	'Une nouvelle clé est obligatoire quand l’adresse, la base ou l’identifiant change.'
 
 const ODOO_HELP =
 	'L’API externe d’Odoo Online demande une offre Custom. Pour la production, utilisez de préférence la clé d’un utilisateur Odoo en lecture seule.'
@@ -62,7 +66,10 @@ function IntegrationForm({
 		instance ? valuesOf(instance) : EMPTY_VALUES,
 	)
 	const [attempted, setAttempted] = useState(false)
-	const errors = validateIntegration(values, mode)
+	const errors = validateIntegration(values, mode, instance)
+	const secretRequired =
+		mode === 'create' ||
+		(instance !== undefined && requiresNewSecret(values, instance))
 	const invalid = Object.keys(errors).length > 0
 	const shown = attempted ? errors : {}
 
@@ -183,10 +190,14 @@ function IntegrationForm({
 					value={values.secret}
 					onChange={(event) => set('secret', event.target.value)}
 					disabled={isPending}
+					aria-required={secretRequired}
 					aria-invalid={Boolean(shown.secret)}
 				/>
 				<FieldError message={shown.secret} />
-				{instance ? (
+				{instance && secretRequired ? (
+					<span className="text-xs text-muted-foreground">{NEW_KEY_HELP}</span>
+				) : null}
+				{instance && !secretRequired ? (
 					<span className="text-xs text-muted-foreground">
 						Laissez vide pour garder la clé actuelle ({instance.secret_preview}
 						).

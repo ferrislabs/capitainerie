@@ -412,6 +412,11 @@ async fn a_run_journal_lists_the_same_actions() {
 async fn an_instance_archived_afterwards_still_names_its_rows() {
     let Some(world) = world().await else { return };
     world.journal().await;
+    sqlx::query("UPDATE runs SET status = 'succeeded' WHERE id = $1")
+        .bind(world.run_id.0)
+        .execute(&world.pool)
+        .await
+        .unwrap();
     world
         .usecase
         .archive_integration_instance(subject(&world.organization, true), world.staging.id)
