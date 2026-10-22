@@ -140,6 +140,25 @@ pub struct GithubArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct IntegrationsArgs {
+    #[arg(
+        id = "integrations_allow_insecure_http",
+        long = "integrations-allow-insecure-http",
+        env = "INTEGRATIONS_ALLOW_INSECURE_HTTP",
+        default_value_t = false
+    )]
+    pub allow_insecure_http: bool,
+
+    #[arg(
+        id = "integrations_allow_private_networks",
+        long = "integrations-allow-private-networks",
+        env = "INTEGRATIONS_ALLOW_PRIVATE_NETWORKS",
+        default_value_t = false
+    )]
+    pub allow_private_networks: bool,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct ExecutorArgs {
     /// Kubernetes namespace the task jobs run in. Unset, executions are off.
     #[arg(
@@ -279,6 +298,31 @@ mod tests {
         let github = GithubCli::parse_from(["bin"]).github;
         assert_eq!(github.api_base, "https://api.github.com");
         assert_eq!(github.web_base, "https://github.com");
+    }
+
+    #[derive(Parser)]
+    struct IntegrationsCli {
+        #[command(flatten)]
+        integrations: IntegrationsArgs,
+    }
+
+    #[test]
+    fn integrations_refuse_plain_http_and_private_networks_by_default() {
+        let integrations = IntegrationsCli::parse_from(["bin"]).integrations;
+        assert!(!integrations.allow_insecure_http);
+        assert!(!integrations.allow_private_networks);
+    }
+
+    #[test]
+    fn each_integrations_guard_is_lifted_on_its_own_flag() {
+        let insecure =
+            IntegrationsCli::parse_from(["bin", "--integrations-allow-insecure-http"]).integrations;
+        assert!(insecure.allow_insecure_http);
+        assert!(!insecure.allow_private_networks);
+        let private = IntegrationsCli::parse_from(["bin", "--integrations-allow-private-networks"])
+            .integrations;
+        assert!(!private.allow_insecure_http);
+        assert!(private.allow_private_networks);
     }
 
     #[derive(Parser)]

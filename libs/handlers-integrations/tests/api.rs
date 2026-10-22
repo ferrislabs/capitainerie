@@ -24,6 +24,7 @@ use capitainerie_handlers_integrations::{
     GithubIntegration,
     signer::{StatePurpose, StateSigner},
 };
+use capitainerie_integrations::{HttpConnector, NetworkPolicy};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -251,8 +252,9 @@ async fn serve_with(
 ) -> String {
     let usecase = usecase_of(pool);
     let github = integration(&usecase, backend, signer, console_url);
-    let app: Router =
-        capitainerie_handlers_integrations::router::<()>(usecase, github).layer(Extension(caller));
+    let connector = HttpConnector::new(NetworkPolicy::default()).unwrap();
+    let app: Router = capitainerie_handlers_integrations::router::<()>(usecase, github, connector)
+        .layer(Extension(caller));
     spawn(app).await
 }
 

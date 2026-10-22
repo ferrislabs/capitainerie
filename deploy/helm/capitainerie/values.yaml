@@ -50,6 +50,11 @@ config:
     webBase: ""
     # -- GITHUB_API_BASE, for GitHub Enterprise. Empty keeps https://api.github.com.
     apiBase: ""
+  integrations:
+    # -- INTEGRATIONS_ALLOW_INSECURE_HTTP on api and worker: accept Odoo and n8n instances served over plain http://.
+    allowInsecureHttp: false
+    # -- INTEGRATIONS_ALLOW_PRIVATE_NETWORKS on api and worker: accept instances on private, loopback or link-local addresses.
+    allowPrivateNetworks: false
   iggy:
     # -- host:port of the Iggy TCP endpoint (IGGY_ADDRESS).
     address: iggy:8090
@@ -425,5 +430,10 @@ networkPolicy:
       ports: [443, 6443]
     # -- api.anthropic.com and github.com, reached by the egress proxy.
     upstream:
+      to: []
+      ports: [443]
+    # -- The clients' Odoo and n8n instances, reached by the api (connection test, restore) and the worker (interventions).
+    # Add 8069 or 5678 for an instance served on its default port.
+    integrations:
       to: []
       ports: [443]

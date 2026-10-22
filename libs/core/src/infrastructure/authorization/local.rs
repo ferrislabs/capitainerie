@@ -31,7 +31,10 @@ fn decide(request: &AccessRequest) -> Decision {
 
 fn decide_for_human(subject: &Subject, action: Action) -> Decision {
     match action {
-        Action::ProviderManage | Action::ModelsAssign | Action::GithubManage
+        Action::ProviderManage
+        | Action::ModelsAssign
+        | Action::GithubManage
+        | Action::IntegrationManage
             if !subject.is_admin =>
         {
             deny("only an organization admin may do this")

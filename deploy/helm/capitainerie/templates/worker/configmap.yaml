@@ -35,6 +35,8 @@ data:
   EXECUTOR_CONCURRENCY: {{ .Values.executor.concurrency | quote }}
   {{- end }}
   {{- include "capitainerie.githubBases" . | nindent 2 }}
+  INTEGRATIONS_ALLOW_INSECURE_HTTP: {{ .Values.config.integrations.allowInsecureHttp | quote }}
+  INTEGRATIONS_ALLOW_PRIVATE_NETWORKS: {{ .Values.config.integrations.allowPrivateNetworks | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}
