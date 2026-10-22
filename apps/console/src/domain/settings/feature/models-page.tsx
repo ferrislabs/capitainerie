@@ -19,6 +19,7 @@ import {
 	CAPTAIN_ROLE,
 	completeAssignments,
 	draftFrom,
+	INTEGRATOR_ROLE,
 	READER_ROLE,
 	sameExecutor,
 	sameModelRef,
@@ -46,6 +47,10 @@ export function ModelsPage() {
 		) ||
 		!sameModelRef(values[READER_ROLE], saved?.[READER_ROLE] ?? undefined) ||
 		!sameModelRef(values[CAPTAIN_ROLE], saved?.[CAPTAIN_ROLE] ?? undefined) ||
+		!sameModelRef(
+			values[INTEGRATOR_ROLE],
+			saved?.[INTEGRATOR_ROLE] ?? undefined,
+		) ||
 		!sameExecutor(values.executor, saved?.executor)
 	const embeddingsChanged =
 		saved !== null &&
@@ -68,7 +73,7 @@ export function ModelsPage() {
 			/>
 			<SectionCard
 				title="Modèle par rôle"
-				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings ; le Capitaine (facultatif), les modèles de chat qui savent appeler des outils ; le Transcripteur (facultatif), les modèles de transcription de Mistral ou d’un serveur compatible OpenAI ; le Lecteur de PDF (facultatif), les modèles OCR de Mistral ; l’Exécutant, les modèles Claude."
+				description="Les rôles de chat proposent les modèles de chat ; Embeddings, les modèles d’embeddings ; le Capitaine (facultatif), les modèles de chat qui savent appeler des outils ; l’Intervenant (facultatif), les modèles de chat qui savent appeler des outils ; le Transcripteur (facultatif), les modèles de transcription de Mistral ou d’un serveur compatible OpenAI ; le Lecteur de PDF (facultatif), les modèles OCR de Mistral ; l’Exécutant, les modèles Claude."
 				flush
 			>
 				{assignments.isError ? (
@@ -116,6 +121,12 @@ export function ModelsPage() {
 								saveAssignments.reset()
 							}
 							setEdits((previous) => ({ ...previous, captain: ref }))
+						}}
+						onIntegratorChange={(ref) => {
+							if (saveAssignments.isSuccess || saveAssignments.errorMessage) {
+								saveAssignments.reset()
+							}
+							setEdits((previous) => ({ ...previous, integrator: ref }))
 						}}
 						onExecutorChange={(model) => {
 							if (saveAssignments.isSuccess || saveAssignments.errorMessage) {

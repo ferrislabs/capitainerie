@@ -23,7 +23,7 @@ export interface RoleInfo {
 
 export type RequiredRole = Exclude<
 	AgentRole,
-	'transcriber' | 'reader' | 'captain'
+	'transcriber' | 'reader' | 'captain' | 'integrator'
 >
 
 export const AGENT_ROLES: ReadonlyArray<RequiredRole> = [
@@ -38,6 +38,8 @@ export const TRANSCRIBER_ROLE = 'transcriber' satisfies AgentRole
 export const READER_ROLE = 'reader' satisfies AgentRole
 
 export const CAPTAIN_ROLE = 'captain' satisfies AgentRole
+
+export const INTEGRATOR_ROLE = 'integrator' satisfies AgentRole
 
 export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 	extractor: {
@@ -71,6 +73,12 @@ export const ROLE_INFO: Record<AgentRole, RoleInfo> = {
 		label: 'Capitaine',
 		description:
 			'Répond dans le chat de l’accueil et propose des cartes ; il doit savoir appeler des outils. Facultatif : sans lui, le modèle du Rédacteur sert.',
+		capability: 'chat',
+	},
+	integrator: {
+		label: 'Intervenant',
+		description:
+			'Agit sur les Odoo et n8n des clients pour les cartes qu’on lui confie. Sans choix, le modèle du Rédacteur sert.',
 		capability: 'chat',
 	},
 	reader: {
@@ -168,6 +176,7 @@ export function completeAssignments(
 		transcriber,
 		reader,
 		captain,
+		integrator,
 		executor,
 	} = draft
 	if (!extractor || !judge || !writer || !embeddings) return undefined
@@ -179,6 +188,7 @@ export function completeAssignments(
 		transcriber: transcriber ?? null,
 		reader: reader ?? null,
 		captain: captain ?? null,
+		integrator: integrator ?? null,
 		...(executor ? { executor } : {}),
 	}
 }
@@ -187,12 +197,13 @@ export function draftFrom(
 	saved: Schemas.ModelAssignmentsDto | null,
 ): AssignmentDraft {
 	if (saved === null) return {}
-	const { transcriber, reader, captain, ...rest } = saved
+	const { transcriber, reader, captain, integrator, ...rest } = saved
 	return {
 		...rest,
 		...(transcriber ? { transcriber } : {}),
 		...(reader ? { reader } : {}),
 		...(captain ? { captain } : {}),
+		...(integrator ? { integrator } : {}),
 	}
 }
 

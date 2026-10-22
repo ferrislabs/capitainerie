@@ -8,8 +8,8 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from '#/components/ui/sheet'
-import { agentInfo } from '#/domain/agents/catalog'
-import type { AgentRow } from '#/domain/agents/filters'
+import { agentRole } from '#/domain/agents/catalog'
+import { type AgentRow, modelLabel } from '#/domain/agents/filters'
 import { formatCost, formatTokens } from '#/domain/runs/format'
 import { EXECUTOR_INFO, ROLE_INFO } from '#/domain/settings/roles'
 
@@ -24,7 +24,7 @@ interface Props {
 }
 
 function roleLabel(id: string): string | undefined {
-	const role = agentInfo(id)?.role
+	const role = agentRole(id)
 	if (!role) return undefined
 	return role === 'executor' ? EXECUTOR_INFO.label : ROLE_INFO[role].label
 }
@@ -67,9 +67,7 @@ export function AgentSheet({ row, onClose }: Props) {
 								<dl className="mt-2">
 									<Fact label="Rôle">{roleLabel(row.agent.agent) ?? '—'}</Fact>
 									<Fact label="Modèle">
-										<span className="font-mono text-xs">
-											{row.model ?? '—'}
-										</span>
+										<span className="font-mono text-xs">{modelLabel(row)}</span>
 									</Fact>
 									<Fact label="Identifiant">
 										<span className="font-mono text-xs break-all">

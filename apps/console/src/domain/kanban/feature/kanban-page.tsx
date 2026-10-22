@@ -7,6 +7,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { InterveneCardFlow } from '#/domain/integrations/intervene/intervene-card-flow'
 import { memberLabels } from '#/domain/kanban/card-details'
 import {
 	type CardFilters,
@@ -42,6 +43,11 @@ function BoardSkeleton() {
 	)
 }
 
+interface StartedRun {
+	runId: string
+	by: 'claude' | 'intervener'
+}
+
 interface Props {
 	openCardId: string | undefined
 	onOpenCard: (cardId: string | undefined) => void
@@ -60,7 +66,8 @@ export function KanbanPage({
 	const members = useMembers()
 	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
 	const [executingId, setExecutingId] = useState<string>()
-	const [startedRunId, setStartedRunId] = useState<string>()
+	const [intervenerId, setIntervenerId] = useState<string>()
+	const [started, setStarted] = useState<StartedRun>()
 
 	const all = cards.data?.items ?? []
 	const names = memberNames(members.data?.items ?? [])
@@ -82,15 +89,19 @@ export function KanbanPage({
 				title="Kanban"
 				description="Les agents proposent, vous décidez : une carte ne quitte « Proposé » que sur votre validation."
 			/>
-			{startedRunId ? (
+			{started ? (
 				<InlineAlert tone="success">
-					Carte confiée à Claude Code.{' '}
+					{started.by === 'claude'
+						? 'Carte confiée à Claude Code. '
+						: 'Carte confiée à l’Intervenant. '}
 					<Link
 						to="/runs/$runId"
-						params={{ runId: startedRunId }}
+						params={{ runId: started.runId }}
 						className="underline underline-offset-2"
 					>
-						Suivre l’exécution
+						{started.by === 'claude'
+							? 'Suivre l’exécution'
+							: 'Suivre l’intervention'}
 					</Link>
 				</InlineAlert>
 			) : null}
@@ -133,8 +144,12 @@ export function KanbanPage({
 					onToggleExpanded={toggleExpanded}
 					onOpen={(cardId) => onOpenCard(cardId)}
 					onExecute={(card) => {
-						setStartedRunId(undefined)
+						setStarted(undefined)
 						setExecutingId(card.id)
+					}}
+					onIntervene={(card) => {
+						setStarted(undefined)
+						setIntervenerId(card.id)
 					}}
 					onMove={(cardId, to, expectedVersion) =>
 						move.mutate({
@@ -158,9 +173,14 @@ export function KanbanPage({
 					})
 				}
 				onExecute={(card) => {
-					setStartedRunId(undefined)
+					setStarted(undefined)
 					onOpenCard(undefined)
 					setExecutingId(card.id)
+				}}
+				onIntervene={(card) => {
+					setStarted(undefined)
+					onOpenCard(undefined)
+					setIntervenerId(card.id)
 				}}
 			/>
 			<ExecuteCardFlow
@@ -168,7 +188,15 @@ export function KanbanPage({
 				onClose={() => setExecutingId(undefined)}
 				onStarted={(runId) => {
 					setExecutingId(undefined)
-					setStartedRunId(runId)
+					setStarted({ runId, by: 'claude' })
+				}}
+			/>
+			<InterveneCardFlow
+				card={cards.data?.items.find((card) => card.id === intervenerId)}
+				onClose={() => setIntervenerId(undefined)}
+				onStarted={(runId) => {
+					setIntervenerId(undefined)
+					setStarted({ runId, by: 'intervener' })
 				}}
 			/>
 		</Page>

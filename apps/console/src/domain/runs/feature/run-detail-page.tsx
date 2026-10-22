@@ -9,6 +9,7 @@ import { StatusBadge } from '#/components/layout/status-badge'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { RunJournal } from '#/domain/integrations/journal/run-journal'
 import {
 	formatCost,
 	formatLatency,
@@ -16,7 +17,7 @@ import {
 	runDurationMs,
 } from '#/domain/runs/format'
 import { useRunTimeline } from '#/domain/runs/hooks/use-run-timeline'
-import { isCardRun, runTitle } from '#/domain/runs/run-title'
+import { isCardRun, isInterventionRun, runTitle } from '#/domain/runs/run-title'
 import { STATUS_LABELS, STATUS_TONES } from '#/domain/runs/status'
 import { defaultSelectedSeq } from '#/domain/runs/step-selection'
 import { RunTimeline } from '#/domain/runs/ui/run-timeline'
@@ -146,7 +147,11 @@ export function RunDetailPage({ runId }: { runId: string }) {
 							tone={STATUS_TONES[run.status]}
 							label={STATUS_LABELS[run.status]}
 						/>
-						{isCardRun(run) ? <Badge variant="neutral">Exécution</Badge> : null}
+						{isInterventionRun(run) ? (
+							<Badge variant="neutral">Intervention</Badge>
+						) : isCardRun(run) ? (
+							<Badge variant="neutral">Exécution</Badge>
+						) : null}
 					</>
 				}
 				description={
@@ -202,6 +207,7 @@ export function RunDetailPage({ runId }: { runId: string }) {
 				copied={copied}
 				onCopy={copy}
 			/>
+			<RunJournal run={run} />
 		</Page>
 	)
 }

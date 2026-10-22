@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { useClients, useProjects } from '#/domain/clients/hooks/use-directory'
 import { useMe } from '#/domain/identity/hooks/use-me'
+import { CardJournal } from '#/domain/integrations/journal/card-journal'
 import type { CardPatch } from '#/domain/kanban/card-patch'
 import type { Column } from '#/domain/kanban/columns'
 import { executionPullRequest } from '#/domain/kanban/feature/execution-pull-request'
@@ -20,6 +21,7 @@ interface Props {
 	onClose: () => void
 	onMove: (cardId: string, to: Column, expectedVersion: number) => void
 	onExecute: (card: Schemas.CardResponse) => void
+	onIntervene: (card: Schemas.CardResponse) => void
 }
 
 export function CardPanel({
@@ -30,6 +32,7 @@ export function CardPanel({
 	onClose,
 	onMove,
 	onExecute,
+	onIntervene,
 }: Props) {
 	const detail = useCardDetail(cardId)
 	const me = useMe()
@@ -84,6 +87,11 @@ export function CardPanel({
 			isCommenting={comment.isPending}
 			commentError={comment.errorMessage}
 			runExtra={executionPullRequest}
+			journal={
+				card ? (
+					<CardJournal cardId={card.id} runs={detail.data?.runs ?? []} />
+				) : null
+			}
 			clients={clients.data?.items.map((item) => item.client) ?? []}
 			projects={projects.data?.items.map((item) => item.project) ?? []}
 			isLinking={patch.isPending}
@@ -100,6 +108,7 @@ export function CardPanel({
 				if (card) onMove(card.id, to, card.version)
 			}}
 			onExecute={onExecute}
+			onIntervene={onIntervene}
 			onDraftChange={(value) => {
 				comment.reset()
 				setDraft(value)
