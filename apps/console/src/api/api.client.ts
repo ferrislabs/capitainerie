@@ -97,6 +97,34 @@ export namespace Schemas {
     succeeded: boolean;
     summary: string;
   };
+  export type InstanceFailureResponse = { code: string; message: string };
+  export type IntegrationEnvironmentDto = "production" | "staging" | "development";
+  export type IntegrationInstanceId = string;
+  export type IntegrationKindDto = "odoo_json2" | "odoo_jsonrpc" | "n8n";
+  export type IntegrationInstanceResponse = {
+    archived_at?: (string | null) | undefined;
+    base_url: string;
+    checked_at?: (string | null) | undefined;
+    client_id: ClientId;
+    created_at: string;
+    created_by: string;
+    database?: (string | null) | undefined;
+    environment: IntegrationEnvironmentDto;
+    id: IntegrationInstanceId;
+    kind: IntegrationKindDto;
+    login?: (string | null) | undefined;
+    name: string;
+    secret_preview: string;
+    server_version?: (string | null) | undefined;
+    updated_at: string;
+  };
+  export type CheckIntegrationInstanceResponse = {
+    error?: (null | InstanceFailureResponse) | undefined;
+    instance: IntegrationInstanceResponse;
+    ok: boolean;
+    server_version?: (string | null) | undefined;
+    warning?: (string | null) | undefined;
+  };
   export type ColumnCountResponse = { cards: number; column: ColumnDto };
   export type ClientResponse = {
     aliases: Array<string>;
@@ -175,6 +203,15 @@ export namespace Schemas {
   };
   export type CreateConversationRequest = { message: string };
   export type CreateGithubAppRequest = { code: string; state: string };
+  export type CreateIntegrationInstanceRequest = {
+    base_url: string;
+    database?: (string | null) | undefined;
+    environment: IntegrationEnvironmentDto;
+    kind: IntegrationKindDto;
+    login?: (string | null) | undefined;
+    name: string;
+    secret: string;
+  };
   export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
   export type CreateManifestRequest = { owner: ManifestOwner };
   export type CreateProjectRequest = {
@@ -226,6 +263,7 @@ export namespace Schemas {
     installation: null | GithubInstallationResponse;
   }>;
   export type InstallUrlResponse = { url: string };
+  export type IntegrationInstanceListResponse = { items: Array<IntegrationInstanceResponse> };
   export type ManifestResponse = { action_url: string; manifest: string; state: string };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
@@ -343,6 +381,14 @@ export namespace Schemas {
     notes: string | null;
   }>;
   export type UpdateConversationRequest = Partial<{ archived: boolean | null; title: string | null }>;
+  export type UpdateIntegrationInstanceRequest = Partial<{
+    base_url: string | null;
+    database: string | null;
+    environment: null | IntegrationEnvironmentDto;
+    login: string | null;
+    name: string | null;
+    secret: string | null;
+  }>;
   export type UpdateProjectRequest = Partial<{
     aliases: Array<string> | null;
     archived: boolean | null;
@@ -523,6 +569,39 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListIntegrationInstances = {
+    method: "GET";
+    path: "/api/v1/clients/{client_id}/integrations";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+      path: { client_id: string };
+    };
+    responses: {
+      200: Schemas.IntegrationInstanceListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_CreateIntegrationInstance = {
+    method: "POST";
+    path: "/api/v1/clients/{client_id}/integrations";
+    requestFormat: "json";
+    parameters: {
+      path: { client_id: string };
+
+      body: Schemas.CreateIntegrationInstanceRequest;
+    };
+    responses: {
+      201: Schemas.IntegrationInstanceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListConversations = {
     method: "GET";
     path: "/api/v1/conversations";
@@ -610,6 +689,53 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
       502: Schemas.ApiErrorResponse;
       503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_ArchiveIntegrationInstance = {
+    method: "DELETE";
+    path: "/api/v1/integration-instances/{id}";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+    };
+    responses: {
+      200: Schemas.IntegrationInstanceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateIntegrationInstance = {
+    method: "PATCH";
+    path: "/api/v1/integration-instances/{id}";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+
+      body: Schemas.UpdateIntegrationInstanceRequest;
+    };
+    responses: {
+      200: Schemas.IntegrationInstanceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_CheckIntegrationInstance = {
+    method: "POST";
+    path: "/api/v1/integration-instances/{id}/check";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+    };
+    responses: {
+      200: Schemas.CheckIntegrationInstanceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
     };
   };
   export type get_GetGithubIntegration = {
@@ -950,6 +1076,7 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
     "/api/v1/clients": Endpoints.get_ListClients;
     "/api/v1/clients/{client_id}": Endpoints.get_GetClient;
+    "/api/v1/clients/{client_id}/integrations": Endpoints.get_ListIntegrationInstances;
     "/api/v1/conversations": Endpoints.get_ListConversations;
     "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
@@ -973,6 +1100,7 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
     "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
     "/api/v1/conversations/{id}": Endpoints.patch_UpdateConversation;
+    "/api/v1/integration-instances/{id}": Endpoints.patch_UpdateIntegrationInstance;
     "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
   };
   post: {
@@ -980,9 +1108,11 @@ export type EndpointByMethod = {
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/move": Endpoints.post_MoveCard;
     "/api/v1/clients": Endpoints.post_CreateClient;
+    "/api/v1/clients/{client_id}/integrations": Endpoints.post_CreateIntegrationInstance;
     "/api/v1/conversations": Endpoints.post_CreateConversation;
     "/api/v1/conversations/{id}/messages": Endpoints.post_SendConversationMessage;
     "/api/v1/documents/text": Endpoints.post_ReadDocument;
+    "/api/v1/integration-instances/{id}/check": Endpoints.post_CheckIntegrationInstance;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
     "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;
@@ -992,6 +1122,7 @@ export type EndpointByMethod = {
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
   };
   delete: {
+    "/api/v1/integration-instances/{id}": Endpoints.delete_ArchiveIntegrationInstance;
     "/api/v1/integrations/github": Endpoints.delete_DisconnectGithub;
     "/api/v1/integrations/github/app": Endpoints.delete_DeleteGithubApp;
     "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;

@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { InlineAlert } from '#/components/layout/inline-alert'
@@ -119,6 +120,16 @@ export function IntegrationsPage({
 					/>
 				)}
 			</SectionCard>
+			<p className="text-[13px] text-muted-foreground">
+				Odoo et n8n se connectent client par client, depuis la fiche de chaque
+				client.{' '}
+				<Link
+					to="/clients"
+					className="text-foreground underline underline-offset-2"
+				>
+					Voir les clients
+				</Link>
+			</p>
 			{pending ? (
 				<ManifestForm
 					actionUrl={pending.action_url}

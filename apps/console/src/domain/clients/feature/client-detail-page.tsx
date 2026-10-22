@@ -18,6 +18,7 @@ import { projectBody } from '#/domain/clients/project-body'
 import { CardsByColumn } from '#/domain/clients/ui/cards-by-column'
 import { ClientDialog } from '#/domain/clients/ui/client-dialog'
 import { EntityCard } from '#/domain/clients/ui/entity-card'
+import { IntegrationInstancesSection } from '#/domain/clients/ui/integration-instances-section'
 import { ProjectDialog } from '#/domain/clients/ui/project-dialog'
 import { useCards } from '#/domain/kanban/hooks/use-cards'
 import { useRuns } from '#/domain/runs/hooks/use-runs'
@@ -171,6 +172,10 @@ export function ClientDetailPage({ clientId }: Props) {
 					</ul>
 				)}
 			</SectionCard>
+			<IntegrationInstancesSection
+				clientId={client.id}
+				archived={client.archived}
+			/>
 			<SectionCard title="Cartes par colonne" bare>
 				<CardsByColumn counts={counts} cards={linkedCards} />
 			</SectionCard>
