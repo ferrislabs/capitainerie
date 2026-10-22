@@ -21,6 +21,7 @@ export function RunJournal({ run }: Props) {
 			items={journal.data?.items}
 			isError={journal.isError}
 			headingLevel="h2"
+			locked={polling}
 		/>
 	)
 }

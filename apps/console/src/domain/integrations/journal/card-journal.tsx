@@ -24,6 +24,7 @@ export function CardJournal({ cardId, runs }: Props) {
 			items={journal.data?.items}
 			isError={journal.isError}
 			headingLevel="h3"
+			locked={polling}
 		/>
 	)
 }

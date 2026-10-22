@@ -7,6 +7,7 @@ mod execute_stream;
 mod execution;
 mod integration;
 mod integration_action;
+mod integration_revert;
 mod intervene_pipeline;
 mod intervention;
 mod organization;

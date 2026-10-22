@@ -19,8 +19,11 @@ use axum_extra::routing::RouterExt;
 use capitainerie_core::CapitainerieUseCase;
 use capitainerie_integrations::HttpConnector;
 
-pub use actions::dto::{
-    ActionAccessDto, ActionOutcomeDto, IntegrationActionListResponse, IntegrationActionResponse,
+pub use actions::{
+    dto::{
+        ActionAccessDto, ActionOutcomeDto, IntegrationActionListResponse, IntegrationActionResponse,
+    },
+    revert::RevertIntegrationActionRequest,
 };
 pub use dto::{
     ConnectGithubRequest, CreateGithubAppRequest, CreateManifestRequest, GithubAppResponse,
@@ -61,6 +64,7 @@ where
         .typed_post(instances::check::handler)
         .typed_get(actions::list_for_card::handler)
         .typed_get(actions::list_for_run::handler)
+        .typed_post(actions::revert::handler)
         .with_state(IntegrationsState {
             usecase,
             github,

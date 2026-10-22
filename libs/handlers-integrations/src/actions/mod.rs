@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod list_for_card;
 pub mod list_for_run;
+pub mod revert;
 
 use capitainerie_common::{CoreError, IntegrationInstanceId};
 use capitainerie_core::{
