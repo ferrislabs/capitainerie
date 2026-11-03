@@ -424,6 +424,7 @@ impl<R: IntegratorRuntime, C: IntegrationConnector> InterventionPipeline<R, C> {
                 card_id: Some(context.card_id),
                 client_id: intervention.client_id,
                 grants: intervention.grants.clone(),
+                reverts_action_id: None,
             },
             listed,
             progress: Mutex::new(Progress {

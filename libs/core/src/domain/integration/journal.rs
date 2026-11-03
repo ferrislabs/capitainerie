@@ -126,6 +126,7 @@ pub struct ActionContext {
     pub card_id: Option<CardId>,
     pub client_id: ClientId,
     pub grants: Vec<Grant>,
+    pub reverts_action_id: Option<IntegrationActionId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

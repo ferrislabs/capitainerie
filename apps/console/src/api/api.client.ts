@@ -373,6 +373,7 @@ export namespace Schemas {
   export type ReadDocumentRequest = { file: string };
   export type RepositoryResponse = { full_name: string; name: string; owner: string };
   export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
+  export type RevertIntegrationActionRequest = Partial<{ confirm_production: boolean }>;
   export type RunListResponse = { items: Array<RunResponse>; total: number };
   export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
   export type ToolCallResponse = { latency_ms: number; succeeded: boolean; summary: string; tool: string };
@@ -760,6 +761,24 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
       502: Schemas.ApiErrorResponse;
       503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_RevertIntegrationAction = {
+    method: "POST";
+    path: "/api/v1/integration-actions/{id}/revert";
+    requestFormat: "json";
+    parameters: {
+      path: { id: string };
+
+      body: Schemas.RevertIntegrationActionRequest;
+    };
+    responses: {
+      200: Schemas.IntegrationActionListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
     };
   };
   export type delete_ArchiveIntegrationInstance = {
@@ -1200,6 +1219,7 @@ export type EndpointByMethod = {
     "/api/v1/conversations": Endpoints.post_CreateConversation;
     "/api/v1/conversations/{id}/messages": Endpoints.post_SendConversationMessage;
     "/api/v1/documents/text": Endpoints.post_ReadDocument;
+    "/api/v1/integration-actions/{id}/revert": Endpoints.post_RevertIntegrationAction;
     "/api/v1/integration-instances/{id}/check": Endpoints.post_CheckIntegrationInstance;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;

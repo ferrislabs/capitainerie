@@ -351,6 +351,7 @@ impl World {
                     access: *access,
                 })
                 .collect(),
+            reverts_action_id: None,
         }
     }
 

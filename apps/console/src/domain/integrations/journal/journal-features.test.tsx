@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '#/api'
 import type { Schemas } from '#/api/api.client'
@@ -211,5 +212,140 @@ describe('journal sections', () => {
 
 		expect(container.textContent).toBe('')
 		expect(fetchMock).not.toHaveBeenCalled()
+	})
+
+	it('restores an action from the card journal and refreshes it', async () => {
+		let restored = false
+		const bodies: Array<unknown> = []
+		const original: Schemas.IntegrationActionResponse = {
+			...ACTIONS[0],
+			tool: 'odoo_write',
+			access: 'write',
+			outcome: 'succeeded',
+			reason_code: null,
+			instance_environment: 'staging',
+			revertible: true,
+			before: { name: 'Acme' },
+			after: { name: 'Acme SA' },
+		}
+		const restoration: Schemas.IntegrationActionResponse = {
+			...original,
+			id: 'r1',
+			revertible: false,
+			reverts_action_id: 'a1',
+			before: { name: 'Acme SA' },
+			after: { name: 'Acme' },
+			created_at: '2026-10-16T09:40:00Z',
+		}
+		fetchMock.mockImplementation((_url: URL, init: RequestInit) => {
+			if (init.method === 'POST') {
+				bodies.push(JSON.parse(String(init.body)))
+				restored = true
+				return Promise.resolve(json(200, { items: [restoration] }))
+			}
+			return Promise.resolve(
+				json(200, {
+					items: restored
+						? [{ ...original, reverted_by_action_id: 'r1' }, restoration]
+						: [original],
+				}),
+			)
+		})
+		const user = userEvent.setup()
+		render(<CardJournal cardId="c1" runs={[run()]} />, {
+			wrapper: harness.wrapper,
+		})
+
+		await user.click(
+			await screen.findByRole('button', { name: /Odoo · modifier/ }),
+		)
+		await user.click(
+			screen.getByRole('button', { name: 'Restaurer l’état d’avant' }),
+		)
+		await user.click(await screen.findByRole('button', { name: 'Restaurer' }))
+
+		expect(await screen.findByText('État d’avant restauré.')).toBeTruthy()
+		expect(bodies).toEqual([{}])
+		expect(await screen.findByText('Restaurée')).toBeTruthy()
+		expect(screen.getAllByRole('listitem')).toHaveLength(2)
+		expect(screen.queryByRole('alertdialog')).toBeNull()
+		expect(
+			screen.queryByRole('button', { name: 'Restaurer l’état d’avant' }),
+		).toBeNull()
+	})
+
+	it('locks the restoration while the card intervention runs', async () => {
+		serve({
+			'GET /api/v1/cards/c1/integration-actions': () =>
+				json(200, {
+					items: [
+						{
+							...ACTIONS[0],
+							outcome: 'succeeded',
+							reason_code: null,
+							revertible: true,
+						},
+					],
+				}),
+		})
+		const user = userEvent.setup()
+		render(<CardJournal cardId="c1" runs={[run({ status: 'running' })]} />, {
+			wrapper: harness.wrapper,
+		})
+
+		await user.click(
+			await screen.findByRole('button', { name: /Odoo · compter/ }),
+		)
+
+		expect(
+			(
+				screen.getByRole('button', {
+					name: 'Restaurer l’état d’avant',
+				}) as HTMLButtonElement
+			).disabled,
+		).toBe(true)
+	})
+
+	it('restores from the run journal, and locks it while the run is active', async () => {
+		const done = {
+			...ACTIONS[0],
+			outcome: 'succeeded',
+			reason_code: null,
+			revertible: true,
+		}
+		serve({
+			'GET /api/v1/runs/r1/integration-actions': () =>
+				json(200, { items: [done] }),
+		})
+		const user = userEvent.setup()
+		const { unmount } = render(<RunJournal run={run()} />, {
+			wrapper: harness.wrapper,
+		})
+		await user.click(
+			await screen.findByRole('button', { name: /Odoo · compter/ }),
+		)
+		expect(
+			(
+				screen.getByRole('button', {
+					name: 'Restaurer l’état d’avant',
+				}) as HTMLButtonElement
+			).disabled,
+		).toBe(false)
+		unmount()
+		harness.client.clear()
+
+		render(<RunJournal run={run({ status: 'running' })} />, {
+			wrapper: harness.wrapper,
+		})
+		await user.click(
+			await screen.findByRole('button', { name: /Odoo · compter/ }),
+		)
+		expect(
+			(
+				screen.getByRole('button', {
+					name: 'Restaurer l’état d’avant',
+				}) as HTMLButtonElement
+			).disabled,
+		).toBe(true)
 	})
 })

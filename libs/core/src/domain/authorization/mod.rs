@@ -57,6 +57,7 @@ pub enum Action {
     IntegrationManage,
     IntegrationCall { access: Access },
     CardIntervene,
+    IntegrationRevert,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +131,7 @@ impl Action {
             Self::IntegrationManage => "integration.manage",
             Self::IntegrationCall { .. } => "integration.call",
             Self::CardIntervene => "card.intervene",
+            Self::IntegrationRevert => "integration.revert",
         }
     }
 }

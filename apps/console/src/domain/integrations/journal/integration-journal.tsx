@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import type { Schemas } from '#/api/api.client'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { StatusBadge, type StatusTone } from '#/components/layout/status-badge'
 import { Badge } from '#/components/ui/badge'
 import { EnvironmentBadge } from '#/domain/integrations/environment-badge'
@@ -14,6 +15,8 @@ import {
 	hasChanges,
 	lineDiff,
 } from '#/domain/integrations/journal/line-diff'
+import { RevertControl } from '#/domain/integrations/journal/revert-control'
+import { canRevert } from '#/domain/integrations/journal/revert-rules'
 import { relativeDate } from '#/domain/kanban/relative-date'
 import { prettyJson } from '#/domain/runs/json-tokens'
 import { cn } from '#/lib/utils'
@@ -124,11 +127,14 @@ function restorationLabel(action: Action, byId: ReadonlyMap<string, Action>) {
 function JournalRow({
 	action,
 	byId,
+	revert,
 }: {
 	action: Action
 	byId: ReadonlyMap<string, Action>
+	revert: RevertOptions | undefined
 }) {
 	const [open, setOpen] = useState(false)
+	const [restored, setRestored] = useState(false)
 	const detailId = useId()
 	const outcome = OUTCOMES[action.outcome]
 	const reason =
@@ -196,24 +202,44 @@ function JournalRow({
 					{present(action.before) && present(action.after) ? (
 						<DiffPanel before={action.before} after={action.after} />
 					) : null}
+					{restored ? (
+						<InlineAlert tone="success">État d’avant restauré.</InlineAlert>
+					) : null}
+					{revert && canRevert(action) ? (
+						<RevertControl
+							action={action}
+							locked={revert.locked}
+							onRestored={() => setRestored(true)}
+						/>
+					) : null}
 				</div>
 			) : null}
 		</li>
 	)
 }
 
-interface Props {
-	actions: ReadonlyArray<Action>
+export interface RevertOptions {
+	locked: boolean
 }
 
-export function IntegrationJournal({ actions }: Props) {
+interface Props {
+	actions: ReadonlyArray<Action>
+	revert?: RevertOptions
+}
+
+export function IntegrationJournal({ actions, revert }: Props) {
 	const ordered = chronological(actions)
 	const byId = new Map(ordered.map((action) => [action.id, action]))
 
 	return (
 		<ol className="flex flex-col divide-y">
 			{ordered.map((action) => (
-				<JournalRow key={action.id} action={action} byId={byId} />
+				<JournalRow
+					key={action.id}
+					action={action}
+					byId={byId}
+					revert={revert}
+				/>
 			))}
 		</ol>
 	)
