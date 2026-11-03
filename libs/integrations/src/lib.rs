@@ -1,12 +1,18 @@
+mod attachment;
 mod guard;
 mod n8n;
+mod odoo;
 mod odoo_json2;
 mod odoo_jsonrpc;
 
+use std::sync::Arc;
+
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::integration::{
-    ConnectorFailure, InstanceConnection, IntegrationKind, ProbeReport, ports::IntegrationConnector,
+    ConnectorFailure, InstanceConnection, IntegrationKind, ProbeReport, action::ActionRequest,
+    ports::IntegrationConnector,
 };
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NetworkPolicy {
@@ -18,6 +24,7 @@ pub struct NetworkPolicy {
 pub struct HttpConnector {
     policy: NetworkPolicy,
     client: reqwest::Client,
+    sessions: Arc<odoo_jsonrpc::Sessions>,
 }
 
 impl HttpConnector {
@@ -25,6 +32,7 @@ impl HttpConnector {
         Ok(Self {
             policy,
             client: guard::build_client(policy)?,
+            sessions: Arc::default(),
         })
     }
 
@@ -46,11 +54,41 @@ impl IntegrationConnector for HttpConnector {
                     .await
             }
             IntegrationKind::OdooJsonRpc => {
-                odoo_jsonrpc::OdooJsonRpc::new(&self.client, connection)
+                odoo_jsonrpc::OdooJsonRpc::new(&self.client, connection, &self.sessions)
                     .probe()
                     .await
             }
             IntegrationKind::N8n => n8n::N8n::new(&self.client, connection).probe().await,
+        }
+    }
+
+    async fn perform(
+        &self,
+        connection: &InstanceConnection,
+        request: &ActionRequest,
+    ) -> Result<Value, ConnectorFailure> {
+        if request.family() != connection.kind.family() {
+            return Err(ConnectorFailure::NotSupported(
+                odoo::NOT_FOR_THIS_INSTANCE.into(),
+            ));
+        }
+        guard::check_target(self.policy, &connection.base_url).await?;
+        match connection.kind {
+            IntegrationKind::OdooJson2 => {
+                odoo_json2::OdooJson2::new(&self.client, connection)
+                    .perform(request)
+                    .await
+            }
+            IntegrationKind::OdooJsonRpc => {
+                odoo_jsonrpc::OdooJsonRpc::new(&self.client, connection, &self.sessions)
+                    .perform(request)
+                    .await
+            }
+            IntegrationKind::N8n => {
+                n8n::N8n::new(&self.client, connection)
+                    .perform(request)
+                    .await
+            }
         }
     }
 }

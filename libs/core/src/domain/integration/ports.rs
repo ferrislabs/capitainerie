@@ -1,6 +1,12 @@
-use capitainerie_common::{ClientId, CoreError, IntegrationInstanceId, OrganizationId};
+use capitainerie_common::{
+    CardId, ClientId, CoreError, IntegrationActionId, IntegrationInstanceId, OrganizationId, RunId,
+};
+use serde_json::Value;
 
-use super::{ConnectorFailure, InstanceConnection, IntegrationInstance, ProbeReport};
+use super::{
+    ConnectorFailure, InstanceConnection, IntegrationInstance, ProbeReport, action::ActionRequest,
+    journal::IntegrationAction,
+};
 use crate::domain::agent::SecretToken;
 
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
@@ -44,4 +50,62 @@ pub trait IntegrationConnector: Send + Sync {
         &self,
         connection: &InstanceConnection,
     ) -> impl Future<Output = Result<ProbeReport, ConnectorFailure>> + Send;
+
+    fn perform(
+        &self,
+        connection: &InstanceConnection,
+        request: &ActionRequest,
+    ) -> impl Future<Output = Result<Value, ConnectorFailure>> + Send;
+}
+
+#[cfg_attr(any(test, feature = "mock"), mockall::automock)]
+pub trait IntegrationActionRepository: Send {
+    #[allow(clippy::needless_lifetimes)]
+    fn insert<'a>(
+        &mut self,
+        action: &IntegrationAction,
+        snapshot: Option<&'a Value>,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    fn complete(
+        &mut self,
+        action: &IntegrationAction,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send;
+
+    fn find(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> impl Future<Output = Result<Option<IntegrationAction>, CoreError>> + Send;
+
+    fn snapshot(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+    ) -> impl Future<Output = Result<Option<Value>, CoreError>> + Send;
+
+    fn list_for_run(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> impl Future<Output = Result<Vec<IntegrationAction>, CoreError>> + Send;
+
+    fn list_for_card(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> impl Future<Output = Result<Vec<IntegrationAction>, CoreError>> + Send;
+
+    fn mark_reverted(
+        &mut self,
+        organization_id: OrganizationId,
+        id: IntegrationActionId,
+        by: IntegrationActionId,
+    ) -> impl Future<Output = Result<bool, CoreError>> + Send;
+
+    fn count_writes_not_denied(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> impl Future<Output = Result<i64, CoreError>> + Send;
 }

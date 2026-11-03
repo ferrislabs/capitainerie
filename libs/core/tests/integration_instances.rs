@@ -15,6 +15,7 @@ use capitainerie_core::{
         integration::{
             BaseUrl, ConnectorFailure, Environment, InstanceConnection, InstanceError,
             InstanceName, IntegrationInstance, IntegrationKind, ProbeReport,
+            action::ActionRequest,
             ports::{IntegrationConnector, IntegrationInstanceRepository},
             service::{CreateInstance, UpdateInstance},
         },
@@ -140,6 +141,13 @@ impl IntegrationConnector for ScriptedConnector {
     ) -> Result<ProbeReport, ConnectorFailure> {
         self.probed.lock().unwrap().push(connection.clone());
         self.outcome.lock().unwrap().clone()
+    }
+    async fn perform(
+        &self,
+        _connection: &InstanceConnection,
+        _request: &ActionRequest,
+    ) -> Result<serde_json::Value, ConnectorFailure> {
+        Err(ConnectorFailure::NotSupported("not scripted".into()))
     }
 }
 

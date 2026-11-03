@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT snapshot_nonce, snapshot_ciphertext\n            FROM integration_actions\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "snapshot_nonce",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "snapshot_ciphertext",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "6b147f257e6c82258cce7c5b6cc78f2a9c573cd80a12fa036421285364edfa3b"
+}

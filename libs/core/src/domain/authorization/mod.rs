@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use self::ports::Authorizer;
-use crate::domain::card::Column;
+use crate::domain::{card::Column, integration::action::Access};
 
 /// AuthZEN-shaped: who, does what, on which resource, in which run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +55,7 @@ pub enum Action {
     ConversationWrite,
     IntegrationRead,
     IntegrationManage,
+    IntegrationCall { access: Access },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +127,7 @@ impl Action {
             Self::ConversationWrite => "conversation.write",
             Self::IntegrationRead => "integration.read",
             Self::IntegrationManage => "integration.manage",
+            Self::IntegrationCall { .. } => "integration.call",
         }
     }
 }

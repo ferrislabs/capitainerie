@@ -4,6 +4,7 @@ use crate::domain::{
     authorization::{AccessRequest, Action, Decision, Subject, ports::Authorizer},
     card::Column,
     conversation::CAPTAIN_AGENT,
+    integration::journal::INTEGRATOR_AGENT,
 };
 
 /// In-process stand-in for FerrisKey's AuthZEN PDP until its HTTP endpoint
@@ -25,6 +26,7 @@ fn decide(request: &AccessRequest) -> Decision {
     match &request.subject.actor {
         None => decide_for_human(&request.subject, request.action),
         Some(actor) if actor == CAPTAIN_AGENT => decide_for_captain(request.action),
+        Some(actor) if actor == INTEGRATOR_AGENT => decide_for_integrator(request.action),
         Some(actor) => decide_for_agent(actor, request.action),
     }
 }
@@ -77,6 +79,19 @@ fn decide_for_captain(action: Action) -> Decision {
         | Action::ClientRead
         | Action::GithubRead => Decision::Allow,
         other => deny(&format!("agent {CAPTAIN_AGENT} may not {}", other.as_str())),
+    }
+}
+
+/// The Intervenant calls the integration catalog for the human who handed it
+/// the card, reads that card and comments on it: it never moves or edits a
+/// card, whatever the generic agent rules allow.
+fn decide_for_integrator(action: Action) -> Decision {
+    match action {
+        Action::IntegrationCall { .. } | Action::CardRead | Action::CardComment => Decision::Allow,
+        other => deny(&format!(
+            "agent {INTEGRATOR_AGENT} may not {}",
+            other.as_str()
+        )),
     }
 }
 
