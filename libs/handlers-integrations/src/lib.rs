@@ -7,6 +7,7 @@ pub mod dto;
 pub mod error;
 pub mod get_integration;
 pub mod install_url;
+pub mod instances;
 pub mod list_repositories;
 mod manifest;
 pub mod signer;
@@ -15,6 +16,7 @@ pub mod state;
 use axum::Router;
 use axum_extra::routing::RouterExt;
 use capitainerie_core::CapitainerieUseCase;
+use capitainerie_integrations::HttpConnector;
 
 pub use dto::{
     ConnectGithubRequest, CreateGithubAppRequest, CreateManifestRequest, GithubAppResponse,
@@ -22,11 +24,20 @@ pub use dto::{
     ManifestResponse, RepositoryListResponse, RepositoryResponse,
 };
 pub use error::IntegrationError;
+pub use instances::dto::{
+    CheckIntegrationInstanceResponse, CreateIntegrationInstanceRequest, InstanceFailureResponse,
+    IntegrationEnvironmentDto, IntegrationInstanceListResponse, IntegrationInstanceResponse,
+    IntegrationKindDto, UpdateIntegrationInstanceRequest,
+};
 pub use state::{GithubIntegration, IntegrationsState};
 
 pub const TAG: &str = "integrations";
 
-pub fn router<S>(usecase: CapitainerieUseCase, github: GithubIntegration) -> Router<S>
+pub fn router<S>(
+    usecase: CapitainerieUseCase,
+    github: GithubIntegration,
+    connector: HttpConnector,
+) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -39,5 +50,14 @@ where
         .typed_get(install_url::handler)
         .typed_post(callback::handler)
         .typed_get(list_repositories::handler)
-        .with_state(IntegrationsState { usecase, github })
+        .typed_get(instances::list::handler)
+        .typed_post(instances::create::handler)
+        .typed_patch(instances::update::handler)
+        .typed_delete(instances::archive::handler)
+        .typed_post(instances::check::handler)
+        .with_state(IntegrationsState {
+            usecase,
+            github,
+            connector,
+        })
 }

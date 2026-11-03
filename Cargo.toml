@@ -24,6 +24,7 @@ members = [
     "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/handlers-transcriptions",
+    "libs/integrations",
     "libs/macros",
     "libs/runner-kube",
     "libs/runtime-rig",
@@ -108,6 +109,7 @@ capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }
+capitainerie-integrations = { path = "libs/integrations" }
 capitainerie-macros = { path = "libs/macros" }
 capitainerie-runner-kube = { path = "libs/runner-kube" }
 capitainerie-runtime-rig = { path = "libs/runtime-rig" }

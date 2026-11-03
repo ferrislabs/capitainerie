@@ -5,6 +5,7 @@ mod document;
 mod execute_pipeline;
 mod execute_stream;
 mod execution;
+mod integration;
 mod organization;
 mod pipeline;
 mod provider;

@@ -27,6 +27,8 @@ data:
   IGGY_STREAM: {{ .Values.config.iggy.stream | quote }}
   IGGY_PARTITIONS: {{ .Values.config.iggy.partitions | quote }}
   ANALYTICS_URI: {{ .Values.analytics.mountPath | quote }}
+  INTEGRATIONS_ALLOW_INSECURE_HTTP: {{ .Values.config.integrations.allowInsecureHttp | quote }}
+  INTEGRATIONS_ALLOW_PRIVATE_NETWORKS: {{ .Values.config.integrations.allowPrivateNetworks | quote }}
   LOG_FILTER: {{ .Values.config.logFilter | quote }}
   LOG_JSON: {{ .Values.config.logJson | quote }}
   {{- with .Values.config.otlpEndpoint }}

@@ -43,9 +43,12 @@ use capitainerie_handlers_identity::{
     me::{MeOrganization, MeResponse},
 };
 use capitainerie_handlers_integrations::{
-    self as integrations, ConnectGithubRequest, CreateGithubAppRequest, CreateManifestRequest,
+    self as integrations, CheckIntegrationInstanceResponse, ConnectGithubRequest,
+    CreateGithubAppRequest, CreateIntegrationInstanceRequest, CreateManifestRequest,
     GithubAppResponse, GithubInstallationResponse, GithubIntegrationResponse, InstallUrlResponse,
-    ManifestOwner, ManifestResponse, RepositoryListResponse, RepositoryResponse,
+    InstanceFailureResponse, IntegrationEnvironmentDto, IntegrationInstanceListResponse,
+    IntegrationInstanceResponse, IntegrationKindDto, ManifestOwner, ManifestResponse,
+    RepositoryListResponse, RepositoryResponse, UpdateIntegrationInstanceRequest,
 };
 use capitainerie_handlers_providers::{
     self as providers,
@@ -124,6 +127,11 @@ use utoipa::{
         integrations::create_app::handler,
         integrations::delete_app::handler,
         integrations::list_repositories::handler,
+        integrations::instances::list::handler,
+        integrations::instances::create::handler,
+        integrations::instances::update::handler,
+        integrations::instances::archive::handler,
+        integrations::instances::check::handler,
         conversations::create_conversation::handler,
         conversations::list_conversations::handler,
         conversations::get_conversation::handler,
@@ -212,6 +220,14 @@ use utoipa::{
         ConnectGithubRequest,
         RepositoryListResponse,
         RepositoryResponse,
+        IntegrationKindDto,
+        IntegrationEnvironmentDto,
+        IntegrationInstanceResponse,
+        IntegrationInstanceListResponse,
+        CreateIntegrationInstanceRequest,
+        UpdateIntegrationInstanceRequest,
+        CheckIntegrationInstanceResponse,
+        InstanceFailureResponse,
         CreateConversationRequest,
         CreatedConversationResponse,
         UpdateConversationRequest,
@@ -236,7 +252,7 @@ use utoipa::{
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
         (name = transcriptions::TAG, description = "Audio and PDF files turned into text for the transcript form; the file is never kept"),
         (name = conversations::TAG, description = "The chat with the Captain: conversations, their messages and the streamed turns"),
-        (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository"),
+        (name = integrations::TAG, description = "The GitHub App each organization creates, and its installation, that let Claude Code work on a repository; the Odoo and n8n instances of each client"),
     )
 )]
 pub struct ApiDoc;
@@ -444,6 +460,104 @@ mod tests {
         let app = &schemas["GithubAppResponse"]["properties"];
         for secret in ["client_secret", "pem", "private_key", "webhook_secret"] {
             assert!(app.get(secret).is_none(), "{secret}");
+        }
+    }
+
+    fn referenced_schemas<'a>(
+        spec: &'a serde_json::Value,
+        node: &'a serde_json::Value,
+        seen: &mut std::collections::BTreeSet<&'a str>,
+    ) {
+        match node {
+            serde_json::Value::Object(map) => {
+                if let Some(reference) = map.get("$ref").and_then(|value| value.as_str()) {
+                    let name = reference.rsplit('/').next().unwrap();
+                    if seen.insert(name) {
+                        referenced_schemas(spec, &spec["components"]["schemas"][name], seen);
+                    }
+                }
+                for value in map.values() {
+                    referenced_schemas(spec, value, seen);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    referenced_schemas(spec, item, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_instance_endpoints_are_documented_without_a_secret_in_any_response() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        let operations = [
+            (
+                "/api/v1/clients/{client_id}/integrations",
+                "get",
+                "listIntegrationInstances",
+            ),
+            (
+                "/api/v1/clients/{client_id}/integrations",
+                "post",
+                "createIntegrationInstance",
+            ),
+            (
+                "/api/v1/integration-instances/{id}",
+                "patch",
+                "updateIntegrationInstance",
+            ),
+            (
+                "/api/v1/integration-instances/{id}",
+                "delete",
+                "archiveIntegrationInstance",
+            ),
+            (
+                "/api/v1/integration-instances/{id}/check",
+                "post",
+                "checkIntegrationInstance",
+            ),
+        ];
+        for (path, method, operation_id) in operations {
+            let operation = &paths[path][method];
+            assert_eq!(operation["operationId"], operation_id, "{method} {path}");
+            let mut reachable = std::collections::BTreeSet::new();
+            referenced_schemas(&spec, &operation["responses"], &mut reachable);
+            assert!(!reachable.is_empty(), "{method} {path}");
+            for name in reachable {
+                let properties = &spec["components"]["schemas"][name]["properties"];
+                assert!(
+                    properties.get("secret").is_none(),
+                    "{name} reachable from {method} {path} has a secret property"
+                );
+            }
+        }
+        let instance = &spec["components"]["schemas"]["IntegrationInstanceResponse"]["properties"];
+        assert!(instance["secret_preview"].is_object());
+        assert!(
+            spec["components"]["schemas"]["CreateIntegrationInstanceRequest"]["properties"]["secret"]
+                .is_object()
+        );
+        let check =
+            &spec["components"]["schemas"]["CheckIntegrationInstanceResponse"]["properties"];
+        for field in ["ok", "server_version", "warning", "error", "instance"] {
+            assert!(check[field].is_object(), "{field}");
+        }
+        assert!(
+            paths["/api/v1/clients/{client_id}/integrations"]["get"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|parameter| parameter["in"] == "query" && parameter["name"] == "archived")
+        );
+        for status in ["201", "403", "404", "409", "422"] {
+            assert!(
+                paths["/api/v1/clients/{client_id}/integrations"]["post"]["responses"][status]
+                    .is_object(),
+                "{status}"
+            );
         }
     }
 

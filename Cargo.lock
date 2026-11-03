@@ -1029,6 +1029,7 @@ dependencies = [
  "capitainerie-handlers-realtime",
  "capitainerie-handlers-runs",
  "capitainerie-handlers-transcriptions",
+ "capitainerie-integrations",
  "capitainerie-runtime-rig",
  "capitainerie-telemetry",
  "clap",
@@ -1320,6 +1321,7 @@ dependencies = [
  "capitainerie-core",
  "capitainerie-github",
  "capitainerie-handlers",
+ "capitainerie-integrations",
  "chrono",
  "reqwest 0.12.28",
  "serde",
@@ -1408,6 +1410,22 @@ dependencies = [
  "tokio",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "capitainerie-integrations"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "capitainerie-common",
+ "capitainerie-core",
+ "futures-util",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

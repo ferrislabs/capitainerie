@@ -25,6 +25,7 @@ spec:
     {{- include "capitainerie.egressDependency" $np.external.postgres | nindent 4 }}
     {{- include "capitainerie.egressDependency" $np.external.iggy | nindent 4 }}
     {{- include "capitainerie.egressDependency" $np.external.ferriskey | nindent 4 }}
+    {{- include "capitainerie.egressDependency" $np.external.integrations | nindent 4 }}
     {{- if .Values.config.otlpEndpoint }}
     {{- include "capitainerie.egressDependency" $np.external.otlp | nindent 4 }}
     {{- end }}
@@ -81,6 +82,7 @@ spec:
     {{- include "capitainerie.egressDependency" $np.external.iggy | nindent 4 }}
     {{- include "capitainerie.egressDependency" $np.external.ferriskey | nindent 4 }}
     {{- include "capitainerie.egressDependency" $np.external.llm | nindent 4 }}
+    {{- include "capitainerie.egressDependency" $np.external.integrations | nindent 4 }}
     {{- if .Values.config.otlpEndpoint }}
     {{- include "capitainerie.egressDependency" $np.external.otlp | nindent 4 }}
     {{- end }}

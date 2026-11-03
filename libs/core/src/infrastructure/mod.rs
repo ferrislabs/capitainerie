@@ -6,6 +6,7 @@ pub mod crypto;
 pub mod delegation;
 pub mod event;
 pub mod execution;
+pub mod integration;
 pub mod member;
 pub mod organization;
 pub mod postgres;
