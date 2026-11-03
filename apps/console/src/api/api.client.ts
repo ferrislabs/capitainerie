@@ -793,6 +793,7 @@ export namespace Endpoints {
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
     };
   };
   export type patch_UpdateIntegrationInstance = {

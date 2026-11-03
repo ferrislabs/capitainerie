@@ -1,10 +1,11 @@
-use std::time::Duration;
+use std::{sync::LazyLock, time::Duration};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use capitainerie_core::domain::integration::ConnectorFailure;
 use capitainerie_core::domain::integration::action::{ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_CHARS};
 use serde_json::{Map, Value, json};
+use tokio::sync::Semaphore;
 
 use crate::odoo::{Arg, OdooCall, Transport};
 
@@ -20,6 +21,10 @@ const SUMMARY_FIELDS: [&str; 6] = [
 const KEPT_FIELDS: [&str; 5] = ["name", "mimetype", "file_size", "res_model", "res_id"];
 const CONTENT_FIELD: [&str; 1] = ["datas"];
 const PDF_TIMEOUT: Duration = Duration::from_secs(20);
+const PDF_WAIT: Duration = Duration::from_secs(5);
+const PDF_EXTRACTIONS: usize = 2;
+
+static PDF_SLOTS: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(PDF_EXTRACTIONS));
 
 const NOTE_LINK: &str = "this attachment is a link, not a stored file";
 const NOTE_OTHER_TYPE: &str =
@@ -28,6 +33,7 @@ const NOTE_TOO_LARGE: &str = "the attachment exceeds 7 MiB";
 const NOTE_EMPTY: &str = "the attachment has no content";
 const NOTE_PDF_UNREADABLE: &str = "the PDF text could not be extracted";
 const NOTE_PDF_SCANNED: &str = "the PDF has no text layer";
+const NOTE_PDF_BUSY: &str = "too many PDFs are being read right now: try again in a moment";
 
 #[derive(Clone, Copy)]
 enum Rendering {
@@ -99,8 +105,13 @@ fn decode(encoded: &str) -> Result<Vec<u8>, ConnectorFailure> {
 }
 
 async fn pdf_text(bytes: Vec<u8>) -> Rendered {
-    let extraction =
-        tokio::task::spawn_blocking(move || pdf_extract::extract_text_from_mem(&bytes));
+    let Ok(Ok(slot)) = tokio::time::timeout(PDF_WAIT, PDF_SLOTS.acquire()).await else {
+        return Rendered::Note(NOTE_PDF_BUSY);
+    };
+    let extraction = tokio::task::spawn_blocking(move || {
+        let _slot = slot;
+        pdf_extract::extract_text_from_mem(&bytes)
+    });
     match tokio::time::timeout(PDF_TIMEOUT, extraction).await {
         Ok(Ok(Ok(text))) if text.trim().is_empty() => Rendered::Note(NOTE_PDF_SCANNED),
         Ok(Ok(Ok(text))) => Rendered::Text(text),

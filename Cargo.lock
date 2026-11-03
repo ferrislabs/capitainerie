@@ -9656,3 +9656,7 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "creusot-std"
+version = "0.15.0-dev"

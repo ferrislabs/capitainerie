@@ -263,7 +263,14 @@ impl CapitainerieUseCase {
             },
             Err(_) => None,
         };
-        let completed = entry.complete(pending, &result, after.as_ref(), latency_ms, stamp());
+        let completed = entry.complete(
+            pending,
+            &result,
+            before.as_ref(),
+            after.as_ref(),
+            latency_ms,
+            stamp(),
+        );
         self.complete_integration_action(&completed).await?;
         Ok(entry.conclude(&completed, result.as_ref().ok(), true))
     }

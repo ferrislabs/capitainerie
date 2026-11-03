@@ -25,6 +25,9 @@ const STORED: Schemas.IntegrationInstanceResponse = {
 const HELP =
 	'L’API externe d’Odoo Online demande une offre Custom. Pour la production, utilisez de préférence la clé d’un utilisateur Odoo en lecture seule.'
 
+const NEW_KEY_HELP =
+	'Une nouvelle clé est obligatoire quand l’adresse, la base ou l’identifiant change.'
+
 function setup(
 	overrides: Partial<Parameters<typeof IntegrationInstanceDialog>[0]> = {},
 ) {
@@ -181,6 +184,76 @@ describe('IntegrationInstanceDialog', () => {
 		expect(onSubmit).toHaveBeenCalledWith(
 			expect.objectContaining({ name: 'Odoo prod', secret: '' }),
 		)
+	})
+
+	it('keeps the key optional when the path alone changes', async () => {
+		const { user, onSubmit } = setup({ instance: STORED })
+		const url = screen.getByLabelText('URL')
+		await user.clear(url)
+		await user.type(url, 'https://acme.odoo.com/odoo')
+
+		expect(screen.queryByText(NEW_KEY_HELP)).toBeNull()
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		expect(onSubmit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				baseUrl: 'https://acme.odoo.com/odoo',
+				secret: '',
+			}),
+		)
+	})
+
+	it.each([
+		['URL', 'https://other.odoo.com'],
+		['Base', 'other'],
+		['Identifiant', 'bot'],
+	])('requires a new key when the %s changes', async (label, value) => {
+		const { user, onSubmit } = setup({ instance: STORED })
+		const field = screen.getByLabelText(label)
+		await user.clear(field)
+		await user.type(field, value)
+
+		expect(screen.getByText(NEW_KEY_HELP)).toBeTruthy()
+		expect(screen.queryByText(/Laissez vide pour garder/)).toBeNull()
+		expect(
+			screen
+				.getByLabelText('Clé API / mot de passe')
+				.getAttribute('aria-required'),
+		).toBe('true')
+
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		expect(await screen.findByText('La clé est obligatoire.')).toBeTruthy()
+		expect(onSubmit).not.toHaveBeenCalled()
+
+		await user.type(screen.getByLabelText('Clé API / mot de passe'), 'new-key')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+		expect(onSubmit).toHaveBeenCalledWith(
+			expect.objectContaining({ secret: 'new-key' }),
+		)
+	})
+
+	it('goes back to an optional key when the change is reverted', async () => {
+		const { user } = setup({ instance: STORED })
+		const database = screen.getByLabelText('Base')
+		await user.clear(database)
+		await user.type(database, 'other')
+		expect(screen.getByText(NEW_KEY_HELP)).toBeTruthy()
+
+		await user.clear(database)
+		await user.type(database, 'acme')
+
+		expect(screen.queryByText(NEW_KEY_HELP)).toBeNull()
+		expect(
+			screen.getByText(/Laissez vide pour garder la clé actuelle/),
+		).toBeTruthy()
+	})
+
+	it('never asks for the new key sentence when adding', () => {
+		setup()
+
+		expect(screen.queryByText(NEW_KEY_HELP)).toBeNull()
 	})
 
 	it('closes on cancel', async () => {

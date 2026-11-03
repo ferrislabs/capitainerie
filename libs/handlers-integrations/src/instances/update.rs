@@ -25,12 +25,12 @@ pub struct IntegrationInstancePath {
     params(("id" = IntegrationInstanceId, Path, description = "Integration instance identifier")),
     request_body = UpdateIntegrationInstanceRequest,
     responses(
-        (status = 200, description = "The updated instance; absent fields are unchanged, and a new URL, database, login or secret is tested first", body = IntegrationInstanceResponse),
+        (status = 200, description = "The updated instance; absent fields are unchanged, and a new URL, database, login or secret is tested first. A new origin (scheme, host or port), database or login needs a new secret", body = IntegrationInstanceResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The caller is not an organization admin", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such instance in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 409, description = "The client already has an instance of that name (instance_name_taken)", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "Nothing to update, invalid fields, an archived instance, or the connection test failed: connection_failed, version_mismatch, network_blocked or not_supported", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "Nothing to update, invalid fields, a new origin, database or login without a new secret, an archived instance, or the connection test failed: connection_failed, version_mismatch, network_blocked or not_supported", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]

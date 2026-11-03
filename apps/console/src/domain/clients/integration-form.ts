@@ -53,9 +53,43 @@ export function valuesOf(
 	}
 }
 
+function originOf(address: string): string | undefined {
+	try {
+		const url = new URL(address)
+		return `${url.protocol}//${url.host}`
+	} catch {
+		return undefined
+	}
+}
+
+function originChanged(address: string, stored: string): boolean {
+	const next = address.trim()
+	if (next === stored.trim()) return false
+	const nextOrigin = originOf(next)
+	const storedOrigin = originOf(stored.trim())
+	return (
+		nextOrigin === undefined ||
+		storedOrigin === undefined ||
+		nextOrigin !== storedOrigin
+	)
+}
+
+export function requiresNewSecret(
+	values: IntegrationValues,
+	instance: Schemas.IntegrationInstanceResponse,
+): boolean {
+	return (
+		originChanged(values.baseUrl, instance.base_url) ||
+		(usesDatabase(instance.kind) &&
+			values.database.trim() !== (instance.database ?? '')) ||
+		(usesLogin(instance.kind) && values.login.trim() !== (instance.login ?? ''))
+	)
+}
+
 export function validateIntegration(
 	values: IntegrationValues,
 	mode: IntegrationMode,
+	instance?: Schemas.IntegrationInstanceResponse,
 ): IntegrationErrors {
 	const errors: IntegrationErrors = {}
 	const name = validateName(values.name)
@@ -70,7 +104,10 @@ export function validateIntegration(
 			errors.login = 'L’identifiant est obligatoire.'
 		}
 	}
-	if (mode === 'create' && values.secret.trim() === '') {
+	const secretRequired =
+		mode === 'create' ||
+		(instance !== undefined && requiresNewSecret(values, instance))
+	if (secretRequired && values.secret.trim() === '') {
 		errors.secret = 'La clé est obligatoire.'
 	}
 	return errors

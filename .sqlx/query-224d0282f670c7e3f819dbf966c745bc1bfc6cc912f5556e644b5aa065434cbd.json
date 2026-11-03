@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT EXISTS (\n                SELECT 1\n                FROM intervention_grants\n                JOIN runs ON runs.id = intervention_grants.run_id\n                WHERE runs.organization_id = $1\n                  AND intervention_grants.instance_id = $2\n                  AND runs.status IN ('queued', 'running')\n            ) AS \"held!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "held!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "224d0282f670c7e3f819dbf966c745bc1bfc6cc912f5556e644b5aa065434cbd"
+}

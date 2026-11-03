@@ -92,8 +92,11 @@ impl CapitainerieUseCase {
     ) -> Result<IntegrationInstance, CoreError> {
         let instance_repository =
             PgIntegrationInstanceRepository::new(&tx, self.secrets.as_deref());
+        let held = instance_repository
+            .held_by_an_open_intervention(subject.organization_id, id)
+            .await?;
         IntegrationInstanceService::new(instance_repository, client_repository, authz)
-            .archive(subject, id)
+            .archive(subject, id, held)
             .await
     }
 

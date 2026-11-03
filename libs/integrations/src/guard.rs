@@ -49,8 +49,14 @@ fn is_refused_v6(address: Ipv6Addr) -> bool {
     }
     let segments = address.segments();
     let first = segments[0];
-    if first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80 {
+    if first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80 || first & 0xffc0 == 0xfec0 {
         return true;
+    }
+    if segments[..2] == [0x2001, 0] || segments[..3] == [0x0064, 0xff9b, 0x0001] {
+        return true;
+    }
+    if segments[..6] == [0, 0, 0, 0, 0xffff, 0] {
+        return is_refused_v4(embedded_v4(segments[6], segments[7]));
     }
     if first == 0x2002 {
         return is_refused_v4(embedded_v4(segments[1], segments[2]));
@@ -341,6 +347,10 @@ mod tests {
             "64:ff9b::7f00:1",
             "2002:a00:5::1",
             "2002:c0a8:101::1",
+            "fec0::1",
+            "64:ff9b:1::a00:5",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "::ffff:0:7f00:1",
         ] {
             assert!(refused(address), "{address} should be refused");
         }

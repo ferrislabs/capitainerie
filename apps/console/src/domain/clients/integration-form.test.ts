@@ -5,6 +5,7 @@ import {
 	type IntegrationValues,
 	integrationBody,
 	integrationPatch,
+	requiresNewSecret,
 	validateIntegration,
 	valuesOf,
 } from '#/domain/clients/integration-form'
@@ -62,6 +63,114 @@ describe('validateIntegration', () => {
 		expect(validateIntegration({ ...filled, secret: '' }, 'edit')).toEqual({})
 		expect(validateIntegration({ ...filled, secret: '   ' }, 'create')).toEqual(
 			{ secret: 'La clé est obligatoire.' },
+		)
+		expect(validateIntegration(valuesOf(STORED), 'edit', STORED)).toEqual({})
+	})
+
+	it('asks for a new key when editing changes the origin, the base or the login', () => {
+		const unchanged = valuesOf(STORED)
+		const required = { secret: 'La clé est obligatoire.' }
+		for (const changed of [
+			{ baseUrl: 'https://other.odoo.com' },
+			{ database: 'other' },
+			{ login: 'bot' },
+		]) {
+			expect(
+				validateIntegration({ ...unchanged, ...changed }, 'edit', STORED),
+			).toEqual(required)
+			expect(
+				validateIntegration(
+					{ ...unchanged, ...changed, secret: 'new' },
+					'edit',
+					STORED,
+				),
+			).toEqual({})
+		}
+	})
+
+	it('keeps the key optional when editing changes only the path', () => {
+		expect(
+			validateIntegration(
+				{ ...valuesOf(STORED), baseUrl: 'https://acme.odoo.com/odoo' },
+				'edit',
+				STORED,
+			),
+		).toEqual({})
+	})
+
+	it('keeps a whitespace key from satisfying the new key requirement', () => {
+		expect(
+			validateIntegration(
+				{ ...valuesOf(STORED), database: 'other', secret: '   ' },
+				'edit',
+				STORED,
+			),
+		).toEqual({ secret: 'La clé est obligatoire.' })
+	})
+})
+
+describe('requiresNewSecret', () => {
+	const unchanged = valuesOf(STORED)
+
+	it('does not when nothing sensitive changed', () => {
+		expect(requiresNewSecret(unchanged, STORED)).toBe(false)
+		expect(
+			requiresNewSecret(
+				{ ...unchanged, name: 'Autre', environment: 'staging' },
+				STORED,
+			),
+		).toBe(false)
+	})
+
+	it('does when the scheme, the host or the port of the address changes', () => {
+		for (const baseUrl of [
+			'http://acme.odoo.com',
+			'https://other.odoo.com',
+			'https://acme.odoo.com:8443',
+		]) {
+			expect(requiresNewSecret({ ...unchanged, baseUrl }, STORED)).toBe(true)
+		}
+	})
+
+	it('does not when only the path, the query or the case of the host changes', () => {
+		for (const baseUrl of [
+			'https://acme.odoo.com/odoo',
+			' https://acme.odoo.com/a/b?x=1 ',
+			'https://ACME.odoo.com',
+			'https://acme.odoo.com:443',
+		]) {
+			expect(requiresNewSecret({ ...unchanged, baseUrl }, STORED)).toBe(false)
+		}
+	})
+
+	it('counts an address that does not parse as changed', () => {
+		expect(requiresNewSecret({ ...unchanged, baseUrl: 'acme' }, STORED)).toBe(
+			true,
+		)
+		expect(requiresNewSecret({ ...unchanged, baseUrl: '' }, STORED)).toBe(true)
+	})
+
+	it('does when the base or the login changes', () => {
+		expect(requiresNewSecret({ ...unchanged, database: 'other' }, STORED)).toBe(
+			true,
+		)
+		expect(requiresNewSecret({ ...unchanged, login: 'bot' }, STORED)).toBe(true)
+		expect(
+			requiresNewSecret({ ...unchanged, database: ' acme ' }, STORED),
+		).toBe(false)
+	})
+
+	it('ignores the base and the login the kind does not use', () => {
+		const n8n = { ...STORED, kind: 'n8n' as const, database: null, login: null }
+		expect(
+			requiresNewSecret({ ...valuesOf(n8n), database: 'x', login: 'y' }, n8n),
+		).toBe(false)
+		const json2 = { ...STORED, kind: 'odoo_json2' as const, login: null }
+		expect(requiresNewSecret({ ...valuesOf(json2), login: 'y' }, json2)).toBe(
+			false,
+		)
+		expect(requiresNewSecret({ ...valuesOf(json2), database: '' }, json2)).toBe(
+			true,
 		)
 	})
 })

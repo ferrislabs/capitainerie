@@ -1,5 +1,6 @@
 use capitainerie_common::{CoreError, IntegrationActionId, OrganizationId};
 use capitainerie_macros::transactional;
+use serde_json::Value;
 
 use super::CapitainerieUseCase;
 use crate::{
@@ -8,11 +9,13 @@ use crate::{
         integration::{
             InstanceConnection, IntegrationInstance,
             action::{Access, ActionCall},
-            journal::{ActionContext, Grant, IntegrationAction},
+            journal::{ActionContext, Grant, IntegrationAction, Outcome},
             ports::{
                 IntegrationActionRepository, IntegrationConnector, IntegrationInstanceRepository,
             },
-            revert::{RevertError, RevertPlan, RevertRefusal, ensure_revertible, plan, unchanged},
+            revert::{
+                RevertError, RevertPlan, RevertRefusal, ensure_revertible, plan, plan_against,
+            },
         },
         run::{RunStatus, ports::RunRepository},
     },
@@ -25,6 +28,7 @@ struct Prepared {
     action: IntegrationAction,
     instance: IntegrationInstance,
     connection: InstanceConnection,
+    snapshot: Option<Value>,
     plan: RevertPlan,
 }
 
@@ -39,20 +43,46 @@ impl CapitainerieUseCase {
         connector: &C,
     ) -> Result<Vec<IntegrationAction>, RevertError> {
         let organization_id = subject.organization_id;
+        let prepared = self
+            .prepare_integration_revert(subject.clone(), action_id, confirm_production)
+            .await??;
+        let restored = self
+            .carry_out_integration_revert(subject, prepared, connector)
+            .await;
+        if restored.is_err()
+            && let Err(error) = self
+                .release_integration_revert(organization_id, action_id)
+                .await
+        {
+            tracing::warn!(%action_id, %error, "a restoration reservation could not be released, it expires by itself");
+        }
+        restored
+    }
+
+    async fn carry_out_integration_revert<C: IntegrationConnector>(
+        &self,
+        subject: Subject,
+        prepared: Prepared,
+        connector: &C,
+    ) -> Result<Vec<IntegrationAction>, RevertError> {
+        let organization_id = subject.organization_id;
         let Prepared {
             action,
             instance,
             connection,
+            snapshot,
             plan,
-        } = self
-            .prepare_integration_revert(subject.clone(), action_id, confirm_production)
-            .await??;
-        if let Some(check) = &plan.check {
-            let current = connector.perform(&connection, check).await?;
-            if !unchanged(&action, &current) {
-                return Err(RevertRefusal::ChangedSince.into());
-            }
-        }
+        } = prepared;
+        let current = match &plan.check {
+            Some(check) => connector.perform(&connection, check).await?,
+            None => Value::Null,
+        };
+        let plan = plan_against(
+            &action,
+            snapshot.as_ref(),
+            instance.server_version.as_deref(),
+            &current,
+        )?;
         let context = ActionContext {
             subject,
             run_id: action.run_id,
@@ -81,8 +111,8 @@ impl CapitainerieUseCase {
             }
         }
         Ok(self
-            .record_integration_revert(organization_id, action.id, &written, restored)
-            .await?)
+            .record_integration_revert(organization_id, &action, &written, restored)
+            .await??)
     }
 
     #[transactional(run, authz)]
@@ -150,27 +180,52 @@ impl CapitainerieUseCase {
             .connection(organization_id, instance.id)
             .await?
             .ok_or(CoreError::NotFound)?;
+        if !actions.claim_revert(organization_id, action.id).await? {
+            return Ok(Err(RevertRefusal::AlreadyReverted));
+        }
         Ok(Ok(Prepared {
             action,
             instance,
             connection,
+            snapshot,
             plan,
         }))
+    }
+
+    #[transactional()]
+    async fn release_integration_revert(
+        &self,
+        organization_id: OrganizationId,
+        action_id: IntegrationActionId,
+    ) -> Result<(), CoreError> {
+        PgIntegrationActionRepository::new(&tx, self.secrets.as_deref())
+            .release_revert(organization_id, action_id)
+            .await
     }
 
     #[transactional()]
     async fn record_integration_revert(
         &self,
         organization_id: OrganizationId,
-        original: IntegrationActionId,
+        original: &IntegrationAction,
         written: &[IntegrationActionId],
         restored: bool,
-    ) -> Result<Vec<IntegrationAction>, CoreError> {
+    ) -> Stored<Vec<IntegrationAction>> {
         let mut actions = PgIntegrationActionRepository::new(&tx, self.secrets.as_deref());
-        if let Some(first) = written.first().filter(|_| restored) {
+        if restored {
+            let by = match written.first() {
+                Some(first) => Some(*first),
+                None => earlier_restoration(&mut actions, organization_id, original).await?,
+            };
+            let Some(by) = by else {
+                actions.release_revert(organization_id, original.id).await?;
+                return Ok(Err(RevertRefusal::ChangedSince));
+            };
             actions
-                .mark_reverted(organization_id, original, *first)
+                .mark_reverted(organization_id, original.id, by)
                 .await?;
+        } else {
+            actions.release_revert(organization_id, original.id).await?;
         }
         let mut rows = Vec::with_capacity(written.len());
         for id in written {
@@ -181,6 +236,23 @@ impl CapitainerieUseCase {
                     .ok_or(CoreError::NotFound)?,
             );
         }
-        Ok(rows)
+        Ok(Ok(rows))
     }
+}
+
+async fn earlier_restoration(
+    actions: &mut PgIntegrationActionRepository<'_, '_>,
+    organization_id: OrganizationId,
+    original: &IntegrationAction,
+) -> Result<Option<IntegrationActionId>, CoreError> {
+    let rows = match (original.run_id, original.card_id) {
+        (Some(run_id), _) => actions.list_for_run(organization_id, run_id).await?,
+        (None, Some(card_id)) => actions.list_for_card(organization_id, card_id).await?,
+        (None, None) => Vec::new(),
+    };
+    Ok(rows
+        .iter()
+        .filter(|row| row.reverts_action_id == Some(original.id))
+        .min_by_key(|row| (row.outcome != Outcome::Succeeded, row.created_at))
+        .map(|row| row.id))
 }

@@ -38,6 +38,16 @@ describe('integrationErrorMessage', () => {
 		).toBe('Ce client a déjà une intégration de ce nom')
 	})
 
+	it('tells to wait for the running intervention before archiving', () => {
+		expect(
+			integrationErrorMessage(
+				new ApiRequestError(409, 'instance_in_use', 'a run uses it'),
+			),
+		).toBe(
+			'Une intervention en cours utilise cette intégration : attendez sa fin pour l’archiver.',
+		)
+	})
+
 	it('keeps the server message for the other refusals', () => {
 		expect(
 			integrationErrorMessage(

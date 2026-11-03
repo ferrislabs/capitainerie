@@ -10,10 +10,17 @@ use capitainerie_core::{
     domain::{
         agent::SecretToken,
         authorization::Subject,
+        card::{
+            Column,
+            service::{CreateCard, MoveCard},
+        },
         client::{Client, service::CreateClient},
         integration::{
             ConnectorFailure, InstanceConnection, IntegrationInstance, ProbeReport,
-            action::ActionRequest, ports::IntegrationConnector, service::CreateInstance,
+            action::{Access, ActionRequest},
+            intervention::ConfideCard,
+            ports::IntegrationConnector,
+            service::CreateInstance,
         },
     },
     infrastructure::{crypto::SecretCipher, postgres},
@@ -428,6 +435,47 @@ async fn an_admin_renames_an_instance_and_a_taken_name_is_a_409() {
 }
 
 #[tokio::test]
+async fn moving_an_instance_to_another_address_without_a_new_secret_is_a_422() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let acme = client(&pool, &organization, "Acme").await;
+    let prod = instance(&pool, &organization, &acme, "Odoo prod").await;
+    let admin = serve(&pool, caller(&organization, &[ADMIN])).await;
+    let http = reqwest::Client::new();
+    let item = format!("{admin}/api/v1/integration-instances/{}", prod.id);
+
+    let moved = http
+        .patch(&item)
+        .json(&json!({"base_url": "https://attacker.test"}))
+        .send()
+        .await
+        .unwrap();
+    let database = http
+        .patch(&item)
+        .json(&json!({"database": "acme"}))
+        .send()
+        .await
+        .unwrap();
+
+    for refused in [moved, database] {
+        assert_eq!(refused.status(), 422);
+        let body: Value = refused.json().await.unwrap();
+        assert_eq!(body["code"], "invalid");
+        assert!(body["message"].as_str().unwrap().contains("new secret"));
+        assert!(!body.to_string().contains(KEY));
+    }
+    let listed: Value = http
+        .get(integrations_of(&admin, acme.id))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(listed["items"][0]["base_url"], "https://odoo.acme.test");
+}
+
+#[tokio::test]
 async fn deleting_archives_the_instance_and_the_list_hides_it_unless_asked() {
     let Some(pool) = pool().await else { return };
     let organization = organization(&pool).await;
@@ -468,6 +516,93 @@ async fn deleting_archives_the_instance_and_the_list_hides_it_unless_asked() {
     assert_eq!(active["items"].as_array().unwrap().len(), 0);
     assert_eq!(everything["items"].as_array().unwrap().len(), 1);
     assert_eq!(check.status(), 422);
+}
+
+#[tokio::test]
+async fn deleting_an_instance_held_by_a_queued_or_running_intervention_is_a_409_instance_in_use() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let acme = client(&pool, &organization, "Acme").await;
+    let prod = instance(&pool, &organization, &acme, "Odoo prod").await;
+    let usecase = usecase_of(&pool);
+    let proposed = usecase
+        .create_card_linked(
+            subject(&organization, false),
+            CreateCard {
+                title: "Vérifier les factures d'avril".into(),
+                description: String::new(),
+                provenance: None,
+                run_id: None,
+                attributes: Default::default(),
+            },
+            Some(acme.id),
+            None,
+        )
+        .await
+        .unwrap();
+    let card = usecase
+        .move_card(
+            subject(&organization, false),
+            proposed.id,
+            MoveCard {
+                to: Column::Todo,
+                expected_version: proposed.version,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let started = usecase
+        .confide_card_to_integrator(
+            subject(&organization, false),
+            card.id,
+            ConfideCard {
+                instructions: String::new(),
+                grants: vec![(prod.id, Access::Read)],
+                confirm_production_writes: false,
+                expected_version: card.version,
+            },
+        )
+        .await
+        .unwrap();
+    let admin = serve(&pool, caller(&organization, &[ADMIN])).await;
+    let http = reqwest::Client::new();
+    let item = format!("{admin}/api/v1/integration-instances/{}", prod.id);
+
+    let queued = http.delete(&item).send().await.unwrap();
+    sqlx::query("UPDATE runs SET status = 'running' WHERE id = $1")
+        .bind(started.run_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let running = http.delete(&item).send().await.unwrap();
+    let listed: Value = http
+        .get(integrations_of(&admin, acme.id))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    sqlx::query("UPDATE runs SET status = 'succeeded' WHERE id = $1")
+        .bind(started.run_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let released = http.delete(&item).send().await.unwrap();
+
+    for refused in [queued, running] {
+        assert_eq!(refused.status(), 409);
+        let body: Value = refused.json().await.unwrap();
+        assert_eq!(body["code"], "instance_in_use");
+        assert_eq!(body["status"], 409);
+        assert!(body["message"].is_string());
+    }
+    assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+    assert!(listed["items"][0]["archived_at"].is_null());
+    assert_eq!(released.status(), 200);
+    let body: Value = released.json().await.unwrap();
+    assert!(body["archived_at"].is_string());
 }
 
 #[tokio::test]

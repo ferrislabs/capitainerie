@@ -7,7 +7,7 @@ use super::{
     ConnectorFailure,
     action::{ActionRequest, N8nId, ODOO_MAX_DELETE_IDS, OdooModel},
     journal::{IntegrationAction, Outcome},
-    redact::redact,
+    redact::{is_secret_key, redact},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -96,6 +96,23 @@ pub fn plan(
         .ok_or(RevertRefusal::NotRevertible)
 }
 
+pub fn plan_against(
+    action: &IntegrationAction,
+    snapshot: Option<&Value>,
+    server_version: Option<&str>,
+    current: &Value,
+) -> Result<RevertPlan, RevertRefusal> {
+    let planned = plan(action, snapshot, server_version)?;
+    if action.tool == "odoo_write" {
+        return resume_odoo_write(action, snapshot, planned, current);
+    }
+    if unchanged(action, current) {
+        Ok(planned)
+    } else {
+        Err(RevertRefusal::ChangedSince)
+    }
+}
+
 pub fn unchanged(action: &IntegrationAction, current: &Value) -> bool {
     match action.tool.as_str() {
         "odoo_write" | "odoo_create" => odoo_unchanged(action, current),
@@ -160,8 +177,27 @@ fn writable(read: &Value) -> Value {
     }
 }
 
+fn hides_a_value(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => {
+            let named_secret = map
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(is_secret_key);
+            map.iter().any(|(key, inner)| {
+                is_secret_key(key) || (named_secret && key == "value") || hides_a_value(inner)
+            })
+        }
+        Value::Array(items) => items.iter().any(hides_a_value),
+        _ => false,
+    }
+}
+
 fn undo_odoo_write(action: &IntegrationAction, snapshot: Option<&Value>) -> Option<RevertPlan> {
     let model = odoo_model(action)?;
+    if hides_a_value(action.arguments.get("values")?) {
+        return None;
+    }
     let fields = written_fields(action)?;
     let ids = action
         .arguments
@@ -358,6 +394,58 @@ fn same_stamps(after: &Value, current: &Value) -> bool {
     }
 }
 
+fn record_by_id(records: &[Value], id: i64) -> Option<&Value> {
+    records
+        .iter()
+        .find(|record| record.get("id").and_then(Value::as_i64) == Some(id))
+}
+
+fn same_fields(fields: &[String], expected: &Value, actual: &Value) -> bool {
+    fields
+        .iter()
+        .all(|field| actual.get(field) == expected.get(field))
+}
+
+fn resume_odoo_write(
+    action: &IntegrationAction,
+    snapshot: Option<&Value>,
+    planned: RevertPlan,
+    current: &Value,
+) -> Result<RevertPlan, RevertRefusal> {
+    let fields = written_fields(action).ok_or(RevertRefusal::NotRevertible)?;
+    let after = action
+        .after
+        .as_ref()
+        .and_then(Value::as_array)
+        .ok_or(RevertRefusal::NotRevertible)?;
+    let before = snapshot.map(redact).ok_or(RevertRefusal::NotRevertible)?;
+    let before = before.as_array().ok_or(RevertRefusal::NotRevertible)?;
+    let current = redact(current);
+    let current = current.as_array().ok_or(RevertRefusal::ChangedSince)?;
+    let mut writes = Vec::with_capacity(planned.writes.len());
+    for write in planned.writes {
+        let ActionRequest::OdooWrite { ids, .. } = &write else {
+            return Err(RevertRefusal::NotRevertible);
+        };
+        let [id] = ids.as_slice() else {
+            return Err(RevertRefusal::NotRevertible);
+        };
+        let id = *id;
+        let record = record_by_id(current, id).ok_or(RevertRefusal::ChangedSince)?;
+        if record_by_id(after, id).is_some_and(|expected| same_fields(&fields, expected, record)) {
+            writes.push(write);
+        } else if !record_by_id(before, id)
+            .is_some_and(|original| same_fields(&fields, original, record))
+        {
+            return Err(RevertRefusal::ChangedSince);
+        }
+    }
+    Ok(RevertPlan {
+        check: planned.check,
+        writes,
+    })
+}
+
 fn odoo_unchanged(action: &IntegrationAction, current: &Value) -> bool {
     let (Some(fields), Some(after)) = (
         written_fields(action),
@@ -377,11 +465,7 @@ fn odoo_unchanged(action: &IntegrationAction, current: &Value) -> bool {
             current
                 .iter()
                 .find(|actual| actual.get("id") == Some(id))
-                .is_some_and(|actual| {
-                    fields
-                        .iter()
-                        .all(|field| actual.get(field) == expected.get(field))
-                })
+                .is_some_and(|actual| same_fields(&fields, expected, actual))
         })
 }
 
@@ -481,6 +565,8 @@ mod tests {
         fields.sort();
         fields
     }
+
+    const AFTER_STAMP: &str = "2026-10-01T10:00:00.000Z";
 
     fn workflow(active: bool) -> Value {
         json!({
@@ -585,6 +671,194 @@ mod tests {
         assert_eq!(
             plan(&no_after, Some(&json!([{"id": 7, "name": "a"}])), None),
             Err(RevertRefusal::NotRevertible)
+        );
+    }
+
+    #[test]
+    fn an_odoo_write_of_a_field_hidden_by_masking_is_not_revertible() {
+        let snapshot = json!([{"id": 7, "name": "Acme"}, {"id": 8, "name": "Beta"}]);
+        let after = Some(json!([]));
+
+        for values in [
+            json!({"name": "Acme SA", "api_key": "k-new"}),
+            json!({"password": "p"}),
+            json!({"X-Api-Key": "k"}),
+            json!({"Authorization": null}),
+            json!({"settings": {"nested": [{"token": "t"}]}}),
+            json!({"params": {"name": "secret", "value": "s"}}),
+        ] {
+            assert_eq!(
+                plan(
+                    &odoo_write(values.clone(), after.clone()),
+                    Some(&snapshot),
+                    None
+                ),
+                Err(RevertRefusal::NotRevertible),
+                "{values}"
+            );
+        }
+        let plain = json!({"name": "token", "comment": "password reset"});
+        assert!(plan(&odoo_write(plain, after), Some(&snapshot), None).is_ok());
+    }
+
+    fn two_records_written() -> (IntegrationAction, Value) {
+        let write = odoo_write(
+            json!({"name": "Acme SA"}),
+            Some(json!([
+                {"id": 7, "name": "Acme SA"},
+                {"id": 8, "name": "Acme SA"}
+            ])),
+        );
+        let snapshot = json!([{"id": 7, "name": "Acme"}, {"id": 8, "name": "Beta"}]);
+        (write, snapshot)
+    }
+
+    fn put_back(id: i64, name: &str) -> ActionRequest {
+        ActionRequest::OdooWrite {
+            model: model("res.partner"),
+            ids: vec![id],
+            values: object(json!({"name": name})),
+        }
+    }
+
+    #[test]
+    fn an_odoo_write_restores_every_record_still_as_it_left_it() {
+        let (write, snapshot) = two_records_written();
+        let current = json!([
+            {"id": 8, "name": "Acme SA", "write_date": "2026-10-02"},
+            {"id": 7, "name": "Acme SA", "write_date": "2026-10-03"}
+        ]);
+
+        let resumed = plan_against(&write, Some(&snapshot), Some("19.0"), &current).unwrap();
+
+        assert_eq!(resumed.writes, [put_back(7, "Acme"), put_back(8, "Beta")]);
+        assert_eq!(
+            resumed,
+            plan(&write, Some(&snapshot), Some("19.0")).unwrap()
+        );
+    }
+
+    #[test]
+    fn an_odoo_write_skips_the_records_already_back_to_the_state_before() {
+        let (write, snapshot) = two_records_written();
+
+        let first_done = json!([
+            {"id": 7, "name": "Acme", "write_date": "x"},
+            {"id": 8, "name": "Acme SA"}
+        ]);
+        let second_done = json!([{"id": 7, "name": "Acme SA"}, {"id": 8, "name": "Beta"}]);
+        let all_done = json!([{"id": 7, "name": "Acme"}, {"id": 8, "name": "Beta"}]);
+
+        assert_eq!(
+            plan_against(&write, Some(&snapshot), None, &first_done)
+                .unwrap()
+                .writes,
+            [put_back(8, "Beta")]
+        );
+        assert_eq!(
+            plan_against(&write, Some(&snapshot), None, &second_done)
+                .unwrap()
+                .writes,
+            [put_back(7, "Acme")]
+        );
+        let nothing_left = plan_against(&write, Some(&snapshot), None, &all_done).unwrap();
+        assert!(nothing_left.writes.is_empty());
+        assert!(nothing_left.check.is_some());
+    }
+
+    #[test]
+    fn an_odoo_write_with_a_record_in_any_other_state_is_changed_since() {
+        let (write, snapshot) = two_records_written();
+
+        for current in [
+            json!([{"id": 7, "name": "Autre"}, {"id": 8, "name": "Acme SA"}]),
+            json!([{"id": 7, "name": "Acme"}, {"id": 8, "name": "Autre"}]),
+            json!([{"id": 7, "name": "Acme SA"}]),
+            json!([{"id": 7, "name": "Acme"}]),
+            json!([{"name": "no id"}]),
+            json!([]),
+            json!({"id": 7}),
+            Value::Null,
+        ] {
+            assert_eq!(
+                plan_against(&write, Some(&snapshot), None, &current),
+                Err(RevertRefusal::ChangedSince),
+                "{current}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_odoo_comparison_with_the_copy_before_goes_through_the_same_masking() {
+        let write = odoo_write(
+            json!({"name": "Acme SA", "comment": "new"}),
+            Some(json!([{"id": 7, "name": "Acme SA", "comment": "new"}])),
+        );
+        let snapshot =
+            json!([{"id": 7, "name": "Acme", "comment": {"password": "old", "note": "n"}}]);
+        let current =
+            json!([{"id": 7, "name": "Acme", "comment": {"password": "other", "note": "n"}}]);
+
+        let resumed = plan_against(&write, Some(&snapshot), None, &current).unwrap();
+
+        assert!(resumed.writes.is_empty());
+    }
+
+    #[test]
+    fn planning_against_the_current_state_keeps_the_refusals_of_the_plan() {
+        let (write, snapshot) = two_records_written();
+        let current = json!([{"id": 7, "name": "Acme SA"}, {"id": 8, "name": "Acme SA"}]);
+
+        assert_eq!(
+            plan_against(&write, None, None, &current),
+            Err(RevertRefusal::NotRevertible)
+        );
+        let mut flagged = write.clone();
+        flagged.revertible = false;
+        assert_eq!(
+            plan_against(&flagged, Some(&snapshot), None, &current),
+            Err(RevertRefusal::NotRevertible)
+        );
+    }
+
+    #[test]
+    fn the_other_tools_are_planned_against_the_current_state_with_their_own_comparison() {
+        let created = odoo_create(Some(json!([{"id": 31, "name": "Neuf"}])));
+        let intact = json!([{"id": 31, "name": "Neuf"}]);
+        let edited = json!([{"id": 31, "name": "Autre"}]);
+
+        assert_eq!(
+            plan_against(&created, None, None, &intact),
+            plan(&created, None, None)
+        );
+        assert_eq!(
+            plan_against(&created, None, None, &edited),
+            Err(RevertRefusal::ChangedSince)
+        );
+
+        let updated = workflow_action(
+            "n8n_update_workflow",
+            Some(json!({"updatedAt": AFTER_STAMP, "versionId": "v2"})),
+        );
+        let snapshot = workflow(true);
+        let untouched = json!({"updatedAt": AFTER_STAMP, "versionId": "v2"});
+        let touched = json!({"updatedAt": "2026-10-01T12:00:00.000Z", "versionId": "v3"});
+
+        assert!(plan_against(&updated, Some(&snapshot), Some("2"), &untouched).is_ok());
+        assert_eq!(
+            plan_against(&updated, Some(&snapshot), Some("2"), &touched),
+            Err(RevertRefusal::ChangedSince)
+        );
+
+        let tag = action(
+            "n8n_create_tag",
+            json!({"tag_name": "urgent"}),
+            json!({"name": "urgent"}),
+            Some(json!({"id": "14"})),
+        );
+        assert_eq!(
+            plan_against(&tag, None, Some("1"), &Value::Null),
+            plan(&tag, None, Some("1"))
         );
     }
 
