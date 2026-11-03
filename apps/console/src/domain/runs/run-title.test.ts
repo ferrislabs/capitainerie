@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Schemas } from '#/api/api.client'
-import { isCardRun, runTitle } from '#/domain/runs/run-title'
+import { isCardRun, isInterventionRun, runTitle } from '#/domain/runs/run-title'
 
 function run(overrides: Partial<Schemas.RunResponse>): Schemas.RunResponse {
 	return {
@@ -28,6 +28,30 @@ describe('runTitle', () => {
 			'Exécution sur acme/web',
 		)
 		expect(runTitle(run({ title: null }))).toBe('Run abcdef01')
+	})
+
+	it('titles an intervention after its client', () => {
+		expect(
+			runTitle(
+				run({
+					pipeline: ['intervene'],
+					card_id: 'c1',
+					client: { id: 'cl1', name: 'Acme' },
+				}),
+			),
+		).toBe('Intervention pour Acme')
+		expect(runTitle(run({ pipeline: ['intervene'], card_id: 'c1' }))).toBe(
+			'Intervention',
+		)
+		expect(
+			runTitle(run({ pipeline: ['intervene'], title: 'Corriger le bug' })),
+		).toBe('Corriger le bug')
+	})
+
+	it('recognises an intervention by its pipeline', () => {
+		expect(isInterventionRun(run({ pipeline: ['intervene'] }))).toBe(true)
+		expect(isInterventionRun(run({ pipeline: ['execute'] }))).toBe(false)
+		expect(isInterventionRun(run({}))).toBe(false)
 	})
 
 	it('recognises a card run', () => {

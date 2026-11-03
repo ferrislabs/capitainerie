@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { StatusBadge } from '#/components/layout/status-badge'
-import { isCardRun } from '#/domain/runs/run-title'
+import { isCardRun, isInterventionRun } from '#/domain/runs/run-title'
 import { STATUS_LABELS, STATUS_TONES } from '#/domain/runs/status'
 
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {
@@ -33,9 +33,11 @@ export function CardRuns({ runs, runExtra }: Props) {
 									params={{ runId: run.id }}
 									className="text-[13px] font-medium hover:text-link hover:underline"
 								>
-									{isCardRun(run)
-										? `Exécution sur ${run.repository ?? 'un dépôt'}`
-										: 'Run d’origine'}
+									{isInterventionRun(run)
+										? 'Intervention'
+										: isCardRun(run)
+											? `Exécution sur ${run.repository ?? 'un dépôt'}`
+											: 'Run d’origine'}
 								</Link>
 								<StatusBadge
 									tone={STATUS_TONES[run.status]}

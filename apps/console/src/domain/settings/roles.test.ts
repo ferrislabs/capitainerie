@@ -83,6 +83,7 @@ describe('completeAssignments', () => {
 			transcriber: null,
 			reader: null,
 			captain: null,
+			integrator: null,
 		})
 	})
 })
@@ -115,6 +116,7 @@ describe('completeAssignments with an executor', () => {
 			transcriber: null,
 			reader: null,
 			captain: null,
+			integrator: null,
 			executor: 'claude-haiku-5',
 		})
 		expect(
@@ -155,12 +157,14 @@ describe('the transcriber role', () => {
 			transcriber: voxtral,
 			reader: null,
 			captain: null,
+			integrator: null,
 		})
 		expect(completeAssignments(roles)).toEqual({
 			...roles,
 			transcriber: null,
 			reader: null,
 			captain: null,
+			integrator: null,
 		})
 		expect(draftFrom({ ...roles, transcriber: null })).toEqual(roles)
 		expect(draftFrom({ ...roles, transcriber: voxtral })).toMatchObject({
@@ -199,5 +203,29 @@ describe('the reader role', () => {
 		expect(completeAssignments(roles)).toMatchObject({ reader: null })
 		expect(draftFrom({ ...roles, reader: null })).toEqual(roles)
 		expect(draftFrom({ ...roles, reader: ocr })).toMatchObject({ reader: ocr })
+	})
+})
+
+describe('the integrator role', () => {
+	const ref = { provider: 'mistral', model: 'm' } as const
+	const roles = { extractor: ref, judge: ref, writer: ref, embeddings: ref }
+	const chat = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
+
+	it('offers chat models', () => {
+		expect(compatibleModels([QWEN, BGE, SONNET], 'integrator')).toEqual([
+			QWEN,
+			SONNET,
+		])
+	})
+
+	it('is carried when chosen and sent as null to clear it', () => {
+		expect(completeAssignments({ ...roles, integrator: chat })).toMatchObject({
+			integrator: chat,
+		})
+		expect(completeAssignments(roles)).toMatchObject({ integrator: null })
+		expect(draftFrom({ ...roles, integrator: null })).toEqual(roles)
+		expect(draftFrom({ ...roles, integrator: chat })).toMatchObject({
+			integrator: chat,
+		})
 	})
 })

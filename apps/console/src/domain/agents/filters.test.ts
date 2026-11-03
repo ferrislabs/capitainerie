@@ -4,6 +4,7 @@ import {
 	type AgentRow,
 	buildRows,
 	filterRows,
+	modelLabel,
 	NO_FILTERS,
 	optionsOf,
 	pruneFilters,
@@ -49,6 +50,41 @@ describe('buildRows', () => {
 		expect(ROWS[2]?.name).toBe('capitainerie-agent-mystery')
 		expect(ROWS[2]?.source).toBeUndefined()
 		expect(ROWS[2]?.model).toBeUndefined()
+	})
+})
+
+describe('buildRows with the Captain and the Intervenant unset', () => {
+	const rows = buildRows(
+		[
+			agent('capitainerie-agent-captain'),
+			agent('capitainerie-agent-integrator'),
+			agent('capitainerie-agent-writer'),
+		],
+		{ ...ASSIGNMENTS, captain: null },
+	)
+
+	it('shows the writer model, flagged as a fallback', () => {
+		expect(rows.map((row) => [row.model, row.modelFallback])).toEqual([
+			['claude-haiku', true],
+			['claude-haiku', true],
+			['claude-haiku', false],
+		])
+		expect(rows.map(modelLabel)).toEqual([
+			'claude-haiku (Rédacteur)',
+			'claude-haiku (Rédacteur)',
+			'claude-haiku',
+		])
+	})
+
+	it('keeps one model entry to filter on', () => {
+		expect(optionsOf(rows, 'model')).toEqual(['claude-haiku'])
+		expect(
+			ids(filterRows(rows, { ...NO_FILTERS, models: ['claude-haiku'] })),
+		).toHaveLength(3)
+	})
+
+	it('labels a missing model with a dash', () => {
+		expect(modelLabel(ROWS[2] as AgentRow)).toBe('—')
 	})
 })
 

@@ -7,7 +7,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '#/components/ui/table'
-import type { AgentRow } from '#/domain/agents/filters'
+import { type AgentRow, modelLabel } from '#/domain/agents/filters'
 import { CopyIdButton } from '#/domain/agents/ui/copy-id-button'
 import { formatCost } from '#/domain/runs/format'
 
@@ -62,7 +62,7 @@ export function AgentsTable({ rows, onOpen }: Props) {
 							{row.source ? <Badge variant="neutral">{row.source}</Badge> : '—'}
 						</TableCell>
 						<TableCell className="whitespace-nowrap font-mono text-xs">
-							{row.model ?? '—'}
+							{modelLabel(row)}
 						</TableCell>
 						<TableCell className="text-right figures">
 							{row.agent.runs}
