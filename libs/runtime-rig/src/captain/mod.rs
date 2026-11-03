@@ -1,6 +1,6 @@
-mod anthropic_stream;
-mod driver;
-mod openai_stream;
+pub(crate) mod anthropic_stream;
+pub(crate) mod driver;
+pub(crate) mod openai_stream;
 mod sse;
 mod tools;
 

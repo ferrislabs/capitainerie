@@ -1577,6 +1577,7 @@ dependencies = [
  "capitainerie-core",
  "capitainerie-events",
  "capitainerie-github",
+ "capitainerie-integrations",
  "capitainerie-runner-kube",
  "capitainerie-runtime-rig",
  "capitainerie-telemetry",
