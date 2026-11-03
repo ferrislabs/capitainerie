@@ -108,9 +108,10 @@ export function Composer({
 					disabled={disabled}
 					autoFocus={autoFocus}
 					rows={2}
+					maxRows={10}
 					onChange={(event) => onChange(event.target.value)}
 					onKeyDown={handleKeyDown}
-					className="max-h-64 min-h-12 resize-none border-0 bg-transparent px-1 py-1 shadow-none focus-visible:ring-0"
+					className="min-h-12 border-0 bg-transparent px-1 py-1 shadow-none focus-visible:ring-0"
 				/>
 				<div className="flex items-center gap-2">
 					{voice.supported ? (

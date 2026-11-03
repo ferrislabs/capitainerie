@@ -3,6 +3,10 @@ import { type FormEvent, type ReactNode, useState } from 'react'
 import type { Schemas } from '#/api/api.client'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
+import { Checkbox } from '#/components/ui/checkbox'
+import { Combobox, Select } from '#/components/ui/combobox'
+import { DateInput } from '#/components/ui/date-input'
+import { Field } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
 import { Textarea } from '#/components/ui/textarea'
 import {
@@ -26,8 +30,7 @@ import {
 	toggleCriterion,
 } from '#/domain/kanban/card-patch'
 
-const SELECT_CLASS =
-	'h-8 w-full rounded-md border border-input bg-card px-2 text-[13px] text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none disabled:opacity-60'
+const LABEL_CLASS = 'text-xs font-normal text-muted-foreground'
 
 interface EditFormProps {
 	label: string
@@ -68,6 +71,7 @@ function EditForm({
 					value={draft}
 					maxLength={maxLength}
 					rows={5}
+					maxRows={14}
 					onChange={(event) => setDraft(event.target.value)}
 				/>
 			) : (
@@ -293,13 +297,12 @@ function CriterionRow({
 	}
 	return (
 		<li className="flex items-start gap-2">
-			<input
-				type="checkbox"
+			<Checkbox
 				aria-label={criterion.text}
 				checked={criterion.done}
 				disabled={disabled}
-				className="mt-0.5 size-4 shrink-0 accent-primary"
-				onChange={onToggle}
+				className="mt-0.5"
+				onCheckedChange={onToggle}
 			/>
 			<span
 				className={
@@ -444,86 +447,84 @@ export function CardFields({
 			<section className="flex flex-col gap-2">
 				<h3 className="text-[15px] font-semibold">Détails</h3>
 				<div className="grid gap-3 sm:grid-cols-2">
-					<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-						Priorité
-						<select
-							aria-label="Priorité"
-							className={SELECT_CLASS}
+					<Field
+						label="Priorité"
+						id="card-priority"
+						labelClassName={LABEL_CLASS}
+					>
+						<Select
+							size="sm"
 							disabled={disabled}
+							items={PRIORITIES.map((priority) => ({
+								value: priority,
+								label: PRIORITY_LABELS[priority],
+							}))}
 							value={card.priority}
-							onChange={(event) =>
-								onEdit({ priority: event.target.value as Schemas.PriorityDto })
+							onValueChange={(value) =>
+								onEdit({ priority: value as Schemas.PriorityDto })
 							}
-						>
-							{PRIORITIES.map((priority) => (
-								<option key={priority} value={priority}>
-									{PRIORITY_LABELS[priority]}
-								</option>
-							))}
-						</select>
-					</label>
-					<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-						Estimation
-						<select
-							aria-label="Estimation"
-							className={SELECT_CLASS}
+						/>
+					</Field>
+					<Field
+						label="Estimation"
+						id="card-estimate"
+						labelClassName={LABEL_CLASS}
+					>
+						<Select
+							size="sm"
 							disabled={disabled}
+							items={ESTIMATES.map((estimate) => ({
+								value: estimate,
+								label: ESTIMATE_LABELS[estimate],
+							}))}
 							value={card.estimate ?? ''}
-							onChange={(event) =>
+							noneLabel="Aucune"
+							onValueChange={(value) =>
 								onEdit({
 									estimate:
-										event.target.value === ''
-											? null
-											: (event.target.value as Schemas.EstimateDto),
+										value === '' ? null : (value as Schemas.EstimateDto),
 								})
 							}
-						>
-							<option value="">Aucune</option>
-							{ESTIMATES.map((estimate) => (
-								<option key={estimate} value={estimate}>
-									{ESTIMATE_LABELS[estimate]}
-								</option>
-							))}
-						</select>
-					</label>
-					<label
-						htmlFor="card-due-date"
-						className="flex flex-col gap-1.5 text-xs text-muted-foreground"
+						/>
+					</Field>
+					<Field
+						label="Échéance"
+						id="card-due-date"
+						labelClassName={LABEL_CLASS}
 					>
-						Échéance
-						<Input
-							id="card-due-date"
-							type="date"
-							aria-label="Échéance"
+						<DateInput
+							size="sm"
 							disabled={disabled}
 							value={card.due_date ?? ''}
 							onChange={(event) =>
 								onEdit({ due_date: event.target.value || null })
 							}
 						/>
-					</label>
-					<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-						Responsable
-						<select
-							aria-label="Responsable"
-							className={SELECT_CLASS}
+					</Field>
+					<Field
+						label="Responsable"
+						id="card-assignee"
+						labelClassName={LABEL_CLASS}
+					>
+						<Combobox
+							size="sm"
 							disabled={disabled || !membersReady}
+							items={[
+								...(assignee && !known
+									? [{ value: assignee, label: assignee }]
+									: []),
+								...members.map((member) => ({
+									value: member.subject,
+									label: member.name,
+								})),
+							]}
 							value={assignee ?? ''}
-							onChange={(event) =>
-								onEdit({ assignee_subject: event.target.value || null })
+							noneLabel="Aucun"
+							onValueChange={(value) =>
+								onEdit({ assignee_subject: value || null })
 							}
-						>
-							<option value="">Aucun</option>
-							{assignee && !known ? (
-								<option value={assignee}>{assignee}</option>
-							) : null}
-							{members.map((member) => (
-								<option key={member.subject} value={member.subject}>
-									{member.name}
-								</option>
-							))}
-						</select>
-					</label>
+						/>
+					</Field>
 					<LabelsEditor
 						labels={card.labels}
 						disabled={disabled}

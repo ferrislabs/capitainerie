@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as DevUiRouteImport } from './routes/[_]dev.ui'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
@@ -44,6 +45,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const DevUiRoute = DevUiRouteImport.update({
+  id: '/_dev/ui',
+  path: '/_dev/ui',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/_dev/ui': typeof DevUiRoute
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
+  '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/_app/projects': typeof AppProjectsRoute
   '/_app/runs': typeof AppRunsRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
+  '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
   '/_app/chat/$id': typeof AppChatIdRoute
   '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/runs'
     | '/settings'
+    | '/_dev/ui'
     | '/chat/$id'
     | '/clients/$clientId'
     | '/projects/$projectId'
@@ -238,6 +248,7 @@ export interface FileRouteTypes {
     | '/live'
     | '/projects'
     | '/runs'
+    | '/_dev/ui'
     | '/'
     | '/chat/$id'
     | '/clients/$clientId'
@@ -261,6 +272,7 @@ export interface FileRouteTypes {
     | '/_app/projects'
     | '/_app/runs'
     | '/_app/settings'
+    | '/_dev/ui'
     | '/_app/'
     | '/_app/chat/$id'
     | '/_app/clients_/$clientId'
@@ -278,6 +290,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   CallbackRoute: typeof CallbackRoute
+  DevUiRoute: typeof DevUiRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -302,6 +315,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_dev/ui': {
+      id: '/_dev/ui'
+      path: '/_dev/ui'
+      fullPath: '/_dev/ui'
+      preLoaderRoute: typeof DevUiRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/settings': {
       id: '/_app/settings'
@@ -493,6 +513,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   CallbackRoute: CallbackRoute,
+  DevUiRoute: DevUiRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { CardLinks } from '#/domain/kanban/ui/card-links'
+import { chooseValue } from '#/test-utils/combobox'
 
 const CARD = {
 	id: 'c1',
@@ -38,9 +39,10 @@ function setup(errorMessage?: string) {
 }
 
 describe('CardLinks', () => {
-	it('lists only the projects of the card’s client', () => {
+	it('lists only the projects of the card’s client', async () => {
 		setup()
 
+		await userEvent.click(screen.getByLabelText('Projet'))
 		const options = screen
 			.getAllByRole('option')
 			.map((option) => option.textContent)
@@ -51,7 +53,7 @@ describe('CardLinks', () => {
 	it('changes the project alone', async () => {
 		const onLink = setup()
 
-		await userEvent.selectOptions(screen.getByLabelText('Projet'), 'p2')
+		await chooseValue(userEvent.setup(), screen.getByLabelText('Projet'), 'p2')
 
 		expect(onLink).toHaveBeenCalledWith({ project_id: 'p2' })
 	})
@@ -59,7 +61,11 @@ describe('CardLinks', () => {
 	it('drops the project with another client', async () => {
 		const onLink = setup()
 
-		await userEvent.selectOptions(screen.getByLabelText('Client'), 'globex')
+		await chooseValue(
+			userEvent.setup(),
+			screen.getByLabelText('Client'),
+			'globex',
+		)
 
 		expect(onLink).toHaveBeenCalledWith({
 			client_id: 'globex',
@@ -70,7 +76,7 @@ describe('CardLinks', () => {
 	it('clears with the empty choice', async () => {
 		const onLink = setup()
 
-		await userEvent.selectOptions(screen.getByLabelText('Projet'), '')
+		await chooseValue(userEvent.setup(), screen.getByLabelText('Projet'), '')
 
 		expect(onLink).toHaveBeenCalledWith({ project_id: null })
 	})

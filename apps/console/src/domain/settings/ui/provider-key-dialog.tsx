@@ -9,8 +9,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '#/components/ui/dialog'
+import { Field } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
 import {
 	BASE_URL_PLACEHOLDER,
 	PROVIDER_INFO,
@@ -79,10 +79,12 @@ export function ProviderKeyDialog({
 							</DialogDescription>
 						</DialogHeader>
 						{info.usesBaseUrl ? (
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="provider-base-url">URL de base</Label>
+							<Field
+								label="URL de base"
+								id="provider-base-url"
+								error={baseUrlError}
+							>
 								<Input
-									id="provider-base-url"
 									type="url"
 									inputMode="url"
 									autoComplete="off"
@@ -92,33 +94,31 @@ export function ProviderKeyDialog({
 									value={baseUrl}
 									onChange={(event) => onBaseUrlChange(event.target.value)}
 									disabled={isPending}
-									aria-invalid={Boolean(baseUrlError)}
-									aria-describedby={
-										baseUrlError ? 'provider-base-url-error' : undefined
-									}
 								/>
-								{baseUrlError ? (
-									<span
-										id="provider-base-url-error"
-										role="alert"
-										className="text-xs text-signal-danger"
-									>
-										{baseUrlError}
-									</span>
-								) : null}
-							</div>
+							</Field>
 						) : null}
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="provider-api-key">
-								Clé d’API
-								{info.keyRequired ? null : (
-									<span className="font-normal text-muted-foreground">
-										(optionnelle)
-									</span>
-								)}
-							</Label>
+						<Field
+							label={
+								<>
+									Clé d’API
+									{info.keyRequired ? null : (
+										<span className="font-normal text-muted-foreground">
+											(optionnelle)
+										</span>
+									)}
+								</>
+							}
+							id="provider-api-key"
+							hint={
+								info.keyRequired
+									? isReplacing
+										? 'La nouvelle clé remplace l’ancienne.'
+										: 'Collez la clé telle que le fournisseur l’a créée.'
+									: 'Laissez vide si l’endpoint n’en demande pas. Enregistrer remplace la clé actuelle.'
+							}
+							error={apiKeyError}
+						>
 							<Input
-								id="provider-api-key"
 								type="password"
 								autoComplete="off"
 								spellCheck={false}
@@ -128,25 +128,8 @@ export function ProviderKeyDialog({
 								value={apiKey}
 								onChange={(event) => onApiKeyChange(event.target.value)}
 								disabled={isPending}
-								aria-invalid={Boolean(apiKeyError)}
-								aria-describedby="provider-api-key-hint"
 							/>
-							<span
-								id="provider-api-key-hint"
-								className="text-xs text-muted-foreground"
-							>
-								{info.keyRequired
-									? isReplacing
-										? 'La nouvelle clé remplace l’ancienne.'
-										: 'Collez la clé telle que le fournisseur l’a créée.'
-									: 'Laissez vide si l’endpoint n’en demande pas. Enregistrer remplace la clé actuelle.'}
-							</span>
-							{apiKeyError ? (
-								<span role="alert" className="text-xs text-signal-danger">
-									{apiKeyError}
-								</span>
-							) : null}
-						</div>
+						</Field>
 						{serverError ? (
 							<InlineAlert tone="danger">{serverError}</InlineAlert>
 						) : null}

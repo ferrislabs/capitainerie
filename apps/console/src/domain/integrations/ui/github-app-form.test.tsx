@@ -29,8 +29,8 @@ describe('GithubAppForm', () => {
 		const handlers = setup()
 
 		expect(
-			(screen.getByLabelText('Compte personnel') as HTMLInputElement).checked,
-		).toBe(true)
+			screen.getByLabelText('Compte personnel').getAttribute('aria-checked'),
+		).toBe('true')
 		expect(screen.queryByLabelText(/Login de l’organisation/)).toBeNull()
 		await userEvent.click(screen.getByLabelText('Organisation GitHub'))
 		expect(handlers.onOwnerKindChange).toHaveBeenCalledWith('organization')
