@@ -31,14 +31,13 @@ describe('TaskPage', () => {
 		expect(screen.getByText('Déclenchée par une source')).toBeTruthy()
 		expect(screen.getByText('auth.lumen-sante.com')).toBeTruthy()
 		expect(screen.getByText(/Prise en charge/)).toBeTruthy()
-		expect(screen.getByRole('link', { name: 'Retour aux tâches' })).toBeTruthy()
 		expect(fetchSpy).not.toHaveBeenCalled()
 	})
 
 	it('accepts uppercase ids and shows the parent banner', async () => {
 		await open('NAT-694')
 		expect(await screen.findByText(/Déléguée par/)).toBeTruthy()
-		expect(screen.getByText(/Tâche traitée/)).toBeTruthy()
+		expect(screen.getByText(/Pièce traitée et archivée/)).toBeTruthy()
 	})
 
 	it('shows not found for an unknown id', async () => {
@@ -52,7 +51,10 @@ describe('TaskPage', () => {
 		expect(await screen.findByText('1 / 2 terminées')).toBeTruthy()
 	})
 
-	it('updates the status in the store and hides the properties', async () => {
+	it('updates the status in the store and toggles the properties', async () => {
+		const slot = document.createElement('div')
+		slot.id = 'topbar-actions'
+		document.body.append(slot)
 		await open('nat-691')
 		fireEvent.change(await screen.findByRole('combobox', { name: 'Statut' }), {
 			target: { value: 'review' },
@@ -60,14 +62,31 @@ describe('TaskPage', () => {
 		expect(demoStore.state.tasks.find((t) => t.id === 'NAT-691')?.status).toBe(
 			'review',
 		)
-		fireEvent.click(
-			screen.getByRole('button', { name: 'Masquer les propriétés' }),
-		)
+		fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
 		expect(screen.queryByRole('combobox', { name: 'Statut' })).toBeNull()
 		fireEvent.click(
 			screen.getByRole('button', { name: 'Afficher les propriétés' }),
 		)
 		expect(screen.getByRole('combobox', { name: 'Statut' })).toBeTruthy()
+		slot.remove()
+	})
+
+	it('shows the resumption banner and the thread for NAT-611', async () => {
+		await open('nat-611')
+		expect(await screen.findByText("L'agent reprend dans 2 h 27")).toBeTruthy()
+		expect(screen.getByText('Reprise dans 2 h 27')).toBeTruthy()
+		expect(screen.getByText('depuis 85 h 32')).toBeTruthy()
+		expect(
+			screen.getAllByRole('button', { name: 'Vérifier maintenant' }),
+		).toHaveLength(2)
+		fireEvent.click(
+			screen.getAllByRole('button', {
+				name: 'Vérifier maintenant',
+			})[0] as HTMLElement,
+		)
+		expect(
+			await screen.findByText('Vérification immédiate lancée'),
+		).toBeTruthy()
 	})
 
 	it('posts a comment locally', async () => {

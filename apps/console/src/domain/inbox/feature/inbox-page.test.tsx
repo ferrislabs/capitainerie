@@ -6,9 +6,11 @@ import { InboxPage } from '#/domain/inbox/feature/inbox-page'
 import type { InboxTab } from '#/domain/inbox/tabs'
 
 async function open(tab: InboxTab) {
-	await renderAtPath(<InboxPage tab={tab} />, `/inbox/${tab}`, [
-		'/inbox/{-$tab}',
-	])
+	await renderAtPath(
+		<InboxPage tab={tab} />,
+		tab === 'tous' ? '/inbox' : `/inbox/${tab}`,
+		['/inbox/{-$tab}'],
+	)
 }
 
 afterEach(() => vi.restoreAllMocks())

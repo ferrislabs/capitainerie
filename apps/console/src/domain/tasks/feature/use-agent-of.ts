@@ -6,7 +6,12 @@ export function useAgentOf(): (agentId: string) => AgentView {
 	return (agentId) => {
 		const agent = agents.find((a) => a.id === agentId)
 		return agent
-			? { name: shortName(agent.name), hue: agent.hue }
-			: { name: agentId, hue: 0 }
+			? {
+					name: shortName(agent.name),
+					fullName: agent.name,
+					hue: agent.hue,
+					model: agent.model,
+				}
+			: { name: agentId, fullName: agentId, hue: 250, model: '' }
 	}
 }

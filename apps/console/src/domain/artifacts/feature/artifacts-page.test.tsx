@@ -6,24 +6,24 @@ import { ArtifactsPage } from '#/domain/artifacts/feature/artifacts-page'
 afterEach(() => vi.restoreAllMocks())
 
 describe('ArtifactsPage', () => {
-	it('renders title, banner and the list without fetching', () => {
+	it('renders title, banner and the cards without fetching', () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch')
 		render(<ArtifactsPage />)
 		expect(screen.getByRole('heading', { name: 'Artifacts' })).toBeTruthy()
 		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
-		expect(screen.getAllByRole('row')).toHaveLength(7)
+		expect(screen.getAllByRole('article')).toHaveLength(6)
 		expect(fetchSpy).not.toHaveBeenCalled()
 	})
 
-	it('filters with the search field and shows an empty state', async () => {
+	it('confirms the filter and the opening with a notice', async () => {
 		render(<ArtifactsPage />)
-		const search = screen.getByRole('searchbox', {
-			name: 'Rechercher un artifact',
-		})
-		await userEvent.type(search, 'drive')
-		expect(screen.getAllByRole('row')).toHaveLength(2)
-		await userEvent.clear(search)
-		await userEvent.type(search, 'zzz')
-		expect(screen.getByText('Aucun artifact')).toBeTruthy()
+		await userEvent.click(screen.getByRole('button', { name: 'Filtrer' }))
+		expect(screen.getByText('Filtre par type et par agent')).toBeTruthy()
+		await userEvent.click(
+			screen.getByRole('button', { name: /Inventaire du Drive/ }),
+		)
+		expect(
+			screen.getByText('Ouverture de « Inventaire du Drive »'),
+		).toBeTruthy()
 	})
 })

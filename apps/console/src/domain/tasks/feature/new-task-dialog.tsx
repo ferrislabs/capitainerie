@@ -1,23 +1,12 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '#/components/ui/button'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '#/components/ui/dialog'
-import { NativeSelect } from '#/components/ui/native-select'
-import { TextInput } from '#/components/ui/text-input'
-import { Textarea } from '#/components/ui/textarea'
+import { Dialog, DialogContent, DialogTitle } from '#/components/ui/dialog'
 import {
 	addTask,
 	DEMO_PROJECTS,
 	demoStore,
 	nextTaskId,
-	shortName,
 	useDemoState,
 } from '#/domain/demo'
 import { taskPathId } from '#/domain/tasks/task-ids'
@@ -28,6 +17,9 @@ interface Props {
 }
 
 const NONE = 'Aucun'
+
+const CONTROL =
+	'rounded-[6px] border bg-background px-[9px] py-1.5 text-[13px] text-foreground outline-none focus-visible:border-primary'
 
 export function NewTaskDialog({ open, onOpenChange }: Props) {
 	const agents = useDemoState((s) => s.agents)
@@ -71,82 +63,95 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 			open={open}
 			onOpenChange={(next) => (next ? onOpenChange(true) : close())}
 		>
-			<DialogContent>
-				<form
-					onSubmit={submit}
-					aria-label="Nouvelle tâche"
-					className="flex flex-col gap-3"
-				>
-					<DialogHeader>
-						<DialogTitle>Nouvelle tâche</DialogTitle>
-						<DialogDescription>
-							Décris le travail et assigne-le à un agent.
-						</DialogDescription>
-					</DialogHeader>
-					<label htmlFor="nt-title" className="flex flex-col gap-1 text-[13px]">
-						Titre
-						<TextInput
-							id="nt-title"
-							value={title}
-							onChange={(event) => setTitle(event.target.value)}
-						/>
-					</label>
-					{error ? (
-						<p role="alert" className="text-[13px] text-signal-danger">
-							{error}
-						</p>
-					) : null}
-					<label htmlFor="nt-desc" className="flex flex-col gap-1 text-[13px]">
-						Description
-						<Textarea
-							id="nt-desc"
-							value={description}
-							onChange={(event) => setDescription(event.target.value)}
-						/>
-					</label>
-					<div className="grid grid-cols-2 gap-3">
-						<label
-							htmlFor="nt-agent"
-							className="flex flex-col gap-1 text-[13px]"
-						>
-							Agent
-							<NativeSelect
-								id="nt-agent"
-								value={agentId || (agents[0]?.id ?? '')}
-								onChange={(event) => setAgentId(event.target.value)}
-							>
-								{agents.map((a) => (
-									<option key={a.id} value={a.id}>
-										{shortName(a.name)}
-									</option>
-								))}
-							</NativeSelect>
-						</label>
-						<label
-							htmlFor="nt-project"
-							className="flex flex-col gap-1 text-[13px]"
-						>
-							Projet
-							<NativeSelect
-								id="nt-project"
-								value={project}
-								onChange={(event) => setProject(event.target.value)}
-							>
-								<option value={NONE}>{NONE}</option>
-								{DEMO_PROJECTS.map((p) => (
-									<option key={p.name} value={p.name}>
-										{p.name}
-									</option>
-								))}
-							</NativeSelect>
-						</label>
+			<DialogContent
+				aria-describedby={undefined}
+				className="top-[12vh] max-w-[560px] translate-y-0 gap-0 overflow-hidden rounded-[11px] p-0 shadow-float"
+			>
+				<form onSubmit={submit} aria-label="Nouvelle tâche">
+					<div className="flex h-[46px] items-center border-b px-3.5">
+						<DialogTitle className="text-[13px] leading-none font-semibold">
+							Nouvelle tâche
+						</DialogTitle>
 					</div>
-					<DialogFooter>
-						<Button type="button" variant="outline" onClick={close}>
-							Annuler
-						</Button>
-						<Button type="submit">Créer et assigner</Button>
-					</DialogFooter>
+					<div className="grid gap-2.5 p-3.5">
+						<label
+							htmlFor="nt-title"
+							className="grid gap-1 text-xs text-muted-foreground"
+						>
+							Titre
+							<input
+								id="nt-title"
+								placeholder="Ce que l'agent doit accomplir"
+								value={title}
+								onChange={(event) => setTitle(event.target.value)}
+								className={CONTROL}
+							/>
+						</label>
+						{error ? (
+							<p role="alert" className="text-[13px] text-signal-danger">
+								{error}
+							</p>
+						) : null}
+						<label
+							htmlFor="nt-desc"
+							className="grid gap-1 text-xs text-muted-foreground"
+						>
+							Description
+							<textarea
+								id="nt-desc"
+								rows={3}
+								placeholder="Contexte, contraintes, définition de terminé"
+								value={description}
+								onChange={(event) => setDescription(event.target.value)}
+								className={CONTROL}
+							/>
+						</label>
+						<div className="grid gap-2.5 sm:grid-cols-2">
+							<label
+								htmlFor="nt-agent"
+								className="grid gap-1 text-xs text-muted-foreground"
+							>
+								Assigner à
+								<select
+									id="nt-agent"
+									value={agentId || (agents[0]?.id ?? '')}
+									onChange={(event) => setAgentId(event.target.value)}
+									className={CONTROL}
+								>
+									{agents.map((a) => (
+										<option key={a.id} value={a.id}>
+											{a.name}
+										</option>
+									))}
+								</select>
+							</label>
+							<label
+								htmlFor="nt-project"
+								className="grid gap-1 text-xs text-muted-foreground"
+							>
+								Projet
+								<select
+									id="nt-project"
+									value={project}
+									onChange={(event) => setProject(event.target.value)}
+									className={CONTROL}
+								>
+									<option value={NONE}>{NONE}</option>
+									{DEMO_PROJECTS.map((p) => (
+										<option key={p.name} value={p.name}>
+											{p.name}
+										</option>
+									))}
+								</select>
+							</label>
+						</div>
+						<div className="flex justify-end gap-2">
+							<Button type="button" variant="outline" onClick={close}>
+								Annuler
+							</Button>
+							<Button type="submit">Créer la tâche</Button>
+						</div>
+					</div>
 				</form>
 			</DialogContent>
 		</Dialog>
