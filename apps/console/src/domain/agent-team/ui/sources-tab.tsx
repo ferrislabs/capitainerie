@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Badge } from '#/components/ui/badge'
@@ -34,7 +35,15 @@ export function SourcesTab({ listened, available, onDetach, onAttach }: Props) {
 								className="flex items-center gap-3 px-3 py-2.5"
 							>
 								<span className="min-w-0 flex-1">
-									<b className="block truncate font-medium">{source.name}</b>
+									<b className="block truncate font-medium">
+										<Link
+											to="/sources/$sourceId/{-$tab}"
+											params={{ sourceId: source.id }}
+											className="hover:underline"
+										>
+											{source.name}
+										</Link>
+									</b>
 									<span className="block truncate font-mono text-xs text-muted-foreground">
 										{source.patterns.join('  ') || '—'}
 									</span>

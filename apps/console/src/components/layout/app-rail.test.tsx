@@ -75,7 +75,12 @@ describe('AppRail', () => {
 		expect(
 			screen.getByRole('navigation', { name: 'Navigation principale' }),
 		).toBeTruthy()
-		for (const section of ['Travail', 'Supervision', 'Paramètres']) {
+		for (const section of [
+			'Travail',
+			'Organisation',
+			'Supervision',
+			'Paramètres',
+		]) {
 			expect(screen.getByRole('list', { name: section })).toBeTruthy()
 		}
 		for (const label of [
@@ -84,6 +89,7 @@ describe('AppRail', () => {
 			'En cours',
 			'Kanban',
 			'Agents',
+			'Sources',
 			'Fournisseurs',
 			'Modèles',
 			'Intégrations',
@@ -200,12 +206,17 @@ describe('AppRail', () => {
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'En cours' }),
+			screen.getByRole('link', { name: 'Agents' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Agents' }),
+			screen.getByRole('link', { name: 'Sources' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'En cours' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'End' })
