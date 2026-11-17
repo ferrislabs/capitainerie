@@ -21,9 +21,9 @@ import { demoStore, resetDemoState } from '#/domain/demo'
 const EXTRA = [
 	'/connectors/{-$tab}',
 	'/sources/$sourceId/{-$tab}',
-	'/agents/equipe',
+	'/agents',
 	'/agents/organigramme',
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/tasks',
 	'/tasks/$taskId',
 ]
@@ -33,7 +33,7 @@ type Page = Parameters<typeof AgentDetailPage>[0]
 async function open(props: Page) {
 	await renderAtPath(
 		<AgentDetailPage {...props} />,
-		`/agents/equipe/${props.agentId}`,
+		`/agents/${props.agentId}`,
 		EXTRA,
 	)
 	await screen.findByRole('navigation', { name: "Sections de l'agent" })
@@ -69,10 +69,10 @@ describe('agent detail page', () => {
 			within(nav)
 				.getByRole('link', { name: 'Exécutions' })
 				.getAttribute('href'),
-		).toBe('/runs')
+		).toBe('/audit/runs')
 		expect(
 			within(nav).getByRole('link', { name: 'Coûts' }).getAttribute('href'),
-		).toBe('/agents')
+		).toBe('/audit/couts')
 		for (const label of [
 			'Définir comme principal',
 			'Assigner une tâche',
@@ -109,7 +109,7 @@ describe('agent detail page', () => {
 	it('shows a not-found state', async () => {
 		await renderAtPath(
 			<AgentDetailPage agentId="nope" />,
-			'/agents/equipe/nope',
+			'/agents/nope',
 			EXTRA,
 		)
 		expect(await screen.findByText('Agent introuvable')).toBeTruthy()

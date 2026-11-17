@@ -24,7 +24,7 @@ Every agent write is decided by an authorization policy and audited; agents act 
 
 ## Operating Context
 
-- Pages: Runs (submit a transcript, list runs), run detail (step timeline, allowed/denied decisions, tokens, cost, trace link), Kanban (five columns: Proposé, À faire, En cours, Terminé, Rejeté), Agents (activity and 30-day costs by agent, user, model, day), Paramètres › Fournisseurs and › Modèles (wave B).
+- Pages (the "Capitainerie" mockup is the reference, the former pages are removed): Tableau de bord, Boîte de réception, Tâches, Projets, Routines, Artifacts, Agents, Compétences, Sources, Connecteurs, Approbations, Audit. Backend-less pages run on demonstration data.
 - Realtime updates over WebSocket with connected / degraded / offline states.
 - Sign-in through FerrisKey (OIDC).
 

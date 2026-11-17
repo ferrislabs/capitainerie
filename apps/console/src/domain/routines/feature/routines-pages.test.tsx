@@ -21,7 +21,7 @@ import {
 } from '#/domain/routines/feature/routines-store'
 
 const EXTRA = [
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/routines',
 	'/routines/nouvelle',
 	'/routines/$routineId/{-$tab}',
@@ -66,7 +66,7 @@ describe('RoutinesPage', () => {
 			screen
 				.getByRole('link', { name: 'Toutes les exécutions' })
 				.getAttribute('href'),
-		).toBe('/runs')
+		).toBe('/audit/runs')
 		expect(
 			screen
 				.getByRole('link', { name: /Créer une routine/ })

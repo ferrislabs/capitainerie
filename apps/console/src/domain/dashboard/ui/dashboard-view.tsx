@@ -50,7 +50,7 @@ export function DashboardView({
 				description="Vue d'ensemble de l'organisation"
 			/>
 			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-				<Link to="/agents/equipe" className={linkClass}>
+				<Link to="/agents" className={linkClass}>
 					<Tile label="Agents en direct" value={stats.running} />
 				</Link>
 				<Link
@@ -87,7 +87,7 @@ export function DashboardView({
 								{liveAgents.map((a) => (
 									<li key={a.id} className="flex items-center gap-3 px-3 py-2">
 										<Link
-											to="/agents/equipe/$agentId/{-$tab}"
+											to="/agents/$agentId/{-$tab}"
 											params={{ agentId: a.id }}
 											className="font-medium hover:underline"
 										>

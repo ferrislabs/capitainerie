@@ -8,7 +8,7 @@ import { resetComments } from '#/domain/tasks/mock/comments-store'
 const EXTRA = [
 	'/tasks',
 	'/tasks/$taskId',
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/sources/$sourceId/{-$tab}',
 ]
 

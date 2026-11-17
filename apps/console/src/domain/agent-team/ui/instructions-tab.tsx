@@ -73,7 +73,7 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 						{MODES.map((m) => (
 							<Link
 								key={m.id}
-								to="/agents/equipe/$agentId/{-$tab}"
+								to="/agents/$agentId/{-$tab}"
 								params={{ agentId, tab: 'instructions' }}
 								search={{ mode: m.id }}
 								aria-current={m.id === mode ? 'page' : undefined}

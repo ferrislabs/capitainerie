@@ -40,7 +40,7 @@ export function AgentsTab({ source, notify }: Props) {
 								<span className="min-w-0 flex-1">
 									<b className="font-medium">
 										<Link
-											to="/agents/equipe/$agentId/{-$tab}"
+											to="/agents/$agentId/{-$tab}"
 											params={{ agentId: agent.id, tab: 'sources' }}
 											className="hover:underline"
 										>

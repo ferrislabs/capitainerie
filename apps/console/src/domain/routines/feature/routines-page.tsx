@@ -31,7 +31,9 @@ export function RoutinesPage() {
 				actions={
 					<>
 						<Button asChild variant="outline">
-							<Link to="/runs">Toutes les exécutions</Link>
+							<Link to="/audit/{-$tab}" params={{ tab: 'runs' }}>
+								Toutes les exécutions
+							</Link>
 						</Button>
 						<Button asChild>
 							<Link to="/routines/nouvelle">

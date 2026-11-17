@@ -300,7 +300,7 @@ export function AgentDetailPage({ agentId, tab, mode = 'lire' }: Props) {
 					description="Cet agent n'existe pas ou n'a pas été créé pendant cette session."
 					action={
 						<Button asChild variant="outline">
-							<Link to="/agents/equipe">Retour à l'équipe</Link>
+							<Link to="/agents">Retour à l'équipe</Link>
 						</Button>
 					}
 				/>

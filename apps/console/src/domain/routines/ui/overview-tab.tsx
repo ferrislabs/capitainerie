@@ -63,7 +63,7 @@ export function OverviewTab({ routine, scheduleLabel, upcoming }: Props) {
 						<Row label="Agent">
 							{DEMO_AGENTS.find((a) => a.name === routine.agent) ? (
 								<Link
-									to="/agents/equipe/$agentId/{-$tab}"
+									to="/agents/$agentId/{-$tab}"
 									params={{
 										agentId:
 											DEMO_AGENTS.find((a) => a.name === routine.agent)?.id ??

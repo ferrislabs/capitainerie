@@ -30,7 +30,7 @@ export function AgentList({ agents }: Props) {
 					)}
 					<Button asChild variant="outline" size="sm">
 						<Link
-							to="/agents/equipe/$agentId/{-$tab}"
+							to="/agents/$agentId/{-$tab}"
 							params={{ agentId: agent.id }}
 							aria-label={`Configurer ${agent.name}`}
 						>

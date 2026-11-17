@@ -63,7 +63,7 @@ export function OverviewTab({
 					flush
 					actions={
 						<Link
-							to="/agents/equipe/$agentId/{-$tab}"
+							to="/agents/$agentId/{-$tab}"
 							params={{ ...params, tab: 'runtime' }}
 							className="text-link hover:underline"
 						>
@@ -82,7 +82,7 @@ export function OverviewTab({
 					title="Compétences"
 					actions={
 						<Link
-							to="/agents/equipe/$agentId/{-$tab}"
+							to="/agents/$agentId/{-$tab}"
 							params={{ ...params, tab: 'skills' }}
 							className="text-link hover:underline"
 						>

@@ -13,7 +13,7 @@ import { resetPipelines } from '#/domain/sources/mock/pipeline-store'
 const ID = 'nouveaux-sous-domaines-sensibles'
 const ROUTE = [
 	'/sources/$sourceId/{-$tab}',
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/tasks',
 	'/tasks/$taskId',
 ]

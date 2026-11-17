@@ -4,7 +4,7 @@ import { renderAtPath } from '#/components/layout/test-router'
 import { demoStore, resetDemoState } from '#/domain/demo'
 import { TasksPage } from '#/domain/tasks/feature/tasks-page'
 
-const EXTRA = ['/tasks', '/tasks/$taskId', '/agents/equipe/$agentId/{-$tab}']
+const EXTRA = ['/tasks', '/tasks/$taskId', '/agents/$agentId/{-$tab}']
 
 describe('TasksPage', () => {
 	beforeEach(resetDemoState)

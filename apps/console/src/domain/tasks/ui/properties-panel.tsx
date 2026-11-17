@@ -66,7 +66,7 @@ export function PropertiesPanel({
 			</Row>
 			<Row label="Assigné à">
 				<Link
-					to="/agents/equipe/$agentId/{-$tab}"
+					to="/agents/$agentId/{-$tab}"
 					params={{ agentId: task.agentId }}
 					className={LINK}
 				>

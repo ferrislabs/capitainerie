@@ -6,10 +6,9 @@ export function AgentsTabs() {
 			label="Sections des agents"
 			tabs={[
 				{
-					label: 'Activité et coûts',
+					label: 'Équipe',
 					link: { to: '/agents', activeOptions: { exact: true } },
 				},
-				{ label: 'Équipe', link: { to: '/agents/equipe' } },
 				{ label: 'Organigramme', link: { to: '/agents/organigramme' } },
 			]}
 		/>

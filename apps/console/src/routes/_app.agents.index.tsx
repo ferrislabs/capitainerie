@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AgentsPage } from '#/domain/agents/feature/agents-page'
+import { AgentTeamPage } from '#/domain/agent-team/feature/agent-team-page'
 
-export const Route = createFileRoute('/_app/agents/')({ component: AgentsPage })
+export const Route = createFileRoute('/_app/agents/')({
+	component: AgentTeamPage,
+})
