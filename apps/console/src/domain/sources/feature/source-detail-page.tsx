@@ -4,9 +4,7 @@ import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
 import { Notice, useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
 import { TabNav } from '#/components/layout/tab-nav'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { updateSource, useDemoState } from '#/domain/demo'
 import { AgentsTab } from '#/domain/sources/feature/agents-tab'
@@ -57,41 +55,40 @@ export function SourceDetailPage({ sourceId, tab }: Props) {
 	return (
 		<Page>
 			<DemoBanner />
-			<PageHeader
-				leading={<SourceTypeTile type={source.type} size={36} />}
-				title={source.name}
-				meta={
-					<Badge variant={source.enabled ? 'success' : 'neutral'}>
-						{source.enabled ? 'Active' : 'En pause'}
-					</Badge>
-				}
-				description={`${typeInfo(source.type).label} · dernier événement ${source.last}`}
-				actions={
-					<>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => {
-								updateSource(source.id, { enabled: !source.enabled })
-								notify(
-									`${source.enabled ? 'Source en pause' : 'Source activée'} : ${source.name}`,
-								)
-							}}
-						>
-							{source.enabled ? 'Mettre en pause' : 'Activer'}
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() =>
-								notify(`Événement de test envoyé : ${source.patterns[0] ?? ''}`)
-							}
-						>
-							Envoyer un test
-						</Button>
-					</>
-				}
-			/>
+			<header className="mb-3 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
+				<SourceTypeTile type={source.type} size={36} />
+				<div className="min-w-0">
+					<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
+						{source.name}
+					</h1>
+					<span className="text-muted-foreground">
+						{`${typeInfo(source.type).label} · ${source.enabled ? 'Active' : 'En pause'} · dernier événement ${source.last}`}
+					</span>
+				</div>
+				<div className="ml-auto flex flex-wrap items-center gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => {
+							updateSource(source.id, { enabled: !source.enabled })
+							notify(
+								`${source.enabled ? 'Source en pause' : 'Source activée'} : ${source.name}`,
+							)
+						}}
+					>
+						{source.enabled ? 'Mettre en pause' : 'Activer'}
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() =>
+							notify(`Événement de test envoyé : ${source.patterns[0] ?? ''}`)
+						}
+					>
+						Envoyer un test
+					</Button>
+				</div>
+			</header>
 			<TabNav label="Sections de la source" tabs={tabs} />
 			{current === 'apercu' ? <OverviewTab source={source} /> : null}
 			{current === 'regles' ? <RulesTab source={source} /> : null}

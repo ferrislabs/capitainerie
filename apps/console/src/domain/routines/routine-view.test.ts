@@ -16,7 +16,7 @@ if (!board || !paused) throw new Error('fixtures')
 describe('routine view', () => {
 	it('reads the planning trigger and its label', () => {
 		expect(planningOf(board)?.kind).toBe('planning')
-		expect(scheduleLabel(board)).toBe('Lun. 06:30')
+		expect(scheduleLabel(board)).toBe('Lun 06:30')
 		expect(scheduleLabel({ ...board, triggers: [] })).toBe('Manuelle')
 	})
 	it('computes upcoming runs only for an active routine', () => {

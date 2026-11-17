@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
 import { addSource, demoStore, useDemoState } from '#/domain/demo'
 import {
 	initialForm,
@@ -45,10 +44,14 @@ export function SourceNewPage() {
 	return (
 		<Page>
 			<DemoBanner />
-			<PageHeader
-				title="Nouvelle source"
-				description="Choisis ce que l'agent écoute, puis qui reçoit le travail"
-			/>
+			<header>
+				<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
+					Nouvelle source
+				</h1>
+				<span className="text-muted-foreground">
+					Choisis ce que l'agent écoute, puis qui reçoit le travail
+				</span>
+			</header>
 			<SourceFormView
 				form={form}
 				agents={agents}

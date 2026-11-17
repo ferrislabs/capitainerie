@@ -21,7 +21,7 @@ export function SettingsTab({ routine }: Props) {
 	const draft = stored ?? base
 	const options = useFormOptions(draft.agent)
 	return (
-		<div className="flex flex-col gap-4">
+		<div>
 			<RoutineForm
 				settings={draft}
 				{...options}

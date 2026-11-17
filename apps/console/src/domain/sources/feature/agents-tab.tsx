@@ -2,8 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { TextInput } from '#/components/ui/text-input'
 import {
 	attachSource,
 	type DemoSource,
@@ -14,6 +12,8 @@ import {
 } from '#/domain/demo'
 import { typeInfo } from '#/domain/sources/source-form'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
+import { AddRow, CTL, Empty } from '#/domain/sources/ui/mockup'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	source: DemoSource
@@ -30,24 +30,31 @@ export function AgentsTab({ source, notify }: Props) {
 	const choice = free.some((a) => a.id === picked) ? picked : free[0]?.id
 	const [template, setTemplate] = useState(source.template)
 	return (
-		<div className="flex flex-col gap-4">
-			<SectionCard title="Agents à l'écoute" flush>
+		<div>
+			<SectionCard
+				title="Agents à l'écoute"
+				flush
+				actions={<Link to="/agents/nouveau">Créer un agent</Link>}
+			>
 				{listening.length > 0 ? (
-					<ul className="divide-y">
+					<ul className="m-0 list-none p-0">
 						{listening.map((agent) => (
-							<li key={agent.id} className="flex items-center gap-3 px-3 py-2">
-								<AgentAvatar agent={agent} size={28} />
+							<li
+								key={agent.id}
+								className="flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0 hover:bg-secondary"
+							>
+								<AgentAvatar agent={agent} size={28} decorative />
 								<span className="min-w-0 flex-1">
-									<b className="font-medium">
+									<b className="block truncate font-medium">
 										<Link
 											to="/agents/$agentId/{-$tab}"
 											params={{ agentId: agent.id, tab: 'sources' }}
-											className="hover:underline"
+											className="text-foreground"
 										>
 											{agent.name}
 										</Link>
 									</b>
-									<span className="block text-muted-foreground">
+									<span className="block truncate text-[12px] text-muted-foreground">
 										{agent.role} · {agent.model}
 									</span>
 								</span>
@@ -69,16 +76,16 @@ export function AgentsTab({ source, notify }: Props) {
 						))}
 					</ul>
 				) : (
-					<p className="p-3 text-muted-foreground">
-						Aucun agent n'écoute cette source. Les événements sont journalisés
-						mais aucune tâche n'est créée.
-					</p>
+					<Empty title="Aucun agent n'écoute cette source">
+						Les événements sont journalisés mais aucune tâche n'est créée.
+					</Empty>
 				)}
 			</SectionCard>
 			{free.length > 0 && choice ? (
-				<SectionCard title="Ajouter un agent">
-					<div className="flex gap-2">
-						<NativeSelect
+				<SectionCard title="Ajouter un agent" flush>
+					<AddRow className="pt-3">
+						<select
+							className={cn(CTL, 'flex-1')}
 							aria-label="Agent"
 							value={choice}
 							onChange={(e) => setPicked(e.target.value)}
@@ -88,7 +95,7 @@ export function AgentsTab({ source, notify }: Props) {
 									{a.name}
 								</option>
 							))}
-						</NativeSelect>
+						</select>
 						<Button
 							type="button"
 							onClick={() => {
@@ -102,20 +109,20 @@ export function AgentsTab({ source, notify }: Props) {
 						>
 							Ajouter
 						</Button>
-					</div>
+					</AddRow>
 				</SectionCard>
 			) : null}
-			<SectionCard title="Tâche créée à chaque événement">
+			<SectionCard title="Tâche créée à chaque événement" flush>
 				<form
-					className="flex flex-col gap-2"
 					onSubmit={(e) => {
 						e.preventDefault()
 						updateSource(source.id, { template })
 						notify('Modèle enregistré')
 					}}
 				>
-					<div className="flex gap-2">
-						<TextInput
+					<AddRow className="pt-3">
+						<input
+							className={cn(CTL, 'flex-1')}
 							aria-label="Modèle de tâche"
 							value={template}
 							onChange={(e) => setTemplate(e.target.value)}
@@ -123,10 +130,12 @@ export function AgentsTab({ source, notify }: Props) {
 						<Button type="submit" variant="outline">
 							Enregistrer
 						</Button>
-					</div>
-					<p className="text-muted-foreground">
+					</AddRow>
+					<p className="m-0 px-3 pb-3 text-muted-foreground">
 						Variable disponible :{' '}
-						<span className="font-mono">{typeInfo(source.type).variable}</span>
+						<span className="font-mono text-[11.5px]">
+							{typeInfo(source.type).variable}
+						</span>
 					</p>
 				</form>
 			</SectionCard>

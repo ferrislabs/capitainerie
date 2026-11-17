@@ -1,17 +1,5 @@
 import { useState } from 'react'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { Switch } from '#/components/ui/switch'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
-import { TextInput } from '#/components/ui/text-input'
 import {
 	CRITERIA,
 	type CriterionId,
@@ -20,7 +8,18 @@ import {
 	type OnFail,
 	type PipelineCriterion,
 } from '#/domain/sources/criteria'
+import {
+	AddRow,
+	CTL,
+	Sev,
+	Sw,
+	Tbl,
+	Td,
+	Th,
+	Tr,
+} from '#/domain/sources/ui/mockup'
 import { ResultBadge } from '#/domain/sources/ui/result-badge'
+import { cn } from '#/lib/utils'
 
 const ON_FAIL: ReadonlyArray<{ value: OnFail; label: string }> = [
 	{ value: 'reject', label: 'Rejeter' },
@@ -58,60 +57,62 @@ export function PipelineCriteria({
 		? (picked as CriterionId)
 		: available[0]
 	return (
-		<div className="flex flex-col gap-3">
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Actif</TableHead>
-						<TableHead>Critère</TableHead>
-						<TableHead>Valeur</TableHead>
-						<TableHead>Si non</TableHead>
-						<TableHead>Dossier</TableHead>
-						<TableHead />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
+		<div>
+			<Tbl>
+				<thead>
+					<tr>
+						<Th>Actif</Th>
+						<Th>Critère</Th>
+						<Th>Valeur</Th>
+						<Th>Si non</Th>
+						<Th>Dossier</Th>
+						<Th />
+					</tr>
+				</thead>
+				<tbody>
 					{criteria.length === 0 ? (
-						<TableRow>
-							<TableCell colSpan={6} className="text-muted-foreground">
+						<tr>
+							<Td colSpan={6} className="p-3.5 text-muted-foreground">
 								Aucun critère : tout dossier est qualifié.
-							</TableCell>
-						</TableRow>
+							</Td>
+						</tr>
 					) : null}
 					{criteria.map((c, index) => {
 						const def = CRITERIA[c.id]
 						const result: CriterionResult = def.evaluate(dossier, c.param)
 						return (
-							<TableRow key={c.id}>
-								<TableCell>
-									<Switch
+							<Tr key={c.id}>
+								<Td>
+									<Sw
 										aria-label={`Activer ${def.label}`}
 										checked={c.enabled}
 										onCheckedChange={() => onToggle(index)}
 									/>
-								</TableCell>
-								<TableCell>{def.label}</TableCell>
-								<TableCell>
+								</Td>
+								<Td>{def.label}</Td>
+								<Td>
 									{def.defaultParam !== undefined ? (
-										<span className="flex items-center gap-1">
-											<TextInput
-												className="w-32 font-mono"
+										<>
+											<input
+												className={cn(CTL, 'w-[130px] font-mono text-[11.5px]')}
 												aria-label={`Valeur : ${def.label}`}
 												value={String(c.param ?? '')}
 												onChange={(e) => onParam(index, e.target.value)}
 											/>
 											{def.unit ? (
 												<span className="text-muted-foreground">
+													{' '}
 													{def.unit}
 												</span>
 											) : null}
-										</span>
+										</>
 									) : (
 										<span className="text-muted-foreground">—</span>
 									)}
-								</TableCell>
-								<TableCell>
-									<NativeSelect
+								</Td>
+								<Td>
+									<select
+										className={cn(CTL, 'w-auto')}
 										aria-label={`Si non : ${def.label}`}
 										value={c.onFail}
 										onChange={(e) => onOnFail(index, e.target.value as OnFail)}
@@ -121,16 +122,16 @@ export function PipelineCriteria({
 												{o.label}
 											</option>
 										))}
-									</NativeSelect>
-								</TableCell>
-								<TableCell>
+									</select>
+								</Td>
+								<Td>
 									{c.enabled ? (
 										<ResultBadge result={result} />
 									) : (
-										<Badge variant="neutral">Désactivé</Badge>
+										<Sev tone="info">Désactivé</Sev>
 									)}
-								</TableCell>
-								<TableCell className="text-right">
+								</Td>
+								<Td className="text-right">
 									<Button
 										type="button"
 										size="sm"
@@ -140,16 +141,17 @@ export function PipelineCriteria({
 									>
 										Retirer
 									</Button>
-								</TableCell>
-							</TableRow>
+								</Td>
+							</Tr>
 						)
 					})}
-				</TableBody>
-			</Table>
-			<div className="flex flex-wrap items-center gap-2 px-3">
+				</tbody>
+			</Tbl>
+			<AddRow className="pt-3">
 				{choice ? (
 					<>
-						<NativeSelect
+						<select
+							className={cn(CTL, 'flex-1')}
 							aria-label="Critère à ajouter"
 							value={choice}
 							onChange={(e) => setPicked(e.target.value as CriterionId)}
@@ -159,7 +161,7 @@ export function PipelineCriteria({
 									{CRITERIA[id].label}
 								</option>
 							))}
-						</NativeSelect>
+						</select>
 						<Button
 							type="button"
 							variant="outline"
@@ -173,8 +175,8 @@ export function PipelineCriteria({
 						Tous les critères sont utilisés.
 					</span>
 				)}
-			</div>
-			<div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+			</AddRow>
+			<AddRow className="flex-wrap items-center">
 				<span className="text-muted-foreground">Préréglages :</span>
 				{presets.map((name) => (
 					<Button
@@ -187,7 +189,7 @@ export function PipelineCriteria({
 						{name}
 					</Button>
 				))}
-			</div>
+			</AddRow>
 		</div>
 	)
 }

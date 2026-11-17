@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Tile } from '#/components/layout/tile'
 import { type DemoSource, shortName, useDemoState } from '#/domain/demo'
 import { eventsFor } from '#/domain/sources/mock/events'
 import { typeInfo } from '#/domain/sources/source-form'
-import { FlowStrip } from '#/domain/sources/ui/flow-strip'
 import { KeyValueRows } from '#/domain/sources/ui/key-value-rows'
+import { Flow } from '#/domain/sources/ui/mockup'
 
 interface Props {
 	source: DemoSource
@@ -19,7 +20,7 @@ export function OverviewTab({ source }: Props) {
 		.map((id) => agents.find((a) => a.id === id))
 		.filter((a) => a !== undefined)
 		.map((a) => shortName(a.name))
-	const rows: Array<readonly [string, string]> = [
+	const rows: Array<readonly [string, ReactNode]> = [
 		['Type', typeInfo(source.type).label],
 		['Données', source.feeds.join(', ')],
 	]
@@ -27,11 +28,16 @@ export function OverviewTab({ source }: Props) {
 	rows.push(
 		['Création de tâches', source.mode],
 		['Dédoublonnage', `Ignore une valeur déjà vue pendant ${source.dedupe}`],
-		['Modèle de tâche', source.template],
+		[
+			'Modèle de tâche',
+			<span key="t" className="font-mono text-[11.5px]">
+				{source.template}
+			</span>,
+		],
 	)
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+		<div>
+			<div className="mb-2.5 grid grid-cols-4 gap-2.5 max-[1100px]:grid-cols-2">
 				<Tile
 					label="Événements 24 h"
 					value={source.eventsLast24h}
@@ -49,11 +55,18 @@ export function OverviewTab({ source }: Props) {
 					hint={`fenêtre ${source.dedupe}`}
 				/>
 			</div>
-			<SectionCard title="Chemin d'un événement">
-				<FlowStrip
+			<SectionCard title="Chemin d'un événement" flush>
+				<Flow
 					steps={[
 						{ title: '1. Source', body: source.feeds.join(' · ') },
-						{ title: '2. Motifs', body: source.patterns.join('  ') || '—' },
+						{
+							title: '2. Motifs',
+							body: (
+								<span className="font-mono text-[11.5px]">
+									{source.patterns.join('  ') || '—'}
+								</span>
+							),
+						},
 						{
 							title: '3. Agent',
 							body: names.length > 0 ? names.join(', ') : 'Aucun agent',

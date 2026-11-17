@@ -117,7 +117,7 @@ describe('RoutineDetailPage', () => {
 			}),
 		).toBeTruthy()
 		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
-		expect(screen.getByText('Board Analyst · Lun. 06:30 · Active')).toBeTruthy()
+		expect(screen.getByText('Board Analyst · Lun 06:30 · Active')).toBeTruthy()
 		expect(screen.getByText('Prochain passage')).toBeTruthy()
 		expect(screen.getByText('Tâches créées')).toBeTruthy()
 		expect(screen.getByText('Si déjà ouverte')).toBeTruthy()
@@ -156,7 +156,7 @@ describe('RoutineDetailPage', () => {
 			await screen.findByRole('button', { name: 'Mettre en pause' }),
 		)
 		expect(
-			screen.getByText('Board Analyst · Lun. 06:30 · En pause'),
+			screen.getByText('Board Analyst · Lun 06:30 · En pause'),
 		).toBeTruthy()
 		expect(screen.getByRole('button', { name: 'Activer' })).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: 'Lancer maintenant' }))
@@ -202,9 +202,9 @@ describe('RoutineDetailPage', () => {
 		const time = await screen.findByLabelText('Heure')
 		await user.clear(time)
 		await user.type(time, '07:15')
-		expect(screen.getByText('Lun. 07:15')).toBeTruthy()
-		await user.click(screen.getByRole('checkbox', { name: 'Mer.' }))
-		expect(screen.getByText('Lun., Mer. 07:15')).toBeTruthy()
+		expect(screen.getByText('Lun 07:15')).toBeTruthy()
+		await user.click(screen.getByRole('checkbox', { name: 'Mer' }))
+		expect(screen.getByText('Lun, Mer 07:15')).toBeTruthy()
 		await user.selectOptions(
 			screen.getByLabelText('Fréquence'),
 			'Expression cron',
@@ -254,9 +254,7 @@ describe('RoutineDetailPage', () => {
 		const user = userEvent.setup()
 		await renderAtPath(detail('reglages'), `/routines/${ID}/reglages`, EXTRA)
 		await screen.findByLabelText(/Nom/)
-		expect(
-			screen.getByText("Cet agent n'a accès à aucun connecteur"),
-		).toBeTruthy()
+		expect(screen.getByText(/Agent hors liste/)).toBeTruthy()
 		await user.selectOptions(
 			screen.getByLabelText('Agent'),
 			'Archibald (Archivage comptable)',
@@ -299,7 +297,7 @@ describe('RoutineNewPage', () => {
 		const user = userEvent.setup()
 		await renderAtPath(<RoutineNewPage />, '/routines/nouvelle', EXTRA)
 		await user.type(await screen.findByLabelText(/Nom/), 'Test')
-		await user.click(screen.getByRole('checkbox', { name: 'Lun.' }))
+		await user.click(screen.getByRole('checkbox', { name: 'Lun' }))
 		await user.click(screen.getByRole('button', { name: 'Créer la routine' }))
 		expect(screen.getByText('Choisis au moins un jour')).toBeTruthy()
 	})
@@ -314,7 +312,7 @@ describe('RoutineNewPage', () => {
 			EXTRA,
 		)
 		await user.type(await screen.findByLabelText(/Nom/), 'Bilan été')
-		await user.click(screen.getByRole('checkbox', { name: 'Mer.' }))
+		await user.click(screen.getByRole('checkbox', { name: 'Mer' }))
 		expect(screen.getByText('Prochains passages')).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: 'Créer la routine' }))
 		await waitFor(() =>
@@ -333,7 +331,7 @@ describe('RoutineNewPage', () => {
 		const list = await renderAtPath(<RoutinesPage />, '/routines', EXTRA)
 		expect(await within(list.container).findByText('Bilan été')).toBeTruthy()
 		expect(
-			within(list.container).getAllByText('Lun. 08:00').length,
+			within(list.container).getAllByText('Lun 08:00').length,
 		).toBeGreaterThan(0)
 	})
 })

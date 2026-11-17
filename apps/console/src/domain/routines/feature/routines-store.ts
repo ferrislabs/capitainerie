@@ -100,7 +100,7 @@ export function launchRoutine(id: string): void {
 		id,
 		(r) => ({
 			...r,
-			lastRun: { when: "À l'instant", tone: 'neutral', label: 'tâche créée' },
+			lastRun: { when: "À l'instant", tone: 'violet', label: 'tâche créée' },
 			runs: [run, ...r.runs],
 		}),
 		`Routine lancée : ${routine.name}. Tâche créée pour ${shortName(routine.agent)}`,
@@ -144,9 +144,15 @@ export const patchSchedule = (
 	triggerId: string,
 	patch: Partial<Schedule>,
 ): void =>
-	updateTrigger(id, triggerId, (t) =>
-		t.kind === 'planning' ? { ...t, schedule: { ...t.schedule, ...patch } } : t,
-	)
+	updateRoutine(id, (r) => ({
+		...r,
+		listSchedule: undefined,
+		triggers: r.triggers.map((t) =>
+			t.id === triggerId && t.kind === 'planning'
+				? { ...t, schedule: { ...t.schedule, ...patch } }
+				: t,
+		),
+	}))
 
 export function addTrigger(id: string, kind: 'planning' | 'webhook'): void {
 	const routine = findRoutine(id)

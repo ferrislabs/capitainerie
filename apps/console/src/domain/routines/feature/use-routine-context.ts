@@ -37,6 +37,7 @@ export function useFormOptions(agent: string) {
 			),
 			projects: [NO_PROJECT, ...DEMO_PROJECTS.map((p) => p.name)],
 			connectors: known ? (grants[known.id] ?? []) : [],
+			agentId: known?.id,
 		}
 	}, [team, grants, routines, agent])
 }

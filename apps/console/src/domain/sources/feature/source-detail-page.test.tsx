@@ -39,7 +39,7 @@ describe('SourceDetailPage', () => {
 			}),
 		).toBeTruthy()
 		expect(screen.getByText(/démonstration/i)).toBeTruthy()
-		expect(screen.getByText('Active')).toBeTruthy()
+		expect(screen.getByText(/· Active ·/)).toBeTruthy()
 		const nav = screen.getByRole('navigation', {
 			name: 'Sections de la source',
 		})
@@ -87,7 +87,7 @@ describe('SourceDetailPage', () => {
 			await screen.findByRole('button', { name: 'Mettre en pause' }),
 		)
 		expect(src()?.enabled).toBe(false)
-		expect(await screen.findByText('En pause')).toBeTruthy()
+		expect(await screen.findByText(/· En pause ·/)).toBeTruthy()
 		fireEvent.click(screen.getByRole('button', { name: 'Activer' }))
 		expect(src()?.enabled).toBe(true)
 		fireEvent.click(screen.getByRole('button', { name: 'Envoyer un test' }))
@@ -185,7 +185,9 @@ describe('SourceDetailPage', () => {
 			expect(screen.getByText(/délègue à/)).toBeTruthy()
 			expect(screen.getByText('ACME LOGISTIQUE SAS')).toBeTruthy()
 			expect(screen.getByText('Qualifié')).toBeTruthy()
-			fireEvent.click(screen.getByRole('button', { name: 'lumen' }))
+			fireEvent.click(
+				screen.getByRole('button', { name: 'auth.lumen-sante.com' }),
+			)
 			expect(screen.getByText('LUMEN SANTE SARL')).toBeTruthy()
 			expect(screen.getByText('Rejeté')).toBeTruthy()
 			expect(screen.getByText('Aucun export pour ce dossier')).toBeTruthy()
@@ -194,9 +196,11 @@ describe('SourceDetailPage', () => {
 		it('reacts to criteria edits and presets', async () => {
 			await open('pipeline')
 			await screen.findByText('Qualifié')
-			fireEvent.click(screen.getByRole('button', { name: 'novabank' }))
+			fireEvent.click(
+				screen.getByRole('button', { name: 'iam.novabank-groupe.eu' }),
+			)
 			expect(
-				screen.getByText('À valider', { selector: 'span.inline-flex' }),
+				screen.getByText('À valider', { selector: 'span.border' }),
 			).toBeTruthy()
 			fireEvent.change(screen.getByLabelText('Si non : Effectif minimum'), {
 				target: { value: 'ignore' },
@@ -294,7 +298,9 @@ describe('pipeline validation request', () => {
 	it('creates one pending approval per dossier and source', async () => {
 		await open('pipeline')
 		await screen.findByText('Qualifié')
-		fireEvent.click(screen.getByRole('button', { name: 'novabank' }))
+		fireEvent.click(
+			screen.getByRole('button', { name: 'iam.novabank-groupe.eu' }),
+		)
 		expect(screen.queryByText('Voir les approbations')).toBeNull()
 		const before = demoStore.state.approvals.length
 		fireEvent.click(

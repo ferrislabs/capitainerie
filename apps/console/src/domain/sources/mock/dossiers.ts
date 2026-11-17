@@ -46,7 +46,7 @@ export const DOSSIERS: Readonly<Record<string, Dossier>> = {
 
 export const DOSSIER_SEGMENTS: ReadonlyArray<{ value: string; label: string }> =
 	[
-		{ value: 'iam.acme-logistique.fr', label: 'acme-logistique' },
-		{ value: 'iam.novabank-groupe.eu', label: 'novabank' },
-		{ value: 'auth.lumen-sante.com', label: 'lumen' },
+		{ value: 'iam.acme-logistique.fr', label: 'iam.acme-logistique.fr' },
+		{ value: 'iam.novabank-groupe.eu', label: 'iam.novabank-groupe.eu' },
+		{ value: 'auth.lumen-sante.com', label: 'auth.lumen-sante.com' },
 	]

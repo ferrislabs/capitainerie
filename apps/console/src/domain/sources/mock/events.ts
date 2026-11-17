@@ -16,14 +16,14 @@ export interface SourceEvent {
 
 export const DECISION_LABELS: Record<
 	EventDecision,
-	{ label: string; variant: 'success' | 'running' | 'attention' | 'neutral' }
+	{ label: string; tone: 'ok' | 'warn' | 'info' }
 > = {
-	done: { label: 'Tâche créée', variant: 'success' },
-	progress: { label: 'En cours', variant: 'running' },
-	review: { label: 'À valider', variant: 'attention' },
-	ignored: { label: 'Ignoré', variant: 'neutral' },
-	dup: { label: 'Doublon', variant: 'neutral' },
-	none: { label: 'Sans correspondance', variant: 'neutral' },
+	done: { label: 'Tâche créée', tone: 'ok' },
+	progress: { label: 'En cours', tone: 'info' },
+	review: { label: 'À valider', tone: 'warn' },
+	ignored: { label: 'Ignoré', tone: 'info' },
+	dup: { label: 'Doublon', tone: 'info' },
+	none: { label: 'Sans correspondance', tone: 'info' },
 }
 
 const ev = (

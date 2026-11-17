@@ -1,6 +1,4 @@
-import type { ReactNode } from 'react'
-import { NativeSelect } from '#/components/ui/native-select'
-import { Switch } from '#/components/ui/switch'
+import { CTL, Fr, Sw } from '#/domain/sources/ui/mockup'
 
 interface Props {
 	destination: string
@@ -18,23 +16,7 @@ interface Props {
 	onDry: (value: boolean) => void
 }
 
-function Row({
-	label,
-	hint,
-	children,
-}: {
-	label: string
-	hint?: string
-	children: ReactNode
-}) {
-	return (
-		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
-			<span className="w-44 shrink-0 font-medium">{label}</span>
-			{children}
-			{hint ? <span className="text-muted-foreground">{hint}</span> : null}
-		</div>
-	)
-}
+const Row = Fr
 
 export function ExportSection({
 	destination,
@@ -58,51 +40,50 @@ export function ExportSection({
 			</option>
 		))
 	return (
-		<div className="divide-y">
+		<div>
 			<Row label="Destination">
-				<NativeSelect
+				<select
+					className={CTL}
 					aria-label="Destination"
 					value={destination}
 					onChange={(e) => onDestination(e.target.value)}
 				>
 					{options(destinations)}
-				</NativeSelect>
+				</select>
 			</Row>
 			<Row label="Action">
-				<NativeSelect
+				<select
+					className={CTL}
 					aria-label="Action"
 					value={action}
 					onChange={(e) => onAction(e.target.value)}
 				>
 					{options(actions)}
-				</NativeSelect>
+				</select>
 			</Row>
 			<Row
 				label="Clé anti-doublon"
 				hint="Si la fiche existe, on ajoute une note"
 			>
-				<NativeSelect
+				<select
+					className={CTL}
 					aria-label="Clé anti-doublon"
 					value={dedupeKey}
 					onChange={(e) => onKey(e.target.value)}
 				>
 					{options(keys)}
-				</NativeSelect>
+				</select>
 			</Row>
 			<Row
 				label="Essai à blanc"
 				hint="Affiche ce qui serait écrit, sans écrire"
 			>
-				<Switch
-					aria-label="Essai à blanc"
-					checked={dry}
-					onCheckedChange={onDry}
-				/>
+				<Sw aria-label="Essai à blanc" checked={dry} onCheckedChange={onDry} />
 			</Row>
-			<div className="flex flex-col gap-1 px-3 py-2">
-				<p className="text-muted-foreground">{message}</p>
+			<div className="px-3 pb-3">
+				<div className="mb-1 text-muted-foreground">{message}</div>
 				{payload ? (
-					<pre className="overflow-auto rounded-md border bg-background p-2 font-mono text-xs">
+					<pre className="m-0 overflow-auto rounded-md border bg-background p-2 font-mono text-[11px]">
 						{JSON.stringify(payload, null, 1)}
 					</pre>
 				) : null}

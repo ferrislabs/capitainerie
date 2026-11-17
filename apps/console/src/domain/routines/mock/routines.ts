@@ -1,6 +1,6 @@
 import { DEMO_PROJECTS, DEMO_TASKS } from '#/domain/demo'
 import { slugify } from '#/domain/routines/routine-draft'
-import { parseSchedule } from '#/domain/routines/schedule'
+import { parseSchedule, scheduleText } from '#/domain/routines/schedule'
 import type {
 	Routine,
 	RoutineRun,
@@ -60,7 +60,7 @@ const ROWS: ReadonlyArray<Row> = [
 		name: 'Newsletter produit hebdomadaire',
 		agent: 'Constance (Marketing)',
 		lastWhen: '17 nov., 09:30',
-		tone: 'neutral',
+		tone: 'violet',
 		label: 'tâche créée',
 		enabled: true,
 		schedule: 'Mar. 09:30',
@@ -159,6 +159,10 @@ export function buildRoutines(): ReadonlyArray<Routine> {
 		agent: row.agent,
 		enabled: row.enabled,
 		lastRun: { when: row.lastWhen, tone: row.tone, label: row.label },
+		listSchedule:
+			scheduleText(parseSchedule(row.schedule)) === row.schedule
+				? undefined
+				: row.schedule,
 		instruction: `Exécuter « ${row.name} », documenter le résultat dans la tâche et escalader au Chief of Staff en cas de blocage.`,
 		project:
 			index % 2 === 1

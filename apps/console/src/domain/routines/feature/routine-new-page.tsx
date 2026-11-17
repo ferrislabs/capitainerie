@@ -2,7 +2,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import {
@@ -45,10 +44,14 @@ export function RoutineNewPage() {
 	return (
 		<Page>
 			<DemoBanner />
-			<PageHeader
-				title="Nouvelle routine"
-				description="Travail récurrent qui devient une tâche auditable à chaque passage"
-			/>
+			<header className="mb-3">
+				<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
+					Nouvelle routine
+				</h1>
+				<span className="text-muted-foreground">
+					Travail récurrent qui devient une tâche auditable à chaque passage
+				</span>
+			</header>
 			<Notice message={notice} />
 			<RoutineForm
 				settings={draft.settings}
@@ -57,40 +60,34 @@ export function RoutineNewPage() {
 					setNewDraft({ ...draft, settings: { ...draft.settings, ...patch } })
 				}
 				between={
-					<SectionCard title="Déclencheur : planning">
-						<div className="flex flex-col gap-3">
-							<ScheduleFields
-								schedule={draft.schedule}
-								onChange={(patch) =>
-									setNewDraft({
-										...draft,
-										schedule: { ...draft.schedule, ...patch },
-									})
-								}
-							/>
-							<div className="max-w-md">
-								<SelectField
-									label="Fuseau"
-									value={draft.settings.timezone}
-									options={TIMEZONES}
-									onChange={(timezone) =>
-										setNewDraft({
-											...draft,
-											settings: { ...draft.settings, timezone },
-										})
-									}
-								/>
-							</div>
-							<div className="flex flex-col gap-1.5">
-								<h3 className="text-xs text-muted-foreground">
-									Prochains passages
-								</h3>
-								<NextRuns
-									runs={nextRuns(draft.schedule, now, 3)}
-									empty={CRON_NOTE}
-								/>
-							</div>
+					<SectionCard title="Déclencheur : planning" flush>
+						<ScheduleFields
+							schedule={draft.schedule}
+							onChange={(patch) =>
+								setNewDraft({
+									...draft,
+									schedule: { ...draft.schedule, ...patch },
+								})
+							}
+						/>
+						<SelectField
+							label="Fuseau"
+							value={draft.settings.timezone}
+							options={TIMEZONES}
+							onChange={(timezone) =>
+								setNewDraft({
+									...draft,
+									settings: { ...draft.settings, timezone },
+								})
+							}
+						/>
+						<div className="px-3 pb-1 text-muted-foreground">
+							Prochains passages
 						</div>
+						<NextRuns
+							runs={nextRuns(draft.schedule, now, 3)}
+							empty={CRON_NOTE}
+						/>
 					</SectionCard>
 				}
 			/>

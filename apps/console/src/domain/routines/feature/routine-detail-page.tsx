@@ -4,7 +4,6 @@ import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
 import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
 import { TabNav } from '#/components/layout/tab-nav'
 import { Button } from '#/components/ui/button'
 import { shortName, useDemoState } from '#/domain/demo'
@@ -74,30 +73,30 @@ export function RoutineDetailPage({ routineId, tab }: Props) {
 	return (
 		<Page>
 			<DemoBanner />
-			<PageHeader
-				title={
-					<span className="flex items-center gap-2.5">
-						<AgentAvatar name={routine.agent} size="lg" />
+			<header className="mb-3 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
+				<AgentAvatar name={routine.agent} size={36} />
+				<div className="min-w-0">
+					<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
 						{routine.name}
+					</h1>
+					<span className="text-muted-foreground">
+						{`${shortName(routine.agent)} · ${label} · ${routine.enabled ? 'Active' : 'En pause'}`}
 					</span>
-				}
-				description={`${shortName(routine.agent)} · ${label} · ${routine.enabled ? 'Active' : 'En pause'}`}
-				actions={
-					<>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => toggleRoutine(routine.id)}
-						>
-							{routine.enabled ? 'Mettre en pause' : 'Activer'}
-						</Button>
-						<Button type="button" onClick={() => launchRoutine(routine.id)}>
-							<Play aria-hidden="true" />
-							Lancer maintenant
-						</Button>
-					</>
-				}
-			/>
+				</div>
+				<div className="ml-auto flex flex-wrap items-center gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => toggleRoutine(routine.id)}
+					>
+						{routine.enabled ? 'Mettre en pause' : 'Activer'}
+					</Button>
+					<Button type="button" onClick={() => launchRoutine(routine.id)}>
+						<Play aria-hidden="true" />
+						Lancer maintenant
+					</Button>
+				</div>
+			</header>
 			<Notice message={notice} />
 			<TabNav
 				label="Sections de la routine"
