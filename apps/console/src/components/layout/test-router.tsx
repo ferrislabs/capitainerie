@@ -23,6 +23,7 @@ const PATHS = [
 	'/routines',
 	'/tasks',
 	'/tasks/$taskId',
+	'/dashboard',
 	'/agents/equipe/$agentId/{-$tab}',
 	'/sources',
 	'/skills',

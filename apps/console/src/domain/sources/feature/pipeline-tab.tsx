@@ -1,5 +1,12 @@
+import { Link } from '@tanstack/react-router'
 import { SectionCard } from '#/components/layout/section-card'
+import { Button } from '#/components/ui/button'
 import {
+	buildValidationRequest,
+	validationTitle,
+} from '#/domain/approvals/validation-request'
+import {
+	addApproval,
 	type DemoSource,
 	demoStore,
 	grantConnector,
@@ -13,7 +20,7 @@ import {
 	exportPayload,
 	requiredAccess,
 } from '#/domain/sources/access'
-import { decide, PRESETS } from '#/domain/sources/criteria'
+import { CRITERIA, decide, PRESETS } from '#/domain/sources/criteria'
 import { DOSSIER_SEGMENTS, DOSSIERS } from '#/domain/sources/mock/dossiers'
 import {
 	ACTIONS,
@@ -31,6 +38,7 @@ import {
 	DossierPanel,
 	VerdictPanel,
 } from '#/domain/sources/ui/pipeline-dossier'
+import { resultLabel } from '#/domain/sources/ui/result-badge'
 
 interface Props {
 	source: DemoSource
@@ -41,6 +49,7 @@ export function PipelineTab({ source, notify }: Props) {
 	const config = usePipeline(source.id)
 	const agents = useDemoState((s) => s.agents)
 	const grants = useDemoState((s) => s.grants)
+	const approvals = useDemoState((s) => s.approvals)
 	const state = { ...demoStore.state, agents, grants }
 	const dossier = DOSSIERS[config.dossier] ?? Object.values(DOSSIERS)[0]
 	if (!dossier) return null
@@ -68,6 +77,30 @@ export function PipelineTab({ source, notify }: Props) {
 				: 'Charge envoyée après validation'
 			: 'Aucun export pour ce dossier'
 	const id = source.id
+	const requested = approvals.some(
+		(a) => a.title === validationTitle(dossier.raison, source.name),
+	)
+	const requestValidation = () => {
+		const reasons = decision.rows
+			.filter((r) => r.result !== 'ok' && r.criterion.onFail !== 'ignore')
+			.map(
+				(r) =>
+					`${CRITERIA[r.criterion.id].label} : ${resultLabel(r.result).toLowerCase()}`,
+			)
+		const request = buildValidationRequest({
+			approvals: demoStore.state.approvals,
+			raison: dossier.raison,
+			sourceName: source.name,
+			reasons,
+			requestedBy: firstId ?? null,
+		})
+		if (!request) {
+			notify('Demande déjà envoyée')
+			return
+		}
+		addApproval(request)
+		notify('Demande de validation envoyée')
+	}
 	return (
 		<div className="flex flex-col gap-4">
 			<SectionCard title="Chemin complet">
@@ -104,6 +137,18 @@ export function PipelineTab({ source, notify }: Props) {
 				</SectionCard>
 				<SectionCard title="Résultat de la décision" flush>
 					<VerdictPanel decision={decision} />
+					{decision.verdict === 'review' ? (
+						<div className="flex flex-wrap items-center gap-3 px-3 pb-3">
+							<Button type="button" size="sm" onClick={requestValidation}>
+								Demander une validation
+							</Button>
+							{requested ? (
+								<Link to="/approvals" className="text-sm hover:underline">
+									Voir les approbations
+								</Link>
+							) : null}
+						</div>
+					) : null}
 				</SectionCard>
 			</div>
 			<SectionCard

@@ -276,3 +276,46 @@ describe('SourceDetailPage', () => {
 		})
 	})
 })
+
+describe('pipeline validation request', () => {
+	beforeEach(() => {
+		resetDemoState()
+		resetPipelines()
+	})
+
+	it('only offers the request when the verdict is to validate', async () => {
+		await open('pipeline')
+		await screen.findByText('Qualifié')
+		expect(
+			screen.queryByRole('button', { name: 'Demander une validation' }),
+		).toBeNull()
+	})
+
+	it('creates one pending approval per dossier and source', async () => {
+		await open('pipeline')
+		await screen.findByText('Qualifié')
+		fireEvent.click(screen.getByRole('button', { name: 'novabank' }))
+		expect(screen.queryByText('Voir les approbations')).toBeNull()
+		const before = demoStore.state.approvals.length
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Demander une validation' }),
+		)
+		expect(demoStore.state.approvals).toHaveLength(before + 1)
+		const created = demoStore.state.approvals[0]
+		expect(created?.id).toBe(`APP-${before + 1}`)
+		expect(created?.status).toBe('pending')
+		expect(created?.title).toBe(
+			'Valider le rapprochement : NOVABANK GROUPE (Nouveaux sous-domaines sensibles)',
+		)
+		expect(created?.requestedBy).toBe(src()?.agentIds[0])
+		expect(created?.detail).not.toBe('')
+		expect(screen.getByText('Voir les approbations').getAttribute('href')).toBe(
+			'/approvals',
+		)
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Demander une validation' }),
+		)
+		expect(demoStore.state.approvals).toHaveLength(before + 1)
+		expect(screen.getByText('Demande déjà envoyée')).toBeTruthy()
+	})
+})
