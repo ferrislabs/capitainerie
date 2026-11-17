@@ -2,12 +2,14 @@ import type { ReactNode } from 'react'
 
 interface Props {
 	title: ReactNode
+	/** Texte gris à droite du titre, sur la même ligne. */
 	description?: ReactNode
 	actions?: ReactNode
 	leading?: ReactNode
 	meta?: ReactNode
 }
 
+/** Titre de page de la maquette : h1 de 20 px, description grise en ligne, actions à droite. */
 export function PageHeader({
 	title,
 	description,
@@ -16,28 +18,20 @@ export function PageHeader({
 	meta,
 }: Props) {
 	return (
-		<header className="flex flex-col gap-2 pb-1">
+		<header className="mb-3 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
 			{leading}
-			<div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-				<div className="flex min-w-0 flex-col gap-1">
-					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-						<h1 className="text-lg leading-tight font-semibold tracking-[-0.01em]">
-							{title}
-						</h1>
-						{meta}
-					</div>
-					{description ? (
-						<p className="max-w-[70ch] text-[13px] text-muted-foreground">
-							{description}
-						</p>
-					) : null}
+			<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
+				{title}
+			</h1>
+			{meta}
+			{description ? (
+				<span className="min-w-0 text-muted-foreground">{description}</span>
+			) : null}
+			{actions ? (
+				<div className="ml-auto flex flex-wrap items-center gap-2">
+					{actions}
 				</div>
-				{actions ? (
-					<div className="flex shrink-0 flex-wrap items-center gap-2">
-						{actions}
-					</div>
-				) : null}
-			</div>
+			) : null}
 		</header>
 	)
 }
