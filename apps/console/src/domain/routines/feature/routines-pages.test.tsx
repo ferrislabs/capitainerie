@@ -25,6 +25,8 @@ const EXTRA = [
 	'/routines',
 	'/routines/nouvelle',
 	'/routines/$routineId/{-$tab}',
+	'/tasks',
+	'/tasks/$taskId',
 ]
 const ID = 'analyse-board-hebdomadaire'
 
@@ -168,6 +170,16 @@ describe('RoutineDetailPage', () => {
 		)
 		expect(await screen.findAllByText('Planning')).not.toHaveLength(0)
 		expect(screen.getAllByRole('row')).toHaveLength(6)
+	})
+	it('links run task ids to the task page', async () => {
+		await renderAtPath(
+			detail('executions'),
+			`/routines/${ID}/executions`,
+			EXTRA,
+		)
+		const taskId = routinesStore.state.routines[0]?.runs[0]?.taskId ?? ''
+		const link = await screen.findAllByRole('link', { name: taskId })
+		expect(link[0]?.getAttribute('href')).toBe(`/tasks/${taskId.toLowerCase()}`)
 	})
 	it('shows the empty state for a never-run routine', async () => {
 		await renderAtPath(

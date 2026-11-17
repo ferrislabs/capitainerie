@@ -24,6 +24,8 @@ const EXTRA = [
 	'/agents/equipe',
 	'/agents/organigramme',
 	'/agents/equipe/$agentId/{-$tab}',
+	'/tasks',
+	'/tasks/$taskId',
 ]
 
 type Page = Parameters<typeof AgentDetailPage>[0]
@@ -260,6 +262,12 @@ describe('agent detail page', () => {
 				screen.getAllByRole('link', { name: /Chief of Staff/ }).length,
 			).toBeGreaterThan(0)
 			expect(screen.getAllByText(/Parent NAT-691/).length).toBeGreaterThan(0)
+		})
+
+		it('links delegated sub-tasks to the task page', async () => {
+			await open({ agentId: 'veille-legale', tab: 'team' })
+			const links = screen.getAllByRole('link', { name: 'NAT-694' })
+			expect(links[0]?.getAttribute('href')).toBe('/tasks/nat-694')
 		})
 
 		it('removes a sub-agent back to the Chief of Staff', async () => {

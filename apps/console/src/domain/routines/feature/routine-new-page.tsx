@@ -1,5 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { DemoBanner } from '#/components/layout/demo-banner'
+import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
@@ -12,14 +13,13 @@ import {
 } from '#/domain/routines/feature/routines-store'
 import {
 	useFormOptions,
-	useNotice,
 	useNow,
+	useRoutineNotice,
 } from '#/domain/routines/feature/use-routine-context'
 import { nextRuns } from '#/domain/routines/schedule'
 import { TIMEZONES } from '#/domain/routines/types'
 import { CRON_NOTE, NextRuns } from '#/domain/routines/ui/next-runs'
 import { RoutineForm } from '#/domain/routines/ui/routine-form'
-import { RoutineNotice } from '#/domain/routines/ui/routine-notice'
 import { ScheduleFields } from '#/domain/routines/ui/schedule-fields'
 import { SelectField } from '#/domain/routines/ui/select-field'
 
@@ -28,7 +28,7 @@ const BLANK = blankDraft()
 export function RoutineNewPage() {
 	const stored = useRoutinesState((s) => s.newDraft)
 	const draft = stored ?? BLANK
-	const notice = useNotice()
+	const notice = useRoutineNotice()
 	const now = useNow()
 	const navigate = useNavigate()
 	const options = useFormOptions(draft.settings.agent)
@@ -49,7 +49,7 @@ export function RoutineNewPage() {
 				title="Nouvelle routine"
 				description="Travail récurrent qui devient une tâche auditable à chaque passage"
 			/>
-			<RoutineNotice message={notice} />
+			<Notice message={notice} />
 			<RoutineForm
 				settings={draft.settings}
 				{...options}

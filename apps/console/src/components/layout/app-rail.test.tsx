@@ -193,6 +193,7 @@ describe('AppRail', () => {
 
 		for (const label of [
 			'Kanban',
+			'Tâches',
 			'Clients',
 			'Projets',
 			'Routines',
@@ -220,5 +221,33 @@ describe('AppRail', () => {
 		expect(document.activeElement).toBe(
 			screen.getByRole('link', { name: 'Accueil' }),
 		)
+	})
+
+	it('lists the live agents and the quick actions when expanded', async () => {
+		const onNewTask = vi.fn()
+		await renderRail(
+			'/',
+			rail({
+				onNewTask,
+				onSearch: vi.fn(),
+				liveAgents: [{ id: 'dev', name: 'Dev' }],
+			}),
+		)
+
+		const agent = screen.getByRole('link', { name: 'Dev' })
+		expect(agent.getAttribute('href')).toBe('/agents/equipe/dev')
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Nouvelle tâche' }),
+		)
+		expect(onNewTask).toHaveBeenCalledOnce()
+	})
+
+	it('hides the live agents when collapsed', async () => {
+		await renderRail(
+			'/',
+			rail({ expanded: false, liveAgents: [{ id: 'dev', name: 'Dev' }] }),
+		)
+
+		expect(screen.queryByRole('link', { name: 'Dev' })).toBeNull()
 	})
 })

@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Play } from 'lucide-react'
 import { EmptyState } from '#/components/layout/empty-state'
 import { SectionCard } from '#/components/layout/section-card'
@@ -11,12 +12,14 @@ import {
 } from '#/components/ui/table'
 import type { RoutineRun } from '#/domain/routines/types'
 import { RunBadge } from '#/domain/routines/ui/run-badge'
+import { taskPathId } from '#/domain/tasks/task-ids'
 
 interface Props {
 	runs: ReadonlyArray<RoutineRun>
+	knownTaskIds: ReadonlySet<string>
 }
 
-export function RunsTab({ runs }: Props) {
+export function RunsTab({ runs, knownTaskIds }: Props) {
 	return (
 		<SectionCard title="Exécutions" bare>
 			{runs.length === 0 ? (
@@ -49,7 +52,19 @@ export function RunsTab({ runs }: Props) {
 								<TableCell className="text-muted-foreground">
 									{run.duration}
 								</TableCell>
-								<TableCell className="font-mono">{run.taskId}</TableCell>
+								<TableCell className="font-mono">
+									{knownTaskIds.has(run.taskId) ? (
+										<Link
+											to="/tasks/$taskId"
+											params={{ taskId: taskPathId(run.taskId) }}
+											className="text-link hover:underline"
+										>
+											{run.taskId}
+										</Link>
+									) : (
+										run.taskId
+									)}
+								</TableCell>
 							</TableRow>
 						))}
 					</TableBody>

@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { useNotice } from '#/components/layout/notice'
 import { DEMO_SKILLS } from '#/domain/skills/mock/skills'
 import { filterSkills } from '#/domain/skills/search'
 import { SkillsView } from '#/domain/skills/ui/skills-view'
 
 export function SkillsPage() {
 	const [query, setQuery] = useState('')
-	const [notice, setNotice] = useState<string | null>(null)
+	const [notice, setNotice] = useNotice()
 	return (
 		<SkillsView
 			skills={filterSkills(DEMO_SKILLS, query)}

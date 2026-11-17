@@ -13,6 +13,7 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 	agents: 'Agents',
 	sources: 'Sources',
 	routines: 'Routines',
+	tasks: 'Tâches',
 	inbox: 'Boîte de réception',
 	artifacts: 'Artifacts',
 	skills: 'Compétences',

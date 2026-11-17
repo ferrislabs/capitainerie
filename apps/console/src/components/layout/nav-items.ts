@@ -9,6 +9,7 @@ import {
 	House,
 	Inbox,
 	KeyRound,
+	ListChecks,
 	MessageSquare,
 	Play,
 	Plug,
@@ -28,6 +29,7 @@ export interface NavItem {
 		| '/runs'
 		| '/live'
 		| '/kanban'
+		| '/tasks'
 		| '/clients'
 		| '/projects'
 		| '/routines'
@@ -60,6 +62,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 			{ to: '/chat', label: 'Conversations', icon: MessageSquare },
 			{ to: '/runs', label: 'Runs', icon: Play },
 			{ to: '/kanban', label: 'Kanban', icon: SquareKanban },
+			{ to: '/tasks', label: 'Tâches', icon: ListChecks },
 			{ to: '/clients', label: 'Clients', icon: Users },
 			{ to: '/projects', label: 'Projets', icon: FolderKanban },
 			{ to: '/routines', label: 'Routines', icon: Repeat },

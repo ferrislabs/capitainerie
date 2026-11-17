@@ -2,11 +2,12 @@ import { Link } from '@tanstack/react-router'
 import { Play, Repeat } from 'lucide-react'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
+import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { TabNav } from '#/components/layout/tab-nav'
 import { Button } from '#/components/ui/button'
-import { shortName } from '#/domain/demo'
+import { shortName, useDemoState } from '#/domain/demo'
 import {
 	launchRoutine,
 	toggleRoutine,
@@ -15,13 +16,12 @@ import {
 import { SettingsTab } from '#/domain/routines/feature/settings-tab'
 import { TriggersPanel } from '#/domain/routines/feature/triggers-panel'
 import {
-	useNotice,
 	useNow,
+	useRoutineNotice,
 } from '#/domain/routines/feature/use-routine-context'
 import { scheduleLabel, upcomingRuns } from '#/domain/routines/routine-view'
 import { AgentAvatar } from '#/domain/routines/ui/agent-avatar'
 import { OverviewTab } from '#/domain/routines/ui/overview-tab'
-import { RoutineNotice } from '#/domain/routines/ui/routine-notice'
 import { RunsTab } from '#/domain/routines/ui/runs-tab'
 
 export const ROUTINE_TABS = [
@@ -45,7 +45,8 @@ export function RoutineDetailPage({ routineId, tab }: Props) {
 	const routine = useRoutinesState((s) =>
 		s.routines.find((r) => r.id === routineId),
 	)
-	const notice = useNotice()
+	const tasks = useDemoState((s) => s.tasks)
+	const notice = useRoutineNotice()
 	const now = useNow()
 	const active = resolveTab(tab)
 
@@ -97,7 +98,7 @@ export function RoutineDetailPage({ routineId, tab }: Props) {
 					</>
 				}
 			/>
-			<RoutineNotice message={notice} />
+			<Notice message={notice} />
 			<TabNav
 				label="Sections de la routine"
 				tabs={ROUTINE_TABS.map((t) => ({
@@ -118,7 +119,12 @@ export function RoutineDetailPage({ routineId, tab }: Props) {
 			{active === 'declencheurs' ? (
 				<TriggersPanel routine={routine} now={now} />
 			) : null}
-			{active === 'executions' ? <RunsTab runs={routine.runs} /> : null}
+			{active === 'executions' ? (
+				<RunsTab
+					runs={routine.runs}
+					knownTaskIds={new Set(tasks.map((t) => t.id))}
+				/>
+			) : null}
 			{active === 'reglages' ? <SettingsTab routine={routine} /> : null}
 		</Page>
 	)

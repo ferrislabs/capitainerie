@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-react'
 import type { ReactNode } from 'react'
 import {
 	CapitainerieMark,
@@ -24,6 +24,8 @@ interface Props {
 	footer?: (expanded: boolean) => ReactNode
 	badges?: RailBadges
 	onSearch?: () => void
+	onNewTask?: () => void
+	liveAgents?: ReadonlyArray<{ id: string; name: string }>
 }
 
 const FOCUS =
@@ -101,6 +103,8 @@ export function AppRail({
 	footer,
 	badges,
 	onSearch,
+	onNewTask,
+	liveAgents,
 }: Props) {
 	const isExpanded = expanded && canExpand
 	const ToggleIcon = isExpanded ? PanelLeftClose : PanelLeftOpen
@@ -148,27 +152,49 @@ export function AppRail({
 					</button>
 				) : null}
 			</div>
-			{onSearch ? (
-				<div className="shrink-0 px-2 pb-2">
-					<button
-						type="button"
-						onClick={onSearch}
-						aria-label="Rechercher"
-						title="Rechercher (⌘K)"
-						className={cn(
-							'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-							!isExpanded && 'justify-center px-0',
-							FOCUS,
-						)}
-					>
-						<Search aria-hidden="true" className="size-4 shrink-0" />
-						{isExpanded ? (
-							<>
-								<span className="flex-1 text-left">Rechercher</span>
-								<kbd className="font-mono text-[11px] text-rail-label">⌘K</kbd>
-							</>
-						) : null}
-					</button>
+			{onSearch || onNewTask ? (
+				<div className="flex shrink-0 flex-col gap-0.5 px-2 pb-2">
+					{onNewTask ? (
+						<button
+							type="button"
+							onClick={onNewTask}
+							aria-label="Nouvelle tâche"
+							title="Nouvelle tâche"
+							className={cn(
+								'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+								!isExpanded && 'justify-center px-0',
+								FOCUS,
+							)}
+						>
+							<SquarePen aria-hidden="true" className="size-4 shrink-0" />
+							{isExpanded ? (
+								<span className="flex-1 text-left">Nouvelle tâche</span>
+							) : null}
+						</button>
+					) : null}
+					{onSearch ? (
+						<button
+							type="button"
+							onClick={onSearch}
+							aria-label="Rechercher"
+							title="Rechercher (⌘K)"
+							className={cn(
+								'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+								!isExpanded && 'justify-center px-0',
+								FOCUS,
+							)}
+						>
+							<Search aria-hidden="true" className="size-4 shrink-0" />
+							{isExpanded ? (
+								<>
+									<span className="flex-1 text-left">Rechercher</span>
+									<kbd className="font-mono text-[11px] text-rail-label">
+										⌘K
+									</kbd>
+								</>
+							) : null}
+						</button>
+					) : null}
 				</div>
 			) : null}
 			<nav
@@ -211,6 +237,34 @@ export function AppRail({
 						</div>
 					)
 				})}
+				{isExpanded && liveAgents && liveAgents.length > 0 ? (
+					<div className="mt-4">
+						<p className="px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label">
+							Agents en direct
+						</p>
+						<ul aria-label="Agents en direct" className="flex flex-col gap-0.5">
+							{liveAgents.map((agent) => (
+								<li key={agent.id}>
+									<Link
+										to="/agents/equipe/$agentId/{-$tab}"
+										params={{ agentId: agent.id }}
+										className={cn(
+											'flex h-7 items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground transition-colors duration-150',
+											'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+											FOCUS,
+										)}
+									>
+										<span
+											aria-hidden="true"
+											className="size-2 shrink-0 rounded-full bg-signal-running"
+										/>
+										<span className="truncate">{agent.name}</span>
+									</Link>
+								</li>
+							))}
+						</ul>
+					</div>
+				) : null}
 			</nav>
 			{footer ? (
 				<div className="flex shrink-0 flex-col gap-1 border-t border-rail-border p-2">

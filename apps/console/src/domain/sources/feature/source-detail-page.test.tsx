@@ -11,7 +11,12 @@ import { SourceDetailPage } from '#/domain/sources/feature/source-detail-page'
 import { resetPipelines } from '#/domain/sources/mock/pipeline-store'
 
 const ID = 'nouveaux-sous-domaines-sensibles'
-const ROUTE = ['/sources/$sourceId/{-$tab}', '/agents/equipe/$agentId/{-$tab}']
+const ROUTE = [
+	'/sources/$sourceId/{-$tab}',
+	'/agents/equipe/$agentId/{-$tab}',
+	'/tasks',
+	'/tasks/$taskId',
+]
 const src = () => demoStore.state.sources.find((s) => s.id === ID)
 
 async function open(tab?: string) {
@@ -33,7 +38,7 @@ describe('SourceDetailPage', () => {
 				name: 'Nouveaux sous-domaines sensibles',
 			}),
 		).toBeTruthy()
-		expect(screen.getByRole('status').textContent).toContain('démonstration')
+		expect(screen.getByText(/démonstration/i)).toBeTruthy()
 		expect(screen.getByText('Active')).toBeTruthy()
 		const nav = screen.getByRole('navigation', {
 			name: 'Sections de la source',
@@ -133,7 +138,7 @@ describe('SourceDetailPage', () => {
 		})
 	})
 
-	it('events tab lists decisions with plain text task ids', async () => {
+	it('events tab lists decisions with linked task ids', async () => {
 		await open('evenements')
 		expect(
 			(await screen.findAllByText('iam.acme-logistique.fr', { selector: 'td' }))
@@ -141,8 +146,10 @@ describe('SourceDetailPage', () => {
 		).toBe(2)
 		expect(screen.getAllByText('Doublon').length).toBeGreaterThan(0)
 		expect(screen.getAllByText('Sans correspondance')).toHaveLength(2)
-		expect(screen.getByText('NAT-690', { selector: 'td' })).toBeTruthy()
-		expect(screen.queryByRole('link', { name: 'NAT-690' })).toBeNull()
+		expect(
+			screen.getByRole('link', { name: 'NAT-690' }).getAttribute('href'),
+		).toBe('/tasks/nat-690')
+		expect(screen.getByText('Déjà traité : NAT-690')).toBeTruthy()
 	})
 
 	describe('agents tab', () => {

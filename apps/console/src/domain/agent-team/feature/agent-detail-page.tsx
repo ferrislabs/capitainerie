@@ -3,6 +3,7 @@ import { UserX } from 'lucide-react'
 import { useState } from 'react'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
+import { Notice, useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { Button } from '#/components/ui/button'
 import {
@@ -34,7 +35,6 @@ import {
 	InstructionsTab,
 } from '#/domain/agent-team/ui/instructions-tab'
 import { KeysTab } from '#/domain/agent-team/ui/keys-tab'
-import { Notice } from '#/domain/agent-team/ui/notice'
 import { OverviewTab } from '#/domain/agent-team/ui/overview-tab'
 import { PermsTab } from '#/domain/agent-team/ui/perms-tab'
 import { RevisionsTab } from '#/domain/agent-team/ui/revisions-tab'
@@ -48,7 +48,6 @@ import {
 	ancestorIds,
 	attachSource,
 	DEMO_CONNECTORS,
-	DEMO_TASKS,
 	type DemoAgent,
 	detachSource,
 	grantConnector,
@@ -85,7 +84,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 	const state = useDemoState((s) => s)
 	const config = useAgentConfig(agent.id)
 	const [draft, setDraft] = useState<AgentForm | null>(null)
-	const [message, setMessage] = useState<string>()
+	const [message, setMessage] = useNotice()
 	const [testResult, setTestResult] = useState<string>()
 
 	const base = buildForm(agent, state.reportsTo[agent.id] ?? null, config)
@@ -119,10 +118,9 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 	const removeSub = (subId: string) =>
 		setReportsTo(subId, short === HEAD_OF_TEAM ? null : HEAD_OF_TEAM)
 
-	const taskOf = (id: string) => DEMO_TASKS.find((t) => t.id === id)
-	const recent: DelegatedTask[] = DEMO_TASKS.filter(
-		(t) => t.parentId && taskOf(t.parentId)?.agentId === agent.id,
-	)
+	const taskOf = (id: string) => state.tasks.find((t) => t.id === id)
+	const recent: DelegatedTask[] = state.tasks
+		.filter((t) => t.parentId && taskOf(t.parentId)?.agentId === agent.id)
 		.slice(0, 6)
 		.map((task) => ({ task, assignee: byId(task.agentId) }))
 
@@ -131,7 +129,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 		.map((a) => shortName(a.name))
 
 	const openTasks = (id: string) =>
-		DEMO_TASKS.filter((t) => t.agentId === id && !CLOSED.has(t.status)).length
+		state.tasks.filter((t) => t.agentId === id && !CLOSED.has(t.status)).length
 
 	const showBar =
 		dirty &&
@@ -166,7 +164,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 					skills={config.skills}
 					paused={config.paused}
 					subCount={subIds.length}
-					tasks={DEMO_TASKS.filter((t) => t.agentId === agent.id).slice(0, 6)}
+					tasks={state.tasks.filter((t) => t.agentId === agent.id).slice(0, 6)}
 					onCopyKey={() => setMessage('Copié')}
 				/>
 			) : null}
