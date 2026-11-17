@@ -33,7 +33,7 @@ export function LinkCard({
 		<Link
 			to={to}
 			className={cn(
-				'flex min-w-0 flex-col gap-2 rounded-lg border bg-card p-4 text-card-foreground transition-colors duration-150',
+				'flex min-w-0 flex-col gap-1.5 rounded-lg border bg-card p-3 text-card-foreground transition-colors duration-150',
 				'hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
 				className,
 			)}
@@ -43,12 +43,12 @@ export function LinkCard({
 				{title}
 			</span>
 			{value !== undefined ? (
-				<span className="figures flex min-h-8 items-center text-2xl leading-tight font-semibold tracking-[-0.02em]">
+				<span className="figures flex min-h-7 items-center text-xl leading-tight font-semibold tracking-[-0.01em]">
 					{value}
 				</span>
 			) : null}
 			{hint ? (
-				<span className="text-[13px] text-muted-foreground">{hint}</span>
+				<span className="text-xs text-muted-foreground">{hint}</span>
 			) : null}
 		</Link>
 	)
