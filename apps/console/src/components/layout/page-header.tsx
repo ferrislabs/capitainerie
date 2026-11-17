@@ -16,18 +16,18 @@ export function PageHeader({
 	meta,
 }: Props) {
 	return (
-		<header className="flex flex-col gap-3 pb-2">
+		<header className="flex flex-col gap-2 pb-1">
 			{leading}
 			<div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-				<div className="flex min-w-0 flex-col gap-1.5">
+				<div className="flex min-w-0 flex-col gap-1">
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-						<h1 className="text-2xl leading-tight font-semibold tracking-[-0.02em]">
+						<h1 className="text-lg leading-tight font-semibold tracking-[-0.01em]">
 							{title}
 						</h1>
 						{meta}
 					</div>
 					{description ? (
-						<p className="max-w-[70ch] text-sm text-muted-foreground">
+						<p className="max-w-[70ch] text-[13px] text-muted-foreground">
 							{description}
 						</p>
 					) : null}
