@@ -203,6 +203,7 @@ describe('AppRail', () => {
 			'Sources',
 			'Connecteurs',
 			'Approbations',
+			'Tableau de bord',
 			'En cours',
 			'Audit',
 		]) {

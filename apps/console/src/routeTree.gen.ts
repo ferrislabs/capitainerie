@@ -19,6 +19,7 @@ import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLiveRouteImport } from './routes/_app.live'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
+import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppArtifactsRouteImport } from './routes/_app.artifacts'
 import { Route as AppApprovalsRouteImport } from './routes/_app.approvals'
@@ -97,6 +98,11 @@ const AppLiveRoute = AppLiveRouteImport.update({
 const AppKanbanRoute = AppKanbanRouteImport.update({
   id: '/kanban',
   path: '/kanban',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
 const AppClientsRoute = AppClientsRouteImport.update({
@@ -265,6 +271,7 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
   '/clients': typeof AppClientsRoute
+  '/dashboard': typeof AppDashboardRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
@@ -305,6 +312,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
   '/clients': typeof AppClientsRoute
+  '/dashboard': typeof AppDashboardRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
@@ -347,6 +355,7 @@ export interface FileRoutesById {
   '/_app/approvals': typeof AppApprovalsRoute
   '/_app/artifacts': typeof AppArtifactsRoute
   '/_app/clients': typeof AppClientsRoute
+  '/_app/dashboard': typeof AppDashboardRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/live': typeof AppLiveRoute
   '/_app/projects': typeof AppProjectsRoute
@@ -391,6 +400,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/artifacts'
     | '/clients'
+    | '/dashboard'
     | '/kanban'
     | '/live'
     | '/projects'
@@ -431,6 +441,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/artifacts'
     | '/clients'
+    | '/dashboard'
     | '/kanban'
     | '/live'
     | '/projects'
@@ -472,6 +483,7 @@ export interface FileRouteTypes {
     | '/_app/approvals'
     | '/_app/artifacts'
     | '/_app/clients'
+    | '/_app/dashboard'
     | '/_app/kanban'
     | '/_app/live'
     | '/_app/projects'
@@ -585,6 +597,13 @@ declare module '@tanstack/react-router' {
       path: '/kanban'
       fullPath: '/kanban'
       preLoaderRoute: typeof AppKanbanRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/clients': {
@@ -828,6 +847,7 @@ interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
   AppArtifactsRoute: typeof AppArtifactsRoute
   AppClientsRoute: typeof AppClientsRoute
+  AppDashboardRoute: typeof AppDashboardRoute
   AppKanbanRoute: typeof AppKanbanRoute
   AppLiveRoute: typeof AppLiveRoute
   AppProjectsRoute: typeof AppProjectsRoute
@@ -862,6 +882,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
   AppArtifactsRoute: AppArtifactsRoute,
   AppClientsRoute: AppClientsRoute,
+  AppDashboardRoute: AppDashboardRoute,
   AppKanbanRoute: AppKanbanRoute,
   AppLiveRoute: AppLiveRoute,
   AppProjectsRoute: AppProjectsRoute,

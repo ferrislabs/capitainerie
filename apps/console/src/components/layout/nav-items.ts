@@ -9,6 +9,7 @@ import {
 	House,
 	Inbox,
 	KeyRound,
+	LayoutDashboard,
 	ListChecks,
 	MessageSquare,
 	Play,
@@ -30,6 +31,7 @@ export interface NavItem {
 		| '/live'
 		| '/kanban'
 		| '/tasks'
+		| '/dashboard'
 		| '/clients'
 		| '/projects'
 		| '/routines'
@@ -82,6 +84,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 	{
 		label: 'Supervision',
 		items: [
+			{ to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
 			{ to: '/live', label: 'En cours', icon: Radio },
 			{ to: '/audit/{-$tab}', label: 'Audit', icon: History },
 		],
