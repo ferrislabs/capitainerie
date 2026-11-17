@@ -10,6 +10,7 @@ import {
 	Play,
 	Radio,
 	RadioTower,
+	Repeat,
 	SquareKanban,
 	Users,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ export interface NavItem {
 		| '/kanban'
 		| '/clients'
 		| '/projects'
+		| '/routines'
 		| '/agents'
 		| '/sources'
 		| '/settings/providers'
@@ -47,6 +49,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 			{ to: '/kanban', label: 'Kanban', icon: SquareKanban },
 			{ to: '/clients', label: 'Clients', icon: Users },
 			{ to: '/projects', label: 'Projets', icon: FolderKanban },
+			{ to: '/routines', label: 'Routines', icon: Repeat },
 		],
 	},
 	{
