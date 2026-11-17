@@ -60,10 +60,7 @@ export function ConnectorsTab({
 				title="Connecteurs de l'agent"
 				flush
 				actions={
-					<Link
-						to="/settings/integrations"
-						className="text-link hover:underline"
-					>
+					<Link to="/connectors/{-$tab}" className="text-link hover:underline">
 						Gérer les comptes
 					</Link>
 				}

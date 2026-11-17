@@ -19,6 +19,7 @@ import { AgentDetailPage } from '#/domain/agent-team/feature/agent-detail-page'
 import { demoStore, resetDemoState } from '#/domain/demo'
 
 const EXTRA = [
+	'/connectors/{-$tab}',
 	'/sources/$sourceId/{-$tab}',
 	'/agents/equipe',
 	'/agents/organigramme',

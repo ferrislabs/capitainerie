@@ -13,12 +13,15 @@ import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as DevUiRouteImport } from './routes/[_]dev.ui'
+import { Route as AppSkillsRouteImport } from './routes/_app.skills'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLiveRouteImport } from './routes/_app.live'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
+import { Route as AppArtifactsRouteImport } from './routes/_app.artifacts'
+import { Route as AppApprovalsRouteImport } from './routes/_app.approvals'
 import { Route as AppSourcesIndexRouteImport } from './routes/_app.sources.index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppRoutinesIndexRouteImport } from './routes/_app.routines.index'
@@ -30,8 +33,11 @@ import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.mo
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 import { Route as AppRoutinesNouvelleRouteImport } from './routes/_app.routines.nouvelle'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects_.$projectId'
+import { Route as AppInboxChar123TabChar125RouteImport } from './routes/_app.inbox.{-$tab}'
+import { Route as AppConnectorsChar123TabChar125RouteImport } from './routes/_app.connectors.{-$tab}'
 import { Route as AppClientsClientIdRouteImport } from './routes/_app.clients_.$clientId'
 import { Route as AppChatIdRouteImport } from './routes/_app.chat.$id'
+import { Route as AppAuditChar123TabChar125RouteImport } from './routes/_app.audit.{-$tab}'
 import { Route as AppAgentsOrganigrammeRouteImport } from './routes/_app.agents.organigramme'
 import { Route as AppAgentsNouveauRouteImport } from './routes/_app.agents.nouveau'
 import { Route as AppAgentsEquipeRouteImport } from './routes/_app.agents.equipe'
@@ -61,6 +67,11 @@ const DevUiRoute = DevUiRouteImport.update({
   path: '/_dev/ui',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppSkillsRoute = AppSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -89,6 +100,16 @@ const AppKanbanRoute = AppKanbanRouteImport.update({
 const AppClientsRoute = AppClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppArtifactsRoute = AppArtifactsRouteImport.update({
+  id: '/artifacts',
+  path: '/artifacts',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppApprovalsRoute = AppApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSourcesIndexRoute = AppSourcesIndexRouteImport.update({
@@ -146,6 +167,18 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   path: '/projects/$projectId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppInboxChar123TabChar125Route =
+  AppInboxChar123TabChar125RouteImport.update({
+    id: '/inbox/{-$tab}',
+    path: '/inbox/{-$tab}',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppConnectorsChar123TabChar125Route =
+  AppConnectorsChar123TabChar125RouteImport.update({
+    id: '/connectors/{-$tab}',
+    path: '/connectors/{-$tab}',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppClientsClientIdRoute = AppClientsClientIdRouteImport.update({
   id: '/clients_/$clientId',
   path: '/clients/$clientId',
@@ -156,6 +189,12 @@ const AppChatIdRoute = AppChatIdRouteImport.update({
   path: '/chat/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuditChar123TabChar125Route =
+  AppAuditChar123TabChar125RouteImport.update({
+    id: '/audit/{-$tab}',
+    path: '/audit/{-$tab}',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAgentsOrganigrammeRoute = AppAgentsOrganigrammeRouteImport.update({
   id: '/agents/organigramme',
   path: '/agents/organigramme',
@@ -211,18 +250,24 @@ const AppAgentsEquipeAgentIdChar123TabChar125Route =
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/callback': typeof CallbackRoute
+  '/approvals': typeof AppApprovalsRoute
+  '/artifacts': typeof AppArtifactsRoute
   '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/agents/equipe': typeof AppAgentsEquipeRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
   '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
+  '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
+  '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
+  '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
@@ -243,18 +288,24 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
+  '/approvals': typeof AppApprovalsRoute
+  '/artifacts': typeof AppArtifactsRoute
   '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
   '/runs': typeof AppRunsRoute
+  '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
   '/agents/equipe': typeof AppAgentsEquipeRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
   '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
+  '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
+  '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
+  '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
@@ -277,19 +328,25 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/callback': typeof CallbackRoute
+  '/_app/approvals': typeof AppApprovalsRoute
+  '/_app/artifacts': typeof AppArtifactsRoute
   '/_app/clients': typeof AppClientsRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/live': typeof AppLiveRoute
   '/_app/projects': typeof AppProjectsRoute
   '/_app/runs': typeof AppRunsRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
+  '/_app/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
   '/_app/agents/equipe': typeof AppAgentsEquipeRoute
   '/_app/agents/nouveau': typeof AppAgentsNouveauRoute
   '/_app/agents/organigramme': typeof AppAgentsOrganigrammeRoute
+  '/_app/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/_app/chat/$id': typeof AppChatIdRoute
   '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
+  '/_app/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
+  '/_app/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
   '/_app/projects_/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/_app/runs_/$runId': typeof AppRunsRunIdRoute
@@ -313,18 +370,24 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/callback'
+    | '/approvals'
+    | '/artifacts'
     | '/clients'
     | '/kanban'
     | '/live'
     | '/projects'
     | '/runs'
     | '/settings'
+    | '/skills'
     | '/_dev/ui'
     | '/agents/equipe'
     | '/agents/nouveau'
     | '/agents/organigramme'
+    | '/audit/{-$tab}'
     | '/chat/$id'
     | '/clients/$clientId'
+    | '/connectors/{-$tab}'
+    | '/inbox/{-$tab}'
     | '/projects/$projectId'
     | '/routines/nouvelle'
     | '/runs/$runId'
@@ -345,18 +408,24 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/callback'
+    | '/approvals'
+    | '/artifacts'
     | '/clients'
     | '/kanban'
     | '/live'
     | '/projects'
     | '/runs'
+    | '/skills'
     | '/_dev/ui'
     | '/'
     | '/agents/equipe'
     | '/agents/nouveau'
     | '/agents/organigramme'
+    | '/audit/{-$tab}'
     | '/chat/$id'
     | '/clients/$clientId'
+    | '/connectors/{-$tab}'
+    | '/inbox/{-$tab}'
     | '/projects/$projectId'
     | '/routines/nouvelle'
     | '/runs/$runId'
@@ -378,19 +447,25 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/callback'
+    | '/_app/approvals'
+    | '/_app/artifacts'
     | '/_app/clients'
     | '/_app/kanban'
     | '/_app/live'
     | '/_app/projects'
     | '/_app/runs'
     | '/_app/settings'
+    | '/_app/skills'
     | '/_dev/ui'
     | '/_app/'
     | '/_app/agents/equipe'
     | '/_app/agents/nouveau'
     | '/_app/agents/organigramme'
+    | '/_app/audit/{-$tab}'
     | '/_app/chat/$id'
     | '/_app/clients_/$clientId'
+    | '/_app/connectors/{-$tab}'
+    | '/_app/inbox/{-$tab}'
     | '/_app/projects_/$projectId'
     | '/_app/routines/nouvelle'
     | '/_app/runs_/$runId'
@@ -446,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevUiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/skills': {
+      id: '/_app/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof AppSkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -486,6 +568,20 @@ declare module '@tanstack/react-router' {
       path: '/clients'
       fullPath: '/clients'
       preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/artifacts': {
+      id: '/_app/artifacts'
+      path: '/artifacts'
+      fullPath: '/artifacts'
+      preLoaderRoute: typeof AppArtifactsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/approvals': {
+      id: '/_app/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof AppApprovalsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/sources/': {
@@ -565,6 +661,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/inbox/{-$tab}': {
+      id: '/_app/inbox/{-$tab}'
+      path: '/inbox/{-$tab}'
+      fullPath: '/inbox/{-$tab}'
+      preLoaderRoute: typeof AppInboxChar123TabChar125RouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/connectors/{-$tab}': {
+      id: '/_app/connectors/{-$tab}'
+      path: '/connectors/{-$tab}'
+      fullPath: '/connectors/{-$tab}'
+      preLoaderRoute: typeof AppConnectorsChar123TabChar125RouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/clients_/$clientId': {
       id: '/_app/clients_/$clientId'
       path: '/clients/$clientId'
@@ -577,6 +687,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/$id'
       fullPath: '/chat/$id'
       preLoaderRoute: typeof AppChatIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/audit/{-$tab}': {
+      id: '/_app/audit/{-$tab}'
+      path: '/audit/{-$tab}'
+      fullPath: '/audit/{-$tab}'
+      preLoaderRoute: typeof AppAuditChar123TabChar125RouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/agents/organigramme': {
@@ -670,18 +787,24 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppApprovalsRoute: typeof AppApprovalsRoute
+  AppArtifactsRoute: typeof AppArtifactsRoute
   AppClientsRoute: typeof AppClientsRoute
   AppKanbanRoute: typeof AppKanbanRoute
   AppLiveRoute: typeof AppLiveRoute
   AppProjectsRoute: typeof AppProjectsRoute
   AppRunsRoute: typeof AppRunsRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
+  AppSkillsRoute: typeof AppSkillsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsEquipeRoute: typeof AppAgentsEquipeRoute
   AppAgentsNouveauRoute: typeof AppAgentsNouveauRoute
   AppAgentsOrganigrammeRoute: typeof AppAgentsOrganigrammeRoute
+  AppAuditChar123TabChar125Route: typeof AppAuditChar123TabChar125Route
   AppChatIdRoute: typeof AppChatIdRoute
   AppClientsClientIdRoute: typeof AppClientsClientIdRoute
+  AppConnectorsChar123TabChar125Route: typeof AppConnectorsChar123TabChar125Route
+  AppInboxChar123TabChar125Route: typeof AppInboxChar123TabChar125Route
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
   AppRoutinesNouvelleRoute: typeof AppRoutinesNouvelleRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
@@ -696,18 +819,24 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppApprovalsRoute: AppApprovalsRoute,
+  AppArtifactsRoute: AppArtifactsRoute,
   AppClientsRoute: AppClientsRoute,
   AppKanbanRoute: AppKanbanRoute,
   AppLiveRoute: AppLiveRoute,
   AppProjectsRoute: AppProjectsRoute,
   AppRunsRoute: AppRunsRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
+  AppSkillsRoute: AppSkillsRoute,
   AppIndexRoute: AppIndexRoute,
   AppAgentsEquipeRoute: AppAgentsEquipeRoute,
   AppAgentsNouveauRoute: AppAgentsNouveauRoute,
   AppAgentsOrganigrammeRoute: AppAgentsOrganigrammeRoute,
+  AppAuditChar123TabChar125Route: AppAuditChar123TabChar125Route,
   AppChatIdRoute: AppChatIdRoute,
   AppClientsClientIdRoute: AppClientsClientIdRoute,
+  AppConnectorsChar123TabChar125Route: AppConnectorsChar123TabChar125Route,
+  AppInboxChar123TabChar125Route: AppInboxChar123TabChar125Route,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
   AppRoutinesNouvelleRoute: AppRoutinesNouvelleRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
