@@ -52,10 +52,9 @@ describe('agent wizard', () => {
 		await user.click(next())
 
 		expect(
-			screen
-				.getByRole('checkbox', { name: 'Chatwoot' })
-				.getAttribute('aria-checked'),
-		).toBe('false')
+			(screen.getByRole('checkbox', { name: 'Chatwoot' }) as HTMLInputElement)
+				.checked,
+		).toBe(false)
 		expect(screen.queryByRole('checkbox', { name: 'E-mail' })).toBeNull()
 		await user.type(screen.getByLabelText('Titre'), 'Relais')
 		await user.click(screen.getByRole('checkbox', { name: 'Chatwoot' }))
@@ -64,7 +63,7 @@ describe('agent wizard', () => {
 		)
 		await user.click(next())
 
-		expect(screen.getByText('Darnold')).toBeTruthy()
+		expect(screen.getAllByText('Darnold')).toHaveLength(2)
 		expect(screen.queryByText('Aucun (accès refusé)')).toBeNull()
 		expect(screen.getByText('Chatwoot')).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: "Tester l'agent" }))

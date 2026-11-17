@@ -1,9 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
+import { CTL } from '#/domain/agent-team/ui/field-row'
+import { HumanAvatar } from '#/domain/agent-team/ui/human-avatar'
+import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { Sev } from '#/domain/agent-team/ui/sev'
 import type { DemoSource } from '#/domain/demo'
 
 interface Props {
@@ -20,40 +22,40 @@ export function SourcesTab({ listened, available, onDetach, onAttach }: Props) {
 		: available[0]?.id
 	const first = listened[0]
 	return (
-		<div className="flex flex-col gap-4">
-			<SectionCard title="Sources écoutées" flush>
+		<>
+			<SectionCard
+				title="Sources écoutées"
+				flush
+				actions={<Link to="/sources/nouvelle">Nouvelle source</Link>}
+			>
 				{listened.length === 0 ? (
-					<p className="px-3 py-4 text-muted-foreground">
-						Cet agent n'écoute aucune source. Il ne se réveille que sur planning
-						ou sur assignation manuelle.
-					</p>
+					<Empty title="Cet agent n'écoute aucune source">
+						Il ne se réveille que sur planning ou sur assignation manuelle.
+					</Empty>
 				) : (
-					<ul className="divide-y">
+					<Rows>
 						{listened.map((source) => (
-							<li
-								key={source.id}
-								className="flex items-center gap-3 px-3 py-2.5"
-							>
-								<span className="min-w-0 flex-1">
-									<b className="block truncate font-medium">
+							<div key={source.id} className={ROW}>
+								<HumanAvatar initials={source.type.slice(0, 3)} size={30} />
+								<Ttl
+									title={
 										<Link
 											to="/sources/$sourceId/{-$tab}"
 											params={{ sourceId: source.id }}
-											className="hover:underline"
+											className="text-foreground"
 										>
 											{source.name}
 										</Link>
-									</b>
-									<span className="block truncate font-mono text-xs text-muted-foreground">
-										{source.patterns.join('  ') || '—'}
-									</span>
-								</span>
-								<span className="text-xs text-muted-foreground">
+									}
+									sub={source.patterns.join('  ') || '—'}
+									subMono
+								/>
+								<span className="whitespace-nowrap text-muted-foreground tabular-nums">
 									{source.eventsLast24h} / 24 h
 								</span>
-								<Badge variant={source.enabled ? 'success' : 'neutral'}>
+								<Sev tone={source.enabled ? 'ok' : 'info'}>
 									{source.enabled ? 'Active' : 'En pause'}
-								</Badge>
+								</Sev>
 								<Button
 									type="button"
 									variant="outline"
@@ -63,20 +65,21 @@ export function SourcesTab({ listened, available, onDetach, onAttach }: Props) {
 								>
 									Arrêter d'écouter
 								</Button>
-							</li>
+							</div>
 						))}
-					</ul>
+					</Rows>
 				)}
 			</SectionCard>
-			<SectionCard title="Écouter une autre source">
+			<SectionCard title="Écouter une autre source" flush>
 				{available.length === 0 ? (
-					<p className="text-muted-foreground">
+					<p className="m-0 p-3 text-muted-foreground">
 						Toutes les sources existantes sont déjà écoutées.
 					</p>
 				) : (
-					<div className="flex gap-2">
-						<NativeSelect
+					<div className="flex gap-1.5 px-3 pt-3 pb-3">
+						<select
 							aria-label="Source"
+							className={CTL}
 							value={selected}
 							onChange={(event) => setChosen(event.target.value)}
 						>
@@ -85,7 +88,7 @@ export function SourcesTab({ listened, available, onDetach, onAttach }: Props) {
 									{source.name} ({source.type})
 								</option>
 							))}
-						</NativeSelect>
+						</select>
 						<Button
 							type="button"
 							disabled={!selected}
@@ -98,25 +101,23 @@ export function SourcesTab({ listened, available, onDetach, onAttach }: Props) {
 			</SectionCard>
 			{first ? (
 				<SectionCard title="À chaque événement" flush>
-					<ul className="divide-y">
-						<li className="px-3 py-2.5">
-							<b className="block font-medium">
-								À chaque événement : une tâche est créée et assignée à cet agent
-							</b>
-							<span className="font-mono text-xs text-muted-foreground">
-								{first.template}
-							</span>
-						</li>
-						<li className="px-3 py-2.5">
-							<b className="block font-medium">Réveil immédiat</b>
-							<span className="text-xs text-muted-foreground">
-								L'agent n'attend pas son prochain heartbeat. Les doublons sont
-								ignorés pendant {first.dedupe}.
-							</span>
-						</li>
-					</ul>
+					<Rows>
+						<div className={ROW}>
+							<Ttl
+								title="Une tâche est créée et assignée à cet agent"
+								sub={first.template}
+								subMono
+							/>
+						</div>
+						<div className={ROW}>
+							<Ttl
+								title="Réveil immédiat"
+								sub={`L'agent n'attend pas son prochain heartbeat. Les doublons sont ignorés pendant ${first.dedupe}.`}
+							/>
+						</div>
+					</Rows>
 				</SectionCard>
 			) : null}
-		</div>
+		</>
 	)
 }

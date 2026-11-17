@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { FileText } from 'lucide-react'
+import { FileText, Plus } from 'lucide-react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
-import { Textarea } from '#/components/ui/textarea'
+import { CTL } from '#/domain/agent-team/ui/field-row'
 import { cn } from '#/lib/utils'
 
 export type InstructionsMode = 'lire' | 'editer' | 'brut'
@@ -18,58 +17,53 @@ interface Props {
 	mode: InstructionsMode
 	instr: string
 	onChange: (instr: string) => void
+	onNotify: (message: string) => void
 }
 
-function Rendered({ text }: { text: string }) {
+const DOC =
+	'm-0 whitespace-pre-wrap px-3.5 py-3 font-[inherit] leading-[1.4] [overflow-wrap:anywhere]'
+
+export function InstructionsTab({
+	agentId,
+	mode,
+	instr,
+	onChange,
+	onNotify,
+}: Props) {
 	return (
-		<div className="flex flex-col gap-1.5 p-3">
-			{text.split('\n').map((line, index) => {
-				const key = `${index}-${line}`
-				if (!line.trim()) return null
-				if (line.startsWith('## '))
-					return (
-						<h3 key={key} className="mt-2 text-[13px] font-semibold">
-							{line.slice(3)}
-						</h3>
-					)
-				if (line.startsWith('# '))
-					return (
-						<h2 key={key} className="text-base font-semibold">
-							{line.slice(2)}
-						</h2>
-					)
-				return (
-					<p
-						key={key}
-						className={cn(
-							/^(- |\d+\. )/.test(line) && 'pl-3 text-muted-foreground',
-						)}
+		<div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-2.5">
+			<SectionCard
+				title="Fichiers"
+				flush
+				actions={
+					<button
+						type="button"
+						aria-label="Ajouter"
+						onClick={() => onNotify("Nouveau fichier d'instructions")}
+						className="grid size-[22px] place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
 					>
-						{line}
-					</p>
-				)
-			})}
-		</div>
-	)
-}
-
-export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
-	return (
-		<div className="grid gap-4 lg:grid-cols-[12.5rem_minmax(0,1fr)]">
-			<SectionCard title="Fichiers" flush>
-				<div className="flex items-center gap-2 px-3 py-2">
-					<FileText aria-hidden="true" className="size-4" />
-					AGENTS.md
-					<Badge variant="muted" className="ml-auto">
-						entrée
-					</Badge>
+						<Plus aria-hidden="true" className="size-4" />
+					</button>
+				}
+			>
+				<div className="grid content-start gap-0.5 p-2">
+					<div className="flex h-7 items-center gap-[7px] rounded-md bg-secondary px-2 text-left">
+						<FileText aria-hidden="true" className="size-4" />
+						AGENTS.md
+						<span className="ml-auto rounded-lg bg-secondary px-1.5 text-[11px] leading-4 tabular-nums">
+							entrée
+						</span>
+					</div>
 				</div>
 			</SectionCard>
 			<SectionCard
 				title="AGENTS.md"
 				flush
 				actions={
-					<nav aria-label="Mode d'affichage" className="flex gap-1">
+					<nav
+						aria-label="Mode d'affichage"
+						className="inline-flex overflow-hidden rounded-md border"
+					>
 						{MODES.map((m) => (
 							<Link
 								key={m.id}
@@ -78,8 +72,8 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 								search={{ mode: m.id }}
 								aria-current={m.id === mode ? 'page' : undefined}
 								className={cn(
-									'rounded-md px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground',
-									m.id === mode && 'bg-accent text-foreground',
+									'grid h-7 place-items-center bg-card px-2.5 text-xs text-primary',
+									m.id === mode && 'bg-secondary text-foreground',
 								)}
 							>
 								{m.label}
@@ -90,20 +84,18 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 			>
 				{mode === 'editer' ? (
 					<div className="p-2.5">
-						<Textarea
+						<textarea
 							aria-label="Instructions"
-							className="font-mono"
+							className={cn(CTL, 'font-mono text-[11.5px]')}
 							rows={16}
 							value={instr}
 							onChange={(event) => onChange(event.target.value)}
 						/>
 					</div>
 				) : mode === 'brut' ? (
-					<pre className="overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
-						{instr}
-					</pre>
+					<pre className={DOC}>{instr}</pre>
 				) : (
-					<Rendered text={instr} />
+					<div className={DOC}>{instr}</div>
 				)}
 			</SectionCard>
 		</div>

@@ -29,7 +29,6 @@ const STORE_FIELDS: ReadonlyArray<StoreField> = [
 	'reports',
 ]
 
-/** Enregistre le formulaire et renvoie les champs modifiés ; une révision est ajoutée s'il y en a. */
 export function saveAgentForm(
 	agentId: string,
 	next: AgentForm,

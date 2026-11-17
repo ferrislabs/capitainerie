@@ -37,14 +37,19 @@ describe('team list and org chart', () => {
 	it('lists the team with banner, tabs and a new-agent link', async () => {
 		updateAgent('dev', { status: 'running' })
 		await renderAtPath(<AgentTeamPage />, '/agents', EXTRA)
-		expect(await screen.findByRole('heading', { name: 'Équipe' })).toBeTruthy()
+		expect(await screen.findByRole('heading', { name: 'Agents' })).toBeTruthy()
 		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
 		const nav = screen.getByRole('navigation', { name: 'Sections des agents' })
 		expect(
 			within(nav)
-				.getByRole('link', { name: 'Équipe' })
+				.getByRole('link', { name: 'Tous' })
 				.getAttribute('aria-current'),
 		).toBe('page')
+		expect(
+			within(nav)
+				.getByRole('link', { name: 'Organigramme' })
+				.getAttribute('href'),
+		).toBe('/agents/organigramme')
 		expect(
 			screen.getByRole('link', { name: /Nouvel agent/ }).getAttribute('href'),
 		).toBe('/agents/nouveau')
@@ -54,6 +59,22 @@ describe('team list and org chart', () => {
 		expect(screen.getAllByText('inactif').length).toBeGreaterThan(5)
 		const link = screen.getByRole('link', { name: 'Configurer Chief of Staff' })
 		expect(link.getAttribute('href')).toBe('/agents/chief-of-staff')
+	})
+
+	it('filters running agents and shows the empty state for paused ones', async () => {
+		const { unmount } = await renderAtPath(
+			<AgentTeamPage filter="actifs" />,
+			'/agents',
+			EXTRA,
+		)
+		expect(await screen.findAllByText('en cours')).toHaveLength(
+			demoStore.state.agents.filter((a) => a.status === 'running').length,
+		)
+		expect(screen.queryByText('inactif')).toBeNull()
+		unmount()
+		await renderAtPath(<AgentTeamPage filter="erreur" />, '/agents', EXTRA)
+		expect(await screen.findByText('Aucun agent')).toBeTruthy()
+		expect(screen.getByText(/Aucun agent erreur pour l'instant/)).toBeTruthy()
 	})
 
 	it('shows agents created during the session', async () => {
@@ -79,9 +100,12 @@ describe('team list and org chart', () => {
 
 	it('draws the org chart with sub-agent counts', async () => {
 		await renderAtPath(<OrgChartPage />, '/agents/organigramme', EXTRA)
+		expect(await screen.findByRole('heading', { name: 'Agents' })).toBeTruthy()
 		expect(
-			await screen.findByRole('heading', { name: 'Organigramme' }),
-		).toBeTruthy()
+			screen
+				.getByRole('link', { name: 'Organigramme' })
+				.getAttribute('aria-current'),
+		).toBe('page')
 		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
 		expect(screen.getByText('2 sous-agents')).toBeTruthy()
 		expect(screen.getAllByText(/peut déléguer/).length).toBeGreaterThan(0)

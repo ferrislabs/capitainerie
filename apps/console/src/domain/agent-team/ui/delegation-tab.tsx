@@ -1,16 +1,15 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { Switch } from '#/components/ui/switch'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
-import { FieldRow } from '#/domain/agent-team/ui/field-row'
+import { CTL, FieldRow, Note } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
+import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { TaskLine } from '#/domain/agent-team/ui/task-line'
+import { Toggle } from '#/domain/agent-team/ui/toggle'
 import type { DemoAgent, DemoTask } from '#/domain/demo'
-import { taskPathId } from '#/domain/tasks/task-ids'
 
 export interface SubAgentEntry {
 	agent: DemoAgent
@@ -32,18 +31,33 @@ interface Props {
 	onChange: (patch: Partial<AgentForm>) => void
 	onRemove: (subId: string) => void
 	onAdd: (subId: string) => void
+	onAssign: (sub: DemoAgent) => void
 }
 
-function AgentLink({ agent, size }: { agent: DemoAgent; size: number }) {
+function Choice({
+	label,
+	hint,
+	value,
+	values,
+	onChange,
+}: {
+	label: string
+	hint?: string
+	value: string
+	values: ReadonlyArray<string>
+	onChange: (value: string) => void
+}) {
 	return (
-		<Link
-			to="/agents/$agentId/{-$tab}"
-			params={{ agentId: agent.id }}
-			className="flex min-w-0 items-center gap-2 hover:underline"
-		>
-			<AgentAvatar name={agent.name} hue={agent.hue} size={size} />
-			<span className="truncate font-medium">{agent.name}</span>
-		</Link>
+		<FieldRow label={label} hint={hint}>
+			<select
+				aria-label={label}
+				className={CTL}
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+			>
+				<Options values={values} />
+			</select>
+		</FieldRow>
 	)
 }
 
@@ -57,6 +71,7 @@ export function DelegationTab({
 	onChange,
 	onRemove,
 	onAdd,
+	onAssign,
 }: Props) {
 	const [chosen, setChosen] = useState<string>()
 	const selected = candidates.some((c) => c.id === chosen)
@@ -64,74 +79,91 @@ export function DelegationTab({
 		: candidates[0]?.id
 	const parent = ancestors[0]
 	return (
-		<div className="flex flex-col gap-4">
+		<>
 			<SectionCard
 				title="Place dans l'organisation"
 				flush
-				actions={
-					<Link to="/agents/organigramme" className="text-link hover:underline">
-						Organigramme complet
-					</Link>
-				}
+				actions={<Link to="/agents/organigramme">Organigramme complet</Link>}
 			>
-				<ul className="divide-y">
-					<li className="flex items-center gap-2 px-3 py-2">
-						{parent ? (
-							<>
-								<AgentLink agent={parent} size={24} />
-								<span className="text-xs text-muted-foreground">
-									Agent parent
-								</span>
-							</>
-						) : (
-							<>
-								<b className="font-medium">Aucun agent parent</b>
-								<span className="text-xs text-muted-foreground">Direction</span>
-							</>
-						)}
-					</li>
-					<li className="flex items-center gap-2 py-2 pr-3 pl-8">
-						<span aria-hidden="true" className="text-muted-foreground">
+				<Rows>
+					{parent ? (
+						<Link
+							to="/agents/$agentId/{-$tab}"
+							params={{ agentId: parent.id }}
+							className={ROW}
+						>
+							<AgentAvatar hue={parent.hue} size={24} />
+							<Ttl title={parent.name} sub="Rapporte à lui · agent parent" />
+						</Link>
+					) : (
+						<div className={ROW}>
+							<Ttl title="Aucun agent parent" sub="Direction" />
+						</div>
+					)}
+					<div className={ROW} style={{ paddingLeft: 34 }}>
+						<span aria-hidden="true" className="text-faint">
 							↳
 						</span>
-						<AgentAvatar name={agent.name} hue={agent.hue} size={24} />
-						<b className="font-medium">{agent.name}</b>
-						<span className="text-xs text-muted-foreground">Cet agent</span>
-					</li>
+						<AgentAvatar hue={agent.hue} size={24} />
+						<Ttl title={agent.name} sub="Cet agent" />
+					</div>
 					{subs.map(({ agent: sub }) => (
-						<li
+						<Link
 							key={sub.id}
-							className="flex items-center gap-2 py-2 pr-3 pl-14"
+							to="/agents/$agentId/{-$tab}"
+							params={{ agentId: sub.id }}
+							className={ROW}
+							style={{ paddingLeft: 56 }}
 						>
-							<span aria-hidden="true" className="text-muted-foreground">
+							<span aria-hidden="true" className="text-faint">
 								↳
 							</span>
-							<AgentLink agent={sub} size={22} />
-							<span className="text-xs text-muted-foreground">{sub.role}</span>
-						</li>
+							<AgentAvatar hue={sub.hue} size={22} />
+							<Ttl title={sub.name} sub={sub.role} />
+						</Link>
 					))}
-				</ul>
+				</Rows>
 			</SectionCard>
 
-			<SectionCard title="Sous-agents" flush>
+			<SectionCard
+				title="Sous-agents"
+				flush
+				actions={<Link to="/agents/nouveau">Créer un sous-agent</Link>}
+			>
 				{subs.length === 0 ? (
-					<p className="px-3 py-4 text-muted-foreground">
-						Aucun sous-agent. Cet agent fait tout lui-même. Ajoute-en un pour
-						lui permettre de déléguer.
-					</p>
+					<Empty title="Aucun sous-agent">
+						Cet agent fait tout lui-même. Ajoute-en un pour lui permettre de
+						déléguer.
+					</Empty>
 				) : (
-					<ul className="divide-y">
+					<Rows>
 						{subs.map(({ agent: sub, openTasks }) => (
-							<li key={sub.id} className="flex items-center gap-3 px-3 py-2.5">
-								<span className="min-w-0 flex-1">
-									<AgentLink agent={sub} size={28} />
-									<span className="block truncate pl-9 text-xs text-muted-foreground">
-										{sub.description}
-									</span>
-								</span>
-								<span className="whitespace-nowrap text-muted-foreground">
+							<div key={sub.id} className={ROW}>
+								<AgentAvatar hue={sub.hue} size={28} />
+								<Ttl
+									title={
+										<Link
+											to="/agents/$agentId/{-$tab}"
+											params={{ agentId: sub.id }}
+											className="text-foreground"
+										>
+											{sub.name}
+										</Link>
+									}
+									sub={sub.description}
+								/>
+								<span className="whitespace-nowrap text-muted-foreground tabular-nums">
 									{openTasks} {openTasks > 1 ? 'ouvertes' : 'ouverte'}
 								</span>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									aria-label={`Assigner ${sub.name}`}
+									onClick={() => onAssign(sub)}
+								>
+									Assigner
+								</Button>
 								<Button
 									type="button"
 									variant="outline"
@@ -141,20 +173,18 @@ export function DelegationTab({
 								>
 									Retirer
 								</Button>
-							</li>
+							</div>
 						))}
-					</ul>
+					</Rows>
 				)}
 			</SectionCard>
 
 			{candidates.length > 0 ? (
-				<SectionCard
-					title="Ajouter un sous-agent"
-					description="Il rapportera à cet agent à la place de son parent actuel."
-				>
-					<div className="flex gap-2">
-						<NativeSelect
+				<SectionCard title="Ajouter un sous-agent" flush>
+					<div className="flex gap-1.5 px-3 pt-3 pb-3">
+						<select
 							aria-label="Agent à ajouter"
+							className={CTL}
 							value={selected}
 							onChange={(event) => setChosen(event.target.value)}
 						>
@@ -163,7 +193,7 @@ export function DelegationTab({
 									{c.name}
 								</option>
 							))}
-						</NativeSelect>
+						</select>
 						<Button
 							type="button"
 							disabled={!selected}
@@ -172,6 +202,9 @@ export function DelegationTab({
 							Ajouter
 						</Button>
 					</div>
+					<Note>
+						Il rapportera à cet agent à la place de son parent actuel.
+					</Note>
 				</SectionCard>
 			) : null}
 
@@ -180,121 +213,82 @@ export function DelegationTab({
 					label="Peut déléguer"
 					hint="Crée des sous-tâches pour ses sous-agents"
 				>
-					<Switch
-						aria-label="Peut déléguer"
+					<Toggle
+						label="Peut déléguer"
 						checked={form.canDeleg}
-						onCheckedChange={(canDeleg) => onChange({ canDeleg })}
+						onChange={(canDeleg) => onChange({ canDeleg })}
 					/>
 				</FieldRow>
-				<FieldRow label="Délègue à">
-					<NativeSelect
-						aria-label="Délègue à"
-						value={form.dScope}
-						onChange={(event) => onChange({ dScope: event.target.value })}
-					>
-						<Options
-							values={[
-								'Équipe directe',
-								'Équipe et sous-équipes',
-								"Toute l'organisation",
-							]}
-						/>
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow
+				<Choice
+					label="Délègue à"
+					value={form.dScope}
+					values={[
+						'Équipe directe',
+						'Équipe et sous-équipes',
+						"Toute l'organisation",
+					]}
+					onChange={(dScope) => onChange({ dScope })}
+				/>
+				<Choice
 					label="Profondeur maximale"
 					hint="Un sous-agent peut-il déléguer à son tour"
-				>
-					<NativeSelect
-						aria-label="Profondeur maximale"
-						value={form.dDepth}
-						onChange={(event) => onChange({ dDepth: event.target.value })}
-					>
-						<Options values={['1', '2', '3']} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Sous-tâches en parallèle">
-					<NativeSelect
-						aria-label="Sous-tâches en parallèle"
-						value={form.dPar}
-						onChange={(event) => onChange({ dPar: event.target.value })}
-					>
-						<Options values={['1', '2', '3', '5', '10']} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Budget par sous-tâche" hint="Plafond de dépense API">
-					<NativeSelect
-						aria-label="Budget par sous-tâche"
-						value={form.dBudget}
-						onChange={(event) => onChange({ dBudget: event.target.value })}
-					>
-						<Options values={['1 $', '5 $', '10 $', 'Illimité']} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Résultats relus par">
-					<NativeSelect
-						aria-label="Résultats relus par"
-						value={form.dReview}
-						onChange={(event) => onChange({ dReview: event.target.value })}
-					>
-						<Options
-							values={['Aucun (automatique)', "L'agent parent", 'Une personne']}
-						/>
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Si un sous-agent échoue">
-					<NativeSelect
-						aria-label="Si un sous-agent échoue"
-						value={form.dFail}
-						onChange={(event) => onChange({ dFail: event.target.value })}
-					>
-						<Options
-							values={[
-								'Réessayer 2 fois',
-								"Remonter à l'agent parent",
-								'Bloquer la tâche parente',
-							]}
-						/>
-					</NativeSelect>
-				</FieldRow>
-				<p className="border-t px-3 py-2.5 text-muted-foreground">
+					value={form.dDepth}
+					values={['1', '2', '3']}
+					onChange={(dDepth) => onChange({ dDepth })}
+				/>
+				<Choice
+					label="Sous-tâches en parallèle"
+					value={form.dPar}
+					values={['1', '2', '3', '5', '10']}
+					onChange={(dPar) => onChange({ dPar })}
+				/>
+				<Choice
+					label="Budget par sous-tâche"
+					hint="Plafond de dépense API"
+					value={form.dBudget}
+					values={['1 $', '5 $', '10 $', 'Illimité']}
+					onChange={(dBudget) => onChange({ dBudget })}
+				/>
+				<Choice
+					label="Résultats relus par"
+					value={form.dReview}
+					values={['Aucun (automatique)', "L'agent parent", 'Une personne']}
+					onChange={(dReview) => onChange({ dReview })}
+				/>
+				<Choice
+					label="Si un sous-agent échoue"
+					value={form.dFail}
+					values={[
+						'Réessayer 2 fois',
+						"Remonter à l'agent parent",
+						'Bloquer la tâche parente',
+					]}
+					onChange={(dFail) => onChange({ dFail })}
+				/>
+				<Note>
 					La tâche parente reste ouverte tant que ses sous-tâches le sont. Un
 					sous-agent n'hérite d'aucun connecteur de son parent : chaque accès
 					s'autorise séparément.
-				</p>
+				</Note>
 			</SectionCard>
 
 			<SectionCard title="Sous-tâches déléguées récemment" flush>
 				{recent.length === 0 ? (
-					<p className="px-3 py-4 text-muted-foreground">Aucune délégation.</p>
+					<Empty title="Aucune délégation" />
 				) : (
-					<ul className="divide-y">
+					<Rows>
 						{recent.map(({ task, assignee }) => (
-							<li key={task.id} className="flex items-center gap-2 px-3 py-2">
-								<Link
-									to="/tasks/$taskId"
-									params={{ taskId: taskPathId(task.id) }}
-								>
-									<Badge variant="outline">{task.id}</Badge>
-								</Link>
-								<span className="min-w-0 flex-1">
-									<b className="block truncate font-medium">{task.title}</b>
-									<span className="text-xs text-muted-foreground">
-										Parent {task.parentId}
-									</span>
-								</span>
-								{assignee ? (
-									<AgentAvatar
-										name={assignee.name}
-										hue={assignee.hue}
-										size={20}
-									/>
-								) : null}
-							</li>
+							<TaskLine
+								key={task.id}
+								task={task}
+								assignee={assignee}
+								sub={`Parent ${task.parentId}`}
+								showName={false}
+							/>
 						))}
-					</ul>
+					</Rows>
 				)}
 			</SectionCard>
-		</div>
+		</>
 	)
 }

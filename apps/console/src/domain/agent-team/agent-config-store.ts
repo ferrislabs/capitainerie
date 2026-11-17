@@ -21,7 +21,6 @@ function subscribe(listener: () => void) {
 	}
 }
 
-/** Créée à la première lecture, depuis les valeurs par défaut de l'agent. */
 export function getAgentConfig(id: string): AgentConfig {
 	const existing = configs.get(id)
 	if (existing) return existing

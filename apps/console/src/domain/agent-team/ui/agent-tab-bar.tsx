@@ -8,35 +8,52 @@ interface Props {
 }
 
 const TAB_CLASS =
-	'-mb-px whitespace-nowrap border-b-2 border-transparent px-2.5 py-1.5 font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+	'-mb-px inline-block whitespace-nowrap border-b-2 border-transparent px-2.5 py-[7px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+
+const AUDIT_LINKS = [
+	{ slug: 'activite', label: 'Activité' },
+	{ slug: 'runs', label: 'Exécutions' },
+	{ slug: 'couts', label: 'Coûts' },
+	{ slug: 'budgets', label: 'Budgets' },
+] as const
 
 export function AgentTabBar({ agentId, active }: Props) {
 	return (
 		<nav
 			aria-label="Sections de l'agent"
-			className="flex items-center gap-0.5 overflow-x-auto border-b"
+			className="mb-3.5 flex gap-0.5 overflow-x-auto border-b"
 		>
-			{AGENT_TABS.map((tab) => (
+			{AGENT_TABS.map((tab) => {
+				const props = {
+					'aria-current': tab.id === active ? ('page' as const) : undefined,
+				}
+				return (
+					<Link
+						key={tab.id}
+						to="/agents/$agentId/{-$tab}"
+						params={{ agentId, tab: tab.id }}
+						activeProps={props}
+						inactiveProps={props}
+						className={cn(
+							TAB_CLASS,
+							tab.id === active && 'border-primary text-foreground',
+						)}
+					>
+						{tab.label}
+					</Link>
+				)
+			})}
+			<span className="min-w-3 flex-1" />
+			{AUDIT_LINKS.map((link) => (
 				<Link
-					key={tab.id}
-					to="/agents/$agentId/{-$tab}"
-					params={{ agentId, tab: tab.id }}
-					aria-current={tab.id === active ? 'page' : undefined}
-					className={cn(
-						TAB_CLASS,
-						tab.id === active && 'border-primary text-foreground',
-					)}
+					key={link.slug}
+					to="/audit/{-$tab}"
+					params={{ tab: link.slug }}
+					className={TAB_CLASS}
 				>
-					{tab.label}
+					{link.label}
 				</Link>
 			))}
-			<span className="flex-1" />
-			<Link to="/audit/{-$tab}" params={{ tab: 'runs' }} className={TAB_CLASS}>
-				Exécutions
-			</Link>
-			<Link to="/audit/{-$tab}" params={{ tab: 'couts' }} className={TAB_CLASS}>
-				Coûts
-			</Link>
 		</nav>
 	)
 }

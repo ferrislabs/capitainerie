@@ -1,7 +1,8 @@
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import type { Revision } from '#/domain/agent-team/agent-config'
+import { ROW, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
+import { Sev } from '#/domain/agent-team/ui/sev'
 
 interface Props {
 	revisions: ReadonlyArray<Revision>
@@ -11,21 +12,18 @@ interface Props {
 export function RevisionsTab({ revisions, onRestore }: Props) {
 	return (
 		<SectionCard title="Révisions" flush>
-			<ul className="divide-y">
+			<Rows>
 				{revisions.map((revision, index) => (
-					<li
-						key={revision.label}
-						className="flex items-center gap-3 px-3 py-2.5"
-					>
-						<Badge variant="outline">{revision.label}</Badge>
-						<span className="min-w-0 flex-1">
-							<b className="block font-medium">Modifié : {revision.changed}</b>
-							<span className="text-xs text-muted-foreground">
-								{revision.author} · {revision.when}
-							</span>
+					<div key={revision.label} className={ROW}>
+						<span className="w-[54px]">
+							<Tag>{revision.label}</Tag>
 						</span>
+						<Ttl
+							title={`Modifié : ${revision.changed}`}
+							sub={`${revision.author} · ${revision.when}`}
+						/>
 						{index === 0 ? (
-							<Badge variant="success">Actuelle</Badge>
+							<Sev tone="ok">Actuelle</Sev>
 						) : (
 							<Button
 								type="button"
@@ -37,9 +35,9 @@ export function RevisionsTab({ revisions, onRestore }: Props) {
 								Restaurer
 							</Button>
 						)}
-					</li>
+					</div>
 				))}
-			</ul>
+			</Rows>
 		</SectionCard>
 	)
 }

@@ -7,8 +7,9 @@ interface Props {
 
 export function SaveBar({ onCancel, onSave }: Props) {
 	return (
-		<div className="sticky bottom-3 z-10 flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-md">
-			<span className="flex-1 font-medium">Modifications non enregistrées</span>
+		<div className="sticky bottom-0 z-10 mt-3 flex items-center gap-2 rounded-[9px] border bg-secondary px-3 py-[9px] shadow-[0_-8px_20px_rgba(0,0,0,0.25)]">
+			<span>Modifications non enregistrées</span>
+			<span className="flex-1" />
 			<Button type="button" variant="outline" onClick={onCancel}>
 				Annuler
 			</Button>

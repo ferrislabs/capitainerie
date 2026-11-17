@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Badge } from '#/components/ui/badge'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
+import { Live, ROW, Tag, Ttl } from '#/domain/agent-team/ui/rows'
 import type { DemoAgent } from '#/domain/demo'
 
 export interface OrgEntry {
@@ -16,39 +16,33 @@ interface Props {
 
 export function OrgTreeView({ entries }: Props) {
 	return (
-		<ul className="divide-y">
+		<div>
 			{entries.map(({ agent, depth, subCount, canDelegate }) => (
-				<li key={agent.id}>
-					<Link
-						to="/agents/$agentId/{-$tab}"
-						params={{ agentId: agent.id }}
-						className="flex items-center gap-2.5 py-2 pr-3 hover:bg-accent"
-						style={{ paddingLeft: 12 + depth * 22 }}
-					>
-						{depth > 0 ? (
-							<span aria-hidden="true" className="text-muted-foreground">
-								↳
-							</span>
-						) : null}
-						<AgentAvatar name={agent.name} hue={agent.hue} size={24} />
-						<span className="min-w-0 flex-1">
-							<span className="block truncate font-medium">{agent.name}</span>
-							<span className="block truncate text-xs text-muted-foreground">
-								{agent.role}
-								{canDelegate ? ' · peut déléguer' : ''}
-							</span>
+				<Link
+					key={agent.id}
+					to="/agents/$agentId/{-$tab}"
+					params={{ agentId: agent.id }}
+					className={ROW}
+					style={{ paddingLeft: 12 + depth * 22 }}
+				>
+					{depth > 0 ? (
+						<span aria-hidden="true" className="text-faint">
+							↳
 						</span>
-						{subCount > 0 ? (
-							<Badge variant="outline">
-								{subCount} {subCount > 1 ? 'sous-agents' : 'sous-agent'}
-							</Badge>
-						) : null}
-						{agent.status === 'running' ? (
-							<Badge variant="running">en cours</Badge>
-						) : null}
-					</Link>
-				</li>
+					) : null}
+					<AgentAvatar hue={agent.hue} size={24} />
+					<Ttl
+						title={agent.name}
+						sub={`${agent.role}${canDelegate ? ' · peut déléguer' : ''}`}
+					/>
+					{subCount > 0 ? (
+						<Tag>
+							{subCount} {subCount > 1 ? 'sous-agents' : 'sous-agent'}
+						</Tag>
+					) : null}
+					{agent.status === 'running' ? <Live /> : null}
+				</Link>
 			))}
-		</ul>
+		</div>
 	)
 }

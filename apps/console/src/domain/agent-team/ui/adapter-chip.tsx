@@ -9,11 +9,11 @@ export function AdapterChip({ adapter }: Props) {
 	return (
 		<span
 			aria-hidden="true"
-			className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold text-white"
+			className="inline-grid size-[26px] shrink-0 place-items-center rounded-[7px] text-[11px] font-bold text-white"
 			style={{
 				backgroundColor: known?.hue
 					? `hsl(${known.hue} 55% 42%)`
-					: 'var(--muted-foreground)',
+					: 'var(--faint)',
 			}}
 		>
 			{known?.initial}
