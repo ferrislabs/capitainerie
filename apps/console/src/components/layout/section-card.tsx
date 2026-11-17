@@ -5,18 +5,16 @@ interface Props {
 	title: ReactNode
 	description?: ReactNode
 	actions?: ReactNode
+	/** Pas de marge intérieure : listes de lignes et tableaux. */
 	flush?: boolean
+	/** Pas de cadre : le contenu se pose sur le fond. */
 	bare?: boolean
 	className?: string
 	children: ReactNode
 	headingLevel?: 'h2' | 'h3'
 }
 
-/**
- * Une section de page : titre, description et actions posés sur le fond,
- * puis le contenu dans un cadre. `flush` retire la marge intérieure du cadre
- * (listes de lignes) ; `bare` retire le cadre (tableaux).
- */
+/** Panneau de la maquette : cadre fin, titre de 12 px dans un bandeau, actions à droite. */
 export function SectionCard({
 	title,
 	description,
@@ -28,32 +26,33 @@ export function SectionCard({
 	headingLevel: Heading = 'h2',
 }: Props) {
 	return (
-		<section className={cn('flex min-w-0 flex-col gap-2', className)}>
-			<div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-				<div className="min-w-0">
-					<Heading className="text-[13px] leading-tight font-semibold">
-						{title}
-					</Heading>
-					{description ? (
-						<p className="mt-1 text-[13px] text-muted-foreground">
-							{description}
-						</p>
-					) : null}
-				</div>
-				{actions ? (
-					<div className="flex flex-wrap items-center gap-2">{actions}</div>
-				) : null}
-			</div>
-			<div
+		<section
+			className={cn(
+				'mb-2.5 min-w-0',
+				!bare &&
+					'overflow-hidden rounded-lg border bg-card text-card-foreground',
+				className,
+			)}
+		>
+			<header
 				className={cn(
-					'min-w-0',
-					!bare &&
-						'overflow-hidden rounded-lg border bg-card text-card-foreground',
-					!bare && !flush && 'p-3',
+					'flex items-center gap-2 px-3 py-[9px]',
+					!bare && 'border-b',
 				)}
 			>
-				{children}
-			</div>
+				<Heading className="m-0 flex-1 text-xs font-semibold">{title}</Heading>
+				{description ? (
+					<span className="text-xs font-normal text-muted-foreground">
+						{description}
+					</span>
+				) : null}
+				{actions ? (
+					<div className="flex items-center gap-2 text-xs text-primary">
+						{actions}
+					</div>
+				) : null}
+			</header>
+			<div className={cn('min-w-0', !flush && 'p-3')}>{children}</div>
 		</section>
 	)
 }
