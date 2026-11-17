@@ -73,3 +73,25 @@ export interface DemoTask {
 	/** Dossier produit par un agent de recherche : paires libellé, valeur. */
 	dossier?: ReadonlyArray<readonly [string, string]>
 }
+
+export type DemoSourceType = 'DNS' | 'Webhook' | 'Mail' | 'RSS' | 'Git' | 'Odoo'
+
+export interface DemoSource {
+	id: string
+	name: string
+	type: DemoSourceType
+	/** Motifs écoutés : `*` remplace n'importe quels caractères. */
+	patterns: ReadonlyArray<string>
+	/** Exclusions : prioritaires sur les motifs. */
+	exclusions: ReadonlyArray<string>
+	feeds: ReadonlyArray<string>
+	scope: string
+	mode: string
+	dedupe: string
+	/** Titre de la tâche créée, avec une variable entre accolades. */
+	template: string
+	agentIds: ReadonlyArray<string>
+	enabled: boolean
+	eventsLast24h: number
+	last: string
+}

@@ -27,7 +27,11 @@ const PATHS = [
 ] as const
 
 /** Monte `ui` dans un routeur mémoire positionné sur `path`. */
-export async function renderAtPath(ui: ReactNode, path: string) {
+export async function renderAtPath(
+	ui: ReactNode,
+	path: string,
+	extraPaths: ReadonlyArray<string> = [],
+) {
 	const rootRoute = createRootRoute({
 		component: () => (
 			<>
@@ -36,7 +40,7 @@ export async function renderAtPath(ui: ReactNode, path: string) {
 			</>
 		),
 	})
-	const routes = PATHS.map((routePath) =>
+	const routes = [...PATHS, ...extraPaths].map((routePath) =>
 		createRoute({
 			getParentRoute: () => rootRoute,
 			path: routePath,
