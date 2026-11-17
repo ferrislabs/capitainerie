@@ -1,9 +1,17 @@
 import { Store } from '@tanstack/store'
 import { useSyncExternalStore } from 'react'
 import { DEMO_AGENTS, shortName } from '#/domain/demo/agents'
+import { DEMO_APPROVALS } from '#/domain/demo/approvals'
 import { DEMO_CONNECTORS, DEMO_GRANTS } from '#/domain/demo/connectors'
 import { DEMO_SOURCES } from '#/domain/demo/sources'
-import type { DemoAgent, DemoSource } from '#/domain/demo/types'
+import { DEMO_TASKS } from '#/domain/demo/tasks'
+import type {
+	DemoAgent,
+	DemoApproval,
+	DemoApprovalStatus,
+	DemoSource,
+	DemoTask,
+} from '#/domain/demo/types'
 
 /**
  * État partagé des pages de démonstration : ce que plusieurs pages doivent voir
@@ -18,6 +26,8 @@ export interface DemoState {
 	/** Identifiant d'agent vers nom court de l'agent dont il dépend, `null` pour la direction. */
 	reportsTo: Readonly<Record<string, string | null>>
 	sources: ReadonlyArray<DemoSource>
+	tasks: ReadonlyArray<DemoTask>
+	approvals: ReadonlyArray<DemoApproval>
 }
 
 function initialState(): DemoState {
@@ -26,6 +36,8 @@ function initialState(): DemoState {
 		grants: DEMO_GRANTS,
 		reportsTo: Object.fromEntries(DEMO_AGENTS.map((a) => [a.id, a.reportsTo])),
 		sources: DEMO_SOURCES,
+		tasks: DEMO_TASKS,
+		approvals: DEMO_APPROVALS,
 	}
 }
 
@@ -152,4 +164,65 @@ export function agentsWithGrant(state: DemoState, connector: string): string[] {
 	return state.agents
 		.filter((a) => (state.grants[a.id] ?? []).includes(connector))
 		.map((a) => a.id)
+}
+
+export function addTask(task: DemoTask): void {
+	demoStore.setState((state) => ({ ...state, tasks: [task, ...state.tasks] }))
+}
+
+export function updateTask(
+	id: string,
+	patch: Partial<Omit<DemoTask, 'id'>>,
+): void {
+	demoStore.setState((state) => ({
+		...state,
+		tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+	}))
+}
+
+/** Identifiant suivant, au format `NAT-<n>`, sans collision avec une tâche existante. */
+export function nextTaskId(state: DemoState): string {
+	const max = state.tasks.reduce((highest, task) => {
+		const n = Number(task.id.replace(/^NAT-/, ''))
+		return Number.isFinite(n) ? Math.max(highest, n) : highest
+	}, 0)
+	return `NAT-${max + 1}`
+}
+
+export function childTasks(state: DemoState, taskId: string): DemoTask[] {
+	return state.tasks.filter((t) => t.parentId === taskId)
+}
+
+/** Nombre d'ancêtres d'une tâche : 0 pour une tâche sans parent. */
+export function taskDepth(state: DemoState, taskId: string): number {
+	let depth = 0
+	let current = state.tasks.find((t) => t.id === taskId)
+	while (current?.parentId && depth < 16) {
+		depth++
+		const parentId: string = current.parentId
+		current = state.tasks.find((t) => t.id === parentId)
+	}
+	return depth
+}
+
+export function addApproval(approval: DemoApproval): void {
+	demoStore.setState((state) => ({
+		...state,
+		approvals: [approval, ...state.approvals],
+	}))
+}
+
+export function decideApproval(
+	id: string,
+	status: Exclude<DemoApprovalStatus, 'pending'>,
+	decidedBy: string,
+): void {
+	demoStore.setState((state) => ({
+		...state,
+		approvals: state.approvals.map((a) =>
+			a.id === id && a.status === 'pending'
+				? { ...a, status, decidedBy, at: "à l'instant" }
+				: a,
+		),
+	}))
 }
