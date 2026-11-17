@@ -14,7 +14,7 @@ export const IF_MISSED_POLICIES = [
 export const TIMEZONES = ['Europe/Paris', 'UTC', 'America/New_York'] as const
 export const NO_PROJECT = 'Aucun'
 
-export type RunTone = 'success' | 'danger' | 'neutral'
+export type RunTone = 'success' | 'danger' | 'neutral' | 'violet'
 export type RunOrigin = 'Planning' | 'Manuel' | 'Webhook'
 
 export interface RunOutcome {
@@ -63,6 +63,7 @@ export interface Routine extends RoutineSettings {
 	id: string
 	enabled: boolean
 	lastRun: RunOutcome
+	listSchedule?: string | undefined
 	triggers: ReadonlyArray<Trigger>
 	runs: ReadonlyArray<RoutineRun>
 }

@@ -1,16 +1,8 @@
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
 import type { DemoAgent } from '#/domain/demo'
 import type { AccessRow } from '#/domain/sources/access'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
+import { Sev, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
 
 interface Props {
 	rows: ReadonlyArray<AccessRow>
@@ -22,40 +14,38 @@ interface Props {
 export function AccessTable({ rows, agents, grantee, onGrant }: Props) {
 	return (
 		<div>
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Connecteur</TableHead>
-						<TableHead>Étape</TableHead>
-						<TableHead>Agents autorisés</TableHead>
-						<TableHead />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
+			<Tbl>
+				<thead>
+					<tr>
+						<Th>Connecteur</Th>
+						<Th>Étape</Th>
+						<Th>Agents autorisés</Th>
+						<Th />
+					</tr>
+				</thead>
+				<tbody>
 					{rows.map((row) => {
 						const granted = row.agentIds
 							.map((id) => agents.find((a) => a.id === id))
 							.filter((a): a is DemoAgent => a !== undefined)
 						return (
-							<TableRow key={row.connector}>
-								<TableCell>{row.connector}</TableCell>
-								<TableCell className="text-muted-foreground">
-									{row.step}
-								</TableCell>
-								<TableCell>
+							<Tr key={row.connector}>
+								<Td>{row.connector}</Td>
+								<Td className="text-muted-foreground">{row.step}</Td>
+								<Td>
 									{!row.installed ? (
-										<Badge variant="danger">Connecteur non installé</Badge>
+										<Sev tone="crit">Connecteur non installé</Sev>
 									) : granted.length > 0 ? (
-										<span className="flex -space-x-1">
+										<span className="flex min-w-0 items-center gap-1.5 text-[12px]">
 											{granted.map((a) => (
 												<AgentAvatar key={a.id} agent={a} />
 											))}
 										</span>
 									) : (
-										<Badge variant="danger">Aucun agent autorisé</Badge>
+										<Sev tone="crit">Aucun agent autorisé</Sev>
 									)}
-								</TableCell>
-								<TableCell className="text-right">
+								</Td>
+								<Td className="text-right">
 									{row.installed && granted.length === 0 && grantee ? (
 										<Button
 											type="button"
@@ -66,13 +56,13 @@ export function AccessTable({ rows, agents, grantee, onGrant }: Props) {
 											Autoriser {grantee.label}
 										</Button>
 									) : null}
-								</TableCell>
-							</TableRow>
+								</Td>
+							</Tr>
 						)
 					})}
-				</TableBody>
-			</Table>
-			<p className="px-3 py-2 text-muted-foreground">
+				</tbody>
+			</Tbl>
+			<p className="m-0 px-3 pt-2 pb-3 text-muted-foreground">
 				Un agent ne peut utiliser que les connecteurs que tu lui as autorisés.
 				Le pipeline s'arrête sur une étape sans accès.
 			</p>

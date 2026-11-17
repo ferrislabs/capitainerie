@@ -1,17 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { Play } from 'lucide-react'
-import { EmptyState } from '#/components/layout/empty-state'
 import { SectionCard } from '#/components/layout/section-card'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
 import type { RoutineRun } from '#/domain/routines/types'
 import { RunBadge } from '#/domain/routines/ui/run-badge'
+import { Empty, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
 import { taskPathId } from '#/domain/tasks/task-ids'
 
 interface Props {
@@ -21,54 +12,52 @@ interface Props {
 
 export function RunsTab({ runs, knownTaskIds }: Props) {
 	return (
-		<SectionCard title="Exécutions" bare>
+		<SectionCard title="Exécutions" flush>
 			{runs.length === 0 ? (
-				<EmptyState
-					icon={Play}
-					title="Jamais lancée"
-					description="Utilise « Lancer maintenant » pour créer une première tâche."
-				/>
+				<Empty title="Jamais lancée">
+					Utilise « Lancer maintenant » pour créer une première tâche.
+				</Empty>
 			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Quand</TableHead>
-							<TableHead>Déclencheur</TableHead>
-							<TableHead>Statut</TableHead>
-							<TableHead>Durée</TableHead>
-							<TableHead>Tâche</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
+				<Tbl>
+					<thead>
+						<tr>
+							<Th>Quand</Th>
+							<Th>Déclencheur</Th>
+							<Th>Statut</Th>
+							<Th>Durée</Th>
+							<Th>Tâche</Th>
+						</tr>
+					</thead>
+					<tbody>
 						{runs.map((run) => (
-							<TableRow key={run.id}>
-								<TableCell className="whitespace-nowrap text-muted-foreground">
+							<Tr key={run.id}>
+								<Td className="whitespace-nowrap text-muted-foreground">
 									{run.when}
-								</TableCell>
-								<TableCell>{run.origin}</TableCell>
-								<TableCell>
+								</Td>
+								<Td>{run.origin}</Td>
+								<Td>
 									<RunBadge tone={run.tone} label={run.label} />
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{run.duration}
-								</TableCell>
-								<TableCell className="font-mono">
+								</Td>
+								<Td className="text-muted-foreground">{run.duration}</Td>
+								<Td>
 									{knownTaskIds.has(run.taskId) ? (
 										<Link
 											to="/tasks/$taskId"
 											params={{ taskId: taskPathId(run.taskId) }}
-											className="text-link hover:underline"
+											className="text-[12px] text-primary"
 										>
 											{run.taskId}
 										</Link>
 									) : (
-										run.taskId
+										<span className="text-[12px] text-primary">
+											{run.taskId}
+										</span>
 									)}
-								</TableCell>
-							</TableRow>
+								</Td>
+							</Tr>
 						))}
-					</TableBody>
-				</Table>
+					</tbody>
+				</Tbl>
 			)}
 		</SectionCard>
 	)

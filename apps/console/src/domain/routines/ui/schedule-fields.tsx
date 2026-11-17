@@ -1,7 +1,4 @@
 import { useId } from 'react'
-import { Checkbox } from '#/components/ui/checkbox'
-import { Field } from '#/components/ui/field'
-import { TextInput } from '#/components/ui/text-input'
 import { toggleDay } from '#/domain/routines/routine-draft'
 import {
 	DAYS,
@@ -10,6 +7,8 @@ import {
 	type Schedule,
 } from '#/domain/routines/schedule'
 import { SelectField } from '#/domain/routines/ui/select-field'
+import { CTL, Fr } from '#/domain/sources/ui/mockup'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	schedule: Schedule
@@ -19,13 +18,13 @@ interface Props {
 const isFrequency = (value: string): value is Frequency =>
 	FREQUENCIES.some((f) => f === value)
 
-const label = (day: string) => `${day.charAt(0).toUpperCase()}${day.slice(1)}.`
+const label = (day: string) => `${day.charAt(0).toUpperCase()}${day.slice(1)}`
 
 export function ScheduleFields({ schedule, onChange }: Props) {
 	const prefix = useId()
 	const { frequency } = schedule
 	return (
-		<div className="flex max-w-md flex-col gap-3">
+		<>
 			<SelectField
 				label="Fréquence"
 				value={frequency}
@@ -35,8 +34,10 @@ export function ScheduleFields({ schedule, onChange }: Props) {
 				}}
 			/>
 			{frequency === 'Toutes les N heures' ? (
-				<Field label="Toutes les (heures)">
-					<TextInput
+				<Fr label={<label htmlFor={`${prefix}-hours`}>Toutes les</label>}>
+					<input
+						id={`${prefix}-hours`}
+						className={cn(CTL, 'w-[90px]')}
 						type="number"
 						min={1}
 						max={168}
@@ -44,53 +45,61 @@ export function ScheduleFields({ schedule, onChange }: Props) {
 						onChange={(event) =>
 							onChange({ hours: Math.max(1, Number(event.target.value) || 1) })
 						}
-					/>
-				</Field>
+					/>{' '}
+					<span className="text-muted-foreground">heures</span>
+				</Fr>
 			) : null}
 			{frequency === 'Toutes les semaines' ? (
-				<fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
-					<legend className="mb-1.5 p-0 text-sm leading-none font-medium">
-						Jours
-					</legend>
-					<div className="flex flex-wrap gap-x-4 gap-y-1">
+				<Fr label="Jours">
+					<fieldset className="m-0 flex min-w-0 flex-wrap gap-1.5 border-0 p-0">
+						<legend className="sr-only">Jours</legend>
 						{DAYS.map((day) => (
-							<Checkbox
+							<label
 								key={day}
-								id={`${prefix}-${day}`}
-								label={label(day)}
-								checked={schedule.days.includes(day)}
-								onCheckedChange={() =>
-									onChange({ days: toggleDay(schedule.days, day) })
-								}
-							/>
+								htmlFor={`${prefix}-${day}`}
+								className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border bg-background px-[9px] py-[3px] text-[12px] text-foreground"
+							>
+								<input
+									id={`${prefix}-${day}`}
+									type="checkbox"
+									className="mx-0 my-[3px] ml-1 mr-[3px]"
+									checked={schedule.days.includes(day)}
+									onChange={() =>
+										onChange({ days: toggleDay(schedule.days, day) })
+									}
+								/>
+								{label(day)}
+							</label>
 						))}
-					</div>
-				</fieldset>
+					</fieldset>
+				</Fr>
 			) : null}
 			{frequency !== 'Toutes les N heures' &&
 			frequency !== 'Expression cron' ? (
-				<Field label="Heure">
-					<TextInput
-						className="font-mono"
+				<Fr label={<label htmlFor={`${prefix}-time`}>Heure</label>}>
+					<input
+						id={`${prefix}-time`}
+						className={cn(CTL, 'w-[90px] font-mono text-[11.5px]')}
 						placeholder="08:00"
 						value={schedule.time}
 						onChange={(event) => onChange({ time: event.target.value })}
 					/>
-				</Field>
+				</Fr>
 			) : null}
 			{frequency === 'Expression cron' ? (
-				<Field
-					label="Expression cron"
+				<Fr
+					label={<label htmlFor={`${prefix}-cron`}>Expression cron</label>}
 					hint="minute heure jour mois jour-semaine"
 				>
-					<TextInput
-						className="font-mono"
+					<input
+						id={`${prefix}-cron`}
+						className={cn(CTL, 'font-mono text-[11.5px]')}
 						placeholder="30 6 * * 1"
 						value={schedule.cron}
 						onChange={(event) => onChange({ cron: event.target.value })}
 					/>
-				</Field>
+				</Fr>
 			) : null}
-		</div>
+		</>
 	)
 }

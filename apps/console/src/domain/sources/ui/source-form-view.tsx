@@ -1,9 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { TextInput } from '#/components/ui/text-input'
 import type { DemoAgent, DemoSourceType } from '#/domain/demo'
 import {
 	DEDUPE_OPTIONS,
@@ -13,7 +10,8 @@ import {
 	type SourceForm,
 	typeInfo,
 } from '#/domain/sources/source-form'
-import { SourceTypeTile } from '#/domain/sources/ui/source-type-tile'
+import { CTL, Fr } from '#/domain/sources/ui/mockup'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	form: SourceForm
@@ -24,27 +22,9 @@ interface Props {
 	onSubmit: () => void
 }
 
-function Row({
-	label,
-	hint,
-	children,
-}: {
-	label: string
-	hint?: string
-	children: ReactNode
-}) {
-	return (
-		<div className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:gap-4">
-			<span className="w-44 shrink-0 font-medium">{label}</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				{children}
-				{hint ? (
-					<span className="text-xs text-muted-foreground">{hint}</span>
-				) : null}
-			</div>
-		</div>
-	)
-}
+const Row = Fr
+
+const MONO = 'font-mono text-[11.5px]'
 
 export function SourceFormView({
 	form,
@@ -63,35 +43,45 @@ export function SourceFormView({
 		))
 	return (
 		<form
-			className="flex flex-col gap-4"
+			className="mx-auto mt-[2vh] flex w-full max-w-[880px] flex-col gap-7"
 			onSubmit={(e) => {
 				e.preventDefault()
 				onSubmit()
 			}}
 		>
-			<SectionCard title="1. Type de source">
-				<div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+			<SectionCard title="1. Type de source" flush>
+				<div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5 p-2.5">
 					{SOURCE_TYPES.map((t) => (
 						<button
 							key={t.id}
 							type="button"
 							aria-pressed={form.type === t.id}
 							onClick={() => onType(t.id)}
-							className="flex items-start gap-2 rounded-md border p-2 text-left aria-pressed:border-primary aria-pressed:bg-accent"
+							className="flex cursor-pointer items-start gap-2 rounded-lg border bg-card px-2.5 py-[9px] text-left text-foreground aria-pressed:border-primary aria-pressed:bg-primary/8"
 						>
-							<SourceTypeTile type={t.id} />
+							<span
+								aria-hidden="true"
+								className="block size-7 shrink-0 rounded-full bg-secondary text-[12px] font-semibold text-muted-foreground"
+							>
+								{t.id.slice(0, 3)}
+							</span>
 							<span className="min-w-0">
-								<b className="block font-medium">{t.label}</b>
-								<span className="text-muted-foreground">{t.description}</span>
+								<b className="font-semibold">
+									{t.label}
+									<span className="block text-[12px] text-muted-foreground">
+										{t.description}
+									</span>
+								</b>
 							</span>
 						</button>
 					))}
 				</div>
 			</SectionCard>
 			<SectionCard title="2. Ce qui déclenche" flush>
-				<div className="divide-y">
+				<div>
 					<Row label="Nom">
-						<TextInput
+						<input
+							className={CTL}
 							aria-label="Nom"
 							placeholder="Nouveaux sous-domaines sensibles"
 							value={form.name}
@@ -102,8 +92,8 @@ export function SourceFormView({
 						label={info.patternsLabel}
 						hint="Sépare par des virgules. * remplace n'importe quels caractères."
 					>
-						<TextInput
-							className="font-mono"
+						<input
+							className={cn(CTL, MONO)}
 							aria-label={info.patternsLabel}
 							placeholder={info.placeholder}
 							value={form.patterns}
@@ -111,8 +101,8 @@ export function SourceFormView({
 						/>
 					</Row>
 					<Row label="Exclusions" hint="Ces valeurs ne créent jamais de tâche">
-						<TextInput
-							className="font-mono"
+						<input
+							className={cn(CTL, MONO)}
 							aria-label="Exclusions"
 							placeholder="*.getnatalia.com"
 							value={form.exclusions}
@@ -120,32 +110,35 @@ export function SourceFormView({
 						/>
 					</Row>
 					<Row label="Données">
-						<NativeSelect
+						<select
+							className={CTL}
 							aria-label="Données"
 							value={form.feed}
 							onChange={(e) => onChange({ feed: e.target.value })}
 						>
 							{options(info.feeds)}
-						</NativeSelect>
+						</select>
 					</Row>
 					<Row label="Dédoublonnage" hint="Ignore une valeur déjà vue">
-						<NativeSelect
+						<select
+							className={CTL}
 							aria-label="Dédoublonnage"
 							value={form.dedupe}
 							onChange={(e) => onChange({ dedupe: e.target.value })}
 						>
 							{options(DEDUPE_OPTIONS)}
-						</NativeSelect>
+						</select>
 					</Row>
 				</div>
 			</SectionCard>
 			<SectionCard title="3. Qui reçoit le travail" flush>
-				<div className="divide-y">
+				<div>
 					<Row
 						label="Agent"
 						hint="Il se réveille dès qu'un événement correspond"
 					>
-						<NativeSelect
+						<select
+							className={CTL}
 							aria-label="Agent"
 							value={form.agentId}
 							onChange={(e) => onChange({ agentId: e.target.value })}
@@ -155,26 +148,31 @@ export function SourceFormView({
 									{a.name}
 								</option>
 							))}
-						</NativeSelect>
+						</select>
 					</Row>
 					<Row label="Tâches">
-						<NativeSelect
+						<select
+							className={CTL}
 							aria-label="Tâches"
 							value={form.mode}
 							onChange={(e) => onChange({ mode: e.target.value })}
 						>
 							{options(MODE_OPTIONS)}
-						</NativeSelect>
+						</select>
 					</Row>
 					<Row label="Titre de la tâche" hint={`Variable : ${info.variable}`}>
-						<TextInput
+						<input
+							className={CTL}
 							aria-label="Titre de la tâche"
 							value={form.template}
 							onChange={(e) => onChange({ template: e.target.value })}
 						/>
 					</Row>
-					<p className="px-3 py-2 text-muted-foreground">
-						Exemple : <span className="font-mono">{exampleTitle(form)}</span>
+					<p className="m-0 px-3 pb-3 text-muted-foreground">
+						Exemple :{' '}
+						<span className="font-mono text-[11.5px]">
+							{exampleTitle(form)}
+						</span>
 					</p>
 				</div>
 			</SectionCard>

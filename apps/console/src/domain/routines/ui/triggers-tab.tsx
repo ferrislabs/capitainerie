@@ -1,9 +1,7 @@
+import { Copy } from 'lucide-react'
 import { useId, useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { Switch } from '#/components/ui/switch'
 import { maskedSecret } from '#/domain/routines/routine-draft'
 import { type Schedule, scheduleText } from '#/domain/routines/schedule'
 import type {
@@ -13,6 +11,8 @@ import type {
 } from '#/domain/routines/types'
 import { CRON_NOTE, NextRuns } from '#/domain/routines/ui/next-runs'
 import { ScheduleFields } from '#/domain/routines/ui/schedule-fields'
+import { CTL, Fr, Sev, Sw } from '#/domain/sources/ui/mockup'
+import { cn } from '#/lib/utils'
 
 export type NewTriggerKind = 'planning' | 'webhook'
 
@@ -45,27 +45,26 @@ function PlanningSection({
 	return (
 		<SectionCard
 			title="Planning"
+			flush
 			actions={
 				<>
-					<Badge variant="neutral">{scheduleText(trigger.schedule)}</Badge>
+					<Sev tone="info">{scheduleText(trigger.schedule)}</Sev>
 					<Button type="button" size="sm" variant="outline" onClick={onRemove}>
 						Retirer
 					</Button>
 				</>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<ScheduleFields schedule={trigger.schedule} onChange={onPatch} />
-				<Switch
-					label="Activer le planning"
+			<ScheduleFields schedule={trigger.schedule} onChange={onPatch} />
+			<Fr label="Actif">
+				<Sw
+					aria-label="Activer le planning"
 					checked={trigger.enabled}
 					onCheckedChange={onToggle}
 				/>
-				<div className="flex flex-col gap-1.5">
-					<h3 className="text-xs text-muted-foreground">Prochains passages</h3>
-					<NextRuns runs={upcoming} empty={CRON_NOTE} />
-				</div>
-			</div>
+			</Fr>
+			<div className="px-3 pb-1 text-muted-foreground">Prochains passages</div>
+			<NextRuns runs={upcoming} empty={CRON_NOTE} />
 		</SectionCard>
 	)
 }
@@ -83,7 +82,7 @@ export function TriggersTab({
 	const [kind, setKind] = useState<NewTriggerKind>('planning')
 	const selectId = useId()
 	return (
-		<div className="flex flex-col gap-4">
+		<div>
 			{triggers.map((trigger) =>
 				trigger.kind === 'planning' ? (
 					<PlanningSection
@@ -98,6 +97,7 @@ export function TriggersTab({
 					<SectionCard
 						key={trigger.id}
 						title="Webhook"
+						flush
 						actions={
 							<Button
 								type="button"
@@ -109,60 +109,54 @@ export function TriggersTab({
 							</Button>
 						}
 					>
-						<div className="flex flex-col gap-3 text-[13px]">
-							<div className="flex flex-wrap items-center gap-2">
-								<span className="text-muted-foreground">URL</span>
-								<span className="font-mono [overflow-wrap:anywhere]">
-									{trigger.url}
-								</span>
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									onClick={() => onCopy(trigger)}
-								>
-									Copier
-								</Button>
-							</div>
-							<p className="text-xs text-muted-foreground">
-								POST avec l'en-tête X-Signature
-							</p>
-							<div className="flex flex-wrap items-center gap-2">
-								<span className="text-muted-foreground">Secret</span>
-								<span className="font-mono">
-									{maskedSecret(trigger.secret)}
-								</span>
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									onClick={() => onRegenerate(trigger.id)}
-								>
-									Régénérer
-								</Button>
-							</div>
-							<Switch
-								label="Activer le webhook"
+						<Fr label="URL" hint="POST avec l'en-tête X-Signature">
+							<span className="font-mono text-[11.5px] [overflow-wrap:anywhere]">
+								{trigger.url}
+							</span>{' '}
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() => onCopy(trigger)}
+							>
+								<Copy aria-hidden="true" />
+								Copier
+							</Button>
+						</Fr>
+						<Fr label="Secret">
+							<span className="font-mono text-[11.5px]">
+								{maskedSecret(trigger.secret)}
+							</span>{' '}
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onClick={() => onRegenerate(trigger.id)}
+							>
+								Régénérer
+							</Button>
+						</Fr>
+						<Fr label="Actif">
+							<Sw
+								aria-label="Activer le webhook"
 								checked={trigger.enabled}
 								onCheckedChange={(enabled) => onToggle(trigger.id, enabled)}
 							/>
-						</div>
+						</Fr>
 					</SectionCard>
 				),
 			)}
-			<SectionCard title="Lancement manuel">
-				<p className="text-[13px] text-muted-foreground">
+			<SectionCard title="Lancement manuel" flush>
+				<p className="m-0 p-3 text-muted-foreground">
 					Toujours disponible : « Lancer maintenant » crée une tâche sans
 					attendre le planning.
 				</p>
 			</SectionCard>
-			<div className="flex flex-wrap items-center gap-2">
-				<label htmlFor={selectId} className="sr-only">
-					Type de déclencheur
-				</label>
-				<NativeSelect
+			<div className="flex gap-1.5">
+				<select
 					id={selectId}
-					className="max-w-[220px]"
+					aria-label="Type de déclencheur"
+					className={cn(CTL, 'max-w-[220px]')}
 					value={kind}
 					onChange={(event) =>
 						setKind(event.target.value === 'webhook' ? 'webhook' : 'planning')
@@ -170,7 +164,7 @@ export function TriggersTab({
 				>
 					<option value="planning">Planning</option>
 					<option value="webhook">Webhook</option>
-				</NativeSelect>
+				</select>
 				<Button type="button" variant="outline" onClick={() => onAdd(kind)}>
 					Ajouter un déclencheur
 				</Button>

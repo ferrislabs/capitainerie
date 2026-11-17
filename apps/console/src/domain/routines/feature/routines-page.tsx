@@ -4,7 +4,6 @@ import { DemoBanner } from '#/components/layout/demo-banner'
 import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
-import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import {
 	launchRoutine,
@@ -20,7 +19,7 @@ export function RoutinesPage() {
 	const notice = useRoutineNotice()
 	const rows = routines.map((routine) => ({
 		routine,
-		scheduleLabel: scheduleLabel(routine),
+		scheduleLabel: routine.listSchedule ?? scheduleLabel(routine),
 	}))
 	return (
 		<Page>
@@ -45,13 +44,13 @@ export function RoutinesPage() {
 				}
 			/>
 			<Notice message={notice} />
-			<SectionCard title="Routines" bare headingLevel="h2">
+			<div className="overflow-hidden rounded-lg border bg-card">
 				<RoutinesTable
 					rows={rows}
 					onLaunch={launchRoutine}
 					onToggle={toggleRoutine}
 				/>
-			</SectionCard>
+			</div>
 		</Page>
 	)
 }

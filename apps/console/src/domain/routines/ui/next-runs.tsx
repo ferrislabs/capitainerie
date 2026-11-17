@@ -1,21 +1,29 @@
 import { formatRun } from '#/domain/routines/schedule'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	runs: ReadonlyArray<Date>
 	empty: string
+	emptyClassName?: string
 }
 
-export function NextRuns({ runs, empty }: Props) {
+export function NextRuns({ runs, empty, emptyClassName }: Props) {
 	if (runs.length === 0)
-		return <p className="text-[13px] text-muted-foreground">{empty}</p>
+		return (
+			<p
+				className={cn('m-0 px-3 py-2.5 text-muted-foreground', emptyClassName)}
+			>
+				{empty}
+			</p>
+		)
 	return (
-		<ul className="flex flex-col gap-1 text-[13px]">
+		<div>
 			{runs.map((run) => (
-				<li key={run.getTime()} className="font-medium">
-					{formatRun(run)}
-				</li>
+				<div key={run.getTime()} className="px-3 py-1.5">
+					<b>{formatRun(run)}</b>
+				</div>
 			))}
-		</ul>
+		</div>
 	)
 }
 

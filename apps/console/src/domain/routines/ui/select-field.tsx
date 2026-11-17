@@ -1,6 +1,5 @@
 import { useId } from 'react'
-import { Field } from '#/components/ui/field'
-import { NativeSelect } from '#/components/ui/native-select'
+import { CTL, Fr } from '#/domain/sources/ui/mockup'
 
 interface Props {
 	label: string
@@ -13,9 +12,10 @@ interface Props {
 export function SelectField({ label, value, options, onChange, hint }: Props) {
 	const id = useId()
 	return (
-		<Field label={label} id={id} hint={hint}>
-			<NativeSelect
+		<Fr label={<label htmlFor={id}>{label}</label>} hint={hint}>
+			<select
 				id={id}
+				className={CTL}
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 			>
@@ -24,7 +24,7 @@ export function SelectField({ label, value, options, onChange, hint }: Props) {
 						{option}
 					</option>
 				))}
-			</NativeSelect>
-		</Field>
+			</select>
+		</Fr>
 	)
 }

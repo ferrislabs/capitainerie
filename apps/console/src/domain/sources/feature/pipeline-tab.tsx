@@ -32,7 +32,7 @@ import {
 } from '#/domain/sources/mock/pipeline-store'
 import { AccessTable } from '#/domain/sources/ui/access-table'
 import { ExportSection } from '#/domain/sources/ui/export-section'
-import { FlowStrip } from '#/domain/sources/ui/flow-strip'
+import { Flow } from '#/domain/sources/ui/mockup'
 import { PipelineCriteria } from '#/domain/sources/ui/pipeline-criteria'
 import {
 	DossierPanel,
@@ -102,11 +102,18 @@ export function PipelineTab({ source, notify }: Props) {
 		notify('Demande de validation envoyée')
 	}
 	return (
-		<div className="flex flex-col gap-4">
-			<SectionCard title="Chemin complet">
-				<FlowStrip
+		<div>
+			<SectionCard title="Chemin complet" flush>
+				<Flow
 					steps={[
-						{ title: '1. Source', body: source.patterns.join('  ') || '—' },
+						{
+							title: '1. Source',
+							body: (
+								<span className="font-mono text-[11.5px]">
+									{source.patterns.join('  ')}
+								</span>
+							),
+						},
 						{
 							title: '2. Recherche (IA)',
 							body: `${first ? shortName(first.name) : 'Aucun agent'} · dossier structuré${
@@ -126,7 +133,7 @@ export function PipelineTab({ source, notify }: Props) {
 					]}
 				/>
 			</SectionCard>
-			<div className="grid items-start gap-4 lg:grid-cols-2">
+			<div className="mb-2.5 grid grid-cols-2 items-start gap-2.5 max-[1100px]:grid-cols-1">
 				<SectionCard title="Dossier produit par l'agent" flush>
 					<DossierPanel
 						dossier={dossier}

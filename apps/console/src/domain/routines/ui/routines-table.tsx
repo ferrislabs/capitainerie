@@ -1,18 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { Play } from 'lucide-react'
 import { Button } from '#/components/ui/button'
-import { Switch } from '#/components/ui/switch'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
 import type { Routine } from '#/domain/routines/types'
 import { AgentLabel } from '#/domain/routines/ui/agent-avatar'
 import { RunBadge } from '#/domain/routines/ui/run-badge'
+import { Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
 
 export interface RoutineRow {
 	routine: Routine
@@ -27,47 +19,46 @@ interface Props {
 
 export function RoutinesTable({ rows, onLaunch, onToggle }: Props) {
 	return (
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>Routine</TableHead>
-					<TableHead>Agent</TableHead>
-					<TableHead>Fréquence</TableHead>
-					<TableHead>Dernier passage</TableHead>
-					<TableHead>
+		<Tbl>
+			<thead>
+				<tr>
+					<Th>Routine</Th>
+					<Th>Agent</Th>
+					<Th>Fréquence</Th>
+					<Th>Dernier passage</Th>
+					<Th>
 						<span className="sr-only">Lancer</span>
-					</TableHead>
-					<TableHead>Actif</TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
+					</Th>
+					<Th>Actif</Th>
+				</tr>
+			</thead>
+			<tbody>
 				{rows.map(({ routine, scheduleLabel }) => (
-					<TableRow key={routine.id}>
-						<TableCell className="font-medium">
+					<Tr key={routine.id}>
+						<Td>
 							<Link
 								to="/routines/$routineId/{-$tab}"
 								params={{ routineId: routine.id }}
-								className="hover:underline"
+								className="font-medium text-foreground"
 							>
 								{routine.name}
 							</Link>
-						</TableCell>
-						<TableCell>
+						</Td>
+						<Td>
 							<AgentLabel name={routine.agent} />
-						</TableCell>
-						<TableCell className="text-muted-foreground">
-							{scheduleLabel}
-						</TableCell>
-						<TableCell>
-							<span className="mr-2 text-muted-foreground">
+						</Td>
+						<Td className="text-muted-foreground">{scheduleLabel}</Td>
+						<Td>
+							<span className="text-muted-foreground">
 								{routine.lastRun.when}
-							</span>
+							</span>{' '}
 							<RunBadge
 								tone={routine.lastRun.tone}
 								label={routine.lastRun.label}
+								listing
 							/>
-						</TableCell>
-						<TableCell className="text-right">
+						</Td>
+						<Td className="text-right">
 							<Button
 								type="button"
 								size="sm"
@@ -77,17 +68,17 @@ export function RoutinesTable({ rows, onLaunch, onToggle }: Props) {
 								<Play aria-hidden="true" />
 								Lancer
 							</Button>
-						</TableCell>
-						<TableCell>
-							<Switch
+						</Td>
+						<Td>
+							<Sw
 								aria-label={`Activer ${routine.name}`}
 								checked={routine.enabled}
 								onCheckedChange={() => onToggle(routine.id)}
 							/>
-						</TableCell>
-					</TableRow>
+						</Td>
+					</Tr>
 				))}
-			</TableBody>
-		</Table>
+			</tbody>
+		</Tbl>
 	)
 }

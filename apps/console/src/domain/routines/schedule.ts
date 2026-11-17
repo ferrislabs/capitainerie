@@ -69,8 +69,7 @@ export function scheduleText(schedule: Schedule): string {
 		case 'Toutes les semaines': {
 			const days = isWorkingDays(schedule.days)
 				? 'Jours ouvrés'
-				: schedule.days.map((d) => `${capitalize(d)}.`).join(', ') ||
-					'Aucun jour'
+				: schedule.days.map(capitalize).join(', ') || 'Aucun jour'
 			return `${days} ${time}`
 		}
 		case 'Tous les mois':

@@ -1,16 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { Badge } from '#/components/ui/badge'
-import { Switch } from '#/components/ui/switch'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
 import type { DemoAgent, DemoSource } from '#/domain/demo'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
+import { Sev, Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
 import { SourceTypeTile } from '#/domain/sources/ui/source-type-tile'
 
 interface Props {
@@ -19,74 +10,77 @@ interface Props {
 	onToggle: (source: DemoSource, enabled: boolean) => void
 }
 
+const AVS =
+	'flex min-w-0 items-center gap-1.5 overflow-hidden text-[12px] leading-[normal] text-ellipsis whitespace-nowrap text-muted-foreground'
+
 export function SourcesTable({ sources, agents, onToggle }: Props) {
 	return (
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>Source</TableHead>
-					<TableHead>Type</TableHead>
-					<TableHead>Motifs</TableHead>
-					<TableHead>Agents</TableHead>
-					<TableHead className="text-right">24 h</TableHead>
-					<TableHead>Actif</TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
+		<Tbl>
+			<thead>
+				<tr>
+					<Th>Source</Th>
+					<Th>Type</Th>
+					<Th>Motifs</Th>
+					<Th>Agents</Th>
+					<Th>24 h</Th>
+					<Th>Actif</Th>
+				</tr>
+			</thead>
+			<tbody>
 				{sources.map((source) => {
 					const listening = source.agentIds
 						.map((id) => agents.find((a) => a.id === id))
 						.filter((a): a is DemoAgent => a !== undefined)
 					return (
-						<TableRow key={source.id}>
-							<TableCell>
-								<span className="flex items-center gap-2">
+						<Tr key={source.id}>
+							<Td>
+								<span className={AVS}>
 									<SourceTypeTile type={source.type} size={24} />
-									<span className="min-w-0">
+									<span>
 										<Link
 											to="/sources/$sourceId/{-$tab}"
 											params={{ sourceId: source.id }}
-											className="font-medium text-foreground hover:underline"
+											className="font-medium text-foreground"
 										>
 											{source.name}
 										</Link>
-										<span className="block text-xs text-muted-foreground">
+										<div className="text-[12px] text-muted-foreground">
 											Dernier événement {source.last}
-										</span>
+										</div>
 									</span>
 								</span>
-							</TableCell>
-							<TableCell>
-								<Badge variant="muted">{source.type}</Badge>
-							</TableCell>
-							<TableCell className="max-w-60 font-mono break-words whitespace-normal">
+							</Td>
+							<Td>
+								<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
+									{source.type}
+								</span>
+							</Td>
+							<Td className="max-w-60 font-mono text-[11.5px] [overflow-wrap:anywhere]">
 								{source.patterns.join('  ') || '—'}
-							</TableCell>
-							<TableCell>
+							</Td>
+							<Td>
 								{listening.length > 0 ? (
-									<span className="flex -space-x-1">
+									<span className={AVS}>
 										{listening.slice(0, 3).map((a) => (
 											<AgentAvatar key={a.id} agent={a} />
 										))}
 									</span>
 								) : (
-									<Badge variant="attention">Aucun agent</Badge>
+									<Sev tone="warn">Aucun agent</Sev>
 								)}
-							</TableCell>
-							<TableCell className="text-right figures">
-								{source.eventsLast24h}
-							</TableCell>
-							<TableCell>
-								<Switch
+							</Td>
+							<Td className="tabular-nums">{source.eventsLast24h}</Td>
+							<Td>
+								<Sw
 									aria-label={`Activer ${source.name}`}
 									checked={source.enabled}
 									onCheckedChange={(checked) => onToggle(source, checked)}
 								/>
-							</TableCell>
-						</TableRow>
+							</Td>
+						</Tr>
 					)
 				})}
-			</TableBody>
-		</Table>
+			</tbody>
+		</Tbl>
 	)
 }

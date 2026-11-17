@@ -76,7 +76,7 @@ describe('parseSchedule', () => {
 describe('scheduleText', () => {
 	it('round-trips the fixture texts', () => {
 		for (const text of [
-			'Lun. 06:30',
+			'Lun 06:30',
 			'Chaque jour 06:00',
 			'Jours ouvrés 08:00',
 			'Toutes les 48 h',

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
-import { TextInput } from '#/components/ui/text-input'
 import {
 	type DemoSource,
 	shortName,
@@ -9,7 +8,12 @@ import {
 } from '#/domain/demo'
 import { testValue } from '#/domain/sources/glob'
 import { typeInfo } from '#/domain/sources/source-form'
+import { AddRow, CTL } from '#/domain/sources/ui/mockup'
 import { PatternList } from '#/domain/sources/ui/pattern-list'
+import { cn } from '#/lib/utils'
+
+const OK_BOX =
+	'rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success'
 
 interface Props {
 	source: DemoSource
@@ -22,10 +26,11 @@ export function RulesTab({ source }: Props) {
 	const first = agents.find((a) => a.id === source.agentIds[0])
 	const placeholder = typeInfo(source.type).placeholder.split(',')[0] ?? ''
 	return (
-		<div className="flex flex-col gap-4">
+		<div>
 			<SectionCard
 				title="Motifs à écouter"
 				description="* = n'importe quels caractères"
+				flush
 			>
 				<PatternList
 					items={source.patterns}
@@ -41,7 +46,11 @@ export function RulesTab({ source }: Props) {
 					}
 				/>
 			</SectionCard>
-			<SectionCard title="Exclusions" description="Prioritaires sur les motifs">
+			<SectionCard
+				title="Exclusions"
+				description="Prioritaires sur les motifs"
+				flush
+			>
 				<PatternList
 					items={source.exclusions}
 					placeholder="*.getnatalia.com"
@@ -58,10 +67,10 @@ export function RulesTab({ source }: Props) {
 					}
 				/>
 			</SectionCard>
-			<SectionCard title="Tester une valeur">
-				<div className="flex flex-col gap-3">
-					<TextInput
-						className="font-mono"
+			<SectionCard title="Tester une valeur" flush>
+				<AddRow className="pt-3">
+					<input
+						className={cn(CTL, 'flex-1 font-mono text-[11.5px]')}
 						aria-label="Valeur à tester"
 						placeholder={
 							source.type === 'DNS' ? 'auth.exemple.fr' : 'valeur à tester'
@@ -69,24 +78,30 @@ export function RulesTab({ source }: Props) {
 						value={value}
 						onChange={(e) => setValue(e.target.value)}
 					/>
-					<p aria-live="polite" className="text-muted-foreground">
-						{verdict === null ? (
-							"Saisis un nom d'hôte pour voir ce que les règles en feraient."
-						) : verdict.kind === 'match' ? (
-							<span className="text-foreground">
-								Correspond à <b className="font-mono">{verdict.pattern}</b>.{' '}
-								{first
-									? `${shortName(first.name)} recevrait une tâche.`
-									: "Aucun agent n'écoute : rien ne serait créé."}
-							</span>
-						) : verdict.kind === 'excluded' ? (
-							<span className="text-foreground">
-								Ignoré : exclu par <b className="font-mono">{verdict.by}</b>.
-							</span>
-						) : (
-							"Aucun motif ne correspond. L'événement est journalisé, sans tâche."
-						)}
-					</p>
+				</AddRow>
+				<div aria-live="polite" className="px-3 pb-3">
+					{verdict === null ? (
+						<span className="text-muted-foreground">
+							Saisis un nom d'hôte pour voir ce que les règles en feraient.
+						</span>
+					) : verdict.kind === 'match' ? (
+						<div className={OK_BOX}>
+							Correspond à{' '}
+							<b className="font-mono text-[11.5px]">{verdict.pattern}</b>.{' '}
+							{first
+								? `${shortName(first.name)} recevrait une tâche.`
+								: "Aucun agent n'écoute : rien ne serait créé."}
+						</div>
+					) : verdict.kind === 'excluded' ? (
+						<div className={cn(OK_BOX, 'border-border bg-secondary')}>
+							Ignoré : exclu par{' '}
+							<b className="font-mono text-[11.5px]">{verdict.by}</b>.
+						</div>
+					) : (
+						<div className={cn(OK_BOX, 'border-border bg-secondary')}>
+							Aucun motif ne correspond. L'événement est journalisé, sans tâche.
+						</div>
+					)}
 				</div>
 			</SectionCard>
 		</div>
