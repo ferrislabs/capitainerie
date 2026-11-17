@@ -5,6 +5,7 @@ export interface ActivityEvent {
 	what: string
 	when: string
 	actor: ActivityActor
+	initials?: string
 }
 
 export const ACTIVITY: ReadonlyArray<ActivityEvent> = [
@@ -31,24 +32,28 @@ export const ACTIVITY: ReadonlyArray<ActivityEvent> = [
 		what: 'a testé le MCP drive-steward : journal, sur « Organisation du Drive »',
 		when: 'il y a 7 min',
 		actor: 'human',
+		initials: 'FG',
 	},
 	{
 		who: 'François-Guillaume Ribreau',
 		what: 'a lancé un test du MCP drive-steward : inventaire, sur « Organisation du Drive »',
 		when: 'il y a 7 min',
 		actor: 'human',
+		initials: 'FG',
 	},
 	{
 		who: 'Baptiste Parmantier',
 		what: 'a lu NAT-679 « Diff gate SEO : la sonde de mise en page plante »',
 		when: 'il y a 30 min',
 		actor: 'human',
+		initials: 'BA',
 	},
 	{
 		who: 'Baptiste Parmantier',
 		what: 'a lu NAT-579 « [archive] Point Copil IA : infrastructure, formation »',
 		when: 'il y a 30 min',
 		actor: 'human',
+		initials: 'BA',
 	},
 ]
 
@@ -140,12 +145,12 @@ export interface CostTile {
 export const COST_TILES: ReadonlyArray<CostTile> = [
 	{ label: 'Dépense API', value: '0,00 $', hint: '0 entrée · 0 sortie' },
 	{
-		label: 'Jetons',
+		label: 'Abonnements',
 		value: '404,9 M',
-		hint: 'en entrée · 1,9 M en sortie',
+		hint: 'jetons en entrée · 1,9 M en sortie',
 	},
-	{ label: 'Exécutions abonnement', value: '55', hint: 'sur 14 jours' },
-	{ label: 'Budget utilisé', value: '0 %', hint: '0,00 $ sur 400 $ ce mois' },
+	{ label: 'Budget', value: '0 %', hint: '0,00 $ sur 400 $ ce mois' },
+	{ label: 'Événements financiers', value: '0', hint: '0,00 $ estimé' },
 ]
 
 export interface AgentCost {

@@ -1,31 +1,38 @@
-import { SectionCard } from '#/components/layout/section-card'
 import type { ActivityEvent } from '#/domain/audit/mock/audit-data'
-import { Avatar } from '#/domain/audit/ui/avatar'
+import { AgentAvatar, HumanAvatar } from '#/domain/audit/ui/avatar'
+import { Panel, Row, Rows, When } from '#/domain/audit/ui/rows'
 
 interface Props {
 	events: ReadonlyArray<ActivityEvent>
 }
 
+function Actor({ event }: { event: ActivityEvent }) {
+	if (event.actor === 'agent') return <AgentAvatar name={event.who} size={22} />
+	return (
+		<HumanAvatar
+			initials={event.actor === 'system' ? 'SY' : (event.initials ?? '')}
+			size={22}
+		/>
+	)
+}
+
 export function ActivityList({ events }: Props) {
 	return (
-		<SectionCard title="Activité récente" flush>
-			<ul className="divide-y">
+		<Panel>
+			<Rows>
 				{events.map((event) => (
-					<li
-						key={`${event.who}-${event.what}-${event.when}`}
-						className="flex items-center gap-2.5 px-3 py-2"
-					>
-						<Avatar name={event.who} />
+					<Row key={`${event.who}-${event.what}-${event.when}`}>
+						<Actor event={event} />
 						<span className="min-w-0 flex-1">
 							<b className="font-medium">{event.who}</b>{' '}
-							<span className="text-muted-foreground">{event.what}</span>
+							<span className="text-xs text-muted-foreground">
+								{event.what}
+							</span>
 						</span>
-						<span className="shrink-0 text-xs text-muted-foreground">
-							{event.when}
-						</span>
-					</li>
+						<When>{event.when}</When>
+					</Row>
 				))}
-			</ul>
-		</SectionCard>
+			</Rows>
+		</Panel>
 	)
 }

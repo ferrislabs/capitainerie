@@ -1,5 +1,5 @@
-import { SectionCard } from '#/components/layout/section-card'
 import type { Budget } from '#/domain/audit/mock/audit-data'
+import { Panel, Row, Rows, RowTitle } from '#/domain/audit/ui/rows'
 
 interface Props {
 	budgets: ReadonlyArray<Budget>
@@ -10,37 +10,39 @@ const format = (value: number): string =>
 
 export function BudgetsList({ budgets }: Props) {
 	return (
-		<SectionCard title="Budgets mensuels" flush>
-			<ul className="divide-y">
+		<Panel>
+			<Rows>
 				{budgets.map((budget) => {
 					const percent = Math.min(
 						100,
 						Math.round((budget.spent / budget.limit) * 100),
 					)
 					return (
-						<li
-							key={budget.scope}
-							className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2"
-						>
-							<span className="min-w-0 flex-1">
-								<b className="font-medium">{budget.scope}</b>
-								<span className="block text-xs text-muted-foreground">
-									{budget.kind === 'organisation' ? 'Organisation' : 'Agent'}
-								</span>
-							</span>
-							<progress
-								value={percent}
-								max={100}
-								aria-label={`Budget consommé : ${budget.scope}`}
-								className="h-1.5 w-44 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary"
+						<Row key={budget.scope}>
+							<RowTitle
+								title={budget.scope}
+								sub={`${format(budget.spent)} $ sur ${budget.limit} $ ce mois`}
 							/>
-							<span className="figures w-32 text-right text-xs text-muted-foreground">
-								{format(budget.spent)} $ / {budget.limit} $
+							<div
+								role="progressbar"
+								aria-label={`Budget consommé : ${budget.scope}`}
+								aria-valuemin={0}
+								aria-valuemax={100}
+								aria-valuenow={percent}
+								className="h-1.5 w-[180px] min-w-[60px] overflow-hidden rounded-[3px] bg-secondary"
+							>
+								<i
+									className="block h-full rounded-[3px] bg-primary"
+									style={{ width: `${Math.max(percent, 1)}%` }}
+								/>
+							</div>
+							<span className="figures w-9 text-right font-mono text-[11.5px] text-muted-foreground">
+								{percent} %
 							</span>
-						</li>
+						</Row>
 					)
 				})}
-			</ul>
-		</SectionCard>
+			</Rows>
+		</Panel>
 	)
 }

@@ -1,32 +1,55 @@
-interface Props {
+import { DEMO_AGENTS } from '#/domain/demo'
+
+interface AgentAvatarProps {
 	name: string
 	size?: number
 }
 
+interface HumanAvatarProps {
+	initials: string
+	size?: number
+}
+
+const FALLBACK_HUE = 250
+
 const hueOf = (name: string): number =>
-	[...name].reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) % 360, 7)
+	DEMO_AGENTS.find((agent) => agent.name === name)?.hue ?? FALLBACK_HUE
 
-const initialsOf = (name: string): string =>
-	name
-		.replace(/\s*\(.*\)/, '')
-		.split(/\s+/)
-		.filter(Boolean)
-		.slice(0, 2)
-		.map((word) => word[0]?.toUpperCase() ?? '')
-		.join('')
-
-export function Avatar({ name, size = 22 }: Props) {
+export function AgentAvatar({ name, size = 20 }: AgentAvatarProps) {
+	const hue = hueOf(name)
 	return (
 		<span
 			aria-hidden="true"
-			className="inline-flex shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+			className="inline-grid shrink-0 place-items-center rounded-full"
 			style={{
 				width: size,
 				height: size,
-				background: `hsl(${hueOf(name)} 55% 42%)`,
+				background: `linear-gradient(140deg, hsl(${hue} 70% 62%), hsl(${(hue + 70) % 360} 72% 56%))`,
 			}}
 		>
-			{initialsOf(name)}
+			<svg viewBox="0 0 16 16" className="size-[62%]" aria-hidden="true">
+				<circle cx="5.5" cy="6.5" r="1.2" fill="#1b1d22" />
+				<circle cx="10.5" cy="6.5" r="1.2" fill="#1b1d22" />
+				<path
+					d="M5 10c1.5 1.5 4.5 1.5 6 0"
+					fill="none"
+					stroke="#1b1d22"
+					strokeWidth="1.2"
+					strokeLinecap="round"
+				/>
+			</svg>
+		</span>
+	)
+}
+
+export function HumanAvatar({ initials, size = 20 }: HumanAvatarProps) {
+	return (
+		<span
+			aria-hidden="true"
+			className="inline-grid shrink-0 place-items-center rounded-full bg-secondary text-[9px] leading-none font-semibold text-muted-foreground"
+			style={{ width: size, height: size }}
+		>
+			{initials}
 		</span>
 	)
 }
