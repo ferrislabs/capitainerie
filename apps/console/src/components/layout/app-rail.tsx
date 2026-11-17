@@ -51,7 +51,7 @@ function RailLink({
 				expanded
 					? undefined
 					: showCount
-						? `${item.label}, ${shown} runs actifs`
+						? `${item.label}, ${shown} éléments`
 						: item.label
 			}
 			className={cn(
@@ -80,7 +80,7 @@ function RailLink({
 					>
 						{shown}
 					</span>
-					<span className="sr-only">{`, ${shown} runs actifs`}</span>
+					<span className="sr-only">{`, ${shown} éléments`}</span>
 				</>
 			) : null}
 		</Link>
@@ -214,16 +214,22 @@ export function AppRail({
 										: 'mt-2 border-t border-rail-border pt-2'),
 							)}
 						>
-							<p
-								id={labelId}
-								className={cn(
-									'px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label',
-									!isExpanded && 'sr-only',
-								)}
+							{section.label ? (
+								<p
+									id={labelId}
+									className={cn(
+										'px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label',
+										!isExpanded && 'sr-only',
+									)}
+								>
+									{section.label}
+								</p>
+							) : null}
+							<ul
+								aria-labelledby={section.label ? labelId : undefined}
+								aria-label={section.label ? undefined : 'Général'}
+								className="flex flex-col gap-0.5"
 							>
-								{section.label}
-							</p>
-							<ul aria-labelledby={labelId} className="flex flex-col gap-0.5">
 								{section.items.map((item) => (
 									<li key={item.to}>
 										<RailLink
@@ -246,7 +252,7 @@ export function AppRail({
 							{liveAgents.map((agent) => (
 								<li key={agent.id}>
 									<Link
-										to="/agents/equipe/$agentId/{-$tab}"
+										to="/agents/$agentId/{-$tab}"
 										params={{ agentId: agent.id }}
 										className={cn(
 											'flex h-7 items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground transition-colors duration-150',

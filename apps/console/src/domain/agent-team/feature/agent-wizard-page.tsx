@@ -46,7 +46,7 @@ export function AgentWizardPage() {
 		for (const connector of state.connectors) grantConnector(id, connector)
 		for (const sourceId of state.sources) attachSource(sourceId, id)
 		void navigate({
-			to: '/agents/equipe/$agentId/{-$tab}',
+			to: '/agents/$agentId/{-$tab}',
 			params: { agentId: id },
 		})
 	}

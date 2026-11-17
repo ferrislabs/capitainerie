@@ -79,7 +79,7 @@ export function ConnectorCard({
 								className="inline-flex items-center gap-1 rounded-md border bg-muted px-1.5 py-0.5"
 							>
 								<Link
-									to="/agents/equipe/$agentId/{-$tab}"
+									to="/agents/$agentId/{-$tab}"
 									params={{ agentId: a.id, tab: 'connectors' }}
 									className="hover:underline"
 								>

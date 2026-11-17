@@ -17,11 +17,7 @@ import {
 import { AgentWizardPage } from '#/domain/agent-team/feature/agent-wizard-page'
 import { demoStore, resetDemoState } from '#/domain/demo'
 
-const EXTRA = [
-	'/agents/equipe',
-	'/agents/nouveau',
-	'/agents/equipe/$agentId/{-$tab}',
-]
+const EXTRA = ['/agents', '/agents/nouveau', '/agents/$agentId/{-$tab}']
 
 describe('agent wizard', () => {
 	let fetchSpy: MockInstance<typeof fetch>

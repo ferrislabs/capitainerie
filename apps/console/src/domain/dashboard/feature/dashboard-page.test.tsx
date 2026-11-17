@@ -6,7 +6,7 @@ import { DashboardPage } from '#/domain/dashboard/feature/dashboard-page'
 import { addApproval, demoStore, resetDemoState } from '#/domain/demo'
 
 const EXTRA = [
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/audit/{-$tab}',
 	'/tasks',
 	'/tasks/$taskId',
@@ -18,7 +18,7 @@ afterEach(() => vi.restoreAllMocks())
 describe('DashboardPage', () => {
 	it('renders title, banner, tiles and panels without network', async () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch')
-		await renderAtPath(<DashboardPage />, '/dashboard', EXTRA)
+		await renderAtPath(<DashboardPage />, '/', EXTRA)
 		expect(
 			await screen.findByRole('heading', { name: 'Tableau de bord' }),
 		).toBeTruthy()
@@ -40,19 +40,19 @@ describe('DashboardPage', () => {
 	})
 
 	it('links to the pages and to the costs tab', async () => {
-		await renderAtPath(<DashboardPage />, '/dashboard', EXTRA)
+		await renderAtPath(<DashboardPage />, '/', EXTRA)
 		await screen.findByRole('heading', { name: 'Tableau de bord' })
 		const hrefs = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
-		expect(hrefs).toContain('/agents/equipe')
+		expect(hrefs).toContain('/agents')
 		expect(hrefs).toContain('/approvals')
 		expect(hrefs).toContain('/audit/couts')
-		expect(
-			hrefs.some((h) => h?.startsWith('/agents/equipe/security-officer')),
-		).toBe(true)
+		expect(hrefs.some((h) => h?.startsWith('/agents/security-officer'))).toBe(
+			true,
+		)
 	})
 
 	it('links the task tiles and the live agents current task', async () => {
-		await renderAtPath(<DashboardPage />, '/dashboard', EXTRA)
+		await renderAtPath(<DashboardPage />, '/', EXTRA)
 		await screen.findByRole('heading', { name: 'Tableau de bord' })
 		for (const label of ['Tâches ouvertes', 'Tâches bloquées']) {
 			const a = screen.getByText(label).closest('a')
@@ -77,7 +77,7 @@ describe('DashboardPage', () => {
 				decidedBy: '',
 			}),
 		)
-		await renderAtPath(<DashboardPage />, '/dashboard', EXTRA)
+		await renderAtPath(<DashboardPage />, '/', EXTRA)
 		const link = (await screen.findByText('Approbations en attente')).closest(
 			'a',
 		)

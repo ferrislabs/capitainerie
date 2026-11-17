@@ -387,7 +387,7 @@ export function WizardView({
 			<div className="flex items-center justify-between">
 				{step === 0 ? (
 					<Button asChild variant="ghost">
-						<Link to="/agents/equipe">Annuler</Link>
+						<Link to="/agents">Annuler</Link>
 					</Button>
 				) : (
 					<Button type="button" variant="ghost" onClick={onBack}>

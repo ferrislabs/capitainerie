@@ -20,7 +20,7 @@ export function OrgTreeView({ entries }: Props) {
 			{entries.map(({ agent, depth, subCount, canDelegate }) => (
 				<li key={agent.id}>
 					<Link
-						to="/agents/equipe/$agentId/{-$tab}"
+						to="/agents/$agentId/{-$tab}"
 						params={{ agentId: agent.id }}
 						className="flex items-center gap-2.5 py-2 pr-3 hover:bg-accent"
 						style={{ paddingLeft: 12 + depth * 22 }}

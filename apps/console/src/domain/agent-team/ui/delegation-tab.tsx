@@ -37,7 +37,7 @@ interface Props {
 function AgentLink({ agent, size }: { agent: DemoAgent; size: number }) {
 	return (
 		<Link
-			to="/agents/equipe/$agentId/{-$tab}"
+			to="/agents/$agentId/{-$tab}"
 			params={{ agentId: agent.id }}
 			className="flex min-w-0 items-center gap-2 hover:underline"
 		>

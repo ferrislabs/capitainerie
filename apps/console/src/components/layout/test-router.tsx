@@ -24,7 +24,7 @@ const PATHS = [
 	'/tasks',
 	'/tasks/$taskId',
 	'/dashboard',
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 	'/sources',
 	'/skills',
 	'/approvals',

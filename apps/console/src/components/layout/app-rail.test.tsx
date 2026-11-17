@@ -29,126 +29,88 @@ async function renderRail(path: string, props = rail()) {
 }
 
 describe('AppRail', () => {
-	it('links the brand and the first entry to the home page', async () => {
+	it('links the brand and the dashboard to the home page', async () => {
 		await renderRail('/')
 
 		const brand = screen.getByRole('link', { name: 'Capitainerie, accueil' })
 		expect(brand.getAttribute('href')).toBe('/')
-		const home = screen.getByRole('link', { name: 'Accueil' })
+		const home = screen.getByRole('link', { name: 'Tableau de bord' })
 		expect(home.getAttribute('href')).toBe('/')
 		expect(home.getAttribute('aria-current')).toBe('page')
 	})
 
-	it('does not mark Accueil current on other pages', async () => {
-		await renderRail('/runs')
+	it('does not mark the dashboard current on other pages', async () => {
+		await renderRail('/tasks')
 
-		const home = screen.getByRole('link', { name: 'Accueil' })
-		expect(home.getAttribute('aria-current')).toBeNull()
+		expect(
+			screen
+				.getByRole('link', { name: 'Tableau de bord' })
+				.getAttribute('aria-current'),
+		).toBeNull()
+		expect(
+			screen.getByRole('link', { name: 'Tâches' }).getAttribute('aria-current'),
+		).toBe('page')
 	})
 
-	it('shows the number of active runs in the running blue', async () => {
-		await renderRail('/live', rail({ badges: { '/live': 3 } }))
+	it('shows a count next to a destination', async () => {
+		await renderRail('/', rail({ badges: { '/sources': 3 } }))
 
-		const link = screen.getByRole('link', { name: 'En cours, 3 runs actifs' })
-		const count = screen.getByText('3')
-		expect(link.contains(count)).toBe(true)
-		expect(count.className).toContain('text-signal-running')
-		expect(count.className).not.toContain('attention')
+		const link = screen.getByRole('link', { name: 'Sources, 3 éléments' })
+		expect(link.contains(screen.getByText('3'))).toBe(true)
 	})
 
 	it('caps the count at 100+', async () => {
-		await renderRail('/live', rail({ badges: { '/live': 100 } }))
+		await renderRail('/', rail({ badges: { '/sources': 100 } }))
 
 		expect(screen.getByText('100+')).toBeTruthy()
 	})
 
-	it('shows no count when nothing runs', async () => {
-		await renderRail('/live', rail({ badges: { '/live': 0 } }))
+	it('shows no count when there is nothing', async () => {
+		await renderRail('/', rail({ badges: { '/sources': 0 } }))
 
-		expect(screen.getByRole('link', { name: 'En cours' })).toBeTruthy()
+		expect(screen.getByRole('link', { name: 'Sources' })).toBeTruthy()
 		expect(screen.queryByText('0')).toBeNull()
 	})
 
-	it('groups the destinations by section and marks the current page', async () => {
-		await renderRail('/kanban')
+	it('groups the destinations by section', async () => {
+		await renderRail('/agents')
 
 		expect(
 			screen.getByRole('navigation', { name: 'Navigation principale' }),
 		).toBeTruthy()
-		for (const section of [
-			'Travail',
-			'Organisation',
-			'Supervision',
-			'Paramètres',
-		]) {
+		for (const section of ['Général', 'Travail', 'Organisation']) {
 			expect(screen.getByRole('list', { name: section })).toBeTruthy()
 		}
 		for (const label of [
-			'Conversations',
-			'Runs',
-			'En cours',
-			'Kanban',
+			'Boîte de réception',
+			'Tâches',
+			'Projets',
 			'Routines',
+			'Artifacts',
 			'Agents',
+			'Compétences',
 			'Sources',
 			'Connecteurs',
+			'Approbations',
 			'Audit',
-			'Fournisseurs',
-			'Modèles',
-			'Intégrations',
 		]) {
 			expect(screen.getByRole('link', { name: label })).toBeTruthy()
 		}
 		expect(
-			screen.getByRole('link', { name: 'Kanban' }).getAttribute('aria-current'),
-		).toBe('page')
-		expect(
-			screen.getByRole('link', { name: 'Runs' }).getAttribute('aria-current'),
-		).toBeNull()
-	})
-
-	it('marks a conversation as current under Conversations', async () => {
-		await renderRail('/chat/c1')
-
-		expect(
-			screen
-				.getByRole('link', { name: 'Conversations' })
-				.getAttribute('aria-current'),
-		).toBe('page')
-		expect(
-			screen
-				.getByRole('link', { name: 'Accueil' })
-				.getAttribute('aria-current'),
-		).toBeNull()
-	})
-
-	it('marks a settings page as current', async () => {
-		await renderRail('/settings/models')
-
-		expect(
-			screen
-				.getByRole('link', { name: 'Modèles' })
-				.getAttribute('aria-current'),
-		).toBe('page')
-		expect(
-			screen
-				.getByRole('link', { name: 'Fournisseurs' })
-				.getAttribute('aria-current'),
-		).toBeNull()
-	})
-
-	it('marks the integrations page as current', async () => {
-		await renderRail('/settings/integrations')
-
-		expect(
-			screen
-				.getByRole('link', { name: 'Intégrations' })
-				.getAttribute('aria-current'),
+			screen.getByRole('link', { name: 'Agents' }).getAttribute('aria-current'),
 		).toBe('page')
 	})
 
-	it('names icon-only links when collapsed', async () => {
-		await renderRail('/runs', rail({ expanded: false }))
+	it('keeps the agent list marked under Agents', async () => {
+		await renderRail('/agents/organigramme')
+
+		expect(
+			screen.getByRole('link', { name: 'Agents' }).getAttribute('aria-current'),
+		).toBe('page')
+	})
+
+	it('collapses to icons with an accessible name', async () => {
+		await renderRail('/', rail({ expanded: false }))
 
 		expect(
 			screen.getByRole('link', { name: 'Agents' }).getAttribute('aria-label'),
@@ -157,7 +119,7 @@ describe('AppRail', () => {
 	})
 
 	it('toggles the expanded state', async () => {
-		const props = await renderRail('/runs')
+		const props = await renderRail('/')
 
 		await userEvent.click(
 			screen.getByRole('button', { name: 'Réduire le menu' }),
@@ -167,14 +129,14 @@ describe('AppRail', () => {
 	})
 
 	it('hides the toggle when the screen is too narrow', async () => {
-		await renderRail('/runs', rail({ canExpand: false }))
+		await renderRail('/', rail({ canExpand: false }))
 
 		expect(screen.queryByRole('button', { name: /menu/ })).toBeNull()
 	})
 
 	it('renders the footer with the expanded state', async () => {
 		await renderRail(
-			'/runs',
+			'/',
 			rail({
 				expanded: false,
 				footer: (expanded) => <p>{expanded ? 'large' : 'compact'}</p>,
@@ -185,16 +147,15 @@ describe('AppRail', () => {
 	})
 
 	it('moves focus with the arrow keys across sections', async () => {
-		await renderRail('/runs')
+		await renderRail('/')
 		const nav = screen.getByRole('navigation', {
 			name: 'Navigation principale',
 		})
-		screen.getByRole('link', { name: 'Runs' }).focus()
+		screen.getByRole('link', { name: 'Tableau de bord' }).focus()
 
 		for (const label of [
-			'Kanban',
+			'Boîte de réception',
 			'Tâches',
-			'Clients',
 			'Projets',
 			'Routines',
 			'Artifacts',
@@ -203,8 +164,6 @@ describe('AppRail', () => {
 			'Sources',
 			'Connecteurs',
 			'Approbations',
-			'Tableau de bord',
-			'En cours',
 			'Audit',
 		]) {
 			fireEvent.keyDown(nav, { key: 'ArrowDown' })
@@ -213,14 +172,14 @@ describe('AppRail', () => {
 			)
 		}
 
-		fireEvent.keyDown(nav, { key: 'End' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Intégrations' }),
-		)
-
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Accueil' }),
+			screen.getByRole('link', { name: 'Tableau de bord' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'End' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Audit' }),
 		)
 	})
 
@@ -235,8 +194,9 @@ describe('AppRail', () => {
 			}),
 		)
 
-		const agent = screen.getByRole('link', { name: 'Dev' })
-		expect(agent.getAttribute('href')).toBe('/agents/equipe/dev')
+		expect(screen.getByRole('link', { name: 'Dev' }).getAttribute('href')).toBe(
+			'/agents/dev',
+		)
 		await userEvent.click(
 			screen.getByRole('button', { name: 'Nouvelle tâche' }),
 		)

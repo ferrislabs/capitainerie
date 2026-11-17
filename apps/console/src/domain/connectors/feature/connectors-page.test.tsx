@@ -5,7 +5,7 @@ import { renderAtPath } from '#/components/layout/test-router'
 import { ConnectorsPage } from '#/domain/connectors/feature/connectors-page'
 import { DEMO_CONNECTORS, resetDemoState } from '#/domain/demo'
 
-const EXTRA = ['/connectors/{-$tab}', '/agents/equipe/$agentId/{-$tab}']
+const EXTRA = ['/connectors/{-$tab}', '/agents/$agentId/{-$tab}']
 
 beforeEach(() => {
 	resetDemoState()

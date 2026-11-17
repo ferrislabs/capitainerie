@@ -15,10 +15,10 @@ describe('breadcrumbs', () => {
 	})
 
 	it('names the team pages', () => {
-		expect(breadcrumbs('/agents/equipe').map((c) => c.label)).toEqual([
+		expect(breadcrumbs('/agents/nouveau').map((c) => c.label)).toEqual([
 			'Accueil',
 			'Agents',
-			'Équipe',
+			'Nouvel agent',
 		])
 	})
 

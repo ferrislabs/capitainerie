@@ -19,7 +19,7 @@ export function AgentTabBar({ agentId, active }: Props) {
 			{AGENT_TABS.map((tab) => (
 				<Link
 					key={tab.id}
-					to="/agents/equipe/$agentId/{-$tab}"
+					to="/agents/$agentId/{-$tab}"
 					params={{ agentId, tab: tab.id }}
 					aria-current={tab.id === active ? 'page' : undefined}
 					className={cn(
@@ -31,10 +31,10 @@ export function AgentTabBar({ agentId, active }: Props) {
 				</Link>
 			))}
 			<span className="flex-1" />
-			<Link to="/runs" className={TAB_CLASS}>
+			<Link to="/audit/{-$tab}" params={{ tab: 'runs' }} className={TAB_CLASS}>
 				Exécutions
 			</Link>
-			<Link to="/agents" className={TAB_CLASS}>
+			<Link to="/audit/{-$tab}" params={{ tab: 'couts' }} className={TAB_CLASS}>
 				Coûts
 			</Link>
 		</nav>

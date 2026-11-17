@@ -14,42 +14,24 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as DevUiRouteImport } from './routes/[_]dev.ui'
 import { Route as AppSkillsRouteImport } from './routes/_app.skills'
-import { Route as AppSettingsRouteImport } from './routes/_app.settings'
-import { Route as AppRunsRouteImport } from './routes/_app.runs'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
-import { Route as AppLiveRouteImport } from './routes/_app.live'
-import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
-import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
-import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppArtifactsRouteImport } from './routes/_app.artifacts'
 import { Route as AppApprovalsRouteImport } from './routes/_app.approvals'
 import { Route as AppTasksIndexRouteImport } from './routes/_app.tasks.index'
 import { Route as AppSourcesIndexRouteImport } from './routes/_app.sources.index'
-import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppRoutinesIndexRouteImport } from './routes/_app.routines.index'
-import { Route as AppChatIndexRouteImport } from './routes/_app.chat.index'
 import { Route as AppAgentsIndexRouteImport } from './routes/_app.agents.index'
 import { Route as AppTasksTaskIdRouteImport } from './routes/_app.tasks.$taskId'
 import { Route as AppSourcesNouvelleRouteImport } from './routes/_app.sources.nouvelle'
-import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
-import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
-import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 import { Route as AppRoutinesNouvelleRouteImport } from './routes/_app.routines.nouvelle'
-import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects_.$projectId'
 import { Route as AppInboxChar123TabChar125RouteImport } from './routes/_app.inbox.{-$tab}'
 import { Route as AppConnectorsChar123TabChar125RouteImport } from './routes/_app.connectors.{-$tab}'
-import { Route as AppClientsClientIdRouteImport } from './routes/_app.clients_.$clientId'
-import { Route as AppChatIdRouteImport } from './routes/_app.chat.$id'
 import { Route as AppAuditChar123TabChar125RouteImport } from './routes/_app.audit.{-$tab}'
 import { Route as AppAgentsOrganigrammeRouteImport } from './routes/_app.agents.organigramme'
 import { Route as AppAgentsNouveauRouteImport } from './routes/_app.agents.nouveau'
-import { Route as AppAgentsEquipeRouteImport } from './routes/_app.agents.equipe'
-import { Route as AppSettingsIntegrationsIndexRouteImport } from './routes/_app.settings.integrations.index'
 import { Route as AppSourcesSourceIdChar123TabChar125RouteImport } from './routes/_app.sources.$sourceId.{-$tab}'
 import { Route as AppRoutinesRoutineIdChar123TabChar125RouteImport } from './routes/_app.routines.$routineId.{-$tab}'
-import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
-import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
-import { Route as AppAgentsEquipeAgentIdChar123TabChar125RouteImport } from './routes/_app.agents.equipe_.$agentId.{-$tab}'
+import { Route as AppAgentsAgentIdChar123TabChar125RouteImport } from './routes/_app.agents.$agentId.{-$tab}'
 
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
@@ -75,39 +57,9 @@ const AppSkillsRoute = AppSkillsRouteImport.update({
   path: '/skills',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppRunsRoute = AppRunsRouteImport.update({
-  id: '/runs',
-  path: '/runs',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppProjectsRoute = AppProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppLiveRoute = AppLiveRouteImport.update({
-  id: '/live',
-  path: '/live',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppKanbanRoute = AppKanbanRouteImport.update({
-  id: '/kanban',
-  path: '/kanban',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppClientsRoute = AppClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
   getParentRoute: () => AppRoute,
 } as any)
 const AppArtifactsRoute = AppArtifactsRouteImport.update({
@@ -130,19 +82,9 @@ const AppSourcesIndexRoute = AppSourcesIndexRouteImport.update({
   path: '/sources/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppSettingsRoute,
-} as any)
 const AppRoutinesIndexRoute = AppRoutinesIndexRouteImport.update({
   id: '/routines/',
   path: '/routines/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppChatIndexRoute = AppChatIndexRouteImport.update({
-  id: '/chat/',
-  path: '/chat/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAgentsIndexRoute = AppAgentsIndexRouteImport.update({
@@ -160,29 +102,9 @@ const AppSourcesNouvelleRoute = AppSourcesNouvelleRouteImport.update({
   path: '/sources/nouvelle',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSettingsProvidersRoute = AppSettingsProvidersRouteImport.update({
-  id: '/providers',
-  path: '/providers',
-  getParentRoute: () => AppSettingsRoute,
-} as any)
-const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
-  getParentRoute: () => AppSettingsRoute,
-} as any)
-const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
-  id: '/runs_/$runId',
-  path: '/runs/$runId',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppRoutinesNouvelleRoute = AppRoutinesNouvelleRouteImport.update({
   id: '/routines/nouvelle',
   path: '/routines/nouvelle',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
-  id: '/projects_/$projectId',
-  path: '/projects/$projectId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppInboxChar123TabChar125Route =
@@ -197,16 +119,6 @@ const AppConnectorsChar123TabChar125Route =
     path: '/connectors/{-$tab}',
     getParentRoute: () => AppRoute,
   } as any)
-const AppClientsClientIdRoute = AppClientsClientIdRouteImport.update({
-  id: '/clients_/$clientId',
-  path: '/clients/$clientId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppChatIdRoute = AppChatIdRouteImport.update({
-  id: '/chat/$id',
-  path: '/chat/$id',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppAuditChar123TabChar125Route =
   AppAuditChar123TabChar125RouteImport.update({
     id: '/audit/{-$tab}',
@@ -223,17 +135,6 @@ const AppAgentsNouveauRoute = AppAgentsNouveauRouteImport.update({
   path: '/agents/nouveau',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAgentsEquipeRoute = AppAgentsEquipeRouteImport.update({
-  id: '/agents/equipe',
-  path: '/agents/equipe',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSettingsIntegrationsIndexRoute =
-  AppSettingsIntegrationsIndexRouteImport.update({
-    id: '/integrations/',
-    path: '/integrations/',
-    getParentRoute: () => AppSettingsRoute,
-  } as any)
 const AppSourcesSourceIdChar123TabChar125Route =
   AppSourcesSourceIdChar123TabChar125RouteImport.update({
     id: '/sources/$sourceId/{-$tab}',
@@ -246,22 +147,10 @@ const AppRoutinesRoutineIdChar123TabChar125Route =
     path: '/routines/$routineId/{-$tab}',
     getParentRoute: () => AppRoute,
   } as any)
-const AppSettingsIntegrationsGithubCallbackRoute =
-  AppSettingsIntegrationsGithubCallbackRouteImport.update({
-    id: '/integrations/github/callback',
-    path: '/integrations/github/callback',
-    getParentRoute: () => AppSettingsRoute,
-  } as any)
-const AppSettingsIntegrationsGithubAppCallbackRoute =
-  AppSettingsIntegrationsGithubAppCallbackRouteImport.update({
-    id: '/integrations/github/app-callback',
-    path: '/integrations/github/app-callback',
-    getParentRoute: () => AppSettingsRoute,
-  } as any)
-const AppAgentsEquipeAgentIdChar123TabChar125Route =
-  AppAgentsEquipeAgentIdChar123TabChar125RouteImport.update({
-    id: '/agents/equipe_/$agentId/{-$tab}',
-    path: '/agents/equipe/$agentId/{-$tab}',
+const AppAgentsAgentIdChar123TabChar125Route =
+  AppAgentsAgentIdChar123TabChar125RouteImport.update({
+    id: '/agents/$agentId/{-$tab}',
+    path: '/agents/$agentId/{-$tab}',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -270,83 +159,48 @@ export interface FileRoutesByFullPath {
   '/callback': typeof CallbackRoute
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
-  '/clients': typeof AppClientsRoute
-  '/dashboard': typeof AppDashboardRoute
-  '/kanban': typeof AppKanbanRoute
-  '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
-  '/runs': typeof AppRunsRoute
-  '/settings': typeof AppSettingsRouteWithChildren
   '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
-  '/agents/equipe': typeof AppAgentsEquipeRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
   '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
-  '/chat/$id': typeof AppChatIdRoute
-  '/clients/$clientId': typeof AppClientsClientIdRoute
   '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
-  '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
-  '/runs/$runId': typeof AppRunsRunIdRoute
-  '/settings/models': typeof AppSettingsModelsRoute
-  '/settings/providers': typeof AppSettingsProvidersRoute
   '/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/tasks/$taskId': typeof AppTasksTaskIdRoute
   '/agents/': typeof AppAgentsIndexRoute
-  '/chat/': typeof AppChatIndexRoute
   '/routines/': typeof AppRoutinesIndexRoute
-  '/settings/': typeof AppSettingsIndexRoute
   '/sources/': typeof AppSourcesIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
+  '/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
-  '/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
-  '/agents/equipe/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
-  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
-  '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
-  '/clients': typeof AppClientsRoute
-  '/dashboard': typeof AppDashboardRoute
-  '/kanban': typeof AppKanbanRoute
-  '/live': typeof AppLiveRoute
   '/projects': typeof AppProjectsRoute
-  '/runs': typeof AppRunsRoute
   '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
-  '/agents/equipe': typeof AppAgentsEquipeRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
   '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
-  '/chat/$id': typeof AppChatIdRoute
-  '/clients/$clientId': typeof AppClientsClientIdRoute
   '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
-  '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
-  '/runs/$runId': typeof AppRunsRunIdRoute
-  '/settings/models': typeof AppSettingsModelsRoute
-  '/settings/providers': typeof AppSettingsProvidersRoute
   '/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/tasks/$taskId': typeof AppTasksTaskIdRoute
   '/agents': typeof AppAgentsIndexRoute
-  '/chat': typeof AppChatIndexRoute
   '/routines': typeof AppRoutinesIndexRoute
-  '/settings': typeof AppSettingsIndexRoute
   '/sources': typeof AppSourcesIndexRoute
   '/tasks': typeof AppTasksIndexRoute
+  '/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
-  '/settings/integrations': typeof AppSettingsIntegrationsIndexRoute
-  '/agents/equipe/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
-  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
-  '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -354,43 +208,25 @@ export interface FileRoutesById {
   '/callback': typeof CallbackRoute
   '/_app/approvals': typeof AppApprovalsRoute
   '/_app/artifacts': typeof AppArtifactsRoute
-  '/_app/clients': typeof AppClientsRoute
-  '/_app/dashboard': typeof AppDashboardRoute
-  '/_app/kanban': typeof AppKanbanRoute
-  '/_app/live': typeof AppLiveRoute
   '/_app/projects': typeof AppProjectsRoute
-  '/_app/runs': typeof AppRunsRoute
-  '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
-  '/_app/agents/equipe': typeof AppAgentsEquipeRoute
   '/_app/agents/nouveau': typeof AppAgentsNouveauRoute
   '/_app/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/_app/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
-  '/_app/chat/$id': typeof AppChatIdRoute
-  '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
   '/_app/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/_app/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
-  '/_app/projects_/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/routines/nouvelle': typeof AppRoutinesNouvelleRoute
-  '/_app/runs_/$runId': typeof AppRunsRunIdRoute
-  '/_app/settings/models': typeof AppSettingsModelsRoute
-  '/_app/settings/providers': typeof AppSettingsProvidersRoute
   '/_app/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/_app/tasks/$taskId': typeof AppTasksTaskIdRoute
   '/_app/agents/': typeof AppAgentsIndexRoute
-  '/_app/chat/': typeof AppChatIndexRoute
   '/_app/routines/': typeof AppRoutinesIndexRoute
-  '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/sources/': typeof AppSourcesIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
+  '/_app/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
   '/_app/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/_app/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
-  '/_app/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
-  '/_app/agents/equipe_/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
-  '/_app/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
-  '/_app/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -399,126 +235,73 @@ export interface FileRouteTypes {
     | '/callback'
     | '/approvals'
     | '/artifacts'
-    | '/clients'
-    | '/dashboard'
-    | '/kanban'
-    | '/live'
     | '/projects'
-    | '/runs'
-    | '/settings'
     | '/skills'
     | '/_dev/ui'
-    | '/agents/equipe'
     | '/agents/nouveau'
     | '/agents/organigramme'
     | '/audit/{-$tab}'
-    | '/chat/$id'
-    | '/clients/$clientId'
     | '/connectors/{-$tab}'
     | '/inbox/{-$tab}'
-    | '/projects/$projectId'
     | '/routines/nouvelle'
-    | '/runs/$runId'
-    | '/settings/models'
-    | '/settings/providers'
     | '/sources/nouvelle'
     | '/tasks/$taskId'
     | '/agents/'
-    | '/chat/'
     | '/routines/'
-    | '/settings/'
     | '/sources/'
     | '/tasks/'
+    | '/agents/$agentId/{-$tab}'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
-    | '/settings/integrations/'
-    | '/agents/equipe/$agentId/{-$tab}'
-    | '/settings/integrations/github/app-callback'
-    | '/settings/integrations/github/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/callback'
     | '/approvals'
     | '/artifacts'
-    | '/clients'
-    | '/dashboard'
-    | '/kanban'
-    | '/live'
     | '/projects'
-    | '/runs'
     | '/skills'
     | '/_dev/ui'
     | '/'
-    | '/agents/equipe'
     | '/agents/nouveau'
     | '/agents/organigramme'
     | '/audit/{-$tab}'
-    | '/chat/$id'
-    | '/clients/$clientId'
     | '/connectors/{-$tab}'
     | '/inbox/{-$tab}'
-    | '/projects/$projectId'
     | '/routines/nouvelle'
-    | '/runs/$runId'
-    | '/settings/models'
-    | '/settings/providers'
     | '/sources/nouvelle'
     | '/tasks/$taskId'
     | '/agents'
-    | '/chat'
     | '/routines'
-    | '/settings'
     | '/sources'
     | '/tasks'
+    | '/agents/$agentId/{-$tab}'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
-    | '/settings/integrations'
-    | '/agents/equipe/$agentId/{-$tab}'
-    | '/settings/integrations/github/app-callback'
-    | '/settings/integrations/github/callback'
   id:
     | '__root__'
     | '/_app'
     | '/callback'
     | '/_app/approvals'
     | '/_app/artifacts'
-    | '/_app/clients'
-    | '/_app/dashboard'
-    | '/_app/kanban'
-    | '/_app/live'
     | '/_app/projects'
-    | '/_app/runs'
-    | '/_app/settings'
     | '/_app/skills'
     | '/_dev/ui'
     | '/_app/'
-    | '/_app/agents/equipe'
     | '/_app/agents/nouveau'
     | '/_app/agents/organigramme'
     | '/_app/audit/{-$tab}'
-    | '/_app/chat/$id'
-    | '/_app/clients_/$clientId'
     | '/_app/connectors/{-$tab}'
     | '/_app/inbox/{-$tab}'
-    | '/_app/projects_/$projectId'
     | '/_app/routines/nouvelle'
-    | '/_app/runs_/$runId'
-    | '/_app/settings/models'
-    | '/_app/settings/providers'
     | '/_app/sources/nouvelle'
     | '/_app/tasks/$taskId'
     | '/_app/agents/'
-    | '/_app/chat/'
     | '/_app/routines/'
-    | '/_app/settings/'
     | '/_app/sources/'
     | '/_app/tasks/'
+    | '/_app/agents/$agentId/{-$tab}'
     | '/_app/routines/$routineId/{-$tab}'
     | '/_app/sources/$sourceId/{-$tab}'
-    | '/_app/settings/integrations/'
-    | '/_app/agents/equipe_/$agentId/{-$tab}'
-    | '/_app/settings/integrations/github/app-callback'
-    | '/_app/settings/integrations/github/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -564,53 +347,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSkillsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/settings': {
-      id: '/_app/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/runs': {
-      id: '/_app/runs'
-      path: '/runs'
-      fullPath: '/runs'
-      preLoaderRoute: typeof AppRunsRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/projects': {
       id: '/_app/projects'
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof AppProjectsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/live': {
-      id: '/_app/live'
-      path: '/live'
-      fullPath: '/live'
-      preLoaderRoute: typeof AppLiveRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/kanban': {
-      id: '/_app/kanban'
-      path: '/kanban'
-      fullPath: '/kanban'
-      preLoaderRoute: typeof AppKanbanRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/dashboard': {
-      id: '/_app/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/clients': {
-      id: '/_app/clients'
-      path: '/clients'
-      fullPath: '/clients'
-      preLoaderRoute: typeof AppClientsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/artifacts': {
@@ -641,25 +382,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSourcesIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/settings/': {
-      id: '/_app/settings/'
-      path: '/'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof AppSettingsIndexRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
     '/_app/routines/': {
       id: '/_app/routines/'
       path: '/routines'
       fullPath: '/routines/'
       preLoaderRoute: typeof AppRoutinesIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/chat/': {
-      id: '/_app/chat/'
-      path: '/chat'
-      fullPath: '/chat/'
-      preLoaderRoute: typeof AppChatIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/agents/': {
@@ -683,39 +410,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSourcesNouvelleRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/settings/providers': {
-      id: '/_app/settings/providers'
-      path: '/providers'
-      fullPath: '/settings/providers'
-      preLoaderRoute: typeof AppSettingsProvidersRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/settings/models': {
-      id: '/_app/settings/models'
-      path: '/models'
-      fullPath: '/settings/models'
-      preLoaderRoute: typeof AppSettingsModelsRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/runs_/$runId': {
-      id: '/_app/runs_/$runId'
-      path: '/runs/$runId'
-      fullPath: '/runs/$runId'
-      preLoaderRoute: typeof AppRunsRunIdRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/routines/nouvelle': {
       id: '/_app/routines/nouvelle'
       path: '/routines/nouvelle'
       fullPath: '/routines/nouvelle'
       preLoaderRoute: typeof AppRoutinesNouvelleRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/projects_/$projectId': {
-      id: '/_app/projects_/$projectId'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/inbox/{-$tab}': {
@@ -730,20 +429,6 @@ declare module '@tanstack/react-router' {
       path: '/connectors/{-$tab}'
       fullPath: '/connectors/{-$tab}'
       preLoaderRoute: typeof AppConnectorsChar123TabChar125RouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/clients_/$clientId': {
-      id: '/_app/clients_/$clientId'
-      path: '/clients/$clientId'
-      fullPath: '/clients/$clientId'
-      preLoaderRoute: typeof AppClientsClientIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/chat/$id': {
-      id: '/_app/chat/$id'
-      path: '/chat/$id'
-      fullPath: '/chat/$id'
-      preLoaderRoute: typeof AppChatIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/audit/{-$tab}': {
@@ -767,20 +452,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgentsNouveauRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/agents/equipe': {
-      id: '/_app/agents/equipe'
-      path: '/agents/equipe'
-      fullPath: '/agents/equipe'
-      preLoaderRoute: typeof AppAgentsEquipeRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/settings/integrations/': {
-      id: '/_app/settings/integrations/'
-      path: '/integrations'
-      fullPath: '/settings/integrations/'
-      preLoaderRoute: typeof AppSettingsIntegrationsIndexRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
     '/_app/sources/$sourceId/{-$tab}': {
       id: '/_app/sources/$sourceId/{-$tab}'
       path: '/sources/$sourceId/{-$tab}'
@@ -795,125 +466,63 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRoutinesRoutineIdChar123TabChar125RouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/settings/integrations/github/callback': {
-      id: '/_app/settings/integrations/github/callback'
-      path: '/integrations/github/callback'
-      fullPath: '/settings/integrations/github/callback'
-      preLoaderRoute: typeof AppSettingsIntegrationsGithubCallbackRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/settings/integrations/github/app-callback': {
-      id: '/_app/settings/integrations/github/app-callback'
-      path: '/integrations/github/app-callback'
-      fullPath: '/settings/integrations/github/app-callback'
-      preLoaderRoute: typeof AppSettingsIntegrationsGithubAppCallbackRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/agents/equipe_/$agentId/{-$tab}': {
-      id: '/_app/agents/equipe_/$agentId/{-$tab}'
-      path: '/agents/equipe/$agentId/{-$tab}'
-      fullPath: '/agents/equipe/$agentId/{-$tab}'
-      preLoaderRoute: typeof AppAgentsEquipeAgentIdChar123TabChar125RouteImport
+    '/_app/agents/$agentId/{-$tab}': {
+      id: '/_app/agents/$agentId/{-$tab}'
+      path: '/agents/$agentId/{-$tab}'
+      fullPath: '/agents/$agentId/{-$tab}'
+      preLoaderRoute: typeof AppAgentsAgentIdChar123TabChar125RouteImport
       parentRoute: typeof AppRoute
     }
   }
 }
 
-interface AppSettingsRouteChildren {
-  AppSettingsModelsRoute: typeof AppSettingsModelsRoute
-  AppSettingsProvidersRoute: typeof AppSettingsProvidersRoute
-  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
-  AppSettingsIntegrationsIndexRoute: typeof AppSettingsIntegrationsIndexRoute
-  AppSettingsIntegrationsGithubAppCallbackRoute: typeof AppSettingsIntegrationsGithubAppCallbackRoute
-  AppSettingsIntegrationsGithubCallbackRoute: typeof AppSettingsIntegrationsGithubCallbackRoute
-}
-
-const AppSettingsRouteChildren: AppSettingsRouteChildren = {
-  AppSettingsModelsRoute: AppSettingsModelsRoute,
-  AppSettingsProvidersRoute: AppSettingsProvidersRoute,
-  AppSettingsIndexRoute: AppSettingsIndexRoute,
-  AppSettingsIntegrationsIndexRoute: AppSettingsIntegrationsIndexRoute,
-  AppSettingsIntegrationsGithubAppCallbackRoute:
-    AppSettingsIntegrationsGithubAppCallbackRoute,
-  AppSettingsIntegrationsGithubCallbackRoute:
-    AppSettingsIntegrationsGithubCallbackRoute,
-}
-
-const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
-  AppSettingsRouteChildren,
-)
-
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
   AppArtifactsRoute: typeof AppArtifactsRoute
-  AppClientsRoute: typeof AppClientsRoute
-  AppDashboardRoute: typeof AppDashboardRoute
-  AppKanbanRoute: typeof AppKanbanRoute
-  AppLiveRoute: typeof AppLiveRoute
   AppProjectsRoute: typeof AppProjectsRoute
-  AppRunsRoute: typeof AppRunsRoute
-  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppSkillsRoute: typeof AppSkillsRoute
   AppIndexRoute: typeof AppIndexRoute
-  AppAgentsEquipeRoute: typeof AppAgentsEquipeRoute
   AppAgentsNouveauRoute: typeof AppAgentsNouveauRoute
   AppAgentsOrganigrammeRoute: typeof AppAgentsOrganigrammeRoute
   AppAuditChar123TabChar125Route: typeof AppAuditChar123TabChar125Route
-  AppChatIdRoute: typeof AppChatIdRoute
-  AppClientsClientIdRoute: typeof AppClientsClientIdRoute
   AppConnectorsChar123TabChar125Route: typeof AppConnectorsChar123TabChar125Route
   AppInboxChar123TabChar125Route: typeof AppInboxChar123TabChar125Route
-  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
   AppRoutinesNouvelleRoute: typeof AppRoutinesNouvelleRoute
-  AppRunsRunIdRoute: typeof AppRunsRunIdRoute
   AppSourcesNouvelleRoute: typeof AppSourcesNouvelleRoute
   AppTasksTaskIdRoute: typeof AppTasksTaskIdRoute
   AppAgentsIndexRoute: typeof AppAgentsIndexRoute
-  AppChatIndexRoute: typeof AppChatIndexRoute
   AppRoutinesIndexRoute: typeof AppRoutinesIndexRoute
   AppSourcesIndexRoute: typeof AppSourcesIndexRoute
   AppTasksIndexRoute: typeof AppTasksIndexRoute
+  AppAgentsAgentIdChar123TabChar125Route: typeof AppAgentsAgentIdChar123TabChar125Route
   AppRoutinesRoutineIdChar123TabChar125Route: typeof AppRoutinesRoutineIdChar123TabChar125Route
   AppSourcesSourceIdChar123TabChar125Route: typeof AppSourcesSourceIdChar123TabChar125Route
-  AppAgentsEquipeAgentIdChar123TabChar125Route: typeof AppAgentsEquipeAgentIdChar123TabChar125Route
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
   AppArtifactsRoute: AppArtifactsRoute,
-  AppClientsRoute: AppClientsRoute,
-  AppDashboardRoute: AppDashboardRoute,
-  AppKanbanRoute: AppKanbanRoute,
-  AppLiveRoute: AppLiveRoute,
   AppProjectsRoute: AppProjectsRoute,
-  AppRunsRoute: AppRunsRoute,
-  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppSkillsRoute: AppSkillsRoute,
   AppIndexRoute: AppIndexRoute,
-  AppAgentsEquipeRoute: AppAgentsEquipeRoute,
   AppAgentsNouveauRoute: AppAgentsNouveauRoute,
   AppAgentsOrganigrammeRoute: AppAgentsOrganigrammeRoute,
   AppAuditChar123TabChar125Route: AppAuditChar123TabChar125Route,
-  AppChatIdRoute: AppChatIdRoute,
-  AppClientsClientIdRoute: AppClientsClientIdRoute,
   AppConnectorsChar123TabChar125Route: AppConnectorsChar123TabChar125Route,
   AppInboxChar123TabChar125Route: AppInboxChar123TabChar125Route,
-  AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
   AppRoutinesNouvelleRoute: AppRoutinesNouvelleRoute,
-  AppRunsRunIdRoute: AppRunsRunIdRoute,
   AppSourcesNouvelleRoute: AppSourcesNouvelleRoute,
   AppTasksTaskIdRoute: AppTasksTaskIdRoute,
   AppAgentsIndexRoute: AppAgentsIndexRoute,
-  AppChatIndexRoute: AppChatIndexRoute,
   AppRoutinesIndexRoute: AppRoutinesIndexRoute,
   AppSourcesIndexRoute: AppSourcesIndexRoute,
   AppTasksIndexRoute: AppTasksIndexRoute,
+  AppAgentsAgentIdChar123TabChar125Route:
+    AppAgentsAgentIdChar123TabChar125Route,
   AppRoutinesRoutineIdChar123TabChar125Route:
     AppRoutinesRoutineIdChar123TabChar125Route,
   AppSourcesSourceIdChar123TabChar125Route:
     AppSourcesSourceIdChar123TabChar125Route,
-  AppAgentsEquipeAgentIdChar123TabChar125Route:
-    AppAgentsEquipeAgentIdChar123TabChar125Route,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

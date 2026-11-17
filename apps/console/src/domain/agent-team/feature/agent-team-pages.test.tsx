@@ -16,10 +16,10 @@ import { OrgChartPage } from '#/domain/agent-team/feature/org-chart-page'
 import { demoStore, resetDemoState, updateAgent } from '#/domain/demo'
 
 const EXTRA = [
-	'/agents/equipe',
+	'/agents',
 	'/agents/organigramme',
 	'/agents/nouveau',
-	'/agents/equipe/$agentId/{-$tab}',
+	'/agents/$agentId/{-$tab}',
 ]
 
 describe('team list and org chart', () => {
@@ -36,7 +36,7 @@ describe('team list and org chart', () => {
 
 	it('lists the team with banner, tabs and a new-agent link', async () => {
 		updateAgent('dev', { status: 'running' })
-		await renderAtPath(<AgentTeamPage />, '/agents/equipe', EXTRA)
+		await renderAtPath(<AgentTeamPage />, '/agents', EXTRA)
 		expect(await screen.findByRole('heading', { name: 'Équipe' })).toBeTruthy()
 		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
 		const nav = screen.getByRole('navigation', { name: 'Sections des agents' })
@@ -53,7 +53,7 @@ describe('team list and org chart', () => {
 		)
 		expect(screen.getAllByText('inactif').length).toBeGreaterThan(5)
 		const link = screen.getByRole('link', { name: 'Configurer Chief of Staff' })
-		expect(link.getAttribute('href')).toBe('/agents/equipe/chief-of-staff')
+		expect(link.getAttribute('href')).toBe('/agents/chief-of-staff')
 	})
 
 	it('shows agents created during the session', async () => {
@@ -73,7 +73,7 @@ describe('team list and org chart', () => {
 				},
 			],
 		}))
-		await renderAtPath(<AgentTeamPage />, '/agents/equipe', EXTRA)
+		await renderAtPath(<AgentTeamPage />, '/agents', EXTRA)
 		expect(await screen.findByText('Zoé')).toBeTruthy()
 	})
 
@@ -86,7 +86,7 @@ describe('team list and org chart', () => {
 		expect(screen.getByText('2 sous-agents')).toBeTruthy()
 		expect(screen.getAllByText(/peut déléguer/).length).toBeGreaterThan(0)
 		const registre = screen.getByRole('link', { name: /Registre/ })
-		expect(registre.getAttribute('href')).toBe('/agents/equipe/registre')
+		expect(registre.getAttribute('href')).toBe('/agents/registre')
 		await userEvent.click(registre)
 	})
 })

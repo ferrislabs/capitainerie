@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { AuthGate } from '#/components/auth-gate'
-import { AppRail, type RailBadges } from '#/components/layout/app-rail'
+import { AppRail } from '#/components/layout/app-rail'
 import { AppTopbar } from '#/components/layout/app-topbar'
 import { breadcrumbs } from '#/components/layout/breadcrumbs'
 import { CommandPalette } from '#/components/layout/command-palette'
@@ -17,7 +17,6 @@ import { useCommandPalette } from '#/components/layout/use-command-palette'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { shortName, useDemoState } from '#/domain/demo'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
-import { useActiveRunCount } from '#/domain/runs/hooks/use-active-runs'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { usePersistedFlag } from '#/hooks/use-persisted-flag'
@@ -28,12 +27,6 @@ import { resolveTheme, systemPrefersDark } from '#/lib/theme'
 export const Route = createFileRoute('/_app')({ component: AppLayout })
 
 const RAIL_STORAGE_KEY = 'capitainerie.rail-expanded'
-
-function CountedRail(props: Parameters<typeof AppRail>[0]) {
-	const active = useActiveRunCount()
-	const badges: RailBadges = active === undefined ? {} : { '/live': active }
-	return <AppRail {...props} badges={badges} />
-}
 
 function AppLayout() {
 	useRealtime()
@@ -96,7 +89,7 @@ function AppLayout() {
 		<AuthGate>
 			<TooltipProvider>
 				<div className="flex min-h-dvh">
-					<CountedRail
+					<AppRail
 						sections={NAV_SECTIONS}
 						expanded={expanded}
 						canExpand={canExpand}
