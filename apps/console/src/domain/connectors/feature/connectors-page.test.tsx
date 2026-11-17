@@ -48,7 +48,11 @@ describe('ConnectorsPage', () => {
 	})
 
 	it('unknown tab falls back to installes', async () => {
-		await renderAtPath(<ConnectorsPage tab="zzz" />, '/connectors', EXTRA)
+		await renderAtPath(
+			<ConnectorsPage tab="zzz" />,
+			'/connectors/installes',
+			EXTRA,
+		)
 		expect(
 			screen
 				.getByRole('link', { name: 'Installés' })

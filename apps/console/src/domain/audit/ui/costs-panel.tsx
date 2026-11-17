@@ -1,32 +1,21 @@
-import { SectionCard } from '#/components/layout/section-card'
 import { Tile } from '#/components/layout/tile'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '#/components/ui/table'
-import type {
-	AgentCost,
-	CostTile,
-	DailyRuns,
-} from '#/domain/audit/mock/audit-data'
-import { Avatar } from '#/domain/audit/ui/avatar'
-import { RunsChart } from '#/domain/audit/ui/runs-chart'
+import type { AgentCost, CostTile } from '#/domain/audit/mock/audit-data'
+import { AgentAvatar } from '#/domain/audit/ui/avatar'
+import { DataTable, Td, Th, Tr } from '#/domain/audit/ui/data-table'
+import { Eyebrow } from '#/domain/audit/ui/rows'
 import { shortName } from '#/domain/demo'
 
 interface Props {
 	tiles: ReadonlyArray<CostTile>
-	days: ReadonlyArray<DailyRuns>
 	agents: ReadonlyArray<AgentCost>
 }
 
-export function CostsPanel({ tiles, days, agents }: Props) {
+const FIGURES = 'figures font-mono text-[11.5px]'
+
+export function CostsPanel({ tiles, agents }: Props) {
 	return (
 		<>
-			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+			<div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
 				{tiles.map((tile) => (
 					<Tile
 						key={tile.label}
@@ -36,46 +25,40 @@ export function CostsPanel({ tiles, days, agents }: Props) {
 					/>
 				))}
 			</div>
-			<SectionCard title="Exécutions par jour" description="14 derniers jours">
-				<RunsChart days={days} />
-			</SectionCard>
-			<SectionCard title="Par agent" bare>
-				<div className="overflow-hidden rounded-lg border bg-card">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Agent</TableHead>
-								<TableHead>Entrée</TableHead>
-								<TableHead>Dont cache</TableHead>
-								<TableHead>Sortie</TableHead>
-								<TableHead>Exécutions</TableHead>
-								<TableHead>Coût</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{agents.map((row) => (
-								<TableRow key={row.agent}>
-									<TableCell>
-										<span className="inline-flex items-center gap-2">
-											<Avatar name={row.agent} size={18} />
-											{shortName(row.agent)}
-										</span>
-									</TableCell>
-									<TableCell className="figures">{row.input}</TableCell>
-									<TableCell className="figures text-muted-foreground">
-										{row.cached}
-									</TableCell>
-									<TableCell className="figures">{row.output}</TableCell>
-									<TableCell className="figures text-muted-foreground">
-										{row.runs} abo.
-									</TableCell>
-									<TableCell className="figures">{row.cost}</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			</SectionCard>
+			<Eyebrow>Par agent</Eyebrow>
+			<DataTable>
+				<thead>
+					<tr>
+						<Th>Agent</Th>
+						<Th>Entrée</Th>
+						<Th>Dont cache</Th>
+						<Th>Sortie</Th>
+						<Th>Exécutions</Th>
+						<Th>Coût</Th>
+					</tr>
+				</thead>
+				<tbody>
+					{agents.map((row) => (
+						<Tr key={row.agent}>
+							<Td>
+								<span className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+									<AgentAvatar name={row.agent} size={18} />
+									{shortName(row.agent)}
+								</span>
+							</Td>
+							<Td className={FIGURES}>{row.input}</Td>
+							<Td className={`${FIGURES} text-muted-foreground`}>
+								{row.cached}
+							</Td>
+							<Td className={FIGURES}>{row.output}</Td>
+							<Td className={`${FIGURES} text-muted-foreground`}>
+								{row.runs} abo.
+							</Td>
+							<Td className={FIGURES}>{row.cost}</Td>
+						</Tr>
+					))}
+				</tbody>
+			</DataTable>
 		</>
 	)
 }

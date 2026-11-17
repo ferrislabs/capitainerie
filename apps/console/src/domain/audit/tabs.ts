@@ -1,6 +1,6 @@
 export const AUDIT_TABS = [
 	{ slug: 'activite', label: 'Activité' },
-	{ slug: 'runs', label: 'Exécutions' },
+	{ slug: 'runs', label: 'Runs' },
 	{ slug: 'couts', label: 'Coûts' },
 	{ slug: 'budgets', label: 'Budgets' },
 	{ slug: 'chronologie', label: 'Chronologie' },

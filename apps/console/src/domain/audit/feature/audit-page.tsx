@@ -8,7 +8,6 @@ import {
 	AUDIT_RUNS,
 	BUDGETS,
 	COST_TILES,
-	DAILY_RUNS,
 	TIMELINE,
 } from '#/domain/audit/mock/audit-data'
 import { AUDIT_TABS, type AuditTab } from '#/domain/audit/tabs'
@@ -29,9 +28,7 @@ function AuditTabContent({ tab }: Props) {
 		case 'runs':
 			return <RunsTable runs={AUDIT_RUNS} />
 		case 'couts':
-			return (
-				<CostsPanel tiles={COST_TILES} days={DAILY_RUNS} agents={AGENT_COSTS} />
-			)
+			return <CostsPanel tiles={COST_TILES} agents={AGENT_COSTS} />
 		case 'budgets':
 			return <BudgetsList budgets={BUDGETS} />
 		case 'chronologie':

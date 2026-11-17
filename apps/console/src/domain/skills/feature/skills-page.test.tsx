@@ -18,21 +18,21 @@ describe('SkillsPage', () => {
 		expect(fetchSpy).not.toHaveBeenCalled()
 	})
 
-	it('filters by name', async () => {
+	it('toggles a skill', async () => {
 		render(<SkillsPage />)
-		await userEvent.type(
-			screen.getByRole('searchbox', { name: 'Rechercher une compétence' }),
-			'ui-',
-		)
-		expect(screen.getAllByRole('listitem')).toHaveLength(1)
-		expect(screen.getByText('ui-ux')).toBeTruthy()
+		const toggle = screen.getByRole('switch', { name: 'Activer ui-ux' })
+		expect(toggle.getAttribute('aria-checked')).toBe('true')
+		await userEvent.click(toggle)
+		expect(toggle.getAttribute('aria-checked')).toBe('false')
 	})
 
-	it('shows a notice on create', async () => {
+	it('shows a notice on create and new folder', async () => {
 		render(<SkillsPage />)
-		await userEvent.click(
-			screen.getByRole('button', { name: 'Nouvelle compétence' }),
-		)
+		await userEvent.click(screen.getByRole('button', { name: 'Nouvelle' }))
 		expect(screen.getByText('Importer ou écrire une compétence')).toBeTruthy()
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Nouveau dossier' }),
+		)
+		expect(screen.getAllByText('Nouveau dossier')).toHaveLength(2)
 	})
 })

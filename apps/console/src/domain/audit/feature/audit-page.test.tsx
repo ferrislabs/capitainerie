@@ -44,13 +44,10 @@ describe('AuditPage', () => {
 		expect(screen.getByText('échec')).toBeTruthy()
 	})
 
-	it('renders tiles, an accessible chart and the by-agent table', async () => {
+	it('renders tiles and the by-agent table', async () => {
 		await open('couts')
 		expect(await screen.findByText('Dépense API')).toBeTruthy()
-		expect(screen.getByText('Budget utilisé')).toBeTruthy()
-		expect(
-			screen.getByRole('img', { name: /Exécutions par jour/ }),
-		).toBeTruthy()
+		expect(screen.getByText('Événements financiers')).toBeTruthy()
 		expect(
 			screen.getByRole('columnheader', { name: 'Dont cache' }),
 		).toBeTruthy()
@@ -58,7 +55,7 @@ describe('AuditPage', () => {
 
 	it('renders one budget row per scope', async () => {
 		await open('budgets')
-		expect(await screen.findByText('0,00 $ / 400 $')).toBeTruthy()
+		expect(await screen.findByText('0,00 $ sur 400 $ ce mois')).toBeTruthy()
 		expect(screen.getAllByRole('progressbar')).toHaveLength(4)
 	})
 
