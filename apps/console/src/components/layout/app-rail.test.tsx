@@ -88,6 +88,7 @@ describe('AppRail', () => {
 			'Runs',
 			'En cours',
 			'Kanban',
+			'Routines',
 			'Agents',
 			'Sources',
 			'Fournisseurs',
@@ -202,6 +203,11 @@ describe('AppRail', () => {
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
 			screen.getByRole('link', { name: 'Projets' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: 'Routines' }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
