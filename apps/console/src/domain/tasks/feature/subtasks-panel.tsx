@@ -2,8 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { TextInput } from '#/components/ui/text-input'
 import { getAgentConfig } from '#/domain/agent-team/agent-config-store'
 import type { DemoTask } from '#/domain/demo'
 import {
@@ -18,8 +16,12 @@ import {
 import { canDelegate, openChildCount } from '#/domain/tasks/delegation'
 import { useAgentOf } from '#/domain/tasks/feature/use-agent-of'
 import { taskPathId } from '#/domain/tasks/task-ids'
-import { AgentChip } from '#/domain/tasks/ui/agent-chip'
+import { AgentAvatar } from '#/domain/tasks/ui/agent-chip'
 import { StatusIcon } from '#/domain/tasks/ui/status-icon'
+import { cn } from '#/lib/utils'
+
+const CTL =
+	'rounded-[6px] border bg-background px-[9px] py-[5px] text-foreground outline-none focus-visible:border-primary'
 
 interface Props {
 	task: DemoTask
@@ -70,78 +72,74 @@ export function SubtasksPanel({ task, onNotify }: Props) {
 		<SectionCard
 			title="Sous-tâches"
 			flush
+			className="my-2"
 			actions={
 				kids.length ? (
-					<span className="text-xs text-muted-foreground">
+					<span className="rounded-lg bg-secondary px-1.5 text-[11px] font-normal text-muted-foreground">
 						{done} / {kids.length} terminées
 					</span>
 				) : undefined
 			}
 		>
 			{kids.length ? (
-				<ul className="divide-y">
+				<div>
 					{kids.map((k) => {
 						const agent = agentOf(k.agentId)
 						return (
-							<li
+							<Link
 								key={k.id}
-								className="flex items-center gap-3 px-3 py-2 text-[13px]"
+								to="/tasks/$taskId"
+								params={{ taskId: taskPathId(k.id) }}
+								className="flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0 hover:bg-secondary"
 							>
 								<StatusIcon status={k.status} />
-								<Link
-									to="/tasks/$taskId"
-									params={{ taskId: taskPathId(k.id) }}
-									className="font-mono text-xs text-signal-running hover:underline"
-								>
+								<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
 									{k.id}
-								</Link>
-								<span className="min-w-0 flex-1 truncate">{k.title}</span>
-								<AgentChip
-									name={agent.name}
-									hue={agent.hue}
-									showName={false}
-									size={20}
-								/>
-							</li>
+								</span>
+								<span className="min-w-0 flex-1">
+									<b className="block truncate font-medium">{k.title}</b>
+								</span>
+								<AgentAvatar hue={agent.hue} size={20} label={agent.name} />
+							</Link>
 						)
 					})}
-				</ul>
+				</div>
 			) : (
-				<p className="px-3 py-2.5 text-[13px] text-muted-foreground">
+				<p className="m-0 px-3 py-2.5 text-muted-foreground">
 					Aucune sous-tâche pour l'instant.
 				</p>
 			)}
 			{canDeleg ? (
 				<form
-					className="flex flex-col gap-2 border-t p-3"
 					aria-label="Déléguer une sous-tâche"
 					onSubmit={(event) => {
 						event.preventDefault()
 						delegate()
 					}}
 				>
-					<div className="flex flex-wrap items-center gap-2">
-						<NativeSelect
+					<div className="flex flex-wrap gap-1.5 px-3 pt-2.5 pb-3">
+						<select
 							aria-label="Sous-agent"
 							value={subAgent || (subs[0] ?? '')}
 							onChange={(event) => setSubAgent(event.target.value)}
+							className={CTL}
 						>
 							{subs.map((id) => (
 								<option key={id} value={id}>
 									{agentOf(id).name}
 								</option>
 							))}
-						</NativeSelect>
-						<TextInput
+						</select>
+						<input
 							aria-label="Titre de la sous-tâche"
 							placeholder="Sous-tâche à déléguer…"
 							value={title}
 							onChange={(event) => setTitle(event.target.value)}
-							wrapperClassName="min-w-48 flex-1"
+							className={cn(CTL, 'min-w-0 flex-1')}
 						/>
 						<Button type="submit">Déléguer</Button>
 					</div>
-					<p className="text-xs text-muted-foreground">
+					<p className="m-0 px-3 pb-2.5 text-xs text-muted-foreground">
 						Limites de {owner} : {fields.dPar} en parallèle, profondeur{' '}
 						{fields.dDepth}, {fields.dBudget} par sous-tâche.
 					</p>

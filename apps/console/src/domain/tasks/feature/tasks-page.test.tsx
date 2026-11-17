@@ -63,13 +63,13 @@ describe('TasksPage', () => {
 			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
 		)
 		fireEvent.click(
-			await screen.findByRole('button', { name: 'Créer et assigner' }),
+			await screen.findByRole('button', { name: 'Créer la tâche' }),
 		)
 		expect(await screen.findByText('Écris le titre de la tâche')).toBeTruthy()
 		fireEvent.change(screen.getByLabelText('Titre'), {
 			target: { value: 'Ma tâche' },
 		})
-		fireEvent.click(screen.getByRole('button', { name: 'Créer et assigner' }))
+		fireEvent.click(screen.getByRole('button', { name: 'Créer la tâche' }))
 		const created = demoStore.state.tasks.find((t) => t.title === 'Ma tâche')
 		expect(created?.status).toBe('todo')
 		expect(created?.id).toBe('NAT-696')
@@ -82,9 +82,7 @@ describe('TasksPage', () => {
 			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
 		)
 		fireEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
-		expect(
-			screen.queryByRole('button', { name: 'Créer et assigner' }),
-		).toBeNull()
+		expect(screen.queryByRole('button', { name: 'Créer la tâche' })).toBeNull()
 		expect(demoStore.state.tasks.length).toBe(before)
 	})
 })

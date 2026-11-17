@@ -1,69 +1,71 @@
-import { GitMerge, ListChecks, Play, Repeat } from 'lucide-react'
-import type { ComponentType } from 'react'
-import { EmptyState } from '#/components/layout/empty-state'
-import { SectionCard } from '#/components/layout/section-card'
-import type { InboxItem, InboxKind } from '#/domain/inbox/filter-inbox'
+import { Link } from '@tanstack/react-router'
+import type { InboxItem } from '#/domain/inbox/filter-inbox'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	items: ReadonlyArray<InboxItem>
 }
 
-const KINDS: Record<
-	InboxKind,
-	{ label: string; icon: ComponentType<{ className?: string }> }
-> = {
-	task: { label: 'Tâche', icon: ListChecks },
-	run: { label: 'Exécution', icon: Play },
-	mr: { label: 'Merge request', icon: GitMerge },
-	routine: { label: 'Routine', icon: Repeat },
+const ROW =
+	'flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0 hover:bg-secondary'
+
+function Row({ item }: { item: InboxItem }) {
+	const content = (
+		<>
+			<span
+				role="img"
+				aria-label={item.unread ? 'Non lu' : 'Lu'}
+				className={cn(
+					'w-[7px] flex-none',
+					item.unread && 'h-[7px] rounded-full bg-primary',
+				)}
+			/>
+			<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
+				{item.ref || 'Routine'}
+			</span>
+			<span className="min-w-0 flex-1">
+				<b className="block truncate font-medium leading-[19px]">
+					{item.title}
+				</b>
+				<span className="block truncate text-xs leading-[1.4] text-muted-foreground">
+					{item.source}
+				</span>
+			</span>
+			<span className="font-mono text-[11.5px] whitespace-nowrap text-faint">
+				{item.when}
+			</span>
+		</>
+	)
+	return item.ref ? (
+		<Link to="/tasks/$taskId" params={{ taskId: item.id }} className={ROW}>
+			{content}
+		</Link>
+	) : (
+		<Link to="/routines" className={ROW}>
+			{content}
+		</Link>
+	)
 }
 
 export function InboxList({ items }: Props) {
-	if (items.length === 0) {
-		return (
-			<EmptyState
-				icon={ListChecks}
-				title="Rien ici"
-				description="Aucun élément pour ce filtre."
-			/>
-		)
-	}
 	return (
-		<SectionCard title="Éléments" headingLevel="h2" flush>
-			<ul className="divide-y">
-				{items.map((item) => {
-					const kind = KINDS[item.kind]
-					const Icon = kind.icon
-					return (
-						<li key={item.id} className="flex items-center gap-2.5 px-3 py-2">
-							<span
-								role="img"
-								aria-label={item.unread ? 'Non lu' : 'Lu'}
-								className={
-									item.unread
-										? 'size-2 shrink-0 rounded-full bg-primary'
-										: 'size-2 shrink-0'
-								}
-							/>
-							<span role="img" aria-label={kind.label} className="shrink-0">
-								<Icon className="size-4 text-muted-foreground" />
-							</span>
-							<span className="figures w-16 shrink-0 text-xs text-muted-foreground">
-								{item.ref || 'Routine'}
-							</span>
-							<span className="min-w-0 flex-1">
-								<b className="block truncate font-medium">{item.title}</b>
-								<span className="block truncate text-xs text-muted-foreground">
-									{item.source}
-								</span>
-							</span>
-							<span className="shrink-0 text-xs text-muted-foreground">
-								{item.when}
-							</span>
+		<section className="overflow-hidden rounded-lg border bg-card">
+			{items.length === 0 ? (
+				<div className="px-4 py-[26px] text-center text-muted-foreground">
+					<b className="mt-1.5 mb-0.5 block font-semibold text-foreground">
+						Rien ici
+					</b>
+					Aucun élément pour ce filtre.
+				</div>
+			) : (
+				<ul className="m-0 list-none p-0">
+					{items.map((item) => (
+						<li key={item.id}>
+							<Row item={item} />
 						</li>
-					)
-				})}
-			</ul>
-		</SectionCard>
+					))}
+				</ul>
+			)}
+		</section>
 	)
 }

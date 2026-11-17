@@ -1,42 +1,41 @@
-import { FileText, Search } from 'lucide-react'
-import { useState } from 'react'
+import { Filter } from 'lucide-react'
 import { DemoBanner } from '#/components/layout/demo-banner'
-import { EmptyState } from '#/components/layout/empty-state'
+import { useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
-import { TextInput } from '#/components/ui/text-input'
-import { filterArtifacts } from '#/domain/artifacts/filter-artifacts'
+import { Button } from '#/components/ui/button'
 import { ARTIFACTS } from '#/domain/artifacts/mock/artifacts'
-import { ArtifactsTable } from '#/domain/artifacts/ui/artifacts-table'
+import { ArtifactCard } from '#/domain/artifacts/ui/artifact-card'
+import { Toast } from '#/domain/tasks/ui/toast'
 
 export function ArtifactsPage() {
-	const [query, setQuery] = useState('')
-	const artifacts = filterArtifacts(query, ARTIFACTS)
+	const [message, notify] = useNotice()
 	return (
-		<Page>
+		<Page className="leading-[1.4]">
 			<DemoBanner />
 			<PageHeader
 				title="Artifacts"
 				description="Livrables produits par les agents"
+				actions={
+					<Button
+						variant="outline"
+						onClick={() => notify('Filtre par type et par agent')}
+					>
+						<Filter aria-hidden="true" />
+						Filtrer
+					</Button>
+				}
 			/>
-			<TextInput
-				type="search"
-				aria-label="Rechercher un artifact"
-				placeholder="Rechercher par nom, agent ou type"
-				leading={<Search aria-hidden="true" className="size-4" />}
-				value={query}
-				onChange={(event) => setQuery(event.target.value)}
-				wrapperClassName="max-w-sm"
-			/>
-			{artifacts.length === 0 ? (
-				<EmptyState
-					icon={FileText}
-					title="Aucun artifact"
-					description="Aucun livrable ne correspond à cette recherche."
-				/>
-			) : (
-				<ArtifactsTable artifacts={artifacts} />
-			)}
+			<div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
+				{ARTIFACTS.map((artifact) => (
+					<ArtifactCard
+						key={artifact.id}
+						artifact={artifact}
+						onOpen={(a) => notify(`Ouverture de « ${a.name} »`)}
+					/>
+				))}
+			</div>
+			<Toast message={message} />
 		</Page>
 	)
 }
