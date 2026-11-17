@@ -19,18 +19,22 @@ import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLiveRouteImport } from './routes/_app.live'
 import { Route as AppKanbanRouteImport } from './routes/_app.kanban'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
-import { Route as AppAgentsRouteImport } from './routes/_app.agents'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppChatIndexRouteImport } from './routes/_app.chat.index'
+import { Route as AppAgentsIndexRouteImport } from './routes/_app.agents.index'
 import { Route as AppSettingsProvidersRouteImport } from './routes/_app.settings.providers'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app.runs_.$runId'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects_.$projectId'
 import { Route as AppClientsClientIdRouteImport } from './routes/_app.clients_.$clientId'
 import { Route as AppChatIdRouteImport } from './routes/_app.chat.$id'
+import { Route as AppAgentsOrganigrammeRouteImport } from './routes/_app.agents.organigramme'
+import { Route as AppAgentsNouveauRouteImport } from './routes/_app.agents.nouveau'
+import { Route as AppAgentsEquipeRouteImport } from './routes/_app.agents.equipe'
 import { Route as AppSettingsIntegrationsIndexRouteImport } from './routes/_app.settings.integrations.index'
 import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
 import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
+import { Route as AppAgentsEquipeAgentIdChar123TabChar125RouteImport } from './routes/_app.agents.equipe_.$agentId.{-$tab}'
 
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
@@ -81,11 +85,6 @@ const AppClientsRoute = AppClientsRouteImport.update({
   path: '/clients',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAgentsRoute = AppAgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -94,6 +93,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
 const AppChatIndexRoute = AppChatIndexRouteImport.update({
   id: '/chat/',
   path: '/chat/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentsIndexRoute = AppAgentsIndexRouteImport.update({
+  id: '/agents/',
+  path: '/agents/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsProvidersRoute = AppSettingsProvidersRouteImport.update({
@@ -126,6 +130,21 @@ const AppChatIdRoute = AppChatIdRouteImport.update({
   path: '/chat/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAgentsOrganigrammeRoute = AppAgentsOrganigrammeRouteImport.update({
+  id: '/agents/organigramme',
+  path: '/agents/organigramme',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentsNouveauRoute = AppAgentsNouveauRouteImport.update({
+  id: '/agents/nouveau',
+  path: '/agents/nouveau',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentsEquipeRoute = AppAgentsEquipeRouteImport.update({
+  id: '/agents/equipe',
+  path: '/agents/equipe',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsIntegrationsIndexRoute =
   AppSettingsIntegrationsIndexRouteImport.update({
     id: '/integrations/',
@@ -144,11 +163,16 @@ const AppSettingsIntegrationsGithubAppCallbackRoute =
     path: '/integrations/github/app-callback',
     getParentRoute: () => AppSettingsRoute,
   } as any)
+const AppAgentsEquipeAgentIdChar123TabChar125Route =
+  AppAgentsEquipeAgentIdChar123TabChar125RouteImport.update({
+    id: '/agents/equipe_/$agentId/{-$tab}',
+    path: '/agents/equipe/$agentId/{-$tab}',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/callback': typeof CallbackRoute
-  '/agents': typeof AppAgentsRoute
   '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
@@ -156,21 +180,25 @@ export interface FileRoutesByFullPath {
   '/runs': typeof AppRunsRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/_dev/ui': typeof DevUiRoute
+  '/agents/equipe': typeof AppAgentsEquipeRoute
+  '/agents/nouveau': typeof AppAgentsNouveauRoute
+  '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/agents/': typeof AppAgentsIndexRoute
   '/chat/': typeof AppChatIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
+  '/agents/equipe/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
   '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
-  '/agents': typeof AppAgentsRoute
   '/clients': typeof AppClientsRoute
   '/kanban': typeof AppKanbanRoute
   '/live': typeof AppLiveRoute
@@ -178,15 +206,20 @@ export interface FileRoutesByTo {
   '/runs': typeof AppRunsRoute
   '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
+  '/agents/equipe': typeof AppAgentsEquipeRoute
+  '/agents/nouveau': typeof AppAgentsNouveauRoute
+  '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/chat/$id': typeof AppChatIdRoute
   '/clients/$clientId': typeof AppClientsClientIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/providers': typeof AppSettingsProvidersRoute
+  '/agents': typeof AppAgentsIndexRoute
   '/chat': typeof AppChatIndexRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/integrations': typeof AppSettingsIntegrationsIndexRoute
+  '/agents/equipe/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
   '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
@@ -194,7 +227,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/callback': typeof CallbackRoute
-  '/_app/agents': typeof AppAgentsRoute
   '/_app/clients': typeof AppClientsRoute
   '/_app/kanban': typeof AppKanbanRoute
   '/_app/live': typeof AppLiveRoute
@@ -203,15 +235,20 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/agents/equipe': typeof AppAgentsEquipeRoute
+  '/_app/agents/nouveau': typeof AppAgentsNouveauRoute
+  '/_app/agents/organigramme': typeof AppAgentsOrganigrammeRoute
   '/_app/chat/$id': typeof AppChatIdRoute
   '/_app/clients_/$clientId': typeof AppClientsClientIdRoute
   '/_app/projects_/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/runs_/$runId': typeof AppRunsRunIdRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/providers': typeof AppSettingsProvidersRoute
+  '/_app/agents/': typeof AppAgentsIndexRoute
   '/_app/chat/': typeof AppChatIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/integrations/': typeof AppSettingsIntegrationsIndexRoute
+  '/_app/agents/equipe_/$agentId/{-$tab}': typeof AppAgentsEquipeAgentIdChar123TabChar125Route
   '/_app/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
   '/_app/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
 }
@@ -220,7 +257,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/callback'
-    | '/agents'
     | '/clients'
     | '/kanban'
     | '/live'
@@ -228,21 +264,25 @@ export interface FileRouteTypes {
     | '/runs'
     | '/settings'
     | '/_dev/ui'
+    | '/agents/equipe'
+    | '/agents/nouveau'
+    | '/agents/organigramme'
     | '/chat/$id'
     | '/clients/$clientId'
     | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
+    | '/agents/'
     | '/chat/'
     | '/settings/'
     | '/settings/integrations/'
+    | '/agents/equipe/$agentId/{-$tab}'
     | '/settings/integrations/github/app-callback'
     | '/settings/integrations/github/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/callback'
-    | '/agents'
     | '/clients'
     | '/kanban'
     | '/live'
@@ -250,22 +290,26 @@ export interface FileRouteTypes {
     | '/runs'
     | '/_dev/ui'
     | '/'
+    | '/agents/equipe'
+    | '/agents/nouveau'
+    | '/agents/organigramme'
     | '/chat/$id'
     | '/clients/$clientId'
     | '/projects/$projectId'
     | '/runs/$runId'
     | '/settings/models'
     | '/settings/providers'
+    | '/agents'
     | '/chat'
     | '/settings'
     | '/settings/integrations'
+    | '/agents/equipe/$agentId/{-$tab}'
     | '/settings/integrations/github/app-callback'
     | '/settings/integrations/github/callback'
   id:
     | '__root__'
     | '/_app'
     | '/callback'
-    | '/_app/agents'
     | '/_app/clients'
     | '/_app/kanban'
     | '/_app/live'
@@ -274,15 +318,20 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_dev/ui'
     | '/_app/'
+    | '/_app/agents/equipe'
+    | '/_app/agents/nouveau'
+    | '/_app/agents/organigramme'
     | '/_app/chat/$id'
     | '/_app/clients_/$clientId'
     | '/_app/projects_/$projectId'
     | '/_app/runs_/$runId'
     | '/_app/settings/models'
     | '/_app/settings/providers'
+    | '/_app/agents/'
     | '/_app/chat/'
     | '/_app/settings/'
     | '/_app/settings/integrations/'
+    | '/_app/agents/equipe_/$agentId/{-$tab}'
     | '/_app/settings/integrations/github/app-callback'
     | '/_app/settings/integrations/github/callback'
   fileRoutesById: FileRoutesById
@@ -365,13 +414,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/agents': {
-      id: '/_app/agents'
-      path: '/agents'
-      fullPath: '/agents'
-      preLoaderRoute: typeof AppAgentsRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings/': {
       id: '/_app/settings/'
       path: '/'
@@ -384,6 +426,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat/'
       preLoaderRoute: typeof AppChatIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/agents/': {
+      id: '/_app/agents/'
+      path: '/agents'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AppAgentsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/providers': {
@@ -428,6 +477,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChatIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/agents/organigramme': {
+      id: '/_app/agents/organigramme'
+      path: '/agents/organigramme'
+      fullPath: '/agents/organigramme'
+      preLoaderRoute: typeof AppAgentsOrganigrammeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/agents/nouveau': {
+      id: '/_app/agents/nouveau'
+      path: '/agents/nouveau'
+      fullPath: '/agents/nouveau'
+      preLoaderRoute: typeof AppAgentsNouveauRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/agents/equipe': {
+      id: '/_app/agents/equipe'
+      path: '/agents/equipe'
+      fullPath: '/agents/equipe'
+      preLoaderRoute: typeof AppAgentsEquipeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/integrations/': {
       id: '/_app/settings/integrations/'
       path: '/integrations'
@@ -448,6 +518,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/integrations/github/app-callback'
       preLoaderRoute: typeof AppSettingsIntegrationsGithubAppCallbackRouteImport
       parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/agents/equipe_/$agentId/{-$tab}': {
+      id: '/_app/agents/equipe_/$agentId/{-$tab}'
+      path: '/agents/equipe/$agentId/{-$tab}'
+      fullPath: '/agents/equipe/$agentId/{-$tab}'
+      preLoaderRoute: typeof AppAgentsEquipeAgentIdChar123TabChar125RouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
@@ -477,7 +554,6 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
-  AppAgentsRoute: typeof AppAgentsRoute
   AppClientsRoute: typeof AppClientsRoute
   AppKanbanRoute: typeof AppKanbanRoute
   AppLiveRoute: typeof AppLiveRoute
@@ -485,15 +561,19 @@ interface AppRouteChildren {
   AppRunsRoute: typeof AppRunsRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
+  AppAgentsEquipeRoute: typeof AppAgentsEquipeRoute
+  AppAgentsNouveauRoute: typeof AppAgentsNouveauRoute
+  AppAgentsOrganigrammeRoute: typeof AppAgentsOrganigrammeRoute
   AppChatIdRoute: typeof AppChatIdRoute
   AppClientsClientIdRoute: typeof AppClientsClientIdRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppAgentsIndexRoute: typeof AppAgentsIndexRoute
   AppChatIndexRoute: typeof AppChatIndexRoute
+  AppAgentsEquipeAgentIdChar123TabChar125Route: typeof AppAgentsEquipeAgentIdChar123TabChar125Route
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppAgentsRoute: AppAgentsRoute,
   AppClientsRoute: AppClientsRoute,
   AppKanbanRoute: AppKanbanRoute,
   AppLiveRoute: AppLiveRoute,
@@ -501,11 +581,17 @@ const AppRouteChildren: AppRouteChildren = {
   AppRunsRoute: AppRunsRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
+  AppAgentsEquipeRoute: AppAgentsEquipeRoute,
+  AppAgentsNouveauRoute: AppAgentsNouveauRoute,
+  AppAgentsOrganigrammeRoute: AppAgentsOrganigrammeRoute,
   AppChatIdRoute: AppChatIdRoute,
   AppClientsClientIdRoute: AppClientsClientIdRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppAgentsIndexRoute: AppAgentsIndexRoute,
   AppChatIndexRoute: AppChatIndexRoute,
+  AppAgentsEquipeAgentIdChar123TabChar125Route:
+    AppAgentsEquipeAgentIdChar123TabChar125Route,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

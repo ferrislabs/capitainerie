@@ -14,6 +14,14 @@ describe('breadcrumbs', () => {
 		])
 	})
 
+	it('names the team pages', () => {
+		expect(breadcrumbs('/agents/equipe').map((c) => c.label)).toEqual([
+			'Accueil',
+			'Agents',
+			'Équipe',
+		])
+	})
+
 	it('keeps an unknown segment as written', () => {
 		expect(breadcrumbs('/runs/abc%20123')).toEqual([
 			{ label: 'Accueil', to: '/' },
