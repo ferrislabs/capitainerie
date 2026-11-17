@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react'
 import { DEMO_AGENTS, shortName } from '#/domain/demo/agents'
 import { DEMO_CONNECTORS, DEMO_GRANTS } from '#/domain/demo/connectors'
 import { DEMO_SOURCES } from '#/domain/demo/sources'
-import type { DemoSource } from '#/domain/demo/types'
+import type { DemoAgent, DemoSource } from '#/domain/demo/types'
 
 /**
  * État partagé des pages de démonstration : ce que plusieurs pages doivent voir
@@ -11,6 +11,8 @@ import type { DemoSource } from '#/domain/demo/types'
  * En mémoire seulement : perdu au rechargement.
  */
 export interface DemoState {
+	/** Équipe : les agents de départ plus ceux créés pendant la session. */
+	agents: ReadonlyArray<DemoAgent>
 	/** Identifiant d'agent vers noms de connecteurs autorisés. Refus par défaut. */
 	grants: Readonly<Record<string, ReadonlyArray<string>>>
 	/** Identifiant d'agent vers nom court de l'agent dont il dépend, `null` pour la direction. */
@@ -20,6 +22,7 @@ export interface DemoState {
 
 function initialState(): DemoState {
 	return {
+		agents: DEMO_AGENTS,
 		grants: DEMO_GRANTS,
 		reportsTo: Object.fromEntries(DEMO_AGENTS.map((a) => [a.id, a.reportsTo])),
 		sources: DEMO_SOURCES,
@@ -67,6 +70,24 @@ export function revokeConnector(agentId: string, connector: string): void {
 	}))
 }
 
+export function addAgent(agent: DemoAgent): void {
+	demoStore.setState((state) => ({
+		...state,
+		agents: [...state.agents, agent],
+		reportsTo: { ...state.reportsTo, [agent.id]: agent.reportsTo },
+	}))
+}
+
+export function updateAgent(
+	id: string,
+	patch: Partial<Omit<DemoAgent, 'id'>>,
+): void {
+	demoStore.setState((state) => ({
+		...state,
+		agents: state.agents.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+	}))
+}
+
 export function setReportsTo(agentId: string, parent: string | null): void {
 	demoStore.setState((state) => ({
 		...state,
@@ -106,12 +127,12 @@ export function detachSource(sourceId: string, agentId: string): void {
 
 /** Agents qui dépendent directement de `agentId`. */
 export function subAgentIds(state: DemoState, agentId: string): string[] {
-	const parent = DEMO_AGENTS.find((a) => a.id === agentId)
+	const parent = state.agents.find((a) => a.id === agentId)
 	if (!parent) return []
 	const name = shortName(parent.name)
-	return DEMO_AGENTS.filter(
-		(a) => a.id !== agentId && state.reportsTo[a.id] === name,
-	).map((a) => a.id)
+	return state.agents
+		.filter((a) => a.id !== agentId && state.reportsTo[a.id] === name)
+		.map((a) => a.id)
 }
 
 /** Chaîne hiérarchique au-dessus de `agentId`, du parent direct vers la direction. */
@@ -119,7 +140,7 @@ export function ancestorIds(state: DemoState, agentId: string): string[] {
 	const chain: string[] = []
 	let name = state.reportsTo[agentId] ?? null
 	while (name && chain.length < 16) {
-		const parent = DEMO_AGENTS.find((a) => shortName(a.name) === name)
+		const parent = state.agents.find((a) => shortName(a.name) === name)
 		if (!parent || parent.id === agentId || chain.includes(parent.id)) break
 		chain.push(parent.id)
 		name = state.reportsTo[parent.id] ?? null
@@ -128,7 +149,7 @@ export function ancestorIds(state: DemoState, agentId: string): string[] {
 }
 
 export function agentsWithGrant(state: DemoState, connector: string): string[] {
-	return DEMO_AGENTS.filter((a) =>
-		(state.grants[a.id] ?? []).includes(connector),
-	).map((a) => a.id)
+	return state.agents
+		.filter((a) => (state.grants[a.id] ?? []).includes(connector))
+		.map((a) => a.id)
 }
