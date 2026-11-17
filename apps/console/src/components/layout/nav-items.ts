@@ -9,6 +9,7 @@ import {
 	MessageSquare,
 	Play,
 	Radio,
+	RadioTower,
 	SquareKanban,
 	Users,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ export interface NavItem {
 		| '/clients'
 		| '/projects'
 		| '/agents'
+		| '/sources'
 		| '/settings/providers'
 		| '/settings/models'
 		| '/settings/integrations'
@@ -48,11 +50,15 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 		],
 	},
 	{
-		label: 'Supervision',
+		label: 'Organisation',
 		items: [
-			{ to: '/live', label: 'En cours', icon: Radio },
 			{ to: '/agents', label: 'Agents', icon: Bot },
+			{ to: '/sources', label: 'Sources', icon: RadioTower },
 		],
+	},
+	{
+		label: 'Supervision',
+		items: [{ to: '/live', label: 'En cours', icon: Radio }],
 	},
 	{
 		label: 'Paramètres',

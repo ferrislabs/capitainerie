@@ -22,6 +22,15 @@ describe('breadcrumbs', () => {
 		])
 	})
 
+	it('names the tab after an id, not as a section', () => {
+		expect(breadcrumbs('/sources/dns/pipeline').map((c) => c.label)).toEqual([
+			'Accueil',
+			'Sources',
+			'dns',
+			'Pipeline',
+		])
+	})
+
 	it('keeps an unknown segment as written', () => {
 		expect(breadcrumbs('/runs/abc%20123')).toEqual([
 			{ label: 'Accueil', to: '/' },

@@ -11,6 +11,8 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 	clients: 'Clients',
 	projects: 'Projets',
 	agents: 'Agents',
+	sources: 'Sources',
+	nouvelle: 'Nouvelle',
 	equipe: 'Équipe',
 	organigramme: 'Organigramme',
 	nouveau: 'Nouvel agent',
@@ -18,6 +20,25 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 	providers: 'Fournisseurs',
 	models: 'Modèles',
 	integrations: 'Intégrations',
+}
+
+const TAB_LABELS: Readonly<Record<string, string>> = {
+	apercu: "Vue d'ensemble",
+	overview: "Vue d'ensemble",
+	regles: 'Motifs et exclusions',
+	pipeline: 'Pipeline',
+	evenements: 'Événements',
+	agents: 'Agents',
+	instructions: 'Instructions',
+	skills: 'Compétences',
+	sources: 'Sources',
+	team: 'Délégation',
+	connectors: 'Connecteurs',
+	runtime: 'Runtime',
+	secrets: 'Secrets et variables',
+	perms: 'Permissions',
+	keys: 'Clés API',
+	rev: 'Révisions',
 }
 
 const HOME: Crumb = { label: 'Accueil', to: '/' }
@@ -31,7 +52,10 @@ export function breadcrumbs(pathname: string): ReadonlyArray<Crumb> {
 	if (segments.length === 0) return [{ label: HOME.label }]
 	const crumbs: Crumb[] = [HOME]
 	segments.forEach((segment, index) => {
-		const label = SECTION_LABELS[segment] ?? decodeURIComponent(segment)
+		const label =
+			(index >= 2 ? TAB_LABELS[segment] : undefined) ??
+			SECTION_LABELS[segment] ??
+			decodeURIComponent(segment)
 		const last = index === segments.length - 1
 		crumbs.push(
 			last
