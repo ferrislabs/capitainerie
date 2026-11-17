@@ -1,5 +1,5 @@
-import '@fontsource-variable/atkinson-hyperlegible-next'
-import '@fontsource-variable/atkinson-hyperlegible-mono'
+import '@fontsource-variable/inter'
+import '@fontsource-variable/jetbrains-mono'
 import type { QueryClient } from '@tanstack/react-query'
 import {
 	createRootRouteWithContext,
@@ -22,7 +22,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 			{ name: 'viewport', content: 'width=device-width, initial-scale=1' },
 			{ name: 'google', content: 'notranslate' },
 			{ title: 'Capitainerie · Console' },
-			{ name: 'theme-color', content: '#0f233f' },
+			{ name: 'theme-color', content: '#141517' },
 		],
 		links: [
 			{ rel: 'stylesheet', href: appCss },
