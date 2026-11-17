@@ -1,10 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-react'
+import { ChevronDown, PanelLeft, Search, SquarePen, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
-import {
-	CapitainerieMark,
-	CapitainerieWordmark,
-} from '#/components/brand/capitainerie-mark'
 import type { NavItem, NavSection } from '#/components/layout/nav-items'
 import { moveFocusBetweenLinks } from '#/components/layout/roving-focus'
 import {
@@ -12,9 +8,17 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from '#/components/ui/tooltip'
+import { AgentFace } from '#/domain/dashboard/ui/avatars'
+import { LiveLabel } from '#/domain/dashboard/ui/live-label'
 import { cn } from '#/lib/utils'
 
 export type RailBadges = Readonly<Partial<Record<NavItem['to'], number>>>
+
+export interface RailAgent {
+	id: string
+	name: string
+	hue: number
+}
 
 interface Props {
 	sections: ReadonlyArray<NavSection>
@@ -25,11 +29,30 @@ interface Props {
 	badges?: RailBadges
 	onSearch?: () => void
 	onNewTask?: () => void
-	liveAgents?: ReadonlyArray<{ id: string; name: string }>
+	onOrganization?: () => void
+	liveAgents?: ReadonlyArray<RailAgent>
 }
 
 const FOCUS =
-	'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring'
+	'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
+
+const NO_CURRENT =
+	'aria-[current=page]:bg-transparent aria-[current=page]:before:hidden hover:aria-[current=page]:bg-secondary'
+
+const NAV =
+	'group relative flex h-7 w-full items-center gap-[9px] rounded-[6px] px-2 text-left whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-1.5 aria-[current=page]:before:-left-1.5 aria-[current=page]:before:w-0.5 aria-[current=page]:before:rounded-sm aria-[current=page]:before:bg-primary'
+
+const GROUP =
+	'px-2 pt-3 pb-1 font-mono text-[10px] leading-none font-medium tracking-[0.09em] whitespace-nowrap text-faint uppercase'
+
+function Dot() {
+	return (
+		<span
+			aria-hidden="true"
+			className="absolute top-1 right-[5px] size-1.5 rounded-full bg-primary"
+		/>
+	)
+}
 
 function RailLink({
 	item,
@@ -41,47 +64,27 @@ function RailLink({
 	count: number | undefined
 }) {
 	const Icon = item.icon
-	const showCount = count !== undefined && count > 0
 	const shown = count !== undefined && count >= 100 ? '100+' : count
 	const link = (
 		<Link
 			to={item.to}
 			activeOptions={{ exact: item.to === '/' }}
-			aria-label={
-				expanded
-					? undefined
-					: showCount
-						? `${item.label}, ${shown} éléments`
-						: item.label
-			}
-			className={cn(
-				'flex h-7 items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground transition-colors duration-150',
-				'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-				'aria-[current=page]:bg-rail-accent aria-[current=page]:font-medium aria-[current=page]:text-rail-foreground-active',
-				!expanded && 'justify-center px-0',
-				FOCUS,
-			)}
+			aria-label={expanded ? undefined : item.label}
+			className={cn(NAV, !expanded && 'justify-center px-0', FOCUS)}
 		>
-			<span className="relative flex shrink-0">
-				<Icon aria-hidden="true" className="size-4" />
-				{showCount && !expanded ? (
-					<span
-						aria-hidden="true"
-						className="absolute -top-1 -right-1 size-2 rounded-full bg-signal-running"
-					/>
-				) : null}
-			</span>
-			{expanded ? <span className="truncate">{item.label}</span> : null}
-			{showCount && expanded ? (
+			<Icon aria-hidden="true" className="size-4 shrink-0" />
+			{expanded ? (
 				<>
-					<span
-						aria-hidden="true"
-						className="figures ml-auto rounded-sm bg-signal-running-soft px-1.5 text-xs leading-5 font-medium text-signal-running"
-					>
-						{shown}
-					</span>
-					<span className="sr-only">{`, ${shown} éléments`}</span>
+					<span className="flex-1 truncate">{item.label}</span>
+					{item.live ? <LiveLabel /> : null}
+					{shown !== undefined ? (
+						<span className="figures rounded-lg bg-secondary px-1.5 text-[11px] leading-4 text-foreground group-aria-[current=page]:bg-border">
+							{shown}
+						</span>
+					) : null}
 				</>
+			) : item.live || (count !== undefined && count > 0) ? (
+				<Dot />
 			) : null}
 		</Link>
 	)
@@ -95,6 +98,31 @@ function RailLink({
 	)
 }
 
+function ActionButton({
+	label,
+	icon: Icon,
+	expanded,
+	onClick,
+}: {
+	label: string
+	icon: typeof Search
+	expanded: boolean
+	onClick: () => void
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			aria-label={expanded ? undefined : label}
+			title={label}
+			className={cn(NAV, !expanded && 'justify-center px-0', FOCUS)}
+		>
+			<Icon aria-hidden="true" className="size-4 shrink-0" />
+			{expanded ? <span className="flex-1 truncate">{label}</span> : null}
+		</button>
+	)
+}
+
 export function AppRail({
 	sections,
 	expanded,
@@ -104,126 +132,86 @@ export function AppRail({
 	badges,
 	onSearch,
 	onNewTask,
+	onOrganization,
 	liveAgents,
 }: Props) {
 	const isExpanded = expanded && canExpand
-	const ToggleIcon = isExpanded ? PanelLeftClose : PanelLeftOpen
 	const toggleLabel = isExpanded ? 'Réduire le menu' : 'Déplier le menu'
+	const agents = liveAgents ?? []
 
 	return (
 		<aside
 			data-expanded={isExpanded}
 			className={cn(
-				'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-rail-border bg-rail text-rail-foreground transition-[width] duration-200 ease-out-expo',
+				'sticky top-0 flex h-dvh shrink-0 flex-col gap-0.5 overflow-x-hidden overflow-y-auto border-r bg-card px-1.5 py-2 transition-[width] duration-200 ease-out-expo',
 				isExpanded ? 'w-[204px]' : 'w-12',
 			)}
 		>
-			<div
+			<button
+				type="button"
+				onClick={onOrganization}
+				aria-label={isExpanded ? undefined : 'Natalia'}
+				title="Changer d'organisation"
 				className={cn(
-					'flex shrink-0 gap-1 px-2 pt-2 pb-1',
-					isExpanded ? 'h-11 items-center' : 'flex-col items-center',
+					'mb-1.5 flex h-[34px] w-full items-center gap-2 rounded-md border bg-background px-1.5 text-left',
+					!isExpanded && 'justify-center px-0',
+					FOCUS,
 				)}
 			>
-				<Link
-					to="/"
-					aria-label="Capitainerie, accueil"
-					className={cn(
-						'flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-rail-foreground-active',
-						!isExpanded && 'flex-none justify-center px-0',
-						FOCUS,
-					)}
+				<span
+					aria-hidden="true"
+					className="grid size-5 shrink-0 place-items-center rounded-[5px] bg-linear-to-br from-brand-from to-brand-to text-[11px] font-bold text-white"
 				>
-					<CapitainerieMark className="size-7 shrink-0" />
-					{isExpanded ? <CapitainerieWordmark /> : null}
-				</Link>
-				{canExpand ? (
-					<button
-						type="button"
-						onClick={() => onExpandedChange(!isExpanded)}
-						aria-label={toggleLabel}
-						aria-expanded={isExpanded}
-						title={toggleLabel}
-						className={cn(
-							'flex size-7 shrink-0 items-center justify-center rounded-md text-rail-label transition-colors duration-150 hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-							FOCUS,
-						)}
-					>
-						<ToggleIcon aria-hidden="true" className="size-4" />
-					</button>
+					N
+				</span>
+				{isExpanded ? (
+					<>
+						<b className="flex-1 font-semibold whitespace-nowrap">Natalia</b>
+						<ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+					</>
 				) : null}
-			</div>
-			{onSearch || onNewTask ? (
-				<div className="flex shrink-0 flex-col gap-0.5 px-2 pb-2">
-					{onNewTask ? (
-						<button
-							type="button"
-							onClick={onNewTask}
-							aria-label="Nouvelle tâche"
-							title="Nouvelle tâche"
-							className={cn(
-								'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-								!isExpanded && 'justify-center px-0',
-								FOCUS,
-							)}
-						>
-							<SquarePen aria-hidden="true" className="size-4 shrink-0" />
-							{isExpanded ? (
-								<span className="flex-1 text-left">Nouvelle tâche</span>
-							) : null}
-						</button>
-					) : null}
-					{onSearch ? (
-						<button
-							type="button"
-							onClick={onSearch}
-							aria-label="Rechercher"
-							title="Rechercher (⌘K)"
-							className={cn(
-								'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-								!isExpanded && 'justify-center px-0',
-								FOCUS,
-							)}
-						>
-							<Search aria-hidden="true" className="size-4 shrink-0" />
-							{isExpanded ? (
-								<>
-									<span className="flex-1 text-left">Rechercher</span>
-									<kbd className="font-mono text-[11px] text-rail-label">
-										⌘K
-									</kbd>
-								</>
-							) : null}
-						</button>
-					) : null}
-				</div>
+			</button>
+			{onNewTask ? (
+				<ActionButton
+					label="Nouvelle tâche"
+					icon={SquarePen}
+					expanded={isExpanded}
+					onClick={onNewTask}
+				/>
+			) : null}
+			{onSearch ? (
+				<ActionButton
+					label="Rechercher"
+					icon={Search}
+					expanded={isExpanded}
+					onClick={onSearch}
+				/>
 			) : null}
 			<nav
 				aria-label="Navigation principale"
-				className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
+				className="flex flex-1 flex-col gap-0.5"
 				onKeyDown={moveFocusBetweenLinks}
 			>
 				{sections.map((section, index) => {
 					const labelId = `rail-section-${index}`
 					return (
-						<div
-							key={section.label}
-							className={cn(
-								index > 0 &&
-									(isExpanded
-										? 'mt-4'
-										: 'mt-2 border-t border-rail-border pt-2'),
-							)}
-						>
+						<div key={section.label} className="flex flex-col gap-0.5">
 							{section.label ? (
-								<p
-									id={labelId}
-									className={cn(
-										'px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label',
-										!isExpanded && 'sr-only',
-									)}
-								>
-									{section.label}
-								</p>
+								isExpanded ? (
+									<p id={labelId} className={GROUP}>
+										{section.label}
+									</p>
+								) : (
+									<>
+										<p id={labelId} className="sr-only">
+											{section.label}
+										</p>
+										<div
+											aria-hidden="true"
+											className="mx-1.5 my-2 h-px bg-border"
+										/>
+									</>
+								)
 							) : null}
 							<ul
 								aria-labelledby={section.label ? labelId : undefined}
@@ -243,40 +231,83 @@ export function AppRail({
 						</div>
 					)
 				})}
-				{isExpanded && liveAgents && liveAgents.length > 0 ? (
-					<div className="mt-4">
-						<p className="px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label">
-							Agents en direct
-						</p>
-						<ul aria-label="Agents en direct" className="flex flex-col gap-0.5">
-							{liveAgents.map((agent) => (
-								<li key={agent.id}>
-									<Link
-										to="/agents/$agentId/{-$tab}"
-										params={{ agentId: agent.id }}
-										className={cn(
-											'flex h-7 items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground transition-colors duration-150',
-											'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
-											FOCUS,
-										)}
-									>
-										<span
-											aria-hidden="true"
-											className="size-2 shrink-0 rounded-full bg-signal-running"
-										/>
-										<span className="truncate">{agent.name}</span>
-									</Link>
-								</li>
-							))}
-						</ul>
-					</div>
-				) : null}
-			</nav>
-			{footer ? (
-				<div className="flex shrink-0 flex-col gap-1 border-t border-rail-border p-2">
-					{footer(isExpanded)}
+				<div className="flex flex-col gap-0.5">
+					{isExpanded ? (
+						<p className={GROUP}>Agents</p>
+					) : (
+						<div aria-hidden="true" className="mx-1.5 my-2 h-px bg-border" />
+					)}
+					<ul aria-label="Agents en direct" className="flex flex-col gap-0.5">
+						{agents.map((agent) => (
+							<li key={agent.id}>
+								<Link
+									to="/agents/$agentId/{-$tab}"
+									params={{ agentId: agent.id }}
+									aria-label={isExpanded ? undefined : agent.name}
+									title={agent.name}
+									className={cn(
+										NAV,
+										NO_CURRENT,
+										!isExpanded && 'justify-center px-0',
+										FOCUS,
+									)}
+								>
+									<AgentFace hue={agent.hue} size={18} />
+									{isExpanded ? (
+										<>
+											<span className="flex-1 truncate">{agent.name}</span>
+											<LiveLabel />
+										</>
+									) : null}
+								</Link>
+							</li>
+						))}
+						<li>
+							<Link
+								to="/agents"
+								aria-label={isExpanded ? undefined : 'Voir tous les agents'}
+								title="Tous les agents"
+								className={cn(
+									NAV,
+									NO_CURRENT,
+									!isExpanded && 'justify-center px-0',
+									FOCUS,
+								)}
+							>
+								<Users aria-hidden="true" className="size-4 shrink-0" />
+								{isExpanded ? (
+									<span className="flex-1 truncate text-faint">
+										Voir tous les agents
+									</span>
+								) : null}
+							</Link>
+						</li>
+					</ul>
 				</div>
-			) : null}
+			</nav>
+			<div
+				className={cn(
+					'mt-1.5 flex gap-2 border-t px-1 pt-1.5 text-muted-foreground',
+					isExpanded ? 'items-center' : 'flex-col items-center',
+				)}
+			>
+				{footer ? footer(isExpanded) : null}
+				{canExpand ? (
+					<button
+						type="button"
+						onClick={() => onExpandedChange(!isExpanded)}
+						aria-label={toggleLabel}
+						aria-expanded={isExpanded}
+						title={toggleLabel}
+						className={cn(
+							'grid size-7 shrink-0 place-items-center rounded-[6px] text-muted-foreground hover:bg-secondary hover:text-foreground',
+							FOCUS,
+						)}
+					>
+						<PanelLeft aria-hidden="true" className="size-4" />
+					</button>
+				) : null}
+			</div>
 		</aside>
 	)
 }

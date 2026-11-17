@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { ChevronsUpDown, LogOut, Monitor, Moon, Sun } from 'lucide-react'
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
-import { Skeleton } from '#/components/ui/skeleton'
+import { HumanAvatar } from '#/domain/dashboard/ui/avatars'
 import { UserBadge } from '#/domain/identity/ui/user-badge'
 import { parseThemePreference, type ThemePreference } from '#/lib/theme'
 import { cn } from '#/lib/utils'
@@ -29,7 +29,7 @@ interface Props {
 	displayName: string
 	email?: string
 	organizationName: string
-	isPending?: boolean
+	label?: string
 	compact?: boolean
 	theme: ThemePreference
 	onThemeChange: (theme: ThemePreference) => void
@@ -49,7 +49,7 @@ export function UserMenu({
 	displayName,
 	email,
 	organizationName,
-	isPending = false,
+	label = 'Board',
 	compact = false,
 	theme,
 	onThemeChange,
@@ -61,38 +61,14 @@ export function UserMenu({
 				aria-label={`Compte de ${displayName}`}
 				title={compact ? displayName : undefined}
 				className={cn(
-					'flex h-11 w-full min-w-0 items-center gap-2.5 rounded-md px-1.5 text-left text-rail-foreground transition-colors duration-150 hover:bg-rail-accent/60 data-[state=open]:bg-rail-accent',
+					'flex h-7 min-w-0 items-center gap-2 rounded-[6px] text-left text-muted-foreground transition-colors duration-150 data-[state=open]:bg-secondary',
 					'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
-					compact && 'justify-center px-0',
+					compact ? 'justify-center' : 'flex-1',
 				)}
 			>
-				<span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-rail-border bg-card text-[11px] font-semibold text-foreground">
-					{isPending ? '…' : initials(displayName)}
-				</span>
+				<HumanAvatar initials="BO" size={22} />
 				{compact ? null : (
-					<>
-						<span className="flex min-w-0 flex-1 flex-col">
-							{isPending ? (
-								<>
-									<Skeleton className="h-3 w-24" />
-									<Skeleton className="mt-1.5 h-2.5 w-16" />
-								</>
-							) : (
-								<>
-									<span className="truncate text-sm font-medium text-rail-foreground-active">
-										{organizationName || displayName}
-									</span>
-									<span className="truncate text-xs text-rail-label">
-										{displayName}
-									</span>
-								</>
-							)}
-						</span>
-						<ChevronsUpDown
-							aria-hidden="true"
-							className="size-4 shrink-0 text-rail-label"
-						/>
-					</>
+					<span className="min-w-0 flex-1 truncate text-xs">{label}</span>
 				)}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent

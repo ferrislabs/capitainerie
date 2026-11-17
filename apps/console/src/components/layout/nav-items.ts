@@ -1,17 +1,17 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-	Bot,
 	Box,
-	FolderKanban,
+	CircleCheck,
+	Folder,
 	History,
+	House,
 	Inbox,
-	LayoutDashboard,
-	ListChecks,
 	Plug,
-	RadioTower,
+	Radio,
 	Repeat,
-	ShieldCheck,
+	Shield,
 	Sparkles,
+	Users,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -30,6 +30,7 @@ export interface NavItem {
 		| '/audit/{-$tab}'
 	label: string
 	icon: LucideIcon
+	live?: boolean
 }
 
 export interface NavSection {
@@ -42,15 +43,15 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 	{
 		label: '',
 		items: [
-			{ to: '/', label: 'Tableau de bord', icon: LayoutDashboard },
+			{ to: '/', label: 'Tableau de bord', icon: House, live: true },
 			{ to: '/inbox/{-$tab}', label: 'Boîte de réception', icon: Inbox },
 		],
 	},
 	{
 		label: 'Travail',
 		items: [
-			{ to: '/tasks', label: 'Tâches', icon: ListChecks },
-			{ to: '/projects', label: 'Projets', icon: FolderKanban },
+			{ to: '/tasks', label: 'Tâches', icon: CircleCheck },
+			{ to: '/projects', label: 'Projets', icon: Folder },
 			{ to: '/routines', label: 'Routines', icon: Repeat },
 			{ to: '/artifacts', label: 'Artifacts', icon: Box },
 		],
@@ -58,11 +59,11 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 	{
 		label: 'Organisation',
 		items: [
-			{ to: '/agents', label: 'Agents', icon: Bot },
+			{ to: '/agents', label: 'Agents', icon: Users },
 			{ to: '/skills', label: 'Compétences', icon: Sparkles },
-			{ to: '/sources', label: 'Sources', icon: RadioTower },
+			{ to: '/sources', label: 'Sources', icon: Radio },
 			{ to: '/connectors/{-$tab}', label: 'Connecteurs', icon: Plug },
-			{ to: '/approvals', label: 'Approbations', icon: ShieldCheck },
+			{ to: '/approvals', label: 'Approbations', icon: Shield },
 			{ to: '/audit/{-$tab}', label: 'Audit', icon: History },
 		],
 	},

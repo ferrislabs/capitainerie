@@ -34,11 +34,29 @@ describe('UserMenu', () => {
 		expect(initials('  ')).toBe('?')
 	})
 
-	it('shows the organization and the user on the trigger', () => {
+	it('shows the board avatar and label on the trigger', () => {
 		renderMenu()
 
-		expect(screen.getByText('Acme')).toBeTruthy()
-		expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+		expect(screen.getByText('Board')).toBeTruthy()
+		expect(screen.getByText('BO')).toBeTruthy()
+	})
+
+	it('shows only the avatar when compact', () => {
+		render(
+			<UserMenu
+				displayName="Ada Lovelace"
+				organizationName="Acme"
+				compact
+				theme="system"
+				onThemeChange={vi.fn()}
+				onSignOut={vi.fn()}
+			/>,
+		)
+
+		expect(screen.queryByText('Board')).toBeNull()
+		expect(
+			screen.getByRole('button', { name: 'Compte de Ada Lovelace' }),
+		).toBeTruthy()
 	})
 
 	it('opens with the profile and signs out', async () => {
@@ -46,6 +64,7 @@ describe('UserMenu', () => {
 		await open(user)
 
 		expect(await screen.findByText('ada@example.com')).toBeTruthy()
+		expect(screen.getByText('Ada Lovelace')).toBeTruthy()
 		await user.click(screen.getByRole('menuitem', { name: 'Se déconnecter' }))
 		expect(onSignOut).toHaveBeenCalledOnce()
 	})

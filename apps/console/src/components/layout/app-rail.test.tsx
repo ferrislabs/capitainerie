@@ -29,12 +29,10 @@ async function renderRail(path: string, props = rail()) {
 }
 
 describe('AppRail', () => {
-	it('links the brand and the dashboard to the home page', async () => {
+	it('links the dashboard to the home page', async () => {
 		await renderRail('/')
 
-		const brand = screen.getByRole('link', { name: 'Capitainerie, accueil' })
-		expect(brand.getAttribute('href')).toBe('/')
-		const home = screen.getByRole('link', { name: 'Tableau de bord' })
+		const home = screen.getByRole('link', { name: /^Tableau de bord/ })
 		expect(home.getAttribute('href')).toBe('/')
 		expect(home.getAttribute('aria-current')).toBe('page')
 	})
@@ -44,7 +42,7 @@ describe('AppRail', () => {
 
 		expect(
 			screen
-				.getByRole('link', { name: 'Tableau de bord' })
+				.getByRole('link', { name: /^Tableau de bord/ })
 				.getAttribute('aria-current'),
 		).toBeNull()
 		expect(
@@ -55,7 +53,7 @@ describe('AppRail', () => {
 	it('shows a count next to a destination', async () => {
 		await renderRail('/', rail({ badges: { '/sources': 3 } }))
 
-		const link = screen.getByRole('link', { name: 'Sources, 3 éléments' })
+		const link = screen.getByRole('link', { name: /^Sources/ })
 		expect(link.contains(screen.getByText('3'))).toBe(true)
 	})
 
@@ -65,11 +63,24 @@ describe('AppRail', () => {
 		expect(screen.getByText('100+')).toBeTruthy()
 	})
 
-	it('shows no count when there is nothing', async () => {
-		await renderRail('/', rail({ badges: { '/sources': 0 } }))
+	it('keeps a zero count visible, as in the mockup', async () => {
+		await renderRail('/', rail({ badges: { '/approvals': 0 } }))
 
-		expect(screen.getByRole('link', { name: 'Sources' })).toBeTruthy()
-		expect(screen.queryByText('0')).toBeNull()
+		expect(screen.getByText('0')).toBeTruthy()
+	})
+
+	it('labels the dashboard with the live count', async () => {
+		await renderRail('/')
+
+		expect(screen.getByText('1 en direct')).toBeTruthy()
+	})
+
+	it('opens the organization switcher', async () => {
+		const onOrganization = vi.fn()
+		await renderRail('/', rail({ onOrganization }))
+
+		await userEvent.click(screen.getByRole('button', { name: 'Natalia' }))
+		expect(onOrganization).toHaveBeenCalledOnce()
 	})
 
 	it('groups the destinations by section', async () => {
@@ -151,7 +162,7 @@ describe('AppRail', () => {
 		const nav = screen.getByRole('navigation', {
 			name: 'Navigation principale',
 		})
-		screen.getByRole('link', { name: 'Tableau de bord' }).focus()
+		screen.getByRole('link', { name: /^Tableau de bord/ }).focus()
 
 		for (const label of [
 			'Boîte de réception',
@@ -174,41 +185,56 @@ describe('AppRail', () => {
 
 		fireEvent.keyDown(nav, { key: 'ArrowDown' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Tableau de bord' }),
+			screen.getByRole('link', { name: 'Voir tous les agents' }),
+		)
+
+		fireEvent.keyDown(nav, { key: 'ArrowDown' })
+		expect(document.activeElement).toBe(
+			screen.getByRole('link', { name: /^Tableau de bord/ }),
 		)
 
 		fireEvent.keyDown(nav, { key: 'End' })
 		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Audit' }),
+			screen.getByRole('link', { name: 'Voir tous les agents' }),
 		)
 	})
 
 	it('lists the live agents and the quick actions when expanded', async () => {
 		const onNewTask = vi.fn()
+		const onSearch = vi.fn()
 		await renderRail(
 			'/',
 			rail({
 				onNewTask,
-				onSearch: vi.fn(),
-				liveAgents: [{ id: 'dev', name: 'Dev' }],
+				onSearch,
+				liveAgents: [{ id: 'dev', name: 'Dev', hue: 120 }],
+			}),
+		)
+
+		expect(
+			screen.getByRole('link', { name: /^Dev/ }).getAttribute('href'),
+		).toBe('/agents/dev')
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Nouvelle tâche' }),
+		)
+		expect(onNewTask).toHaveBeenCalledOnce()
+		await userEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+		expect(onSearch).toHaveBeenCalledOnce()
+		expect(screen.queryByText('⌘K')).toBeNull()
+	})
+
+	it('keeps the live agent avatars when collapsed, with an accessible name', async () => {
+		await renderRail(
+			'/',
+			rail({
+				expanded: false,
+				liveAgents: [{ id: 'dev', name: 'Dev', hue: 120 }],
 			}),
 		)
 
 		expect(screen.getByRole('link', { name: 'Dev' }).getAttribute('href')).toBe(
 			'/agents/dev',
 		)
-		await userEvent.click(
-			screen.getByRole('button', { name: 'Nouvelle tâche' }),
-		)
-		expect(onNewTask).toHaveBeenCalledOnce()
-	})
-
-	it('hides the live agents when collapsed', async () => {
-		await renderRail(
-			'/',
-			rail({ expanded: false, liveAgents: [{ id: 'dev', name: 'Dev' }] }),
-		)
-
-		expect(screen.queryByRole('link', { name: 'Dev' })).toBeNull()
+		expect(screen.queryByText('Voir tous les agents')).toBeNull()
 	})
 })

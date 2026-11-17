@@ -5,9 +5,8 @@ import { AppTopbar } from '#/components/layout/app-topbar'
 import { renderAtPath } from '#/components/layout/test-router'
 
 const CRUMBS = [
-	{ label: 'Accueil', to: '/' },
-	{ label: 'Runs', to: '/runs' },
-	{ label: 'abc' },
+	{ label: 'Tâches', to: '/tasks' },
+	{ label: 'Revue sécurité quotidienne', tag: 'NAT-611' },
 ]
 
 async function renderBar(
@@ -20,17 +19,26 @@ async function renderBar(
 		onToggleTheme: vi.fn(),
 		...overrides,
 	}
-	await renderAtPath(<AppTopbar {...props} />, '/runs')
+	await renderAtPath(<AppTopbar {...props} />, '/tasks')
 	return props
 }
 
 describe('AppTopbar', () => {
-	it('links the parent crumbs and marks the last one current', async () => {
+	it('starts with the organization, links the parent crumbs and marks the last current', async () => {
 		await renderBar()
+		expect(screen.getByText('Natalia')).toBeTruthy()
 		expect(
-			screen.getByRole('link', { name: 'Runs' }).getAttribute('href'),
-		).toBe('/runs')
-		expect(screen.getByText('abc').getAttribute('aria-current')).toBe('page')
+			screen.getByRole('link', { name: 'Tâches' }).getAttribute('href'),
+		).toBe('/tasks')
+		const last = screen.getByText('Revue sécurité quotidienne')
+		expect(last.getAttribute('aria-current')).toBe('page')
+		expect(screen.getByText('NAT-611')).toBeTruthy()
+	})
+
+	it('shows the demo chip and the live label', async () => {
+		await renderBar()
+		expect(screen.getByText('Démo')).toBeTruthy()
+		expect(screen.getByText('1 en direct')).toBeTruthy()
 	})
 
 	it('opens the search from the search field', async () => {
@@ -45,5 +53,22 @@ describe('AppTopbar', () => {
 			screen.getByRole('button', { name: 'Passer au thème clair' }),
 		)
 		expect(onToggleTheme).toHaveBeenCalledOnce()
+	})
+
+	it('exposes the portal target for page actions', async () => {
+		await renderBar()
+		expect(document.getElementById('topbar-actions')).toBeTruthy()
+	})
+
+	it('refreshes the page data', async () => {
+		const onRefresh = vi.fn()
+		await renderBar({ onRefresh })
+		await userEvent.click(screen.getByRole('button', { name: 'Actualiser' }))
+		expect(onRefresh).toHaveBeenCalledOnce()
+	})
+
+	it('hides the refresh button on pages that bring their own toggle', async () => {
+		await renderBar({ showRefresh: false })
+		expect(screen.queryByRole('button', { name: 'Actualiser' })).toBeNull()
 	})
 })
