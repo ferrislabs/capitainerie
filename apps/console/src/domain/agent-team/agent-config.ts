@@ -4,7 +4,7 @@ import {
 	DEFAULT_REVISIONS,
 	defaultInstructions,
 } from '#/domain/agent-team/mock/agent-fixtures'
-import type { DemoAgent } from '#/domain/demo'
+import { DEMO_AGENTS, type DemoAgent } from '#/domain/demo'
 
 export interface EnvVar {
 	id: string
@@ -121,6 +121,8 @@ export function buildDefaultConfig(
 	const { skills, ...fields } = overrides
 	const delegates =
 		agent.id === 'chief-of-staff' || agent.id === 'veille-legale'
+	const index = DEMO_AGENTS.findIndex((a) => a.id === agent.id)
+	const rev = 14 - (Math.max(index, 0) % 5)
 	return {
 		fields: {
 			title: `${agent.role} · Natalia`,
@@ -156,8 +158,11 @@ export function buildDefaultConfig(
 			...fields,
 		},
 		skills: skills ?? SKILL_ALL.slice(0, 8),
-		rev: 14,
-		revs: DEFAULT_REVISIONS.map((r) => ({ ...r })),
+		rev,
+		revs: DEFAULT_REVISIONS.map((r, offset) => ({
+			...r,
+			label: `Rév. ${rev - offset}`,
+		})),
 		keys: DEFAULT_KEYS.map((k) => ({ ...k })),
 		paused: false,
 	}

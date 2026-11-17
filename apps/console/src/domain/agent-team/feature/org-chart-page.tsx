@@ -1,17 +1,17 @@
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
-import { SectionCard } from '#/components/layout/section-card'
 import {
 	getAgentConfig,
 	useConfigVersion,
 } from '#/domain/agent-team/agent-config-store'
 import { buildOrgTree } from '#/domain/agent-team/org-tree'
+import { AgentsHeader } from '#/domain/agent-team/ui/agents-header'
 import { AgentsTabs } from '#/domain/agent-team/ui/agents-tabs'
 import {
 	type OrgEntry,
 	OrgTreeView,
 } from '#/domain/agent-team/ui/org-tree-view'
+import { Panel } from '#/domain/agent-team/ui/panel'
 import { useDemoState } from '#/domain/demo'
 
 export function OrgChartPage() {
@@ -31,15 +31,12 @@ export function OrgChartPage() {
 	})
 	return (
 		<Page>
-			<PageHeader
-				title="Organigramme"
-				description="Qui rapporte à qui, de la direction jusqu'aux sous-agents."
-			/>
+			<AgentsHeader />
 			<DemoBanner />
-			<AgentsTabs />
-			<SectionCard title="Hiérarchie" flush>
+			<AgentsTabs active="organigramme" />
+			<Panel>
 				<OrgTreeView entries={entries} />
-			</SectionCard>
+			</Panel>
 		</Page>
 	)
 }

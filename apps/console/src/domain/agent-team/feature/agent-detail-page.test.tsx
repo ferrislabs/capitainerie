@@ -101,7 +101,7 @@ describe('agent detail page', () => {
 		const user = userEvent.setup()
 		await open({ agentId: 'dev' })
 		await user.click(screen.getByRole('button', { name: 'Pause' }))
-		expect(screen.getByRole('button', { name: 'Relancer' })).toBeTruthy()
+		expect(screen.getByRole('button', { name: 'Reprendre' })).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: 'Lancer' }))
 		expect(screen.getByText('Exécution lancée pour Dev')).toBeTruthy()
 	})
@@ -118,9 +118,7 @@ describe('agent detail page', () => {
 	describe('instructions', () => {
 		it('reads, shows raw and edits', async () => {
 			await open({ agentId: 'dev', tab: 'instructions', mode: 'lire' })
-			expect(
-				screen.getByRole('heading', { name: 'Dev · Natalia' }),
-			).toBeTruthy()
+			expect(screen.getByText(/^# Dev · Natalia/)).toBeTruthy()
 			expect(
 				screen.getByRole('link', { name: 'Éditer' }).getAttribute('href'),
 			).toContain('mode=editer')
@@ -148,7 +146,7 @@ describe('agent detail page', () => {
 			expect(screen.getByText('Modifications non enregistrées')).toBeTruthy()
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 			expect(screen.queryByText('Modifications non enregistrées')).toBeNull()
-			expect(getAgentConfig('dev').rev).toBe(15)
+			expect(getAgentConfig('dev').rev).toBe(14)
 			expect(getAgentConfig('dev').revs[0]?.changed).toBe('instructions')
 			expect(getAgentConfig('dev').fields.instr.endsWith(' plus')).toBe(true)
 		})
@@ -159,7 +157,7 @@ describe('agent detail page', () => {
 			await user.type(screen.getByLabelText('Instructions'), 'x')
 			await user.click(screen.getByRole('button', { name: 'Annuler' }))
 			expect(screen.queryByText('Modifications non enregistrées')).toBeNull()
-			expect(getAgentConfig('dev').rev).toBe(14)
+			expect(getAgentConfig('dev').rev).toBe(13)
 		})
 	})
 
@@ -167,8 +165,8 @@ describe('agent detail page', () => {
 		const user = userEvent.setup()
 		await open({ agentId: 'dev', tab: 'rev' })
 		expect(screen.getByText('Actuelle')).toBeTruthy()
-		await user.click(screen.getByRole('button', { name: 'Restaurer Rév. 13' }))
-		expect(screen.getByText(/Rév. 13 restaurée/)).toBeTruthy()
+		await user.click(screen.getByRole('button', { name: 'Restaurer Rév. 12' }))
+		expect(screen.getByText(/Rév. 12 restaurée/)).toBeTruthy()
 	})
 
 	it('runtime changes bump the revision and name the fields', async () => {
@@ -183,7 +181,7 @@ describe('agent detail page', () => {
 		expect(getAgentConfig('dev').revs[0]?.changed).toBe(
 			'effort de réflexion, Chrome',
 		)
-		expect(screen.getByText('Enregistré · révision 15 créée')).toBeTruthy()
+		expect(screen.getByText('Enregistré · révision 14 créée')).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: 'Lancer le test' }))
 		expect(screen.getByText(/Test réussi/)).toBeTruthy()
 	})
@@ -218,9 +216,9 @@ describe('agent detail page', () => {
 	it('skills: switches, count and autosave message', async () => {
 		const user = userEvent.setup()
 		await open({ agentId: 'dev', tab: 'skills' })
-		expect(screen.getByText('8 sur 11')).toBeTruthy()
+		expect(screen.getByText('8 sur 86')).toBeTruthy()
 		await user.click(screen.getByRole('switch', { name: 'Activer ui-ux' }))
-		expect(screen.getByText('9 sur 11')).toBeTruthy()
+		expect(screen.getByText('9 sur 86')).toBeTruthy()
 		expect(screen.getByText('ui-ux activée')).toBeTruthy()
 	})
 
@@ -229,7 +227,7 @@ describe('agent detail page', () => {
 		await open({ agentId: 'veille-legale', tab: 'sources' })
 		expect(screen.getByText('Nouveaux sous-domaines sensibles')).toBeTruthy()
 		expect(
-			screen.getByText(/À chaque événement : une tâche est créée/),
+			screen.getByText(/Une tâche est créée et assignée à cet agent/),
 		).toBeTruthy()
 		expect(screen.getByText(/Sous-domaine \{hôte\}/)).toBeTruthy()
 		await user.click(screen.getByRole('button', { name: /Arrêter d'écouter/ }))
@@ -266,7 +264,7 @@ describe('agent detail page', () => {
 
 		it('links delegated sub-tasks to the task page', async () => {
 			await open({ agentId: 'veille-legale', tab: 'team' })
-			const links = screen.getAllByRole('link', { name: 'NAT-694' })
+			const links = screen.getAllByRole('link', { name: /NAT-694/ })
 			expect(links[0]?.getAttribute('href')).toBe('/tasks/nat-694')
 		})
 

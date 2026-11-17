@@ -150,7 +150,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 				onRun={() => setMessage(`Exécution lancée pour ${short}`)}
 				onTogglePause={() => {
 					updateAgentConfig(agent.id, { paused: !config.paused })
-					setMessage(config.paused ? `${short} relancé` : `${short} en pause`)
+					setMessage(config.paused ? 'Agent relancé' : 'Agent mis en pause')
 				}}
 			/>
 			<DemoBanner />
@@ -174,6 +174,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 					mode={mode}
 					instr={form.instr}
 					onChange={(instr) => patch({ instr })}
+					onNotify={setMessage}
 				/>
 			) : null}
 			{tab === 'skills' ? (
@@ -216,6 +217,9 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 					form={form}
 					onChange={patch}
 					onRemove={removeSub}
+					onAssign={(sub) =>
+						setMessage(`Nouvelle tâche pour ${shortName(sub.name)}`)
+					}
 					onAdd={(id) => setReportsTo(id, short)}
 				/>
 			) : null}
@@ -235,9 +239,14 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 					testResult={testResult}
 					onChange={patch}
 					onTest={() =>
-						setTestResult("Test réussi : l'agent a répondu en 2,4 s.")
+						setTestResult(
+							`Test réussi : l'agent a répondu « OK » en 2,4 s (${form.model}, ${form.engine}).`,
+						)
 					}
 					onChooseConnection={() => setMessage("Choix d'une connexion gérée")}
+					onAdvanced={() =>
+						setMessage('Coupe-circuit, fenêtres horaires, concurrence')
+					}
 				/>
 			) : null}
 			{tab === 'secrets' ? (
@@ -245,6 +254,7 @@ function AgentDetailBody({ agent, tab, mode }: BodyProps) {
 					env={form.env}
 					secrets={SECRETS}
 					onChange={(env) => patch({ env })}
+					onNotify={setMessage}
 				/>
 			) : null}
 			{tab === 'perms' ? <PermsTab form={form} onChange={patch} /> : null}

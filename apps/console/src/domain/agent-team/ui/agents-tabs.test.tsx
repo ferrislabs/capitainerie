@@ -5,21 +5,39 @@ import { AgentsTabs } from '#/domain/agent-team/ui/agents-tabs'
 
 const EXTRA = ['/agents', '/agents/organigramme']
 
+async function currentLabels() {
+	return (await screen.findAllByRole('link'))
+		.filter((l) => l.getAttribute('aria-current') === 'page')
+		.map((l) => l.textContent)
+}
+
 describe('AgentsTabs', () => {
-	it('marks only the team tab on /agents', async () => {
-		await renderAtPath(<AgentsTabs />, '/agents', EXTRA)
-		const current = (await screen.findAllByRole('link')).filter(
-			(l) => l.getAttribute('aria-current') === 'page',
-		)
-		expect(current.map((l) => l.textContent)).toEqual(['Équipe'])
+	it('lists the five mockup tabs', async () => {
+		await renderAtPath(<AgentsTabs active="tous" />, '/agents', EXTRA)
+		const links = await screen.findAllByRole('link')
+		expect(links.map((l) => l.textContent)).toEqual([
+			'Tous',
+			'Actifs',
+			'En pause',
+			'Erreur',
+			'Organigramme',
+		])
+	})
+
+	it('marks only the active status tab and links it through the URL', async () => {
+		await renderAtPath(<AgentsTabs active="actifs" />, '/agents', EXTRA)
+		expect(await currentLabels()).toEqual(['Actifs'])
+		expect(
+			screen.getByRole('link', { name: 'En pause' }).getAttribute('href'),
+		).toBe('/agents?filtre=pause')
 	})
 
 	it('marks the org chart tab', async () => {
-		await renderAtPath(<AgentsTabs />, '/agents/organigramme', EXTRA)
-		expect(
-			(await screen.findByRole('link', { name: 'Organigramme' })).getAttribute(
-				'aria-current',
-			),
-		).toBe('page')
+		await renderAtPath(
+			<AgentsTabs active="organigramme" />,
+			'/agents/organigramme',
+			EXTRA,
+		)
+		expect(await currentLabels()).toEqual(['Organigramme'])
 	})
 })

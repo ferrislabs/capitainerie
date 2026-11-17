@@ -1,6 +1,12 @@
-import { Badge } from '#/components/ui/badge'
-import { Switch } from '#/components/ui/switch'
+import { Link } from '@tanstack/react-router'
+import { Button } from '#/components/ui/button'
 import { SKILL_ALL } from '#/domain/agent-team/constants'
+import { HumanAvatar } from '#/domain/agent-team/ui/human-avatar'
+import { Panel } from '#/domain/agent-team/ui/panel'
+import { ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { Sev } from '#/domain/agent-team/ui/sev'
+import { Toggle } from '#/domain/agent-team/ui/toggle'
+import { DEMO_SKILLS } from '#/domain/skills/mock/skills'
 
 interface Props {
 	skills: ReadonlyArray<string>
@@ -9,32 +15,49 @@ interface Props {
 
 export function SkillsTab({ skills, onToggle }: Props) {
 	return (
-		<div className="flex flex-col gap-3">
-			<p className="text-muted-foreground">
-				<b className="text-foreground">
-					{skills.length} sur {SKILL_ALL.length}
-				</b>{' '}
-				activées · appliqué au prochain run ·{' '}
-				<Badge variant="success">Enregistré</Badge>
-			</p>
-			<ul className="divide-y overflow-hidden rounded-lg border bg-card">
-				{SKILL_ALL.map((skill) => (
-					<li key={skill} className="flex items-center gap-3 px-3 py-2.5">
-						<span className="min-w-0 flex-1">
-							<b className="block font-medium">{skill}</b>
-							<span className="text-xs text-muted-foreground">
-								Compétence fournie par Paperclip.
-							</span>
-						</span>
-						<Badge variant="neutral">Intégré</Badge>
-						<Switch
-							aria-label={`Activer ${skill}`}
-							checked={skills.includes(skill)}
-							onCheckedChange={() => onToggle(skill)}
-						/>
-					</li>
-				))}
-			</ul>
-		</div>
+		<>
+			<div className="mb-2 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
+				<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+					<b className="font-semibold text-foreground">
+						{skills.length} sur 86
+					</b>{' '}
+					activées · appliqué au prochain run · <Sev tone="ok">Enregistré</Sev>
+				</span>
+				<div className="ml-auto flex gap-2">
+					<Button asChild variant="outline">
+						<Link to="/skills">Parcourir le catalogue</Link>
+					</Button>
+				</div>
+			</div>
+			<Panel>
+				<Rows>
+					{SKILL_ALL.map((skill) => {
+						const entry = DEMO_SKILLS.find((s) => s.name === skill)
+						return (
+							<div key={skill} className={ROW}>
+								<HumanAvatar
+									initials={skill[0]?.toUpperCase() ?? ''}
+									size={26}
+								/>
+								<Ttl
+									title={skill}
+									sub={
+										entry?.description ?? 'Compétence fournie par Paperclip.'
+									}
+								/>
+								<span className="hidden md:inline-flex">
+									<Sev tone="info">{entry?.scope ?? 'Intégré'}</Sev>
+								</span>
+								<Toggle
+									label={`Activer ${skill}`}
+									checked={skills.includes(skill)}
+									onChange={() => onToggle(skill)}
+								/>
+							</div>
+						)
+					})}
+				</Rows>
+			</Panel>
+		</>
 	)
 }

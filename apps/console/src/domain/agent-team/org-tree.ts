@@ -6,7 +6,6 @@ export interface OrgNode {
 	subCount: number
 }
 
-/** Arbre en liste à plat : chaque racine (direction) puis ses sous-agents, indentés par `depth`. */
 export function buildOrgTree(state: DemoState): OrgNode[] {
 	const names = new Set(state.agents.map((a) => shortName(a.name)))
 	const roots = state.agents.filter((a) => {

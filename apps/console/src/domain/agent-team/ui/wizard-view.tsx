@@ -1,12 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Play } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { InlineAlert } from '#/components/layout/inline-alert'
+import { cloneElement, type ReactElement, type ReactNode, useId } from 'react'
 import { Button } from '#/components/ui/button'
-import { Checkbox } from '#/components/ui/checkbox'
-import { NativeSelect } from '#/components/ui/native-select'
-import { TextInput } from '#/components/ui/text-input'
-import { Textarea } from '#/components/ui/textarea'
 import {
 	ADAPTERS,
 	DIRECTION,
@@ -17,7 +12,7 @@ import {
 	WAKE_INTERVALS,
 } from '#/domain/agent-team/constants'
 import { AdapterChip } from '#/domain/agent-team/ui/adapter-chip'
-import { FieldRow } from '#/domain/agent-team/ui/field-row'
+import { CTL } from '#/domain/agent-team/ui/field-row'
 import { Mascot } from '#/domain/agent-team/ui/mascot'
 import { Options } from '#/domain/agent-team/ui/options'
 import {
@@ -27,19 +22,19 @@ import {
 } from '#/domain/agent-team/wizard'
 import { cn } from '#/lib/utils'
 
-const STEPS = [
-	'Nom',
-	'Adaptateur',
-	'Connexion',
-	'Configuration',
-	'Confirmation',
-] as const
+const STEPS = ['Connexion', 'Configuration', 'Confirmation'] as const
 
 const CONNECTIONS = [
 	{ id: 'sub', label: 'Abonnement', hint: 'Compte Claude' },
 	{ id: 'key', label: 'Clé API', hint: "Facturation à l'usage" },
-	{ id: 'gw', label: 'Passerelle', hint: 'Passerelle perso' },
+	{ id: 'gw', label: 'Avancé', hint: 'Passerelle perso' },
 ] as const
+
+const CONNECTION_RECAP = {
+	sub: 'Abonnement',
+	key: 'Clé API',
+	gw: 'Passerelle',
+} as const
 
 const NEXT_LABEL = [
 	"Choisir l'adaptateur →",
@@ -47,6 +42,10 @@ const NEXT_LABEL = [
 	'Connecter →',
 	'Continuer →',
 ] as const
+
+const CHOICE = 'rounded-[9px] border bg-background hover:border-faint'
+const CHOICE_ON =
+	'border-primary bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] hover:border-primary'
 
 interface Props {
 	state: WizardState
@@ -60,7 +59,7 @@ interface Props {
 	onCreate: () => void
 }
 
-function ChoiceGroup({
+function Pills({
 	legend,
 	hint,
 	children,
@@ -70,20 +69,52 @@ function ChoiceGroup({
 	children: ReactNode
 }) {
 	return (
-		<fieldset className="flex min-w-0 flex-col gap-1.5">
-			<legend className="font-medium">{legend}</legend>
-			<div className="flex flex-wrap gap-x-4 gap-y-1.5">{children}</div>
-			{hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-		</fieldset>
+		<div className="col-span-full grid gap-1 text-xs text-muted-foreground">
+			{legend}
+			<div className="flex flex-wrap gap-1.5">{children}</div>
+			{hint ? <span className="font-normal">{hint}</span> : null}
+		</div>
+	)
+}
+
+function Pill({
+	label,
+	checked,
+	onChange,
+}: {
+	label: string
+	checked: boolean
+	onChange: () => void
+}) {
+	return (
+		<label className="inline-flex items-center gap-1.5 rounded-full border bg-background px-[9px] py-[3px] text-xs text-foreground">
+			<input type="checkbox" checked={checked} onChange={onChange} />
+			{label}
+		</label>
+	)
+}
+
+function Field({
+	label,
+	children,
+}: {
+	label: string
+	children: ReactElement<{ id?: string }>
+}) {
+	const id = useId()
+	return (
+		<div className="grid gap-1 text-xs text-muted-foreground">
+			<label htmlFor={id}>{label}</label>
+			{cloneElement(children, { id })}
+		</div>
 	)
 }
 
 function Recap({ state, sources }: Pick<Props, 'state' | 'sources'>) {
-	const conn = CONNECTIONS.find((c) => c.id === state.conn)?.label
 	const rows: ReadonlyArray<readonly [string, string]> = [
 		['Nom', state.name.trim()],
 		['Adaptateur', state.adapter],
-		['Connexion', conn ?? ''],
+		['Connexion', CONNECTION_RECAP[state.conn]],
 		['Rôle', state.role + (state.title ? ` · ${state.title}` : '')],
 		['Rapporte à', state.reports],
 		['Modèle', `${state.model} · effort ${state.effort.toLowerCase()}`],
@@ -111,12 +142,24 @@ function Recap({ state, sources }: Pick<Props, 'state' | 'sources'>) {
 		],
 	]
 	return (
-		<div className="rounded-lg border bg-background">
+		<div className="overflow-hidden rounded-lg border bg-background">
 			{rows.map(([label, value]) => (
-				<FieldRow key={label} label={label}>
+				<div
+					key={label}
+					className="grid min-w-0 grid-cols-[180px_minmax(0,1fr)] items-center gap-2.5 border-t px-3 py-2 first:border-t-0"
+				>
+					<span className="text-muted-foreground">{label}</span>
 					<span>{value}</span>
-				</FieldRow>
+				</div>
 			))}
+		</div>
+	)
+}
+
+function Footer({ children }: { children: ReactNode }) {
+	return (
+		<div className="mt-[18px] -mx-[22px] flex items-center justify-between border-t px-[22px] py-3">
+			{children}
 		</div>
 	)
 }
@@ -133,276 +176,361 @@ export function WizardView({
 	onCreate,
 }: Props) {
 	const { step } = state
-	return (
-		<div className="mx-auto flex w-full max-w-2xl flex-col gap-4 rounded-lg border bg-card p-5">
-			<ol
-				aria-label="Étapes de création"
-				className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
-			>
-				{STEPS.map((label, index) => (
-					<li
-						key={label}
-						aria-current={index === step ? 'step' : undefined}
-						className={cn(
-							index === step && 'font-semibold text-foreground',
-							index < step && 'text-signal-success',
-						)}
+	const name = state.name.trim()
+
+	const backButton =
+		step === 0 ? (
+			<Button asChild variant="ghost">
+				<Link to="/agents">Annuler</Link>
+			</Button>
+		) : (
+			<Button type="button" variant="ghost" onClick={onBack}>
+				← Retour
+			</Button>
+		)
+	const nextButton =
+		step === WIZARD_LAST_STEP ? (
+			<Button type="button" onClick={onCreate}>
+				Créer l'agent
+			</Button>
+		) : (
+			<Button type="button" disabled={!canAdvance} onClick={onNext}>
+				{NEXT_LABEL[step]}
+			</Button>
+		)
+	const footer = (
+		<Footer>
+			{backButton}
+			{nextButton}
+		</Footer>
+	)
+
+	if (step <= 1) {
+		return (
+			<div className="mx-auto mt-[2vh] w-full max-w-[760px]">
+				<div className="rounded-xl border bg-card px-[22px] pt-4 pb-0">
+					<ol
+						aria-label="Étapes de création"
+						className="m-0 flex list-none items-center gap-2 p-0 text-xs text-faint"
 					>
-						{index < step ? '✓' : index + 1}. {label}
-					</li>
-				))}
-			</ol>
-
-			{step <= 1 ? (
-				<div className="flex flex-col items-center gap-1 text-center">
-					<Mascot name={state.name} />
-					<h2 className="text-lg font-semibold">
-						{step === 0
-							? 'Rencontre ton prochain agent'
-							: 'Choisis un adaptateur'}
-					</h2>
-					<p className="text-muted-foreground">
-						{step === 0
-							? 'Commence par un nom. Fais-en le tien.'
-							: `Comment ${state.name.trim()} doit-il travailler ?`}
-					</p>
-				</div>
-			) : null}
-
-			{step === 0 ? (
-				<TextInput
-					aria-label="Nom de l'agent"
-					placeholder="ex. Darnold"
-					autoComplete="off"
-					value={state.name}
-					onChange={(event) => onChange({ name: event.target.value })}
-				/>
-			) : null}
-
-			{step === 1 ? (
-				<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-					{ADAPTERS.map((adapter) => (
-						<button
-							key={adapter.name}
-							type="button"
-							aria-pressed={state.adapter === adapter.name}
-							onClick={() => onChange({ adapter: adapter.name })}
-							className={cn(
-								'flex items-center gap-2 rounded-md border px-2.5 py-2 text-left hover:bg-accent',
-								state.adapter === adapter.name &&
-									'border-primary bg-accent font-medium',
-							)}
+						<li
+							aria-current={step === 0 ? 'step' : undefined}
+							className={cn(step === 0 && 'font-semibold text-foreground')}
 						>
-							<AdapterChip adapter={adapter.name} />
-							{adapter.name}
-						</button>
-					))}
+							1. Nom
+						</li>
+						<li aria-hidden="true">›</li>
+						<li
+							aria-current={step === 1 ? 'step' : undefined}
+							className={cn(step === 1 && 'font-semibold text-foreground')}
+						>
+							2. Adaptateur
+						</li>
+					</ol>
+					<div className="flex flex-col items-center pt-1.5 pb-3.5 text-center">
+						<Mascot name={state.name} />
+						<h1 className="leading-[1.4] mt-1.5 mb-0.5 text-2xl font-bold tracking-[-0.02em]">
+							{step === 0
+								? 'Rencontre ton prochain agent'
+								: 'Choisis un adaptateur'}
+						</h1>
+						<p className="m-0 text-muted-foreground">
+							{step === 0
+								? 'Commence par un nom. Fais-en le tien.'
+								: `Comment ${name} doit-il travailler ?`}
+						</p>
+					</div>
+					{step === 0 ? (
+						<>
+							<label
+								htmlFor="w-name"
+								className="mt-2 mb-1.5 block font-semibold"
+							>
+								Nom de l'agent
+							</label>
+							<input
+								id="w-name"
+								placeholder="ex. Darnold"
+								autoComplete="off"
+								value={state.name}
+								onChange={(event) => onChange({ name: event.target.value })}
+								className="h-[38px] w-full rounded-lg border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-0"
+							/>
+						</>
+					) : (
+						<div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+							{ADAPTERS.map((adapter) => (
+								<button
+									key={adapter.name}
+									type="button"
+									aria-pressed={state.adapter === adapter.name}
+									onClick={() => onChange({ adapter: adapter.name })}
+									className={cn(
+										CHOICE,
+										'flex flex-col items-center gap-[7px] px-2 py-3.5 font-medium',
+										state.adapter === adapter.name && CHOICE_ON,
+									)}
+								>
+									<AdapterChip adapter={adapter.name} />
+									{adapter.name}
+								</button>
+							))}
+						</div>
+					)}
+					{footer}
 				</div>
-			) : null}
+			</div>
+		)
+	}
 
-			{step === 2 ? (
-				<div className="flex flex-col gap-3">
-					<h2 className="text-center text-lg font-semibold">
-						Connecter un modèle
-					</h2>
-					<div className="grid grid-cols-3 gap-2">
-						{CONNECTIONS.map((option) => (
-							<button
-								key={option.id}
-								type="button"
-								aria-pressed={state.conn === option.id}
-								onClick={() => onChange({ conn: option.id, key: '' })}
+	return (
+		<div className="mx-auto mt-[2vh] grid w-full max-w-[880px] grid-cols-[200px_minmax(0,1fr)] gap-7">
+			<aside>
+				<div className="mb-[18px] flex items-center gap-3">
+					<Mascot name={state.name} />
+					<div>
+						<b className="block text-lg">{state.name}</b>
+						<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+							<AdapterChip adapter={state.adapter} />
+							{state.adapter}
+						</span>
+					</div>
+				</div>
+				<ol aria-label="Étapes de création" className="m-0 list-none p-0">
+					{STEPS.map((label, index) => {
+						const at = index + 2
+						return (
+							<li
+								key={label}
+								aria-current={at === step ? 'step' : undefined}
 								className={cn(
-									'flex flex-col items-center gap-1 rounded-md border px-2 py-3 hover:bg-accent',
-									state.conn === option.id && 'border-primary bg-accent',
+									'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-faint',
+									at === step && 'bg-secondary font-medium text-foreground',
 								)}
 							>
-								<AdapterChip adapter={state.adapter} />
-								<b className="font-semibold">{option.label}</b>
-								<small className="text-muted-foreground">{option.hint}</small>
-							</button>
-						))}
-					</div>
-					{state.conn === 'sub' ? (
-						<p className="text-muted-foreground">
-							Une page de connexion s'ouvre dans ton navigateur. Reviens ici
-							ensuite, la connexion est détectée toute seule.
-						</p>
-					) : state.conn === 'key' ? (
-						<TextInput
-							aria-label="Clé API"
-							type="password"
-							placeholder="sk-ant-…"
-							autoComplete="off"
-							value={state.key}
-							onChange={(event) => onChange({ key: event.target.value })}
-						/>
-					) : (
-						<TextInput
-							aria-label="URL de la passerelle"
-							placeholder="https://gateway.exemple.fr/v1"
-							value={state.key}
-							onChange={(event) => onChange({ key: event.target.value })}
-						/>
-					)}
-				</div>
-			) : null}
+								<i
+									className={cn(
+										'grid size-5 place-items-center rounded-full border text-[11px] font-medium not-italic',
+										at === step &&
+											'border-foreground bg-foreground text-background',
+										at < step &&
+											'border-signal-success bg-signal-success text-white',
+									)}
+								>
+									{at < step ? '✓' : index + 1}
+								</i>
+								{label}
+							</li>
+						)
+					})}
+				</ol>
+			</aside>
+			<div className="rounded-xl border bg-card px-[22px] pt-4 pb-0">
+				{step === 2 ? (
+					<>
+						<h1 className="leading-[1.4] mt-1.5 mb-1 text-center text-[22px] font-bold">
+							Connecter un modèle
+						</h1>
+						<div className="my-3 grid grid-cols-3 gap-2">
+							{CONNECTIONS.map((option) => (
+								<button
+									key={option.id}
+									type="button"
+									aria-pressed={state.conn === option.id}
+									onClick={() => onChange({ conn: option.id, key: '' })}
+									className={cn(
+										CHOICE,
+										'flex flex-col items-center gap-[3px] px-1.5 py-3',
+										state.conn === option.id && CHOICE_ON,
+									)}
+								>
+									<AdapterChip adapter={state.adapter} />
+									<b className="font-semibold">{option.label}</b>
+									<small className="text-muted-foreground">{option.hint}</small>
+								</button>
+							))}
+						</div>
+						{state.conn === 'sub' ? (
+							<>
+								<p className="m-0 text-muted-foreground">
+									Une page de connexion s'ouvre dans ton navigateur. Reviens ici
+									ensuite, la connexion est détectée toute seule.
+								</p>
+								<p className="mt-2 mb-0">
+									<button type="button" className="text-xs text-primary">
+										Relancer la connexion
+									</button>
+								</p>
+							</>
+						) : state.conn === 'key' ? (
+							<Field label="Clé API">
+								<input
+									className={CTL}
+									type="password"
+									placeholder="sk-ant-…"
+									autoComplete="off"
+									value={state.key}
+									onChange={(event) => onChange({ key: event.target.value })}
+								/>
+							</Field>
+						) : (
+							<Field label="URL de la passerelle">
+								<input
+									className={CTL}
+									placeholder="https://gateway.exemple.fr/v1"
+									value={state.key}
+									onChange={(event) => onChange({ key: event.target.value })}
+								/>
+							</Field>
+						)}
+					</>
+				) : null}
 
-			{step === 3 ? (
-				<div className="flex flex-col gap-3">
-					<h2 className="text-center text-lg font-semibold">
-						Configurer {state.name.trim()}
-					</h2>
-					<div className="rounded-lg border bg-background">
-						<FieldRow label="Rôle">
-							<NativeSelect
-								aria-label="Rôle"
-								value={state.role}
-								onChange={(event) => onChange({ role: event.target.value })}
+				{step === 3 ? (
+					<>
+						<h1 className="leading-[1.4] mt-1.5 mb-0.5 text-center text-[22px] font-bold">
+							Configurer {name}
+						</h1>
+						<div className="mt-3 grid grid-cols-2 gap-x-3.5 gap-y-2.5">
+							<Field label="Rôle">
+								<select
+									className={CTL}
+									value={state.role}
+									onChange={(event) => onChange({ role: event.target.value })}
+								>
+									<Options values={ROLES} />
+								</select>
+							</Field>
+							<Field label="Titre">
+								<input
+									className={CTL}
+									placeholder="ex. Responsable des retours"
+									value={state.title}
+									onChange={(event) => onChange({ title: event.target.value })}
+								/>
+							</Field>
+							<Field label="Rapporte à">
+								<select
+									className={CTL}
+									value={state.reports}
+									onChange={(event) =>
+										onChange({ reports: event.target.value })
+									}
+								>
+									<Options values={[DIRECTION, ...reportsOptions]} />
+								</select>
+							</Field>
+							<Field label="Modèle">
+								<select
+									className={CTL}
+									value={state.model}
+									onChange={(event) => onChange({ model: event.target.value })}
+								>
+									<Options values={MODELS} />
+								</select>
+							</Field>
+							<Field label="Effort de réflexion">
+								<select
+									className={CTL}
+									value={state.effort}
+									onChange={(event) => onChange({ effort: event.target.value })}
+								>
+									<Options values={EFFORTS} />
+								</select>
+							</Field>
+							<Field label="Cadence des réveils">
+								<select
+									className={CTL}
+									value={state.interval}
+									onChange={(event) =>
+										onChange({ interval: event.target.value })
+									}
+								>
+									<Options values={WAKE_INTERVALS} />
+								</select>
+							</Field>
+							<label className="col-span-full grid gap-1 text-xs text-muted-foreground">
+								Instructions de départ (AGENTS.md)
+								<textarea
+									className={CTL}
+									rows={4}
+									placeholder="Mission, périmètre, règles. Tu pourras tout modifier ensuite."
+									value={state.instr}
+									onChange={(event) => onChange({ instr: event.target.value })}
+								/>
+							</label>
+							<Pills legend="Compétences">
+								{SKILL_ALL.map((skill) => (
+									<Pill
+										key={skill}
+										label={skill}
+										checked={state.skills.includes(skill)}
+										onChange={() =>
+											onChange({ skills: toggled(state.skills, skill) })
+										}
+									/>
+								))}
+							</Pills>
+							<Pills
+								legend="Sources à écouter (optionnel)"
+								hint="L'agent se réveille à chaque événement reçu. Les sources se créent depuis la page Sources."
 							>
-								<Options values={ROLES} />
-							</NativeSelect>
-						</FieldRow>
-						<FieldRow label="Titre">
-							<TextInput
-								aria-label="Titre"
-								placeholder="ex. Responsable des retours"
-								value={state.title}
-								onChange={(event) => onChange({ title: event.target.value })}
-							/>
-						</FieldRow>
-						<FieldRow label="Rapporte à">
-							<NativeSelect
-								aria-label="Rapporte à"
-								value={state.reports}
-								onChange={(event) => onChange({ reports: event.target.value })}
+								{sources.map((source) => (
+									<Pill
+										key={source.id}
+										label={source.name}
+										checked={state.sources.includes(source.id)}
+										onChange={() =>
+											onChange({ sources: toggled(state.sources, source.id) })
+										}
+									/>
+								))}
+							</Pills>
+							<Pills
+								legend="Connecteurs autorisés (aucun par défaut)"
+								hint="Sans autorisation explicite, l'agent n'a accès à aucun connecteur. Tu pourras en ajouter ensuite."
 							>
-								<Options values={[DIRECTION, ...reportsOptions]} />
-							</NativeSelect>
-						</FieldRow>
-						<FieldRow label="Modèle">
-							<NativeSelect
-								aria-label="Modèle"
-								value={state.model}
-								onChange={(event) => onChange({ model: event.target.value })}
-							>
-								<Options values={MODELS} />
-							</NativeSelect>
-						</FieldRow>
-						<FieldRow label="Effort de réflexion">
-							<NativeSelect
-								aria-label="Effort de réflexion"
-								value={state.effort}
-								onChange={(event) => onChange({ effort: event.target.value })}
-							>
-								<Options values={EFFORTS} />
-							</NativeSelect>
-						</FieldRow>
-						<FieldRow label="Cadence des réveils">
-							<NativeSelect
-								aria-label="Cadence des réveils"
-								value={state.interval}
-								onChange={(event) => onChange({ interval: event.target.value })}
-							>
-								<Options values={WAKE_INTERVALS} />
-							</NativeSelect>
-						</FieldRow>
-						<FieldRow label="Instructions de départ (AGENTS.md)">
-							<Textarea
-								aria-label="Instructions de départ"
-								rows={4}
-								placeholder="Mission, périmètre, règles. Tu pourras tout modifier ensuite."
-								value={state.instr}
-								onChange={(event) => onChange({ instr: event.target.value })}
-							/>
-						</FieldRow>
-					</div>
-					<ChoiceGroup legend="Compétences">
-						{SKILL_ALL.map((skill) => (
-							<Checkbox
-								key={skill}
-								label={skill}
-								checked={state.skills.includes(skill)}
-								onCheckedChange={() =>
-									onChange({ skills: toggled(state.skills, skill) })
-								}
-							/>
-						))}
-					</ChoiceGroup>
-					<ChoiceGroup
-						legend="Sources à écouter (optionnel)"
-						hint="L'agent se réveille à chaque événement reçu. Les sources se créent depuis la page Sources."
-					>
-						{sources.map((source) => (
-							<Checkbox
-								key={source.id}
-								label={source.name}
-								checked={state.sources.includes(source.id)}
-								onCheckedChange={() =>
-									onChange({ sources: toggled(state.sources, source.id) })
-								}
-							/>
-						))}
-					</ChoiceGroup>
-					<ChoiceGroup
-						legend="Connecteurs autorisés (aucun par défaut)"
-						hint="Sans autorisation explicite, l'agent n'a accès à aucun connecteur. Tu pourras en ajouter ensuite."
-					>
-						{connectors.map((name) => (
-							<Checkbox
-								key={name}
-								label={name}
-								checked={state.connectors.includes(name)}
-								onCheckedChange={() =>
-									onChange({ connectors: toggled(state.connectors, name) })
-								}
-							/>
-						))}
-					</ChoiceGroup>
-				</div>
-			) : null}
+								{connectors.map((connector) => (
+									<Pill
+										key={connector}
+										label={connector}
+										checked={state.connectors.includes(connector)}
+										onChange={() =>
+											onChange({
+												connectors: toggled(state.connectors, connector),
+											})
+										}
+									/>
+								))}
+							</Pills>
+						</div>
+					</>
+				) : null}
 
-			{step === WIZARD_LAST_STEP ? (
-				<div className="flex flex-col gap-3">
-					<h2 className="text-center text-lg font-semibold">Tout est prêt</h2>
-					<Recap state={state} sources={sources} />
-					{state.tested ? (
-						<InlineAlert tone="success">
-							Test réussi : l'agent a répondu en 2,4 s.
-						</InlineAlert>
-					) : null}
-					<div>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => onChange({ tested: true })}
-						>
-							<Play aria-hidden="true" />
-							Tester l'agent
-						</Button>
-					</div>
-				</div>
-			) : null}
-
-			<div className="flex items-center justify-between">
-				{step === 0 ? (
-					<Button asChild variant="ghost">
-						<Link to="/agents">Annuler</Link>
-					</Button>
-				) : (
-					<Button type="button" variant="ghost" onClick={onBack}>
-						← Retour
-					</Button>
-				)}
 				{step === WIZARD_LAST_STEP ? (
-					<Button type="button" onClick={onCreate}>
-						Créer l'agent
-					</Button>
-				) : (
-					<Button type="button" disabled={!canAdvance} onClick={onNext}>
-						{NEXT_LABEL[step]}
-					</Button>
-				)}
+					<>
+						<h1 className="leading-[1.4] mt-1.5 mb-2.5 text-center text-[22px] font-bold">
+							Tout est prêt
+						</h1>
+						<Recap state={state} sources={sources} />
+						{state.tested ? (
+							<div className="mt-2.5 rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success">
+								Test réussi : l'agent a répondu en 2,4 s.
+							</div>
+						) : null}
+						<p className="mt-2.5 mb-0">
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => onChange({ tested: true })}
+							>
+								<Play aria-hidden="true" />
+								Tester l'agent
+							</Button>
+						</p>
+					</>
+				) : null}
+				{footer}
 			</div>
 		</div>
 	)

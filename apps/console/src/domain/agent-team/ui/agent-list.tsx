@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { Badge } from '#/components/ui/badge'
-import { Button } from '#/components/ui/button'
+import { buttonVariants } from '#/components/ui/button'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
+import { Live, ROW, Ttl } from '#/domain/agent-team/ui/rows'
+import { Sev } from '#/domain/agent-team/ui/sev'
 import type { DemoAgent } from '#/domain/demo'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	agents: ReadonlyArray<DemoAgent>
@@ -10,35 +12,38 @@ interface Props {
 
 export function AgentList({ agents }: Props) {
 	return (
-		<ul className="divide-y">
+		<div>
 			{agents.map((agent) => (
-				<li key={agent.id} className="flex items-center gap-3 px-3 py-2.5">
-					<AgentAvatar name={agent.name} hue={agent.hue} />
-					<div className="min-w-0 flex-1">
-						<div className="truncate font-medium">{agent.name}</div>
-						<div className="truncate text-xs text-muted-foreground">
-							{agent.role} · {agent.description}
-						</div>
-					</div>
+				<Link
+					key={agent.id}
+					to="/agents/$agentId/{-$tab}"
+					params={{ agentId: agent.id }}
+					aria-label={`Configurer ${agent.name}`}
+					className={ROW}
+				>
+					<AgentAvatar hue={agent.hue} size={28} />
+					<Ttl
+						title={agent.name}
+						sub={`${agent.role} · ${agent.description}`}
+					/>
 					<span className="hidden text-xs text-muted-foreground md:inline">
 						{agent.model}
 					</span>
 					{agent.status === 'running' ? (
-						<Badge variant="running">en cours</Badge>
+						<Live />
 					) : (
-						<Badge variant="neutral">inactif</Badge>
+						<Sev tone="info">inactif</Sev>
 					)}
-					<Button asChild variant="outline" size="sm">
-						<Link
-							to="/agents/$agentId/{-$tab}"
-							params={{ agentId: agent.id }}
-							aria-label={`Configurer ${agent.name}`}
-						>
-							Configurer
-						</Link>
-					</Button>
-				</li>
+					<span
+						className={cn(
+							buttonVariants({ variant: 'ghost', size: 'sm' }),
+							'hidden md:inline-flex',
+						)}
+					>
+						Configurer
+					</span>
+				</Link>
 			))}
-		</ul>
+		</div>
 	)
 }

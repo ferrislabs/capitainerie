@@ -1,9 +1,7 @@
 import { Play } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
-import { Switch } from '#/components/ui/switch'
-import { TextInput } from '#/components/ui/text-input'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import {
 	ADAPTERS,
@@ -12,8 +10,9 @@ import {
 	MODELS,
 	ROLES,
 } from '#/domain/agent-team/constants'
-import { FieldRow } from '#/domain/agent-team/ui/field-row'
+import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
+import { Toggle } from '#/domain/agent-team/ui/toggle'
 
 interface Props {
 	form: AgentForm
@@ -22,6 +21,80 @@ interface Props {
 	onChange: (patch: Partial<AgentForm>) => void
 	onTest: () => void
 	onChooseConnection: () => void
+	onAdvanced: () => void
+}
+
+function Select({
+	label,
+	hint,
+	value,
+	values,
+	onChange,
+}: {
+	label: string
+	hint?: string
+	value: string
+	values: ReadonlyArray<string>
+	onChange: (value: string) => void
+}) {
+	return (
+		<FieldRow label={label} hint={hint}>
+			<select
+				aria-label={label}
+				className={CTL}
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+			>
+				<Options values={values} />
+			</select>
+		</FieldRow>
+	)
+}
+
+function Text({
+	label,
+	value,
+	placeholder,
+	type,
+	onChange,
+}: {
+	label: string
+	value: string
+	placeholder?: string
+	type?: string
+	onChange: (value: string) => void
+}) {
+	return (
+		<FieldRow label={label}>
+			<input
+				aria-label={label}
+				className={CTL}
+				type={type}
+				min={type === 'number' ? 1 : undefined}
+				placeholder={placeholder}
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+			/>
+		</FieldRow>
+	)
+}
+
+function Switched({
+	label,
+	hint,
+	checked,
+	onChange,
+}: {
+	label: string
+	hint: string
+	checked: boolean
+	onChange: (checked: boolean) => void
+}) {
+	return (
+		<FieldRow label={label} hint={hint}>
+			<Toggle label={label} checked={checked} onChange={onChange} />
+		</FieldRow>
+	)
 }
 
 export function RuntimeTab({
@@ -31,152 +104,130 @@ export function RuntimeTab({
 	onChange,
 	onTest,
 	onChooseConnection,
-}: Props) {
+	onAdvanced,
+}: Props): ReactNode {
 	return (
-		<div className="flex flex-col gap-4">
+		<>
 			<SectionCard title="Identité de l'agent" flush>
-				<FieldRow label="Nom">
-					<TextInput
-						aria-label="Nom"
-						value={form.name}
-						onChange={(event) => onChange({ name: event.target.value })}
-					/>
-				</FieldRow>
-				<FieldRow label="Titre">
-					<TextInput
-						aria-label="Titre"
-						value={form.title}
-						onChange={(event) => onChange({ title: event.target.value })}
-					/>
-				</FieldRow>
-				<FieldRow label="Rôle">
-					<NativeSelect
-						aria-label="Rôle"
-						value={form.role}
-						onChange={(event) => onChange({ role: event.target.value })}
-					>
-						<Options values={ROLES} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Rapporte à">
-					<NativeSelect
-						aria-label="Rapporte à"
-						value={form.reports}
-						onChange={(event) => onChange({ reports: event.target.value })}
-					>
-						<Options values={[DIRECTION, ...reportsOptions]} />
-					</NativeSelect>
-				</FieldRow>
+				<Text
+					label="Nom"
+					value={form.name}
+					onChange={(name) => onChange({ name })}
+				/>
+				<Text
+					label="Titre"
+					value={form.title}
+					onChange={(title) => onChange({ title })}
+				/>
+				<Select
+					label="Rôle"
+					value={form.role}
+					values={ROLES}
+					onChange={(role) => onChange({ role })}
+				/>
+				<Select
+					label="Rapporte à"
+					value={form.reports}
+					values={[DIRECTION, ...reportsOptions]}
+					onChange={(reports) => onChange({ reports })}
+				/>
 			</SectionCard>
 			<SectionCard title="Adaptateur" flush>
-				<FieldRow label="Type d'adaptateur">
-					<NativeSelect
-						aria-label="Type d'adaptateur"
-						value={form.adapter}
-						onChange={(event) => onChange({ adapter: event.target.value })}
-					>
-						<Options values={ADAPTERS.map((a) => a.name)} />
-					</NativeSelect>
-				</FieldRow>
-				<div className="border-t px-3 py-2.5">
+				<Select
+					label="Type d'adaptateur"
+					value={form.adapter}
+					values={ADAPTERS.map((a) => a.name)}
+					onChange={(adapter) => onChange({ adapter })}
+				/>
+				<div className="border-t px-3 py-2">
 					<b className="font-semibold">
 						Authentification existante, non gérée par les connexions
 					</b>
-					<p className="text-muted-foreground">
+					<div className="text-muted-foreground">
 						Cet agent garde son authentification actuelle jusqu'à ce que tu
 						choisisses et testes une connexion gérée. Confirme le compte et les
 						personnes autorisées avant de l'adopter.
+					</div>
+					<p className="mt-2 mb-0">
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={onChooseConnection}
+						>
+							Choisir une connexion gérée
+						</Button>
 					</p>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="mt-2"
-						onClick={onChooseConnection}
-					>
-						Choisir une connexion gérée
-					</Button>
 				</div>
 			</SectionCard>
 			<SectionCard title="Modèle" flush>
-				<FieldRow label="Modèle">
-					<NativeSelect
-						aria-label="Modèle"
-						value={form.model}
-						onChange={(event) => onChange({ model: event.target.value })}
-					>
-						<Options values={MODELS} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Effort de réflexion">
-					<NativeSelect
-						aria-label="Effort de réflexion"
-						value={form.effort}
-						onChange={(event) => onChange({ effort: event.target.value })}
-					>
-						<Options values={EFFORTS} />
-					</NativeSelect>
-				</FieldRow>
+				<Select
+					label="Modèle"
+					value={form.model}
+					values={MODELS}
+					onChange={(model) => onChange({ model })}
+				/>
+				<Select
+					label="Effort de réflexion"
+					value={form.effort}
+					values={EFFORTS}
+					onChange={(effort) => onChange({ effort })}
+				/>
 			</SectionCard>
 			<SectionCard title="Configuration" flush>
-				<FieldRow label="Moteur d'exécution" hint="ACP par défaut">
-					<NativeSelect
-						aria-label="Moteur d'exécution"
-						value={form.engine}
-						onChange={(event) => onChange({ engine: event.target.value })}
-					>
-						<Options values={['ACP', 'Claude CLI']} />
-					</NativeSelect>
-				</FieldRow>
-				<FieldRow label="Activer Chrome" hint="Navigation web pendant les runs">
-					<Switch
-						aria-label="Activer Chrome"
-						checked={form.chrome}
-						onCheckedChange={(chrome) => onChange({ chrome })}
-					/>
-				</FieldRow>
-				<FieldRow
+				<Select
+					label="Moteur d'exécution"
+					hint="ACP par défaut"
+					value={form.engine}
+					values={['ACP', 'Claude CLI']}
+					onChange={(engine) => onChange({ engine })}
+				/>
+				<Switched
+					label="Activer Chrome"
+					hint="Navigation web pendant les runs"
+					checked={form.chrome}
+					onChange={(chrome) => onChange({ chrome })}
+				/>
+				<Switched
 					label="Ignorer les permissions"
 					hint="À réserver aux environnements isolés"
-				>
-					<Switch
-						aria-label="Ignorer les permissions"
-						checked={form.skip}
-						onCheckedChange={(skip) => onChange({ skip })}
-					/>
-				</FieldRow>
-				<FieldRow label="Tours max par run">
-					<TextInput
-						aria-label="Tours max par run"
-						type="number"
-						min={1}
-						placeholder="Illimité"
-						value={form.turns}
-						onChange={(event) => onChange({ turns: event.target.value })}
-					/>
-				</FieldRow>
+					checked={form.skip}
+					onChange={(skip) => onChange({ skip })}
+				/>
+				<Text
+					label="Tours max par run"
+					type="number"
+					placeholder="Illimité"
+					value={form.turns}
+					onChange={(turns) => onChange({ turns })}
+				/>
 			</SectionCard>
 			<SectionCard title="Politique d'exécution" flush>
-				<FieldRow label="Réveil sur intervalle" hint="Heartbeat planifié">
-					<Switch
-						aria-label="Réveil sur intervalle"
-						checked={form.hb}
-						onCheckedChange={(hb) => onChange({ hb })}
-					/>
-				</FieldRow>
-				<FieldRow label="Intervalle">
-					<NativeSelect
-						aria-label="Intervalle"
-						value={form.interval}
-						onChange={(event) => onChange({ interval: event.target.value })}
+				<Switched
+					label="Réveil sur intervalle"
+					hint="Heartbeat planifié"
+					checked={form.hb}
+					onChange={(hb) => onChange({ hb })}
+				/>
+				<Select
+					label="Intervalle"
+					value={form.interval}
+					values={['15 min', '1 h', '6 h', '24 h']}
+					onChange={(interval) => onChange({ interval })}
+				/>
+				<FieldRow label="Avancé">
+					<button
+						type="button"
+						className="text-xs text-primary"
+						onClick={onAdvanced}
 					>
-						<Options values={['15 min', '1 h', '6 h', '24 h']} />
-					</NativeSelect>
+						Politique d'exécution avancée
+					</button>
 				</FieldRow>
 			</SectionCard>
-			<SectionCard title="Tester l'agent">
-				<div className="flex items-center gap-3">
-					<span className="flex-1 text-muted-foreground">
+			<SectionCard title="Tester l'agent" flush>
+				<div className="grid grid-cols-[1fr_auto] items-center gap-2.5 px-3 py-2">
+					<span className="text-muted-foreground">
 						Vérifie que le runtime et le modèle répondent.
 					</span>
 					<Button type="button" variant="outline" onClick={onTest}>
@@ -185,11 +236,11 @@ export function RuntimeTab({
 					</Button>
 				</div>
 				{testResult ? (
-					<output className="mt-2 block text-signal-success">
+					<output className="mx-3 mb-3 block rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success">
 						{testResult}
 					</output>
 				) : null}
 			</SectionCard>
-		</div>
+		</>
 	)
 }

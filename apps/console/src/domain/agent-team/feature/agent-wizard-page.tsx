@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { Page } from '#/components/layout/page'
-import { PageHeader } from '#/components/layout/page-header'
 import { seedAgentConfig } from '#/domain/agent-team/agent-config-store'
 import { uniqueAgentId } from '#/domain/agent-team/agent-identity'
 import { WizardView } from '#/domain/agent-team/ui/wizard-view'
@@ -53,10 +52,6 @@ export function AgentWizardPage() {
 
 	return (
 		<Page>
-			<PageHeader
-				title="Nouvel agent"
-				description="Cinq étapes : nom, adaptateur, connexion, configuration, confirmation."
-			/>
 			<DemoBanner />
 			<WizardView
 				state={state}
