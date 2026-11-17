@@ -55,6 +55,9 @@
 
   --faint: #8f949d;
   --violet: #6f55d8;
+
+  --brand-from: #4fc36d;
+  --brand-to: #2e8f4e;
 }
 
 .dark {
@@ -152,6 +155,8 @@
 
   --color-faint: var(--faint);
   --color-violet: var(--violet);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
 
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);

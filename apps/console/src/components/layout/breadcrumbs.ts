@@ -1,100 +1,94 @@
 export interface Crumb {
 	label: string
 	to?: string
+	tag?: string
+}
+
+export interface EntityNames {
+	task: (id: string) => string | undefined
+	agent: (id: string) => string | undefined
+	source: (id: string) => string | undefined
+	routine: (id: string) => string | undefined
 }
 
 const SECTION_LABELS: Readonly<Record<string, string>> = {
-	chat: 'Conversations',
-	runs: 'Runs',
-	live: 'En cours',
-	kanban: 'Kanban',
-	clients: 'Clients',
-	projects: 'Projets',
-	agents: 'Agents',
-	sources: 'Sources',
-	routines: 'Routines',
-	tasks: 'Tâches',
 	dashboard: 'Tableau de bord',
 	inbox: 'Boîte de réception',
+	tasks: 'Tâches',
+	projects: 'Projets',
+	routines: 'Routines',
 	artifacts: 'Artifacts',
+	agents: 'Agents',
 	skills: 'Compétences',
+	sources: 'Sources',
 	connectors: 'Connecteurs',
 	approvals: 'Approbations',
 	audit: 'Audit',
-	nouvelle: 'Nouvelle',
-	equipe: 'Équipe',
-	organigramme: 'Organigramme',
-	nouveau: 'Nouvel agent',
-	settings: 'Paramètres',
-	providers: 'Fournisseurs',
-	models: 'Modèles',
-	integrations: 'Intégrations',
 }
 
-const TAB_LABELS: Readonly<Record<string, string>> = {
-	apercu: "Vue d'ensemble",
-	overview: "Vue d'ensemble",
-	regles: 'Motifs et exclusions',
-	pipeline: 'Pipeline',
-	evenements: 'Événements',
-	declencheurs: 'Déclencheurs',
-	executions: 'Exécutions',
-	reglages: 'Réglages',
-	agents: 'Agents',
-	instructions: 'Instructions',
-	skills: 'Compétences',
-	sources: 'Sources',
-	team: 'Délégation',
-	connectors: 'Connecteurs',
-	runtime: 'Runtime',
-	secrets: 'Secrets et variables',
-	perms: 'Permissions',
-	keys: 'Clés API',
-	rev: 'Révisions',
-	activite: 'Activité',
-	runs: 'Exécutions',
-	couts: 'Coûts',
-	budgets: 'Budgets',
-	chronologie: 'Chronologie',
-	tous: 'Tous',
-	moi: 'Moi',
-	recent: 'Récent',
-	'non-lus': 'Non lus',
-	installes: 'Installés',
-	canaux: 'Canaux',
-	outils: 'Outils',
-	registres: 'Registres',
+const NEW_LABELS: Readonly<Record<string, string>> = {
+	routines: 'Nouvelle routine',
+	sources: 'Nouvelle source',
+	agents: 'Nouvel agent',
 }
 
-const TABBED_SECTIONS: ReadonlySet<string> = new Set([
-	'audit',
-	'inbox',
-	'connectors',
-])
+const NEW_SEGMENTS: Readonly<Record<string, string>> = {
+	routines: 'nouvelle',
+	sources: 'nouvelle',
+	agents: 'nouveau',
+}
 
-const HOME: Crumb = { label: 'Accueil', to: '/' }
+const LIST_VIEWS: Readonly<Record<string, string>> = {
+	agents: 'organigramme',
+}
+
+const HOME = 'Tableau de bord'
+
+const NO_NAMES: EntityNames = {
+	task: () => undefined,
+	agent: () => undefined,
+	source: () => undefined,
+	routine: () => undefined,
+}
+
+function decode(segment: string): string {
+	try {
+		return decodeURIComponent(segment)
+	} catch {
+		return segment
+	}
+}
 
 /**
- * Fil d'Ariane déduit du chemin : un maillon par segment connu, le dernier
- * sans lien. Un segment inconnu (identifiant) garde son texte tel quel.
+ * Fil d'Ariane de la barre du haut, après l'organisation : la page seule pour une
+ * section, la section puis le nom de l'objet pour une fiche (tâche, agent, source, routine).
  */
-export function breadcrumbs(pathname: string): ReadonlyArray<Crumb> {
-	const segments = pathname.split('/').filter(Boolean)
-	if (segments.length === 0) return [{ label: HOME.label }]
-	const crumbs: Crumb[] = [HOME]
-	segments.forEach((segment, index) => {
-		const label =
-			(index >= 2 || (index === 1 && TABBED_SECTIONS.has(segments[0] ?? ''))
-				? TAB_LABELS[segment]
-				: undefined) ??
-			SECTION_LABELS[segment] ??
-			decodeURIComponent(segment)
-		const last = index === segments.length - 1
-		crumbs.push(
-			last
-				? { label }
-				: { label, to: `/${segments.slice(0, index + 1).join('/')}` },
-		)
-	})
-	return crumbs
+export function breadcrumbs(
+	pathname: string,
+	names: EntityNames = NO_NAMES,
+): ReadonlyArray<Crumb> {
+	const [section, id] = pathname.split('/').filter(Boolean)
+	if (!section) return [{ label: HOME }]
+	const label = SECTION_LABELS[section] ?? decode(section)
+	if (!id) return [{ label }]
+	if (id === LIST_VIEWS[section]) return [{ label }]
+	const parent: Crumb = { label, to: `/${section}` }
+	if (id === NEW_SEGMENTS[section]) {
+		return [parent, { label: NEW_LABELS[section] ?? decode(id) }]
+	}
+	const raw = decode(id)
+	if (section === 'tasks') {
+		const taskId = raw.toUpperCase()
+		return [parent, { label: names.task(taskId) ?? taskId, tag: taskId }]
+	}
+	const lookup =
+		section === 'agents'
+			? names.agent
+			: section === 'sources'
+				? names.source
+				: section === 'routines'
+					? names.routine
+					: undefined
+	if (!lookup) return [{ label }]
+	return [parent, { label: lookup(raw) ?? raw }]
 }

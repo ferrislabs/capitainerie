@@ -21,7 +21,6 @@ export function UserMenuFeature({ compact = false }: Props) {
 			displayName={displayName}
 			email={data?.email ?? undefined}
 			organizationName={data?.organization.name ?? ''}
-			isPending={!data}
 			compact={compact}
 			theme={theme.preference}
 			onThemeChange={theme.setPreference}

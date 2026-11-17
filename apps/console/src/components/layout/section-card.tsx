@@ -40,7 +40,9 @@ export function SectionCard({
 					!bare && 'border-b',
 				)}
 			>
-				<Heading className="m-0 flex-1 text-xs font-semibold">{title}</Heading>
+				<Heading className="m-0 flex-1 text-xs leading-[1.4] font-semibold">
+					{title}
+				</Heading>
 				{description ? (
 					<span className="text-xs font-normal text-muted-foreground">
 						{description}
