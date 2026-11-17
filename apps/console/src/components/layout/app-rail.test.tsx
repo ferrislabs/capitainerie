@@ -91,6 +91,8 @@ describe('AppRail', () => {
 			'Routines',
 			'Agents',
 			'Sources',
+			'Connecteurs',
+			'Audit',
 			'Fournisseurs',
 			'Modèles',
 			'Intégrations',
@@ -187,43 +189,27 @@ describe('AppRail', () => {
 		const nav = screen.getByRole('navigation', {
 			name: 'Navigation principale',
 		})
-		const runs = screen.getByRole('link', { name: 'Runs' })
-		runs.focus()
+		screen.getByRole('link', { name: 'Runs' }).focus()
 
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Kanban' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Clients' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Projets' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Routines' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Agents' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'Sources' }),
-		)
-
-		fireEvent.keyDown(nav, { key: 'ArrowDown' })
-		expect(document.activeElement).toBe(
-			screen.getByRole('link', { name: 'En cours' }),
-		)
+		for (const label of [
+			'Kanban',
+			'Clients',
+			'Projets',
+			'Routines',
+			'Artifacts',
+			'Agents',
+			'Compétences',
+			'Sources',
+			'Connecteurs',
+			'Approbations',
+			'En cours',
+			'Audit',
+		]) {
+			fireEvent.keyDown(nav, { key: 'ArrowDown' })
+			expect(document.activeElement).toBe(
+				screen.getByRole('link', { name: label }),
+			)
+		}
 
 		fireEvent.keyDown(nav, { key: 'End' })
 		expect(document.activeElement).toBe(
