@@ -7,6 +7,7 @@ import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { TableSkeleton } from '#/components/layout/table-skeleton'
 import { Button } from '#/components/ui/button'
+import { AgentsTabs } from '#/domain/agent-team/ui/agents-tabs'
 import {
 	COSTS_WINDOW_DAYS,
 	type CostDimension,
@@ -52,6 +53,7 @@ export function AgentsPage() {
 				title="Agents"
 				description="Chaque agent agit avec un jeton délégué. Son activité et ce qu'elle coûte, run par run."
 			/>
+			<AgentsTabs />
 			{agents.isError ? (
 				<InlineAlert tone="danger">
 					Impossible de charger les agents.
