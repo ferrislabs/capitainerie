@@ -31,6 +31,14 @@ describe('breadcrumbs', () => {
 		])
 	})
 
+	it('names the first-level tab of a tabbed section', () => {
+		expect(breadcrumbs('/audit/runs').map((c) => c.label)).toEqual([
+			'Accueil',
+			'Audit',
+			'Exécutions',
+		])
+	})
+
 	it('keeps an unknown segment as written', () => {
 		expect(breadcrumbs('/runs/abc%20123')).toEqual([
 			{ label: 'Accueil', to: '/' },

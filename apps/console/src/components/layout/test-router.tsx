@@ -20,6 +20,14 @@ const PATHS = [
 	'/clients',
 	'/projects',
 	'/agents',
+	'/routines',
+	'/sources',
+	'/skills',
+	'/approvals',
+	'/artifacts',
+	'/inbox/{-$tab}',
+	'/connectors/{-$tab}',
+	'/audit/{-$tab}',
 	'/settings',
 	'/settings/providers',
 	'/settings/models',
@@ -40,12 +48,13 @@ export async function renderAtPath(
 			</>
 		),
 	})
-	const routes = [...PATHS, ...extraPaths].map((routePath) =>
-		createRoute({
-			getParentRoute: () => rootRoute,
-			path: routePath,
-			component: () => null,
-		}),
+	const routes = [...new Set<string>([...PATHS, ...extraPaths])].map(
+		(routePath) =>
+			createRoute({
+				getParentRoute: () => rootRoute,
+				path: routePath,
+				component: () => null,
+			}),
 	)
 	const router = createRouter({
 		routeTree: rootRoute.addChildren(routes),
