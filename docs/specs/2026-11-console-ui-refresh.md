@@ -54,11 +54,13 @@ Remplacer l'interface de `apps/console` par celle de la maquette : style compact
 ## Acceptance
 
 1. Les deux thèmes utilisent les couleurs de la maquette et la page d'accueil reste lisible (contraste AA).
-2. La barre latérale a trois états : étendue, rail, tiroir sur mobile ; le lien courant porte `aria-current="page"`.
+2. La barre latérale a deux états : étendue (204 px) et rail (48 px, imposé sous 1024 px) ; le lien courant porte `aria-current="page"`.
 3. ⌘K ouvre la palette ; flèches et Entrée naviguent ; Échap ferme.
 4. Chaque onglet d'une page à onglets est une URL qui s'ouvre directement sur cet onglet.
 5. Chaque page de démonstration affiche le bandeau et ne fait aucun appel réseau.
 6. Les tests existants passent, hors les 3 échecs déjà présents sur `main` (settings, Intervenant).
+
+Amended: 2026-11-17 pas de tiroir mobile, le rail suffit sous 1024 px (la console reste un outil de bureau).
 
 ## Verify (exit)
 
