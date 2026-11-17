@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 import {
 	CapitainerieMark,
@@ -23,6 +23,7 @@ interface Props {
 	onExpandedChange: (expanded: boolean) => void
 	footer?: (expanded: boolean) => ReactNode
 	badges?: RailBadges
+	onSearch?: () => void
 }
 
 const FOCUS =
@@ -52,7 +53,7 @@ function RailLink({
 						: item.label
 			}
 			className={cn(
-				'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm text-rail-foreground transition-colors duration-150',
+				'flex h-7 items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground transition-colors duration-150',
 				'hover:bg-rail-accent/60 hover:text-rail-foreground-active',
 				'aria-[current=page]:bg-rail-accent aria-[current=page]:font-medium aria-[current=page]:text-rail-foreground-active',
 				!expanded && 'justify-center px-0',
@@ -99,6 +100,7 @@ export function AppRail({
 	onExpandedChange,
 	footer,
 	badges,
+	onSearch,
 }: Props) {
 	const isExpanded = expanded && canExpand
 	const ToggleIcon = isExpanded ? PanelLeftClose : PanelLeftOpen
@@ -109,20 +111,20 @@ export function AppRail({
 			data-expanded={isExpanded}
 			className={cn(
 				'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-rail-border bg-rail text-rail-foreground transition-[width] duration-200 ease-out-expo',
-				isExpanded ? 'w-60' : 'w-14',
+				isExpanded ? 'w-[204px]' : 'w-12',
 			)}
 		>
 			<div
 				className={cn(
-					'flex shrink-0 gap-1 px-2 pt-3 pb-2',
-					isExpanded ? 'h-14 items-center' : 'flex-col items-center',
+					'flex shrink-0 gap-1 px-2 pt-2 pb-1',
+					isExpanded ? 'h-11 items-center' : 'flex-col items-center',
 				)}
 			>
 				<Link
 					to="/"
 					aria-label="Capitainerie, accueil"
 					className={cn(
-						'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-rail-foreground-active',
+						'flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-rail-foreground-active',
 						!isExpanded && 'flex-none justify-center px-0',
 						FOCUS,
 					)}
@@ -138,7 +140,7 @@ export function AppRail({
 						aria-expanded={isExpanded}
 						title={toggleLabel}
 						className={cn(
-							'flex size-8 shrink-0 items-center justify-center rounded-md text-rail-label transition-colors duration-150 hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+							'flex size-7 shrink-0 items-center justify-center rounded-md text-rail-label transition-colors duration-150 hover:bg-rail-accent/60 hover:text-rail-foreground-active',
 							FOCUS,
 						)}
 					>
@@ -146,6 +148,29 @@ export function AppRail({
 					</button>
 				) : null}
 			</div>
+			{onSearch ? (
+				<div className="shrink-0 px-2 pb-2">
+					<button
+						type="button"
+						onClick={onSearch}
+						aria-label="Rechercher"
+						title="Rechercher (⌘K)"
+						className={cn(
+							'flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-rail-foreground hover:bg-rail-accent/60 hover:text-rail-foreground-active',
+							!isExpanded && 'justify-center px-0',
+							FOCUS,
+						)}
+					>
+						<Search aria-hidden="true" className="size-4 shrink-0" />
+						{isExpanded ? (
+							<>
+								<span className="flex-1 text-left">Rechercher</span>
+								<kbd className="font-mono text-[11px] text-rail-label">⌘K</kbd>
+							</>
+						) : null}
+					</button>
+				</div>
+			) : null}
 			<nav
 				aria-label="Navigation principale"
 				className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
@@ -159,14 +184,14 @@ export function AppRail({
 							className={cn(
 								index > 0 &&
 									(isExpanded
-										? 'mt-5'
+										? 'mt-4'
 										: 'mt-2 border-t border-rail-border pt-2'),
 							)}
 						>
 							<p
 								id={labelId}
 								className={cn(
-									'px-2 pb-1.5 text-xs text-rail-label',
+									'px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-rail-label',
 									!isExpanded && 'sr-only',
 								)}
 							>

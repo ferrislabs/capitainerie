@@ -28,10 +28,10 @@ export function SectionCard({
 	headingLevel: Heading = 'h2',
 }: Props) {
 	return (
-		<section className={cn('flex min-w-0 flex-col gap-3', className)}>
+		<section className={cn('flex min-w-0 flex-col gap-2', className)}>
 			<div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
 				<div className="min-w-0">
-					<Heading className="text-[15px] leading-tight font-semibold">
+					<Heading className="text-[13px] leading-tight font-semibold">
 						{title}
 					</Heading>
 					{description ? (
@@ -49,7 +49,7 @@ export function SectionCard({
 					'min-w-0',
 					!bare &&
 						'overflow-hidden rounded-lg border bg-card text-card-foreground',
-					!bare && !flush && 'p-4',
+					!bare && !flush && 'p-3',
 				)}
 			>
 				{children}
