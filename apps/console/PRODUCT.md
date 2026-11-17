@@ -38,7 +38,7 @@ Every agent write is decided by an authorization policy and audited; agents act 
 ## Brand Commitments
 
 - Name: Capitainerie (a harbour master's office), orchestrating AI agents.
-- Spec decision P5: own visual identity. Redesign of 2026-10-18 (user's brief): follow the principles of Mistral's Studio panel, a light sidebar grouped in titled sections, a warm off-white ground, a near-black primary button, tables laid on the ground, large page titles. User choices: sections in the sidebar (no secondary nav), keep Atkinson Hyperlegible, keep state colours but softened.
+- Spec decision P5: own visual identity. Redesign of 2026-11-17: the compact console of the "Capitainerie" mockup (cool grey ground, blue accent, Inter and JetBrains Mono, 204px sidebar, breadcrumb top bar, ⌘K palette). It replaces the 2026-10-18 direction (warm paper, Atkinson). See `docs/specs/2026-11-console-ui-refresh.md`.
 
 ## Evidence on Hand
 
