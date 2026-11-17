@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNotice } from '#/components/layout/notice'
 import { DEMO_PROJECTS, useDemoState } from '#/domain/demo'
 import {
 	notify,
@@ -7,21 +8,20 @@ import {
 import { agentOptions } from '#/domain/routines/routine-view'
 import { NO_PROJECT } from '#/domain/routines/types'
 
-const NOTICE_MS = 5000
-
 export function useNow(): Date {
 	const [now] = useState(() => new Date())
 	return now
 }
 
-export function useNotice(): string | null {
-	const notice = useRoutinesState((s) => s.notice)
+export function useRoutineNotice(): string | null {
+	const stored = useRoutinesState((s) => s.notice)
+	const [message, show] = useNotice()
 	useEffect(() => {
-		if (!notice) return
-		const timer = window.setTimeout(() => notify(null), NOTICE_MS)
-		return () => window.clearTimeout(timer)
-	}, [notice])
-	return notice
+		if (!stored) return
+		show(stored)
+		notify(null)
+	}, [stored, show])
+	return message
 }
 
 export function useFormOptions(agent: string) {

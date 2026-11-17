@@ -95,3 +95,20 @@ export interface DemoSource {
 	eventsLast24h: number
 	last: string
 }
+
+export type DemoApprovalStatus = 'pending' | 'approved' | 'rejected'
+
+export interface DemoApproval {
+	id: string
+	title: string
+	detail: string
+	/** Agent qui demande la décision, `null` si elle vient du système. */
+	requestedBy: string | null
+	status: DemoApprovalStatus
+	/** Date lisible : « 12 nov. », « à l'instant ». */
+	at: string
+	/** Qui a tranché, vide tant que la demande est en attente. */
+	decidedBy: string
+	/** Tâche concernée, s'il y en a une. */
+	taskId?: string
+}

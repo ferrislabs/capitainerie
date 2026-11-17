@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useNotice } from '#/components/layout/notice'
 import { filterConnectors, parseConnectorTab } from '#/domain/connectors/tabs'
 import { ConnectorsView } from '#/domain/connectors/ui/connectors-view'
 import {
@@ -16,7 +16,7 @@ interface Props {
 
 export function ConnectorsPage({ tab }: Props) {
 	const state = useDemoState((s) => s)
-	const [notice, setNotice] = useState<string | null>(null)
+	const [notice, setNotice] = useNotice()
 	const connectors = filterConnectors(parseConnectorTab(tab), DEMO_CONNECTORS)
 
 	return (

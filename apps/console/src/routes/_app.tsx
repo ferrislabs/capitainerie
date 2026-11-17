@@ -4,7 +4,7 @@ import {
 	useLocation,
 	useNavigate,
 } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AuthGate } from '#/components/auth-gate'
 import { AppRail, type RailBadges } from '#/components/layout/app-rail'
 import { AppTopbar } from '#/components/layout/app-topbar'
@@ -15,8 +15,10 @@ import type { PaletteCommand } from '#/components/layout/palette-filter'
 import { RealtimeIndicator } from '#/components/layout/realtime-indicator'
 import { useCommandPalette } from '#/components/layout/use-command-palette'
 import { TooltipProvider } from '#/components/ui/tooltip'
+import { shortName, useDemoState } from '#/domain/demo'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useActiveRunCount } from '#/domain/runs/hooks/use-active-runs'
+import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { usePersistedFlag } from '#/hooks/use-persisted-flag'
 import { useRealtime } from '#/hooks/use-realtime'
@@ -40,6 +42,15 @@ function AppLayout() {
 	const { pathname } = useLocation()
 	const navigate = useNavigate()
 	const { open, setOpen } = useCommandPalette()
+	const [newTaskOpen, setNewTaskOpen] = useState(false)
+	const agents = useDemoState((s) => s.agents)
+	const liveAgents = useMemo(
+		() =>
+			agents
+				.filter((a) => a.status === 'running')
+				.map((a) => ({ id: a.id, name: shortName(a.name) })),
+		[agents],
+	)
 	const { preference, setPreference } = useTheme()
 	const dark = resolveTheme(preference, systemPrefersDark()) === 'dark'
 
@@ -54,6 +65,18 @@ function AppLayout() {
 					to: item.to,
 				})),
 			),
+			{
+				id: 'new-task',
+				group: 'Action',
+				label: 'Nouvelle tâche',
+				run: () => setNewTaskOpen(true),
+			},
+			{
+				id: 'new-routine',
+				group: 'Action',
+				label: 'Nouvelle routine',
+				to: '/routines/nouvelle',
+			},
 			{
 				id: 'theme',
 				group: 'Action',
@@ -79,6 +102,8 @@ function AppLayout() {
 						canExpand={canExpand}
 						onExpandedChange={setExpanded}
 						onSearch={() => setOpen(true)}
+						onNewTask={() => setNewTaskOpen(true)}
+						liveAgents={liveAgents}
 						footer={(isExpanded) => <UserMenuFeature compact={!isExpanded} />}
 					/>
 					<div className="flex min-w-0 flex-1 flex-col">
@@ -94,6 +119,7 @@ function AppLayout() {
 						</main>
 					</div>
 				</div>
+				<NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />
 				<CommandPalette
 					open={open}
 					onOpenChange={setOpen}

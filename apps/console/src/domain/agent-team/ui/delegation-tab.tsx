@@ -10,6 +10,7 @@ import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { FieldRow } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
 import type { DemoAgent, DemoTask } from '#/domain/demo'
+import { taskPathId } from '#/domain/tasks/task-ids'
 
 export interface SubAgentEntry {
 	agent: DemoAgent
@@ -270,7 +271,12 @@ export function DelegationTab({
 					<ul className="divide-y">
 						{recent.map(({ task, assignee }) => (
 							<li key={task.id} className="flex items-center gap-2 px-3 py-2">
-								<Badge variant="outline">{task.id}</Badge>
+								<Link
+									to="/tasks/$taskId"
+									params={{ taskId: taskPathId(task.id) }}
+								>
+									<Badge variant="outline">{task.id}</Badge>
+								</Link>
 								<span className="min-w-0 flex-1">
 									<b className="block truncate font-medium">{task.title}</b>
 									<span className="text-xs text-muted-foreground">

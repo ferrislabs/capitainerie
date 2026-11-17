@@ -1,4 +1,5 @@
 export * from '#/domain/demo/agents'
+export * from '#/domain/demo/approvals'
 export * from '#/domain/demo/connectors'
 export * from '#/domain/demo/projects'
 export * from '#/domain/demo/sources'

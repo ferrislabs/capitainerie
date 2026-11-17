@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
 import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
+import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { SectionCard } from '#/components/layout/section-card'
@@ -32,9 +33,7 @@ export function SkillsView({
 				description="88 compétences disponibles pour l'organisation"
 				actions={<Button onClick={onCreate}>Nouvelle compétence</Button>}
 			/>
-			<p aria-live="polite" className="min-h-5 text-muted-foreground">
-				{notice}
-			</p>
+			<Notice message={notice} />
 			<TextInput
 				type="search"
 				aria-label="Rechercher une compétence"

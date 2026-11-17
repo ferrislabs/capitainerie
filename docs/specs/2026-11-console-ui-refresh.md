@@ -49,7 +49,10 @@ Remplacer l'interface de `apps/console` par celle de la maquette : style compact
 | 4 | `feat/console-ui-4-agents` | Agents : liste, organigramme, création, fiche à onglets, délégation, connecteurs (démo) | 3 |
 | 5 | `feat/console-ui-5-sources` | Sources, pipeline de décision, export CRM (démo) | 4 |
 | 6 | `feat/console-ui-6-routines` | Routines (démo) | 5 |
-| 7 | `feat/console-ui-7-workspace` | Compétences, approbations, audit, boîte de réception, artifacts (démo) | 6 |
+| 7 | `feat/console-ui-7-workspace` | Connecteurs, compétences, approbations, audit, boîte de réception, artifacts (démo) | 6 |
+| 8 | `feat/console-ui-8-notice` | Composant de retour d'action partagé, fin des 4 copies locales (#46) | 7 |
+| 9 | `feat/console-ui-9-tasks` | Tâches (liste, tableau, page, délégation, nouvelle tâche), liens vers les tâches, entrées de la barre latérale | 8 |
+| 10 | `feat/console-ui-10-dashboard` | Tableau de bord, approbations actionnables, demande de validation depuis le pipeline | 9 |
 
 ## Acceptance
 
@@ -60,6 +63,7 @@ Remplacer l'interface de `apps/console` par celle de la maquette : style compact
 5. Chaque page de démonstration affiche le bandeau et ne fait aucun appel réseau.
 6. Les tests existants passent, hors les 3 échecs déjà présents sur `main` (settings, Intervenant).
 
+Amended: 2026-11-18 pile étendue aux couches 8 à 10 (tâches, tableau de bord, approbations) pour finir la migration de la maquette. Hors périmètre maintenu : la page Projets réelle et le Kanban réel gardent leurs données ; le sélecteur d'organisation (une seule organisation).
 Amended: 2026-11-17 pas de tiroir mobile, le rail suffit sous 1024 px (la console reste un outil de bureau).
 
 ## Verify (exit)

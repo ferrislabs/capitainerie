@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Badge } from '#/components/ui/badge'
 import {
 	Table,
@@ -8,6 +9,9 @@ import {
 	TableRow,
 } from '#/components/ui/table'
 import { DECISION_LABELS, type SourceEvent } from '#/domain/sources/mock/events'
+import { taskPathId } from '#/domain/tasks/task-ids'
+
+const TASK_ID = /^NAT-\d+$/
 
 interface Props {
 	events: ReadonlyArray<SourceEvent>
@@ -41,7 +45,17 @@ export function EventsTable({ events }: Props) {
 								<Badge variant={decision.variant}>{decision.label}</Badge>
 							</TableCell>
 							<TableCell className="text-muted-foreground">
-								{event.detail}
+								{TASK_ID.test(event.detail) ? (
+									<Link
+										to="/tasks/$taskId"
+										params={{ taskId: taskPathId(event.detail) }}
+										className="font-mono text-link hover:underline"
+									>
+										{event.detail}
+									</Link>
+								) : (
+									event.detail
+								)}
 							</TableCell>
 						</TableRow>
 					)
