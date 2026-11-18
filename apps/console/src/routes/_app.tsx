@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { AuthGate } from '#/components/auth-gate'
-import { AppRail } from '#/components/layout/app-rail'
+import { AppRail, type RailBadges } from '#/components/layout/app-rail'
 import { AppTopbar } from '#/components/layout/app-topbar'
 import { breadcrumbs, type EntityNames } from '#/components/layout/breadcrumbs'
 import { CommandPalette } from '#/components/layout/command-palette'
@@ -16,6 +16,7 @@ import type { PaletteCommand } from '#/components/layout/palette-filter'
 import { useCommandPalette } from '#/components/layout/use-command-palette'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { usePendingApprovalsCount } from '#/domain/approvals/hooks/use-approvals'
 import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useMe } from '#/domain/identity/hooks/use-me'
@@ -44,6 +45,11 @@ function AppLayout() {
 	const cards = useCards().data?.items
 	const liveCount = useActiveRuns().data?.items.length ?? 0
 	const organization = useMe().data?.organization.name
+	const pendingApprovals = usePendingApprovalsCount()
+	const badges = useMemo<RailBadges>(
+		() => (pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
+		[pendingApprovals],
+	)
 	const router = useRouter()
 	const liveAgents = useMemo(
 		() =>
@@ -113,6 +119,7 @@ function AppLayout() {
 						onNewTask={() => setNewTaskOpen(true)}
 						liveAgents={liveAgents}
 						liveCount={liveCount}
+						badges={badges}
 						organization={organization}
 						footer={(isExpanded) => <UserMenuFeature compact={!isExpanded} />}
 					/>

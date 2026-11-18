@@ -15,6 +15,7 @@ members = [
     "libs/core",
     "libs/handlers",
     "libs/handlers-analytics",
+    "libs/handlers-approvals",
     "libs/handlers-cards",
     "libs/handlers-clients",
     "libs/handlers-conversations",
@@ -24,6 +25,7 @@ members = [
     "libs/handlers-providers",
     "libs/handlers-realtime",
     "libs/handlers-runs",
+    "libs/handlers-skills",
     "libs/handlers-team",
     "libs/handlers-transcriptions",
     "libs/integrations",
@@ -104,6 +106,7 @@ capitainerie-github = { path = "libs/github" }
 capitainerie-core = { path = "libs/core" }
 capitainerie-handlers = { path = "libs/handlers" }
 capitainerie-handlers-analytics = { path = "libs/handlers-analytics" }
+capitainerie-handlers-approvals = { path = "libs/handlers-approvals" }
 capitainerie-handlers-cards = { path = "libs/handlers-cards" }
 capitainerie-handlers-clients = { path = "libs/handlers-clients" }
 capitainerie-handlers-conversations = { path = "libs/handlers-conversations" }
@@ -113,6 +116,7 @@ capitainerie-handlers-mcp = { path = "libs/handlers-mcp" }
 capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
+capitainerie-handlers-skills = { path = "libs/handlers-skills" }
 capitainerie-handlers-team = { path = "libs/handlers-team" }
 capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }
 capitainerie-integrations = { path = "libs/integrations" }

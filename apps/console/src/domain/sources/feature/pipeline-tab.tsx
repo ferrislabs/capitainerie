@@ -2,10 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import {
-	buildValidationRequest,
-	validationTitle,
-} from '#/domain/approvals/validation-request'
-import {
 	addApproval,
 	type DemoSource,
 	demoStore,
@@ -39,6 +35,10 @@ import {
 	VerdictPanel,
 } from '#/domain/sources/ui/pipeline-dossier'
 import { resultLabel } from '#/domain/sources/ui/result-badge'
+import {
+	buildValidationRequest,
+	validationTitle,
+} from '#/domain/sources/validation-request'
 
 interface Props {
 	source: DemoSource

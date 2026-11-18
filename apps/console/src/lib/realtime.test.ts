@@ -224,6 +224,18 @@ describe('startRealtime', () => {
 		).toBe(false)
 	})
 
+	it('invalidates the approvals on approval events', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'approval.requested' })
+		expect(invalidated(key('/api/v1/approvals'))).toBe(true)
+		expect(
+			invalidated(
+				key('/api/v1/approvals/{approval_id}', { approval_id: 'a1' }),
+			),
+		).toBe(true)
+		expect(invalidated(key('/api/v1/cards'))).toBe(false)
+	})
+
 	it('invalidates everything on resync', () => {
 		start()
 		latest().receive({ op: 'resync' })

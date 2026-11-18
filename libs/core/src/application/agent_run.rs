@@ -29,6 +29,7 @@ use crate::{
             Run, RunSubject, StepKind,
             ports::{RunRepository, StepRepository},
         },
+        skill::{Skill, ports::SkillRepository},
         user_provider::ports::UserProviderRepository,
     },
     infrastructure::{
@@ -50,6 +51,8 @@ pub struct AgentTaskSource {
     pub comments: Vec<CardComment>,
     pub agent: CrewAgent,
     pub connectors: Vec<McpConnector>,
+    /// The agent's active skills, in the order it lists them.
+    pub skills: Vec<Skill>,
 }
 
 type Stored<T> = Result<Result<T, AgentRunRefusal>, CoreError>;
@@ -187,7 +190,7 @@ impl CapitainerieUseCase {
             .map_err(|error| CoreError::Database(error.to_string()))
     }
 
-    #[transactional(card, card_comment, crew_agent, mcp_connector)]
+    #[transactional(card, card_comment, crew_agent, mcp_connector, skill)]
     pub async fn agent_task_source(
         &self,
         organization_id: OrganizationId,
@@ -197,6 +200,7 @@ impl CapitainerieUseCase {
         let mut card_comment_repository = card_comment_repository;
         let mut crew_agent_repository = crew_agent_repository;
         let mut mcp_connector_repository = mcp_connector_repository;
+        let mut skill_repository = skill_repository;
         let Some(task) = PgAgentTaskRepository::new(&tx)
             .find(organization_id, run_id)
             .await?
@@ -229,12 +233,22 @@ impl CapitainerieUseCase {
                     .cloned()
             })
             .collect();
+        let mut found = skill_repository
+            .active_by_slugs(organization_id, agent.skills.as_slice())
+            .await?;
+        let mut skills = Vec::with_capacity(found.len());
+        for slug in agent.skills.as_slice() {
+            if let Some(index) = found.iter().position(|skill| skill.slug.as_str() == slug) {
+                skills.push(found.swap_remove(index));
+            }
+        }
         Ok(Some(AgentTaskSource {
             task,
             card,
             comments,
             agent,
             connectors,
+            skills,
         }))
     }
 

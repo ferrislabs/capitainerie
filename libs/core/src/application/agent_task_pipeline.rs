@@ -25,6 +25,7 @@ use crate::domain::{
         ports::TaskRuntime,
         tools::{ExposedTool, expose, redacted_arguments},
     },
+    approval::Approval,
     authorization::{Decision, Subject},
     card::{Card, CardComment},
     conversation::{ToolRecord, turn::ToolSpec},
@@ -40,6 +41,7 @@ use crate::domain::{
         ports::{RunRepository, StepRepository},
         step::{Step, StepStatus},
     },
+    skill::{PROMPT_SKILLS_MAX_CHARS, skills_prompt},
     user_provider::{NO_PROVIDER_MESSAGE, UserProviderSummary, choose_model},
 };
 
@@ -55,6 +57,7 @@ const UNKNOWN_REASON: &str = "raison inconnue";
 const MODEL_ERROR: &str = "model error";
 const INTERNAL_ANSWER: &str = "internal error, the call was not completed";
 const WRITE_REFUSED: &str = "Refused: this tool changes data and the person who started this run did not allow writes. Do not retry it; say in your answer what you would have changed.";
+const APPROVAL_REQUESTED: &str = "Refused for now: this tool changes data and the person who started this run did not allow writes. An approval request with this call was sent to the team; do not retry it, say in your answer what you would have changed and that it awaits approval.";
 
 const GUARDRAILS: &str = "\
 Règles fixes de Capitainerie, qui priment sur tout le reste :
@@ -574,7 +577,10 @@ fn build_system(source: &AgentTaskSource) -> String {
     } else {
         "L'écriture n'est pas autorisée pour cette exécution : seuls les outils de lecture fonctionnent, les autres sont refusés."
     };
-    format!("{identity}\n\n{GUARDRAILS}\n- {writes}")
+    match skills_prompt(&source.skills, PROMPT_SKILLS_MAX_CHARS) {
+        Some(skills) => format!("{identity}\n\n{skills}\n\n{GUARDRAILS}\n- {writes}"),
+        None => format!("{identity}\n\n{GUARDRAILS}\n- {writes}"),
+    }
 }
 
 fn build_prompt(card: &Card, comments: &[CardComment]) -> String {
@@ -728,9 +734,32 @@ impl<O: McpOAuth, G: McpGateway> McpTools<'_, O, G> {
             }
         }
         if tool.write && !self.task().allow_writes {
-            return failed(WRITE_REFUSED, format!("{name}: write refused"));
+            return self.request_approval(name, arguments).await;
         }
         self.call_connector(connector, tool, arguments).await
+    }
+
+    async fn request_approval(&self, name: &str, arguments: &Value) -> ToolAnswer {
+        let agent = &self.source.agent;
+        let approval = Approval::tool_call(
+            self.run.organization_id,
+            (agent.id, agent.name.as_str()),
+            self.task().card_id,
+            self.run.id,
+            name,
+            arguments,
+            Utc::now(),
+        );
+        match self.usecase.request_approval(approval).await {
+            Ok(_) => failed(
+                APPROVAL_REQUESTED,
+                format!("{name}: write refused, approval requested"),
+            ),
+            Err(error) => {
+                tracing::warn!(run_id = %self.run.id, tool = name, %error, "the approval request was not stored");
+                failed(WRITE_REFUSED, format!("{name}: write refused"))
+            }
+        }
     }
 
     async fn call_connector(

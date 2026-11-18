@@ -40,7 +40,7 @@ export function initialWizard(): WizardState {
 		effort: 'Auto',
 		interval: '1 h',
 		instr: '',
-		skills: ['paperclip', 'para-memory-files'],
+		skills: [],
 		connectors: [],
 	}
 }

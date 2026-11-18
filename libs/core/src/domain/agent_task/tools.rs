@@ -95,7 +95,7 @@ pub fn expose(
     exposed
 }
 
-fn masked(value: &Value) -> Value {
+pub fn masked(value: &Value) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.iter()

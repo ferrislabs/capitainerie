@@ -33,20 +33,6 @@ export const ROLES: ReadonlyArray<string> = [
 	'Général',
 ]
 
-export const SKILL_ALL: ReadonlyArray<string> = [
-	'paperclip',
-	'complain',
-	'suggestion-box',
-	'para-memory-files',
-	'humanizer',
-	'continue',
-	'implement',
-	'fix',
-	'ui-ux',
-	'pennylane-depot',
-	'gitlab-mr',
-]
-
 export const EFFORTS: ReadonlyArray<string> = [
 	'Auto',
 	'Faible',

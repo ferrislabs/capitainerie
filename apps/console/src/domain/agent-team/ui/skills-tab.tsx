@@ -1,6 +1,5 @@
 import { type FormEvent, useState } from 'react'
 import { Button } from '#/components/ui/button'
-import { SKILL_ALL } from '#/domain/agent-team/constants'
 import { CTL } from '#/domain/agent-team/ui/field-row'
 import { HumanAvatar } from '#/domain/agent-team/ui/human-avatar'
 import { Panel } from '#/domain/agent-team/ui/panel'
@@ -8,14 +7,16 @@ import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 
 interface Props {
 	skills: ReadonlyArray<string>
+	/** Slugs du catalogue de compétences (non archivées). */
+	catalog: ReadonlyArray<string>
 	busy: boolean
 	onAdd: (skill: string) => void
 	onRemove: (skill: string) => void
 }
 
-export function SkillsTab({ skills, busy, onAdd, onRemove }: Props) {
+export function SkillsTab({ skills, catalog, busy, onAdd, onRemove }: Props) {
 	const [draft, setDraft] = useState('')
-	const suggestions = SKILL_ALL.filter((skill) => !skills.includes(skill))
+	const suggestions = catalog.filter((skill) => !skills.includes(skill))
 	const submit = (event: FormEvent) => {
 		event.preventDefault()
 		const skill = draft.trim()

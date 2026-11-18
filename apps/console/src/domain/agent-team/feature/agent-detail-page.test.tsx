@@ -5,6 +5,7 @@ import type { Schemas } from '#/api/api.client'
 import { renderAtPath } from '#/components/layout/test-router'
 import { AGENT_TABS } from '#/domain/agent-team/agent-tabs'
 import { AgentDetailPage } from '#/domain/agent-team/feature/agent-detail-page'
+import { skill } from '#/domain/skills/test-fixtures'
 import { card } from '#/domain/tasks/test-fixtures'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
@@ -554,9 +555,22 @@ describe('agent detail page', () => {
 			})
 		})
 
-		it('adds a free-text skill and a suggestion', async () => {
+		it('adds a free-text skill and a suggestion from the catalog', async () => {
 			const user = userEvent.setup()
-			const fetchMock = await open({ agentId: 'a-dev', tab: 'skills' })
+			const fetchMock = await open(
+				{ agentId: 'a-dev', tab: 'skills' },
+				{
+					'GET /api/v1/skills': {
+						items: [skill('ui-ux'), skill('humanizer')],
+					},
+				},
+			)
+			expect(
+				await screen.findByRole('button', { name: 'Ajouter humanizer' }),
+			).toBeTruthy()
+			expect(
+				screen.queryByRole('button', { name: 'Ajouter paperclip' }),
+			).toBeNull()
 			expect(screen.getByText('Aucune compétence')).toBeTruthy()
 			await user.type(
 				screen.getByLabelText('Nom de la compétence'),

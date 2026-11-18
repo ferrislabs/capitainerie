@@ -1,72 +1,176 @@
-import { fireEvent, screen } from '@testing-library/react'
-import { act } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
 import { ApprovalsPage } from '#/domain/approvals/feature/approvals-page'
-import { addApproval, demoStore, resetDemoState } from '#/domain/demo'
-
-beforeEach(() => resetDemoState())
-afterEach(() => vi.restoreAllMocks())
+import { approval } from '#/domain/approvals/test-fixtures'
+import { clearAuth } from '#/store/auth.store'
+import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { DEV, TEAM } from '#/test-utils/team-agents'
 
 const EXTRA = ['/tasks', '/tasks/$taskId']
+const CARD = 'C0FFEE00-0000-4000-8000-000000000001'
 
-const pending = (id: string) => ({
-	id,
-	title: `Demande ${id}`,
-	detail: 'Détail',
-	requestedBy: 'dev',
-	status: 'pending' as const,
-	at: "à l'instant",
-	decidedBy: '',
+const SEND = approval('ap-1', {
+	title: 'Envoyer le devis',
+	requested_by_agent_id: DEV.id,
+	card_id: CARD,
+	detail: {
+		tool: 'gmail.send',
+		arguments: { to: 'client@example.com', subject: 'Devis' },
+	},
+})
+
+type Routes = Parameters<typeof mockApi>[0]
+
+async function open(routes: Routes = {}) {
+	const fetchMock = mockApi({
+		'GET /api/v1/approvals': { items: [SEND], pending: 1 },
+		'GET /api/v1/team/agents': { items: TEAM },
+		...routes,
+	})
+	await renderAtPath(withQueryClient(<ApprovalsPage />), '/approvals', EXTRA)
+	return fetchMock
+}
+
+function calls(fetchMock: ReturnType<typeof mockApi>, method: string) {
+	return fetchMock.mock.calls
+		.filter(([, init]) => init?.method === method)
+		.map(([url, init]) => ({
+			url: new URL(String(url)),
+			body: init?.body ? JSON.parse(String(init.body)) : undefined,
+		}))
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+	clearAuth()
 })
 
 describe('ApprovalsPage', () => {
-	it('renders the empty state, banner and history without network', async () => {
-		const fetchSpy = vi.spyOn(globalThis, 'fetch')
-		await renderAtPath(<ApprovalsPage />, '/approvals', EXTRA)
+	it('renders a tool call with its tool, arguments, agent and task', async () => {
+		await open()
 		expect(
-			await screen.findByRole('heading', { name: 'Approbations' }),
+			screen.getByRole('heading', { name: 'Approbations', level: 1 }),
 		).toBeTruthy()
-		expect(screen.getByText(/démonstration/i)).toBeTruthy()
-		expect(screen.getByText('Aucune approbation en attente')).toBeTruthy()
-		expect(screen.getByText('Historique récent')).toBeTruthy()
-		expect(screen.getAllByText('Approuvée')).toHaveLength(2)
-		expect(screen.getAllByText('Refusée')).toHaveLength(1)
-		expect(fetchSpy).not.toHaveBeenCalled()
+		const card = await screen.findByRole('article', {
+			name: 'Envoyer le devis',
+		})
+		expect(within(card).getByText('gmail.send')).toBeTruthy()
+		expect(within(card).getByLabelText('Arguments').textContent).toContain(
+			'"subject": "Devis"',
+		)
+		expect(within(card).getByText(/demandée par Dev/)).toBeTruthy()
+		const link = within(card).getByRole('link', { name: /Tâche c0ffee00/i })
+		expect(link.getAttribute('href')).toBe(`/tasks/${CARD.toLowerCase()}`)
+		expect(screen.queryByText(/démonstration/i)).toBeNull()
 	})
 
-	it('lists a pending approval with requester and approves it', async () => {
-		act(() => addApproval(pending('APP-4')))
-		await renderAtPath(<ApprovalsPage />, '/approvals', EXTRA)
-		expect(await screen.findByText('Demande APP-4')).toBeTruthy()
-		expect(screen.getByText(/Demandée par Dev/)).toBeTruthy()
-		fireEvent.click(
-			screen.getByRole('button', { name: 'Approuver : Demande APP-4' }),
-		)
-		expect(screen.getByText('Approbation accordée')).toBeTruthy()
-		expect(screen.getByText('Aucune approbation en attente')).toBeTruthy()
-		const decided = demoStore.state.approvals.find((a) => a.id === 'APP-4')
-		expect(decided?.status).toBe('approved')
-		expect(decided?.decidedBy).toBe('Board')
-		expect(screen.getByText('Approuvée par Board')).toBeTruthy()
-	})
-
-	it('rejects a pending approval', async () => {
-		act(() => addApproval(pending('APP-5')))
-		await renderAtPath(<ApprovalsPage />, '/approvals', EXTRA)
-		fireEvent.click(
-			await screen.findByRole('button', { name: 'Refuser : Demande APP-5' }),
-		)
-		expect(screen.getByText('Approbation refusée')).toBeTruthy()
+	it('shows the empty state', async () => {
+		await open({ 'GET /api/v1/approvals': { items: [], pending: 0 } })
 		expect(
-			demoStore.state.approvals.find((a) => a.id === 'APP-5')?.status,
-		).toBe('rejected')
+			await screen.findByText('Aucune approbation en attente'),
+		).toBeTruthy()
 	})
 
-	it('links the task of an approval', async () => {
-		act(() => addApproval({ ...pending('APP-6'), taskId: 'NAT-691' }))
-		await renderAtPath(<ApprovalsPage />, '/approvals', EXTRA)
-		const link = await screen.findByRole('link', { name: 'NAT-691' })
-		expect(link.getAttribute('href')).toBe('/tasks/nat-691')
+	it('switches status tab and queries the API with it', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open()
+		await screen.findByRole('article')
+		await user.click(screen.getByRole('button', { name: 'Refusées' }))
+		await waitFor(() =>
+			expect(
+				calls(fetchMock, 'GET').some(
+					(c) =>
+						c.url.pathname === '/api/v1/approvals' &&
+						c.url.searchParams.get('status') === 'rejected',
+				),
+			).toBe(true),
+		)
+		expect(
+			screen
+				.getByRole('button', { name: 'Refusées' })
+				.getAttribute('aria-pressed'),
+		).toBe('true')
+	})
+
+	it('approves with a note', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open({
+			'POST /api/v1/approvals/ap-1/decide': {
+				...SEND,
+				status: 'approved',
+			},
+		})
+		await screen.findByRole('article')
+		await user.type(screen.getByLabelText('Note (optionnelle)'), 'OK pour moi')
+		await user.click(
+			screen.getByRole('button', { name: 'Approuver : Envoyer le devis' }),
+		)
+		expect(await screen.findByText('Approbation accordée')).toBeTruthy()
+		expect(calls(fetchMock, 'POST')[0]).toMatchObject({
+			body: { decision: 'approve', note: 'OK pour moi' },
+		})
+	})
+
+	it('rejects without a note', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open({
+			'POST /api/v1/approvals/ap-1/decide': {
+				...SEND,
+				status: 'rejected',
+			},
+		})
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Refuser : Envoyer le devis',
+			}),
+		)
+		expect(await screen.findByText('Approbation refusée')).toBeTruthy()
+		expect(calls(fetchMock, 'POST')[0]?.body).toEqual({ decision: 'reject' })
+	})
+
+	it('explains a 409 when the approval is no longer pending', async () => {
+		const user = userEvent.setup()
+		await open({
+			'POST /api/v1/approvals/ap-1/decide': {
+				status: 409,
+				body: { code: 'conflict', message: 'not pending', status: 409 },
+			},
+		})
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Approuver : Envoyer le devis',
+			}),
+		)
+		expect((await screen.findByRole('alert')).textContent).toMatch(
+			/n'est plus en attente/,
+		)
+	})
+
+	it('shows the decision of a decided approval', async () => {
+		await open({
+			'GET /api/v1/approvals': {
+				items: [
+					approval('ap-2', {
+						title: 'Écrire dans le Drive',
+						kind: 'agent_action',
+						detail: { path: 'compta/' },
+						status: 'rejected',
+						decided_by: 'Baptiste',
+						decided_at: '2026-11-18T10:00:00Z',
+						decision_note: 'Pas maintenant',
+					}),
+				],
+				pending: 0,
+			},
+		})
+		const card = await screen.findByRole('article')
+		expect(within(card).getByText(/Refusée par Baptiste/)).toBeTruthy()
+		expect(within(card).getByText('« Pas maintenant »')).toBeTruthy()
+		expect(within(card).getByLabelText('Détail').textContent).toContain(
+			'compta/',
+		)
+		expect(within(card).queryByRole('button')).toBeNull()
 	})
 })

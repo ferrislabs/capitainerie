@@ -77,6 +77,8 @@ pub fn router<
         .merge(capitainerie_handlers_cards::router(github.apps.clone()))
         .merge(capitainerie_handlers_clients::router())
         .merge(capitainerie_handlers_team::router())
+        .merge(capitainerie_handlers_skills::router())
+        .merge(capitainerie_handlers_approvals::router())
         .merge(capitainerie_handlers_analytics::router(analytics))
         .merge(capitainerie_handlers_providers::router(
             state.usecase.clone(),

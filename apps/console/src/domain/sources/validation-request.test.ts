@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { DEMO_APPROVALS } from '#/domain/demo'
 import {
 	buildValidationRequest,
 	nextApprovalId,
 	validationTitle,
-} from '#/domain/approvals/validation-request'
-import { DEMO_APPROVALS } from '#/domain/demo'
+} from '#/domain/sources/validation-request'
 
 const input = {
 	approvals: DEMO_APPROVALS,

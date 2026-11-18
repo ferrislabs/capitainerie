@@ -53,6 +53,7 @@ import { SaveBar } from '#/domain/agent-team/ui/save-bar'
 import { SkillsTab } from '#/domain/agent-team/ui/skills-tab'
 import { SourcesTab } from '#/domain/agent-team/ui/sources-tab'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
+import { useSkillCatalog } from '#/domain/skills/hooks/use-skills'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useCards } from '#/domain/tasks/hooks/use-tasks'
 import { type Task, toTask } from '#/domain/tasks/model'
@@ -95,6 +96,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const [assignTo, setAssignTo] = useState<string | null>(null)
 	const [message, setMessage] = useNotice()
 	const connectors = useMcpConnectors(false)
+	const skillCatalog = useSkillCatalog(tab === 'skills')
 
 	const base = buildForm(agent)
 	const form = draft ?? base
@@ -284,6 +286,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 			{tab === 'skills' ? (
 				<SkillsTab
 					skills={agent.skills}
+					catalog={skillCatalog}
 					busy={update.isPending}
 					onAdd={(skill) =>
 						setSkills([...agent.skills, skill], `${skill} activée`)

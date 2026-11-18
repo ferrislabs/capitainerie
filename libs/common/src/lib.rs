@@ -67,6 +67,8 @@ id!(IntegrationInstanceId);
 id!(IntegrationActionId);
 id!(AgentId);
 id!(McpConnectorId);
+id!(SkillId);
+id!(ApprovalId);
 
 #[cfg(test)]
 mod tests {

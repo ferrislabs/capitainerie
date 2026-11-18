@@ -715,6 +715,32 @@ mod tests {
     }
 
     #[test]
+    fn members_manage_skills_and_decide_approvals_and_no_agent_does() {
+        let actions = [
+            Action::SkillRead,
+            Action::SkillManage,
+            Action::ApprovalRead,
+            Action::ApprovalDecide,
+        ];
+        for action in actions {
+            assert!(allowed(action, None), "{action:?}");
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+            for actor in [
+                CAPTAIN,
+                AGENT,
+                INTEGRATOR,
+                CREW,
+                Some(crate::domain::execution::EXECUTOR_AGENT),
+            ] {
+                assert!(!allowed(action, actor), "{actor:?} {action:?}");
+            }
+        }
+    }
+
+    #[test]
     fn no_agent_touches_mcp_connectors() {
         for actor in [
             CAPTAIN,

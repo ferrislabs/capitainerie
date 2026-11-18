@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
 import { AgentWizardPage } from '#/domain/agent-team/feature/agent-wizard-page'
+import { skill } from '#/domain/skills/test-fixtures'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 import { TEAM, teamAgent } from '#/test-utils/team-agents'
@@ -24,6 +25,9 @@ async function toLastStep(
 }
 
 const CONNECTORS = {
+	'GET /api/v1/skills': {
+		items: [skill('humanizer'), skill('gitlab-mr')],
+	},
 	'GET /api/v1/mcp-connectors': {
 		items: [
 			{
@@ -135,11 +139,7 @@ describe('agent wizard', () => {
 			adapter: 'Codex',
 			title: 'Relais',
 		})
-		expect(configured?.body.skills).toEqual([
-			'paperclip',
-			'para-memory-files',
-			'humanizer',
-		])
+		expect(configured?.body.skills).toEqual(['humanizer'])
 		expect(configured?.body.change_summary).toBe('configuration initiale')
 	}, 40000)
 
