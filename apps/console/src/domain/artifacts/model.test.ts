@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { kindLabel, prettyJson, safeUrl } from '#/domain/artifacts/model'
+import {
+	artifactFileName,
+	kindLabel,
+	prettyJson,
+	safeUrl,
+} from '#/domain/artifacts/model'
 
 describe('artifacts model', () => {
 	it('indents JSON and keeps invalid content as is', () => {
@@ -17,5 +22,13 @@ describe('artifacts model', () => {
 	it('labels the kinds in French', () => {
 		expect(kindLabel('markdown')).toBe('Document')
 		expect(kindLabel('link')).toBe('Lien')
+	})
+
+	it('names the downloaded file after the title', () => {
+		expect(artifactFileName('Audit sécurité : JWKS', 'markdown')).toBe(
+			'audit-securite-jwks.md',
+		)
+		expect(artifactFileName('Inventaire', 'json')).toBe('inventaire.json')
+		expect(artifactFileName('!!!', 'markdown')).toBe('artifact.md')
 	})
 })

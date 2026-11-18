@@ -1,6 +1,8 @@
 import type { Schemas } from '#/api/api.client'
+import { slugify } from '#/components/markdown'
 
 export type Artifact = Schemas.ArtifactSummaryResponse
+export type ArtifactDetail = Schemas.ArtifactResponse
 export type ArtifactKind = Schemas.ArtifactKindDto
 
 export const ARTIFACT_KINDS: ReadonlyArray<{
@@ -35,4 +37,9 @@ export function safeUrl(url: string | null | undefined): string | null {
 	} catch {
 		return null
 	}
+}
+
+/** Nom du fichier téléchargé : le titre en minuscules sans accents, `.json` ou `.md`. */
+export function artifactFileName(title: string, kind: ArtifactKind): string {
+	return `${slugify(title) || 'artifact'}.${kind === 'json' ? 'json' : 'md'}`
 }

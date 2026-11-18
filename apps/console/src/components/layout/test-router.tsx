@@ -30,6 +30,7 @@ const PATHS = [
 	'/skills',
 	'/approvals',
 	'/artifacts',
+	'/artifacts/$artifactId',
 	'/inbox/{-$tab}',
 	'/connectors/{-$tab}',
 	'/providers',

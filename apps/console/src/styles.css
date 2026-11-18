@@ -52,6 +52,8 @@
   --signal-attention-soft: color-mix(in srgb, #d49a2a 16%, #ffffff);
   --signal-neutral: #5b606a;
   --signal-neutral-soft: #eceef2;
+  --signal-high: #b4500f;
+  --signal-high-soft: color-mix(in srgb, #e0701f 13%, #ffffff);
 
   --faint: #8f949d;
   --violet: #6f55d8;
@@ -102,6 +104,8 @@
   --signal-attention-soft: color-mix(in srgb, #d49a2a 18%, #191a1d);
   --signal-neutral: #8d9199;
   --signal-neutral-soft: #212327;
+  --signal-high: #f0965a;
+  --signal-high-soft: color-mix(in srgb, #e0701f 18%, #191a1d);
 
   --faint: #62666e;
   --violet: #9078f2;
@@ -152,6 +156,8 @@
   --color-signal-attention-soft: var(--signal-attention-soft);
   --color-signal-neutral: var(--signal-neutral);
   --color-signal-neutral-soft: var(--signal-neutral-soft);
+  --color-signal-high: var(--signal-high);
+  --color-signal-high-soft: var(--signal-high-soft);
 
   --color-faint: var(--faint);
   --color-violet: var(--violet);

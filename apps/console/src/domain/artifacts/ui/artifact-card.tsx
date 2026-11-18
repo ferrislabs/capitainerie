@@ -1,4 +1,5 @@
-import { Braces, FileText, Link2 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Braces, FileText, Link2, Maximize2 } from 'lucide-react'
 import {
 	type Artifact,
 	type ArtifactKind,
@@ -24,7 +25,7 @@ export const KIND_ICON: Readonly<Record<ArtifactKind, typeof FileText>> = {
 export function ArtifactCard({ artifact, hue, onOpen }: Props) {
 	const Icon = KIND_ICON[artifact.kind]
 	return (
-		<article className="min-w-0 overflow-hidden rounded-lg border bg-card">
+		<article className="relative min-w-0 overflow-hidden rounded-lg border bg-card">
 			<button
 				type="button"
 				onClick={() => onOpen(artifact)}
@@ -61,6 +62,15 @@ export function ArtifactCard({ artifact, hue, onOpen }: Props) {
 					</span>
 				</div>
 			</button>
+			<Link
+				to="/artifacts/$artifactId"
+				params={{ artifactId: artifact.id }}
+				aria-label={`Ouvrir en pleine page : ${artifact.title}`}
+				title="Ouvrir en pleine page"
+				className="absolute top-2 right-2 grid size-7 place-items-center rounded-md border bg-card text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+			>
+				<Maximize2 aria-hidden="true" className="size-3.5" />
+			</Link>
 		</article>
 	)
 }

@@ -17,6 +17,7 @@ import { useCommandPalette } from '#/components/layout/use-command-palette'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { usePendingApprovalsCount } from '#/domain/approvals/hooks/use-approvals'
+import { useArtifact } from '#/domain/artifacts/hooks/use-artifacts'
 import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useMe } from '#/domain/identity/hooks/use-me'
@@ -38,7 +39,7 @@ const RAIL_STORAGE_KEY = 'capitainerie.rail-expanded'
 
 function entityIdOf(
 	pathname: string,
-	expected: 'sources' | 'routines',
+	expected: 'sources' | 'routines' | 'artifacts',
 ): string | undefined {
 	const [section, id] = pathname.split('/').filter(Boolean)
 	if (section !== expected || !id || id === 'nouvelle') return undefined
@@ -69,6 +70,8 @@ function AppLayout() {
 	const routineId = entityIdOf(pathname, 'routines')
 	const routineName = useRoutine(routineId ?? '', routineId !== undefined).data
 		?.name
+	const artifactId = entityIdOf(pathname, 'artifacts')
+	const artifactTitle = useArtifact(artifactId ?? null).data?.title
 	const badges = useMemo<RailBadges>(
 		() => ({
 			...(pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
@@ -90,8 +93,18 @@ function AppLayout() {
 			agent: (id) => agents?.find((a) => a.id === id)?.name,
 			source: (id) => (id === sourceId ? sourceName : undefined),
 			routine: (id) => (id === routineId ? routineName : undefined),
+			artifact: (id) => (id === artifactId ? artifactTitle : undefined),
 		}),
-		[cards, agents, sourceId, sourceName, routineId, routineName],
+		[
+			cards,
+			agents,
+			sourceId,
+			sourceName,
+			routineId,
+			routineName,
+			artifactId,
+			artifactTitle,
+		],
 	)
 	const { preference, setPreference } = useTheme()
 	const dark = resolveTheme(preference, systemPrefersDark()) === 'dark'
