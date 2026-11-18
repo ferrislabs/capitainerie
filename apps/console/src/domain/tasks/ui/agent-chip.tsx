@@ -1,3 +1,4 @@
+import { CrabAvatar } from '#/components/crab-avatar'
 import { cn } from '#/lib/utils'
 
 interface AvatarProps {
@@ -9,32 +10,7 @@ interface AvatarProps {
 
 export function AgentAvatar({ hue, size = 20, label, className }: AvatarProps) {
 	return (
-		<span
-			{...(label
-				? { role: 'img', 'aria-label': label }
-				: { 'aria-hidden': true })}
-			className={cn(
-				'inline-grid shrink-0 place-items-center rounded-full',
-				className,
-			)}
-			style={{
-				width: size,
-				height: size,
-				background: `linear-gradient(140deg,hsl(${hue} 70% 62%),hsl(${(hue + 70) % 360} 72% 56%))`,
-			}}
-		>
-			<svg viewBox="0 0 16 16" className="size-[62%]" aria-hidden="true">
-				<circle cx="5.5" cy="6.5" r="1.2" className="fill-zinc-900" />
-				<circle cx="10.5" cy="6.5" r="1.2" className="fill-zinc-900" />
-				<path
-					d="M5 10c1.5 1.5 4.5 1.5 6 0"
-					fill="none"
-					strokeWidth="1.2"
-					strokeLinecap="round"
-					className="stroke-zinc-900"
-				/>
-			</svg>
-		</span>
+		<CrabAvatar hue={hue} size={size} label={label} className={className} />
 	)
 }
 

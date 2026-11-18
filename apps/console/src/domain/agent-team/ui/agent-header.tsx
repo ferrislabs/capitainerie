@@ -30,6 +30,7 @@ export function AgentHeader({
 		<header className="mb-3 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
 			<Mascot
 				name={agent.name}
+				hue={agent.hue}
 				state={mood}
 				className="-mb-1 h-[60px] w-[71px] shrink-0"
 			/>
