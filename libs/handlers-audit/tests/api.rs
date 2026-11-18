@@ -501,3 +501,109 @@ async fn a_member_reads_budgets_but_only_an_admin_sets_them() {
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+const COST_ROUTES: [&str; 4] = ["projects", "agents", "tasks", "users"];
+
+#[tokio::test]
+async fn costs_require_a_human_member() {
+    let Some(fixture) = fixture(Who::Agent).await else {
+        return;
+    };
+    for route in COST_ROUTES {
+        let (status, _) = fixture
+            .get(&format!("/api/v1/analytics/costs/{route}"))
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{route}");
+    }
+}
+
+#[tokio::test]
+async fn costs_reject_an_empty_window() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    for route in COST_ROUTES {
+        let (status, _) = fixture
+            .get(&format!(
+                "/api/v1/analytics/costs/{route}?from=2026-11-02T00:00:00Z&to=2026-11-01T00:00:00Z"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{route}");
+    }
+}
+
+#[tokio::test]
+async fn costs_default_to_thirty_days() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    for route in COST_ROUTES {
+        let (status, report) = fixture
+            .get(&format!("/api/v1/analytics/costs/{route}"))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{route}: {report}");
+        let from: chrono::DateTime<Utc> = report["from"].as_str().unwrap().parse().unwrap();
+        let to: chrono::DateTime<Utc> = report["to"].as_str().unwrap().parse().unwrap();
+        assert_eq!(to - from, chrono::Duration::days(30), "{route}");
+        assert_eq!(report["total"]["cost_micros"], 0);
+        assert!(report["rows"].as_array().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn project_costs_return_agents_and_total() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    fixture.story(1_500).await;
+
+    let (status, report) = fixture.get("/api/v1/analytics/costs/projects").await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let rows = report["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["project_id"], Value::Null);
+    assert_eq!(rows[0]["cost_micros"], 1_500);
+    assert_eq!(rows[0]["agents"][0]["name"], "Iris");
+    assert_eq!(rows[0]["agents"][0]["runs"], 1);
+    let sum: i64 = rows
+        .iter()
+        .map(|r| r["cost_micros"].as_i64().unwrap())
+        .sum();
+    assert_eq!(report["total"]["cost_micros"], sum);
+    assert!(report["total"]["input_tokens"].is_number());
+    assert!(report["total"]["output_tokens"].is_number());
+
+    let (_, agents) = fixture.get("/api/v1/analytics/costs/agents").await;
+    assert_eq!(agents["rows"][0]["name"], "Iris");
+    assert_eq!(agents["rows"][0]["cost_micros"], 1_500);
+    let (_, tasks) = fixture.get("/api/v1/analytics/costs/tasks").await;
+    assert_eq!(tasks["rows"][0]["title"], "Relancer les factures");
+    assert_eq!(tasks["rows"][0]["agents"][0]["name"], "Iris");
+}
+
+#[tokio::test]
+async fn tasks_with_a_foreign_project_are_not_found() {
+    let Some(mine) = fixture(Who::Member).await else {
+        return;
+    };
+    let Some(theirs) = fixture(Who::Member).await else {
+        return;
+    };
+    let project = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO projects (id, organization_id, name, created_by, created_at, updated_at) VALUES ($1, $2, 'Autre', $3, now(), now())",
+    )
+    .bind(project)
+    .bind(theirs.organization.id.0)
+    .bind(USER)
+    .execute(&theirs.pool)
+    .await
+    .unwrap();
+
+    let (status, _) = mine
+        .get(&format!(
+            "/api/v1/analytics/costs/tasks?project_id={project}"
+        ))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

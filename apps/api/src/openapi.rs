@@ -199,6 +199,10 @@ use utoipa::{
         audit::events::handler,
         audit::budgets::get_handler,
         audit::budgets::put_handler,
+        audit::costs::projects_handler,
+        audit::costs::agents_handler,
+        audit::costs::tasks_handler,
+        audit::costs::users_handler,
         inbox::list_handler,
         inbox::read_handler,
         artifacts::list_handler,
@@ -682,6 +686,9 @@ mod tests {
         assert!(paths["/api/v1/audit/events"]["get"].is_object());
         assert!(paths["/api/v1/budgets"]["get"].is_object());
         assert!(paths["/api/v1/budgets"]["put"].is_object());
+        for route in ["projects", "agents", "tasks", "users"] {
+            assert!(paths[format!("/api/v1/analytics/costs/{route}")]["get"].is_object());
+        }
         assert!(paths["/api/v1/inbox"]["get"].is_object());
         assert!(paths["/api/v1/inbox/read"]["post"].is_object());
         assert!(paths["/api/v1/artifacts"]["get"].is_object());
@@ -689,6 +696,7 @@ mod tests {
         let schemas = &spec["components"]["schemas"];
         assert!(schemas["AuditEventResponse"]["properties"]["summary"].is_object());
         assert!(schemas["BudgetsResponse"]["properties"]["spent_micros"].is_object());
+        assert!(schemas["ProjectCostsResponse"]["properties"]["rows"].is_object());
         assert!(schemas["InboxResponse"]["properties"]["unread"].is_object());
         assert!(schemas["ArtifactListResponse"]["properties"]["next_cursor"].is_object());
         assert!(schemas["RunResponse"]["properties"]["agent"].is_object());
