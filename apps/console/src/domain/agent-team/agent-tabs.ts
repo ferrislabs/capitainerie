@@ -6,9 +6,7 @@ export const AGENT_TABS = [
 	{ id: 'team', label: 'Délégation' },
 	{ id: 'connectors', label: 'Connecteurs' },
 	{ id: 'runtime', label: 'Runtime' },
-	{ id: 'secrets', label: 'Secrets et variables' },
 	{ id: 'perms', label: 'Permissions' },
-	{ id: 'keys', label: 'Clés API' },
 	{ id: 'rev', label: 'Révisions' },
 ] as const
 

@@ -2,6 +2,8 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { ConnectorsPage } from '#/domain/connectors/feature/connectors-page'
 
 export const Route = createFileRoute('/_app/connectors/{-$tab}')({
+	validateSearch: (search): { connected?: string } =>
+		typeof search.connected === 'string' ? { connected: search.connected } : {},
 	beforeLoad: ({ params }) => {
 		if (params.tab === undefined)
 			throw redirect({
@@ -15,5 +17,6 @@ export const Route = createFileRoute('/_app/connectors/{-$tab}')({
 
 function ConnectorsRoute() {
 	const { tab } = Route.useParams()
-	return <ConnectorsPage tab={tab} />
+	const { connected } = Route.useSearch()
+	return <ConnectorsPage tab={tab} connectedId={connected} />
 }

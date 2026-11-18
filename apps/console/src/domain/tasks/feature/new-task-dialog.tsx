@@ -1,40 +1,74 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import type { Schemas } from '#/api/api.client'
 import { Button } from '#/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '#/components/ui/dialog'
-import {
-	addTask,
-	DEMO_PROJECTS,
-	demoStore,
-	nextTaskId,
-	useDemoState,
-} from '#/domain/demo'
-import { taskPathId } from '#/domain/tasks/task-ids'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { useProjects } from '#/domain/projects/hooks/use-projects'
+import { MAX_SUBTASK_DEPTH } from '#/domain/tasks/delegation'
+import { useCards, useCreateCard } from '#/domain/tasks/hooks/use-tasks'
+import { ancestorCount, toTask } from '#/domain/tasks/model'
+import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
 
 interface Props {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 }
 
-const NONE = 'Aucun'
+const NONE = ''
+
+const PRIORITIES: ReadonlyArray<{
+	value: Schemas.PriorityDto
+	label: string
+}> = [
+	{ value: 'low', label: 'Basse' },
+	{ value: 'normal', label: 'Normale' },
+	{ value: 'high', label: 'Haute' },
+	{ value: 'urgent', label: 'Urgente' },
+]
 
 const CONTROL =
 	'rounded-[6px] border bg-background px-[9px] py-1.5 text-[13px] text-foreground outline-none focus-visible:border-primary'
 
+function createError(error: unknown): string {
+	const status = (error as { status?: number } | null)?.status
+	if (status === 403) return "Tu n'as pas le droit de créer des tâches."
+	if (status === 422) return 'Les informations de la tâche sont invalides.'
+	return 'La création a échoué. Réessaie.'
+}
+
 export function NewTaskDialog({ open, onOpenChange }: Props) {
-	const agents = useDemoState((s) => s.agents)
+	const agents = useTeamAgents().data?.items ?? []
+	const projects = useProjects(false).data?.items ?? []
+	const cards = useCards().data?.items
+	const create = useCreateCard()
 	const navigate = useNavigate()
 	const [title, setTitle] = useState('')
 	const [description, setDescription] = useState('')
-	const [agentId, setAgentId] = useState('')
-	const [project, setProject] = useState(NONE)
+	const [agentId, setAgentId] = useState(NONE)
+	const [projectId, setProjectId] = useState(NONE)
+	const [priority, setPriority] = useState<Schemas.PriorityDto>('normal')
+	const [parentId, setParentId] = useState(NONE)
 	const [error, setError] = useState<string | null>(null)
+	const parents = useMemo(() => {
+		const tasks = (cards ?? []).map((card) => toTask(card))
+		return tasks.filter(
+			(t) =>
+				t.status !== 'done' &&
+				t.status !== 'cancelled' &&
+				ancestorCount(tasks, t.id) < MAX_SUBTASK_DEPTH,
+		)
+	}, [cards])
 
 	const close = () => {
 		setTitle('')
 		setDescription('')
-		setProject(NONE)
+		setAgentId(NONE)
+		setProjectId(NONE)
+		setPriority('normal')
+		setParentId(NONE)
 		setError(null)
+		create.reset()
 		onOpenChange(false)
 	}
 
@@ -44,18 +78,28 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 			setError('Écris le titre de la tâche')
 			return
 		}
-		const id = nextTaskId(demoStore.state)
-		addTask({
-			id,
-			title: title.trim(),
-			status: 'todo',
-			agentId: agentId || (agents[0]?.id ?? ''),
-			age: "à l'instant",
-			project: project === NONE ? '' : project,
-			note: description.trim() || undefined,
-		})
-		close()
-		void navigate({ to: '/tasks/$taskId', params: { taskId: taskPathId(id) } })
+		setError(null)
+		create.mutate(
+			{
+				body: {
+					title: title.trim(),
+					description: description.trim() || null,
+					priority,
+					assignee_agent_id: agentId || null,
+					project_id: projectId || null,
+					parent_id: parentId || null,
+				},
+			},
+			{
+				onSuccess: (card) => {
+					close()
+					void navigate({
+						to: '/tasks/$taskId',
+						params: { taskId: taskPathId(card.id) },
+					})
+				},
+			},
+		)
 	}
 
 	return (
@@ -114,10 +158,12 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 								Assigner à
 								<select
 									id="nt-agent"
-									value={agentId || (agents[0]?.id ?? '')}
+									value={agentId}
 									onChange={(event) => setAgentId(event.target.value)}
 									className={CONTROL}
 								>
+									{' '}
+									<option value={NONE}>Aucun</option>
 									{agents.map((a) => (
 										<option key={a.id} value={a.id}>
 											{a.name}
@@ -132,24 +178,72 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 								Projet
 								<select
 									id="nt-project"
-									value={project}
-									onChange={(event) => setProject(event.target.value)}
+									value={projectId}
+									onChange={(event) => setProjectId(event.target.value)}
 									className={CONTROL}
 								>
-									<option value={NONE}>{NONE}</option>
-									{DEMO_PROJECTS.map((p) => (
-										<option key={p.name} value={p.name}>
-											{p.name}
+									{' '}
+									<option value={NONE}>Aucun</option>{' '}
+									{projects.map((p) => (
+										<option key={p.project.id} value={p.project.id}>
+											{' '}
+											{p.project.name}{' '}
+										</option>
+									))}{' '}
+								</select>{' '}
+							</label>
+							<label
+								htmlFor="nt-priority"
+								className="grid gap-1 text-xs text-muted-foreground"
+							>
+								Priorité
+								<select
+									id="nt-priority"
+									value={priority}
+									onChange={(event) =>
+										setPriority(event.target.value as Schemas.PriorityDto)
+									}
+									className={CONTROL}
+								>
+									{PRIORITIES.map((p) => (
+										<option key={p.value} value={p.value}>
+											{p.label}
+										</option>
+									))}
+								</select>
+							</label>
+							<label
+								htmlFor="nt-parent"
+								className="grid gap-1 text-xs text-muted-foreground"
+							>
+								Tâche parente
+								<select
+									id="nt-parent"
+									value={parentId}
+									onChange={(event) => setParentId(event.target.value)}
+									className={CONTROL}
+								>
+									<option value={NONE}>Aucune</option>
+									{parents.map((t) => (
+										<option key={t.id} value={t.id}>
+											{shortTaskId(t.id)} · {t.title}
 										</option>
 									))}
 								</select>
 							</label>
 						</div>
+						{create.isError ? (
+							<p role="alert" className="text-[13px] text-signal-danger">
+								{createError(create.error)}
+							</p>
+						) : null}
 						<div className="flex justify-end gap-2">
 							<Button type="button" variant="outline" onClick={close}>
 								Annuler
 							</Button>
-							<Button type="submit">Créer la tâche</Button>
+							<Button type="submit" disabled={create.isPending}>
+								Créer la tâche
+							</Button>
 						</div>
 					</div>
 				</form>

@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import type { DemoTask } from '#/domain/demo'
+import type { Task } from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { STATUS_LABEL, type TaskGroup } from '#/domain/tasks/task-list'
 import { AgentChip } from '#/domain/tasks/ui/agent-chip'
@@ -15,13 +15,13 @@ export interface AgentView {
 
 interface Props {
 	groups: TaskGroup[]
-	agentOf: (agentId: string) => AgentView
+	agentOf: (agentId: string | null) => AgentView
 	onAdd?: () => void
 }
 
 const TAG = 'font-mono text-[11px] font-medium whitespace-nowrap text-faint'
 
-function TaskRow({ task, agent }: { task: DemoTask; agent: AgentView }) {
+function TaskRow({ task, agent }: { task: Task; agent: AgentView }) {
 	return (
 		<Link
 			to="/tasks/$taskId"
@@ -29,7 +29,7 @@ function TaskRow({ task, agent }: { task: DemoTask; agent: AgentView }) {
 			className="flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0 hover:bg-secondary"
 		>
 			<StatusIcon status={task.status} />
-			<span className={TAG}>{task.id}</span>
+			<span className={TAG}>{task.shortId}</span>
 			<span className="min-w-0 flex-1">
 				<b className="block truncate font-medium leading-[19px]">
 					{task.title}
@@ -109,7 +109,7 @@ export function TasksBoard({ groups, agentOf, onAdd }: Props) {
 								params={{ taskId: taskPathId(task.id) }}
 								className="mx-2 mb-2 block rounded-[7px] border bg-background px-[9px] py-2 hover:border-faint"
 							>
-								<span className={TAG}>{task.id}</span>
+								<span className={TAG}>{task.shortId}</span>
 								<div className="mt-[3px] mb-[7px] line-clamp-2 font-medium">
 									{task.title}
 								</div>

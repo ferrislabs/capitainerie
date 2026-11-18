@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-	buildNewAgent,
+	buildCreateRequest,
+	buildWizardConfig,
 	canAdvance,
 	initialWizard,
 	toggled,
 } from '#/domain/agent-team/wizard'
+import { DEV } from '#/test-utils/team-agents'
 
 describe('wizard', () => {
 	it('blocks until name, adapter and key are set', () => {
@@ -16,12 +18,18 @@ describe('wizard', () => {
 		expect(canAdvance({ ...w, step: 2, conn: 'key' })).toBe(false)
 		expect(canAdvance({ ...w, step: 2, conn: 'key', key: 'sk' })).toBe(true)
 		expect(canAdvance({ ...w, step: 2 })).toBe(true)
+		expect(canAdvance({ ...w, step: 3 })).toBe(true)
+		expect(canAdvance({ ...w, step: 3, model: 'Claude Sonnet 5.5' })).toBe(
+			false,
+		)
+		expect(canAdvance({ ...w, step: 3, model: 'claude-sonnet-5-5' })).toBe(true)
 	})
 
-	it('starts with no connector and no source', () => {
+	it('starts with no connector, no source and no parent', () => {
 		const w = initialWizard()
 		expect(w.connectors).toEqual([])
 		expect(w.sources).toEqual([])
+		expect(w.reports).toBe('Aucun (direction)')
 	})
 
 	it('toggles list entries', () => {
@@ -29,18 +37,46 @@ describe('wizard', () => {
 		expect(toggled(['a', 'b'], 'a')).toEqual(['b'])
 	})
 
-	it('builds the agent', () => {
+	it('builds the create request', () => {
 		const w = {
 			...initialWizard(),
 			name: ' Zoé ',
-			reports: 'Aucun (direction)',
+			title: ' Relais ',
+			instr: ' Fais ça ',
+			reports: 'a-chief',
+			connectors: ['Chatwoot', 'Slack'],
 		}
-		const agent = buildNewAgent(w, 'zoe')
-		expect(agent).toMatchObject({
-			id: 'zoe',
+		const body = buildCreateRequest(w, 'zoe', ['Chatwoot'])
+		expect(body).toMatchObject({
+			slug: 'zoe',
 			name: 'Zoé',
-			reportsTo: null,
-			status: 'idle',
+			description: 'Relais',
+			instructions: 'Fais ça',
+			reports_to: 'a-chief',
+			connector_grants: ['Chatwoot'],
+			role: 'Général',
+			model: '',
 		})
+		expect(typeof body.hue).toBe('number')
+	})
+
+	it('omits instructions when blank and maps the direction to null', () => {
+		const body = buildCreateRequest(
+			{ ...initialWizard(), name: 'Zoé' },
+			'zoe',
+			[],
+		)
+		expect(body).not.toHaveProperty('instructions')
+		expect(body.reports_to).toBeNull()
+	})
+
+	it('builds the local config', () => {
+		const config = buildWizardConfig(
+			{ ...initialWizard(), adapter: 'Codex', interval: 'Manuelle' },
+			DEV,
+		)
+		expect(config.fields).toMatchObject({ adapter: 'Codex', hb: false })
+		expect(config.rev).toBe(1)
+		expect(config.revs[0]?.changed).toBe('création')
 	})
 })

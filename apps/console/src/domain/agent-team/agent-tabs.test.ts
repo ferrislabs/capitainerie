@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AGENT_TABS, resolveAgentTab } from '#/domain/agent-team/agent-tabs'
 
 describe('resolveAgentTab', () => {
-	it('lists the eleven tabs in order', () => {
+	it('lists the nine tabs in order', () => {
 		expect(AGENT_TABS.map((t) => t.id)).toEqual([
 			'overview',
 			'instructions',
@@ -11,9 +11,7 @@ describe('resolveAgentTab', () => {
 			'team',
 			'connectors',
 			'runtime',
-			'secrets',
 			'perms',
-			'keys',
 			'rev',
 		])
 	})

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-	addAgent,
 	addApproval,
 	addTask,
 	agentsWithGrant,
@@ -14,7 +13,6 @@ import {
 	nextTaskId,
 	resetDemoState,
 	revokeConnector,
-	setReportsTo,
 	subAgentIds,
 	taskDepth,
 	updateTask,
@@ -54,33 +52,6 @@ describe('demo store', () => {
 			'veille-legale',
 			'chief-of-staff',
 		])
-	})
-
-	it('lists an agent created during the session with its reporting line', () => {
-		addAgent({
-			id: 'nouvel-agent',
-			name: 'Nouvel agent',
-			role: 'Chercheur',
-			description: '',
-			status: 'idle',
-			hue: 10,
-			model: 'Claude Sonnet 5.5',
-			reportsTo: 'Veille légale',
-		})
-		expect(subAgentIds(demoStore.state, 'veille-legale')).toContain(
-			'nouvel-agent',
-		)
-		expect(demoStore.state.agents.at(-1)?.id).toBe('nouvel-agent')
-	})
-
-	it('moves an agent under another one', () => {
-		setReportsTo('anouk', 'Veille légale')
-		expect(subAgentIds(demoStore.state, 'veille-legale')).toContain('anouk')
-	})
-
-	it('stops an ancestor walk on a cycle', () => {
-		setReportsTo('chief-of-staff', 'Registre')
-		expect(ancestorIds(demoStore.state, 'registre').length).toBeLessThan(16)
 	})
 
 	it('attaches and detaches an agent to a source', () => {

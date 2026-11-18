@@ -33,13 +33,6 @@ export const ROLES: ReadonlyArray<string> = [
 	'Général',
 ]
 
-export const MODELS: ReadonlyArray<string> = [
-	'Claude Opus 5.5',
-	'Claude Sonnet 5.5',
-	'Claude Haiku 5.5',
-	'Aucun modèle',
-]
-
 export const SKILL_ALL: ReadonlyArray<string> = [
 	'paperclip',
 	'complain',

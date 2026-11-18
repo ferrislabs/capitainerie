@@ -31,6 +31,7 @@ const PATHS = [
 	'/artifacts',
 	'/inbox/{-$tab}',
 	'/connectors/{-$tab}',
+	'/providers',
 	'/audit/{-$tab}',
 	'/settings',
 	'/settings/providers',

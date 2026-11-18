@@ -82,31 +82,6 @@ export function revokeConnector(agentId: string, connector: string): void {
 	}))
 }
 
-export function addAgent(agent: DemoAgent): void {
-	demoStore.setState((state) => ({
-		...state,
-		agents: [...state.agents, agent],
-		reportsTo: { ...state.reportsTo, [agent.id]: agent.reportsTo },
-	}))
-}
-
-export function updateAgent(
-	id: string,
-	patch: Partial<Omit<DemoAgent, 'id'>>,
-): void {
-	demoStore.setState((state) => ({
-		...state,
-		agents: state.agents.map((a) => (a.id === id ? { ...a, ...patch } : a)),
-	}))
-}
-
-export function setReportsTo(agentId: string, parent: string | null): void {
-	demoStore.setState((state) => ({
-		...state,
-		reportsTo: { ...state.reportsTo, [agentId]: parent },
-	}))
-}
-
 function patchSource(id: string, patch: Partial<DemoSource>) {
 	demoStore.setState((state) => ({
 		...state,

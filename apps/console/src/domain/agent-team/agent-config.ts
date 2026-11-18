@@ -1,20 +1,9 @@
 import { DIRECTION, SKILL_ALL } from '#/domain/agent-team/constants'
-import {
-	DEFAULT_KEYS,
-	DEFAULT_REVISIONS,
-	defaultInstructions,
-} from '#/domain/agent-team/mock/agent-fixtures'
-import { DEMO_AGENTS, type DemoAgent } from '#/domain/demo'
-
-export interface EnvVar {
-	id: string
-	name: string
-	secret: string
-	version: string
-}
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 
 export interface AgentForm {
 	name: string
+	description: string
 	title: string
 	role: string
 	reports: string
@@ -28,7 +17,6 @@ export interface AgentForm {
 	hb: boolean
 	interval: string
 	instr: string
-	env: ReadonlyArray<EnvVar>
 	gh: string
 	trust: string
 	pCreate: boolean
@@ -43,7 +31,13 @@ export interface AgentForm {
 	dFail: string
 }
 
-export type StoreField = 'name' | 'role' | 'model' | 'reports'
+export type StoreField =
+	| 'name'
+	| 'description'
+	| 'role'
+	| 'model'
+	| 'reports'
+	| 'instr'
 export type ConfigFields = Omit<AgentForm, StoreField>
 
 export interface Revision {
@@ -53,24 +47,17 @@ export interface Revision {
 	changed: string
 }
 
-export interface ApiKey {
-	name: string
-	preview: string
-	created: string
-	lastUsed: string
-}
-
 export interface AgentConfig {
 	fields: ConfigFields
 	skills: ReadonlyArray<string>
 	rev: number
 	revs: ReadonlyArray<Revision>
-	keys: ReadonlyArray<ApiKey>
 	paused: boolean
 }
 
 export const FIELD_LABELS: Readonly<Record<keyof AgentForm, string>> = {
 	name: 'nom',
+	description: 'description',
 	title: 'titre',
 	role: 'rôle',
 	reports: 'hiérarchie',
@@ -84,7 +71,6 @@ export const FIELD_LABELS: Readonly<Record<keyof AgentForm, string>> = {
 	hb: 'cadence',
 	interval: 'intervalle',
 	instr: 'instructions',
-	env: 'variables',
 	gh: 'identité GitHub',
 	trust: 'profil de confiance',
 	pCreate: 'droit de créer des agents',
@@ -115,14 +101,10 @@ export function describeChanges(keys: ReadonlyArray<keyof AgentForm>): string {
 }
 
 export function buildDefaultConfig(
-	agent: DemoAgent,
+	agent: Pick<TeamAgent, 'role' | 'model'>,
 	overrides: Partial<ConfigFields> & { skills?: ReadonlyArray<string> } = {},
 ): AgentConfig {
 	const { skills, ...fields } = overrides
-	const delegates =
-		agent.id === 'chief-of-staff' || agent.id === 'veille-legale'
-	const index = DEMO_AGENTS.findIndex((a) => a.id === agent.id)
-	const rev = 14 - (Math.max(index, 0) % 5)
 	return {
 		fields: {
 			title: `${agent.role} · Natalia`,
@@ -134,21 +116,12 @@ export function buildDefaultConfig(
 			turns: '',
 			hb: agent.model !== 'Aucun modèle',
 			interval: '1 h',
-			instr: defaultInstructions(agent),
-			env: [
-				{
-					id: 'gitlab-token',
-					name: 'GITLAB_TOKEN',
-					secret: 'gitlab-com-natalia',
-					version: 'latest',
-				},
-			],
 			gh: 'person',
 			trust: 'Collaboration normale',
-			pCreate: agent.id === 'chief-of-staff',
+			pCreate: false,
 			pSkills: false,
 			pAssign: true,
-			canDeleg: delegates,
+			canDeleg: false,
 			dScope: 'Équipe directe',
 			dDepth: '2',
 			dPar: '3',
@@ -158,26 +131,20 @@ export function buildDefaultConfig(
 			...fields,
 		},
 		skills: skills ?? SKILL_ALL.slice(0, 8),
-		rev,
-		revs: DEFAULT_REVISIONS.map((r, offset) => ({
-			...r,
-			label: `Rév. ${rev - offset}`,
-		})),
-		keys: DEFAULT_KEYS.map((k) => ({ ...k })),
+		rev: 0,
+		revs: [],
 		paused: false,
 	}
 }
 
-export function buildForm(
-	agent: DemoAgent,
-	reports: string | null,
-	config: AgentConfig,
-): AgentForm {
+export function buildForm(agent: TeamAgent, config: AgentConfig): AgentForm {
 	return {
 		...config.fields,
 		name: agent.name,
+		description: agent.description,
 		role: agent.role,
 		model: agent.model,
-		reports: reports ?? DIRECTION,
+		instr: agent.instructions,
+		reports: agent.reports_to ?? DIRECTION,
 	}
 }

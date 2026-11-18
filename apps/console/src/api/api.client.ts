@@ -45,6 +45,7 @@ export namespace Schemas {
     steps_total: number;
   };
   export type ActiveRunListResponse = { items: Array<ActiveRunResponse> };
+  export type AgentId = string;
   export type AgentResponse = {
     agent: string;
     cost_micros: number;
@@ -54,6 +55,7 @@ export namespace Schemas {
     runs: number;
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
+  export type AuthorizeMcpConnectorResponse = { authorization_url: string };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
   export type CardCommentId = string;
   export type CriterionDto = { done: boolean; text: string };
@@ -63,6 +65,7 @@ export namespace Schemas {
   export type ProvenanceResponse = { end: number; quote: string; start: number; transcript_id: TranscriptId };
   export type CardResponse = {
     acceptance_criteria: Array<CriterionDto>;
+    assignee_agent_id?: (null | AgentId) | undefined;
     assignee_subject?: (string | null) | undefined;
     client?: (null | ClientRefResponse) | undefined;
     column: ColumnDto;
@@ -75,6 +78,7 @@ export namespace Schemas {
     estimate?: (null | EstimateDto) | undefined;
     id: CardId;
     labels: Array<string>;
+    parent_id?: (null | CardId) | undefined;
     priority: PriorityDto;
     project?: (null | ProjectRefResponse) | undefined;
     provenance?: (null | ProvenanceResponse) | undefined;
@@ -198,6 +202,15 @@ export namespace Schemas {
   };
   export type CostTotals = { cost_micros: number; input_tokens: number; output_tokens: number };
   export type CostsResponse = { rows: Array<CostRowResponse>; total: CostTotals };
+  export type CreateCardRequest = {
+    assignee_agent_id?: (null | AgentId) | undefined;
+    client_id?: (null | ClientId) | undefined;
+    description?: (string | null) | undefined;
+    parent_id?: (null | CardId) | undefined;
+    priority?: (null | PriorityDto) | undefined;
+    project_id?: (null | ProjectId) | undefined;
+    title: string;
+  };
   export type CreateClientRequest = {
     aliases?: (Array<string> | null) | undefined;
     name: string;
@@ -216,12 +229,28 @@ export namespace Schemas {
   };
   export type ManifestOwner = { type: "user" } | { login: string; type: "organization" };
   export type CreateManifestRequest = { owner: ManifestOwner };
+  export type CreateMcpConnectorRequest = {
+    name?: (string | null) | undefined;
+    slug?: (string | null) | undefined;
+    url: string;
+  };
   export type CreateProjectRequest = {
     aliases?: (Array<string> | null) | undefined;
     client_id?: (null | ClientId) | undefined;
     description?: (string | null) | undefined;
     name: string;
     repository?: (string | null) | undefined;
+  };
+  export type CreateTeamAgentRequest = {
+    connector_grants?: (Array<string> | null) | undefined;
+    description?: (string | null) | undefined;
+    hue?: (number | null) | undefined;
+    instructions?: (string | null) | undefined;
+    model?: (string | null) | undefined;
+    name: string;
+    reports_to?: (null | AgentId) | undefined;
+    role?: (string | null) | undefined;
+    slug: string;
   };
   export type CreateTranscriptionRequest = { file: string };
   export type CreatedConversationResponse = { id: ConversationId };
@@ -302,7 +331,42 @@ export namespace Schemas {
     instructions?: (string | null) | undefined;
   };
   export type InterveneCardResponse = { card: CardResponse; run_id: RunId };
+  export type IssueResponse = {
+    card_id?: (null | CardId) | undefined;
+    html_url: string;
+    labels: Array<string>;
+    number: number;
+    title: string;
+  };
+  export type IssueListResponse = { issues: Array<IssueResponse> };
+  export type LaunchWorksitesRequest = {
+    issues?: Array<number> | undefined;
+    prompts?: Array<string> | undefined;
+    repository: string;
+  };
+  export type LaunchedWorksiteResponse = { card: CardResponse; run_id: RunId };
+  export type LaunchWorksitesResponse = { worksites: Array<LaunchedWorksiteResponse> };
   export type ManifestResponse = { action_url: string; manifest: string; state: string };
+  export type McpConnectorId = string;
+  export type McpConnectorResponse = {
+    archived: boolean;
+    connected: boolean;
+    created_at: string;
+    created_by: string;
+    expires_at?: (string | null) | undefined;
+    id: McpConnectorId;
+    issuer: string;
+    name: string;
+    resource: string;
+    scopes: Array<string>;
+    slug: string;
+    updated_at: string;
+    url: string;
+  };
+  export type McpConnectorListResponse = { items: Array<McpConnectorResponse> };
+  export type McpOAuthCallbackRequest = { code: string; state: string };
+  export type McpOAuthCallbackResponse = { connector_id: McpConnectorId };
+  export type McpToolResponse = { name: string; read_only: boolean };
   export type OrganizationId = string;
   export type MeOrganization = { id: OrganizationId; name: string; slug: string };
   export type MeResponse = {
@@ -347,6 +411,7 @@ export namespace Schemas {
   export type MoveCardRequest = { expected_version: number; to: ColumnDto };
   export type PatchCardRequest = {
     acceptance_criteria?: (Array<CriterionDto> | null) | undefined;
+    assignee_agent_id?: (null | AgentId) | undefined;
     assignee_subject?: (string | null) | undefined;
     client_id?: (null | ClientId) | undefined;
     description?: (string | null) | undefined;
@@ -354,6 +419,7 @@ export namespace Schemas {
     estimate?: (null | EstimateDto) | undefined;
     expected_version: number;
     labels?: (Array<string> | null) | undefined;
+    parent_id?: (null | CardId) | undefined;
     priority?: (null | PriorityDto) | undefined;
     project_id?: (null | ProjectId) | undefined;
     title?: (string | null) | undefined;
@@ -370,10 +436,24 @@ export namespace Schemas {
   };
   export type ProviderListResponse = { providers: Array<ProviderResponse> };
   export type PutProviderRequest = Partial<{ api_key: string; base_url: string | null }>;
+  export type PutUserProviderRequest = {
+    api_key?: (string | null) | undefined;
+    base_url?: (string | null) | undefined;
+    default_model: string;
+    is_default?: (boolean | null) | undefined;
+  };
   export type ReadDocumentRequest = { file: string };
-  export type RepositoryResponse = { full_name: string; name: string; owner: string };
+  export type RepositoryResponse = {
+    full_name: string;
+    html_url: string;
+    name: string;
+    owner: string;
+    private: boolean;
+  };
   export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
   export type RevertIntegrationActionRequest = Partial<{ confirm_production: boolean }>;
+  export type RunAgentRequest = { allow_writes?: boolean | undefined; expected_version: number };
+  export type RunAgentResponse = { run_id: RunId };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
   export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
   export type ToolCallResponse = { latency_ms: number; succeeded: boolean; summary: string; tool: string };
@@ -412,7 +492,28 @@ export namespace Schemas {
     title: string;
   };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
+  export type TeamAgentStatusDto = "idle" | "running";
+  export type TeamAgentResponse = {
+    archived: boolean;
+    connector_grants: Array<string>;
+    created_at: string;
+    created_by: string;
+    description: string;
+    hue: number;
+    id: AgentId;
+    instructions: string;
+    model: string;
+    name: string;
+    reports_to?: (null | AgentId) | undefined;
+    role: string;
+    slug: string;
+    status: TeamAgentStatusDto;
+    updated_at: string;
+  };
+  export type TeamAgentListResponse = { items: Array<TeamAgentResponse> };
+  export type TestMcpConnectorResponse = { tools: Array<McpToolResponse> };
   export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
+  export type TestUserProviderResponse = { error?: (string | null) | undefined; ok: boolean };
   export type TranscriptionResponse = { model: string; text: string };
   export type UpdateClientRequest = Partial<{
     aliases: Array<string> | null;
@@ -429,6 +530,7 @@ export namespace Schemas {
     name: string | null;
     secret: string | null;
   }>;
+  export type UpdateMcpConnectorRequest = Partial<{ archived: boolean | null; name: string | null }>;
   export type UpdateProjectRequest = Partial<{
     aliases: Array<string> | null;
     archived: boolean | null;
@@ -437,6 +539,38 @@ export namespace Schemas {
     name: string | null;
     repository: string | null;
   }>;
+  export type UpdateTeamAgentRequest = Partial<{
+    archived: boolean | null;
+    connector_grants: Array<string> | null;
+    description: string | null;
+    hue: number | null;
+    instructions: string | null;
+    model: string | null;
+    name: string | null;
+    reports_to: null | AgentId;
+    role: string | null;
+    slug: string | null;
+  }>;
+  export type UserProviderResponse = {
+    base_url?: (string | null) | undefined;
+    default_model: string;
+    is_default: boolean;
+    kind: ProviderKindDto;
+    preview: string;
+    updated_at: string;
+  };
+  export type WorksiteResponse = {
+    card_id: CardId;
+    column: string;
+    created_at: string;
+    issue_number?: (number | null) | undefined;
+    issue_url?: (string | null) | undefined;
+    repository?: (string | null) | undefined;
+    run_id?: (null | RunId) | undefined;
+    run_status?: (string | null) | undefined;
+    title: string;
+  };
+  export type WorksiteListResponse = { items: Array<WorksiteResponse> };
 
   // </Schemas>
 }
@@ -474,6 +608,20 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse; 422: Schemas.ApiErrorResponse };
   };
+  export type post_CreateCard = {
+    method: "POST";
+    path: "/api/v1/cards";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateCardRequest;
+    };
+    responses: {
+      201: Schemas.CardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_GetCard = {
     method: "GET";
     path: "/api/v1/cards/{card_id}";
@@ -494,6 +642,24 @@ export namespace Endpoints {
     };
     responses: {
       200: Schemas.CardResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_RunCardAgent = {
+    method: "POST";
+    path: "/api/v1/cards/{card_id}/agent-runs";
+    requestFormat: "json";
+    parameters: {
+      path: { card_id: string };
+
+      body: Schemas.RunAgentRequest;
+    };
+    responses: {
+      202: Schemas.RunAgentResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -917,6 +1083,21 @@ export namespace Endpoints {
       503: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListGithubIssues = {
+    method: "GET";
+    path: "/api/v1/integrations/github/issues";
+    requestFormat: "json";
+    parameters: {
+      query: { repository: string };
+    };
+    responses: {
+      200: Schemas.IssueListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListGithubRepositories = {
     method: "GET";
     path: "/api/v1/integrations/github/repositories";
@@ -924,12 +1105,185 @@ export namespace Endpoints {
     parameters: never;
     responses: { 200: Schemas.RepositoryListResponse; 401: Schemas.ApiErrorResponse; 409: Schemas.ApiErrorResponse };
   };
+  export type get_ListMcpConnectors = {
+    method: "GET";
+    path: "/api/v1/mcp-connectors";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+    };
+    responses: { 200: Schemas.McpConnectorListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateMcpConnector = {
+    method: "POST";
+    path: "/api/v1/mcp-connectors";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateMcpConnectorRequest;
+    };
+    responses: {
+      201: Schemas.McpConnectorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_CompleteMcpOAuth = {
+    method: "POST";
+    path: "/api/v1/mcp-connectors/oauth/callback";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.McpOAuthCallbackRequest;
+    };
+    responses: {
+      200: Schemas.McpOAuthCallbackResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetMcpConnector = {
+    method: "GET";
+    path: "/api/v1/mcp-connectors/{connector_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { connector_id: string };
+    };
+    responses: {
+      200: Schemas.McpConnectorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateMcpConnector = {
+    method: "PATCH";
+    path: "/api/v1/mcp-connectors/{connector_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { connector_id: string };
+
+      body: Schemas.UpdateMcpConnectorRequest;
+    };
+    responses: {
+      200: Schemas.McpConnectorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_AuthorizeMcpConnector = {
+    method: "POST";
+    path: "/api/v1/mcp-connectors/{connector_id}/authorize";
+    requestFormat: "json";
+    parameters: {
+      path: { connector_id: string };
+    };
+    responses: {
+      200: Schemas.AuthorizeMcpConnectorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_DisconnectMcpConnector = {
+    method: "DELETE";
+    path: "/api/v1/mcp-connectors/{connector_id}/connection";
+    requestFormat: "json";
+    parameters: {
+      path: { connector_id: string };
+    };
+    responses: {
+      204: unknown;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_TestMcpConnector = {
+    method: "POST";
+    path: "/api/v1/mcp-connectors/{connector_id}/test";
+    requestFormat: "json";
+    parameters: {
+      path: { connector_id: string };
+    };
+    responses: {
+      200: Schemas.TestMcpConnectorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      503: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_GetMe = {
     method: "GET";
     path: "/api/v1/me";
     requestFormat: "json";
     parameters: never;
     responses: { 200: Schemas.MeResponse; 401: Schemas.ApiErrorResponse };
+  };
+  export type get_ListMyProviders = {
+    method: "GET";
+    path: "/api/v1/me/providers";
+    requestFormat: "json";
+    parameters: never;
+    responses: {
+      200: Array<Schemas.UserProviderResponse>;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+    };
+  };
+  export type put_PutMyProvider = {
+    method: "PUT";
+    path: "/api/v1/me/providers/{kind}";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+
+      body: Schemas.PutUserProviderRequest;
+    };
+    responses: {
+      200: Schemas.UserProviderResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_DeleteMyProvider = {
+    method: "DELETE";
+    path: "/api/v1/me/providers/{kind}";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+    };
+    responses: {
+      204: unknown;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_TestMyProvider = {
+    method: "POST";
+    path: "/api/v1/me/providers/{kind}/test";
+    requestFormat: "json";
+    parameters: {
+      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+    };
+    responses: {
+      200: Schemas.TestUserProviderResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
   };
   export type get_ListMembers = {
     method: "GET";
@@ -1015,6 +1369,33 @@ export namespace Endpoints {
     };
     responses: {
       200: Schemas.ProjectResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListWorksites = {
+    method: "GET";
+    path: "/api/v1/projects/{project_id}/worksites";
+    requestFormat: "json";
+    parameters: {
+      path: { project_id: string };
+    };
+    responses: { 200: Schemas.WorksiteListResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
+  };
+  export type post_LaunchWorksites = {
+    method: "POST";
+    path: "/api/v1/projects/{project_id}/worksites";
+    requestFormat: "json";
+    parameters: {
+      path: { project_id: string };
+
+      body: Schemas.LaunchWorksitesRequest;
+    };
+    responses: {
+      202: Schemas.LaunchWorksitesResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -1121,6 +1502,62 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunTimelineResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
   };
+  export type get_ListTeamAgents = {
+    method: "GET";
+    path: "/api/v1/team/agents";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+    };
+    responses: { 200: Schemas.TeamAgentListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateTeamAgent = {
+    method: "POST";
+    path: "/api/v1/team/agents";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateTeamAgentRequest;
+    };
+    responses: {
+      201: Schemas.TeamAgentResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetTeamAgent = {
+    method: "GET";
+    path: "/api/v1/team/agents/{agent_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { agent_id: string };
+    };
+    responses: {
+      200: Schemas.TeamAgentResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateTeamAgent = {
+    method: "PATCH";
+    path: "/api/v1/team/agents/{agent_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { agent_id: string };
+
+      body: Schemas.UpdateTeamAgentRequest;
+    };
+    responses: {
+      200: Schemas.TeamAgentResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type post_CreateTranscription = {
     method: "POST";
     path: "/api/v1/transcriptions";
@@ -1187,30 +1624,32 @@ export type EndpointByMethod = {
     "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
+    "/api/v1/integrations/github/issues": Endpoints.get_ListGithubIssues;
     "/api/v1/integrations/github/repositories": Endpoints.get_ListGithubRepositories;
+    "/api/v1/mcp-connectors": Endpoints.get_ListMcpConnectors;
+    "/api/v1/mcp-connectors/{connector_id}": Endpoints.get_GetMcpConnector;
     "/api/v1/me": Endpoints.get_GetMe;
+    "/api/v1/me/providers": Endpoints.get_ListMyProviders;
     "/api/v1/members": Endpoints.get_ListMembers;
     "/api/v1/model-assignments": Endpoints.get_GetModelAssignments;
     "/api/v1/models": Endpoints.get_ListModels;
     "/api/v1/projects": Endpoints.get_ListProjects;
     "/api/v1/projects/{project_id}": Endpoints.get_GetProject;
+    "/api/v1/projects/{project_id}/worksites": Endpoints.get_ListWorksites;
     "/api/v1/providers": Endpoints.get_ListProviders;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/api/v1/runs/{run_id}/integration-actions": Endpoints.get_ListRunIntegrationActions;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
+    "/api/v1/team/agents": Endpoints.get_ListTeamAgents;
+    "/api/v1/team/agents/{agent_id}": Endpoints.get_GetTeamAgent;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
   };
-  patch: {
-    "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
-    "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
-    "/api/v1/conversations/{id}": Endpoints.patch_UpdateConversation;
-    "/api/v1/integration-instances/{id}": Endpoints.patch_UpdateIntegrationInstance;
-    "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
-  };
   post: {
+    "/api/v1/cards": Endpoints.post_CreateCard;
+    "/api/v1/cards/{card_id}/agent-runs": Endpoints.post_RunCardAgent;
     "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
     "/api/v1/cards/{card_id}/executions": Endpoints.post_ExecuteCard;
     "/api/v1/cards/{card_id}/interventions": Endpoints.post_InterveneCard;
@@ -1225,18 +1664,37 @@ export type EndpointByMethod = {
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
     "/api/v1/integrations/github/app/manifest": Endpoints.post_CreateGithubAppManifest;
     "/api/v1/integrations/github/callback": Endpoints.post_ConnectGithub;
+    "/api/v1/mcp-connectors": Endpoints.post_CreateMcpConnector;
+    "/api/v1/mcp-connectors/oauth/callback": Endpoints.post_CompleteMcpOAuth;
+    "/api/v1/mcp-connectors/{connector_id}/authorize": Endpoints.post_AuthorizeMcpConnector;
+    "/api/v1/mcp-connectors/{connector_id}/test": Endpoints.post_TestMcpConnector;
+    "/api/v1/me/providers/{kind}/test": Endpoints.post_TestMyProvider;
     "/api/v1/projects": Endpoints.post_CreateProject;
+    "/api/v1/projects/{project_id}/worksites": Endpoints.post_LaunchWorksites;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
+    "/api/v1/team/agents": Endpoints.post_CreateTeamAgent;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
+  };
+  patch: {
+    "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
+    "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
+    "/api/v1/conversations/{id}": Endpoints.patch_UpdateConversation;
+    "/api/v1/integration-instances/{id}": Endpoints.patch_UpdateIntegrationInstance;
+    "/api/v1/mcp-connectors/{connector_id}": Endpoints.patch_UpdateMcpConnector;
+    "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
+    "/api/v1/team/agents/{agent_id}": Endpoints.patch_UpdateTeamAgent;
   };
   delete: {
     "/api/v1/integration-instances/{id}": Endpoints.delete_ArchiveIntegrationInstance;
     "/api/v1/integrations/github": Endpoints.delete_DisconnectGithub;
     "/api/v1/integrations/github/app": Endpoints.delete_DeleteGithubApp;
+    "/api/v1/mcp-connectors/{connector_id}/connection": Endpoints.delete_DisconnectMcpConnector;
+    "/api/v1/me/providers/{kind}": Endpoints.delete_DeleteMyProvider;
     "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
   };
   put: {
+    "/api/v1/me/providers/{kind}": Endpoints.put_PutMyProvider;
     "/api/v1/model-assignments": Endpoints.put_PutModelAssignments;
     "/api/v1/providers/{kind}": Endpoints.put_PutProvider;
   };
@@ -1246,8 +1704,8 @@ export type EndpointByMethod = {
 
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
-export type PatchEndpoints = EndpointByMethod["patch"];
 export type PostEndpoints = EndpointByMethod["post"];
+export type PatchEndpoints = EndpointByMethod["patch"];
 export type DeleteEndpoints = EndpointByMethod["delete"];
 export type PutEndpoints = EndpointByMethod["put"];
 // </EndpointByMethod.Shorthands>
@@ -1513,37 +1971,6 @@ export class ApiClient {
   }
   // </ApiClient.get>
 
-  // <ApiClient.patch>
-  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-    >
-  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
-
-  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-    >
-  ): Promise<SafeApiResponse<TEndpoint>>;
-
-  patch<Path extends keyof PatchEndpoints, _TEndpoint extends PatchEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<any>
-  ): Promise<any> {
-    return this.request("patch", path, ...params);
-  }
-  // </ApiClient.patch>
-
   // <ApiClient.post>
   post<Path extends keyof PostEndpoints, TEndpoint extends PostEndpoints[Path]>(
     path: Path,
@@ -1574,6 +2001,37 @@ export class ApiClient {
     return this.request("post", path, ...params);
   }
   // </ApiClient.post>
+
+  // <ApiClient.patch>
+  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  patch<Path extends keyof PatchEndpoints, _TEndpoint extends PatchEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("patch", path, ...params);
+  }
+  // </ApiClient.patch>
 
   // <ApiClient.delete>
   delete<Path extends keyof DeleteEndpoints, TEndpoint extends DeleteEndpoints[Path]>(

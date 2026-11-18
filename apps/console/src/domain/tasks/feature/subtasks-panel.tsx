@@ -2,19 +2,16 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { getAgentConfig } from '#/domain/agent-team/agent-config-store'
-import type { DemoTask } from '#/domain/demo'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import {
-	addTask,
-	childTasks,
-	demoStore,
-	nextTaskId,
-	subAgentIds,
-	taskDepth,
-	useDemoState,
-} from '#/domain/demo'
-import { canDelegate, openChildCount } from '#/domain/tasks/delegation'
+	canDelegate,
+	MAX_PARALLEL_SUBTASKS,
+	MAX_SUBTASK_DEPTH,
+	openChildCount,
+} from '#/domain/tasks/delegation'
 import { useAgentOf } from '#/domain/tasks/feature/use-agent-of'
+import { useCreateCard } from '#/domain/tasks/hooks/use-tasks'
+import { ancestorCount, childrenOf, type Task } from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { AgentAvatar } from '#/domain/tasks/ui/agent-chip'
 import { StatusIcon } from '#/domain/tasks/ui/status-icon'
@@ -24,19 +21,22 @@ const CTL =
 	'rounded-[6px] border bg-background px-[9px] py-[5px] text-foreground outline-none focus-visible:border-primary'
 
 interface Props {
-	task: DemoTask
+	task: Task
+	tasks: ReadonlyArray<Task>
 	onNotify: (message: string) => void
 }
 
-export function SubtasksPanel({ task, onNotify }: Props) {
-	const state = useDemoState((s) => s)
+export function SubtasksPanel({ task, tasks, onNotify }: Props) {
+	const agents = useTeamAgents().data?.items ?? []
 	const agentOf = useAgentOf()
+	const create = useCreateCard()
 	const [subAgent, setSubAgent] = useState('')
 	const [title, setTitle] = useState('')
-	const kids = childTasks(state, task.id)
-	const subs = subAgentIds(state, task.agentId)
-	const fields = getAgentConfig(task.agentId).fields
-	const canDeleg = fields.canDeleg && subs.length > 0
+	const kids = childrenOf(tasks, task.id)
+	const subs = task.agentId
+		? agents.filter((a) => a.reports_to === task.agentId)
+		: []
+	const canDeleg = subs.length > 0
 	if (kids.length === 0 && !canDeleg) return null
 	const done = kids.filter((k) => k.status === 'done').length
 	const owner = agentOf(task.agentId).name
@@ -44,28 +44,33 @@ export function SubtasksPanel({ task, onNotify }: Props) {
 	const delegate = () => {
 		const result = canDelegate({
 			title,
-			depth: taskDepth(demoStore.state, task.id),
-			openChildren: openChildCount(childTasks(demoStore.state, task.id)),
-			maxDepth: Number(fields.dDepth),
-			maxParallel: Number(fields.dPar),
+			depth: ancestorCount(tasks, task.id),
+			openChildren: openChildCount(kids),
+			maxDepth: MAX_SUBTASK_DEPTH,
+			maxParallel: MAX_PARALLEL_SUBTASKS,
 		})
 		if (!result.ok) {
 			onNotify(result.reason)
 			return
 		}
-		const target = subAgent || (subs[0] ?? '')
-		const id = nextTaskId(demoStore.state)
-		addTask({
-			id,
-			title: title.trim(),
-			status: 'todo',
-			agentId: target,
-			age: "à l'instant",
-			project: task.project,
-			parentId: task.id,
-		})
-		setTitle('')
-		onNotify(`${id} déléguée à ${agentOf(target).name}`)
+		const target = subAgent || (subs[0]?.id ?? '')
+		create.mutate(
+			{
+				body: {
+					title: title.trim(),
+					assignee_agent_id: target,
+					project_id: task.projectId,
+					parent_id: task.id,
+				},
+			},
+			{
+				onSuccess: (card) => {
+					setTitle('')
+					onNotify(`${card.id.slice(0, 8)} déléguée à ${agentOf(target).name}`)
+				},
+				onError: () => onNotify('La délégation a échoué'),
+			},
+		)
 	}
 
 	return (
@@ -94,7 +99,7 @@ export function SubtasksPanel({ task, onNotify }: Props) {
 							>
 								<StatusIcon status={k.status} />
 								<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
-									{k.id}
+									{k.shortId}
 								</span>
 								<span className="min-w-0 flex-1">
 									<b className="block truncate font-medium">{k.title}</b>
@@ -120,13 +125,14 @@ export function SubtasksPanel({ task, onNotify }: Props) {
 					<div className="flex flex-wrap gap-1.5 px-3 pt-2.5 pb-3">
 						<select
 							aria-label="Sous-agent"
-							value={subAgent || (subs[0] ?? '')}
+							value={subAgent || (subs[0]?.id ?? '')}
 							onChange={(event) => setSubAgent(event.target.value)}
 							className={CTL}
 						>
-							{subs.map((id) => (
-								<option key={id} value={id}>
-									{agentOf(id).name}
+							{subs.map((a) => (
+								<option key={a.id} value={a.id}>
+									{' '}
+									{agentOf(a.id).name}{' '}
 								</option>
 							))}
 						</select>
@@ -137,11 +143,13 @@ export function SubtasksPanel({ task, onNotify }: Props) {
 							onChange={(event) => setTitle(event.target.value)}
 							className={cn(CTL, 'min-w-0 flex-1')}
 						/>
-						<Button type="submit">Déléguer</Button>
+						<Button type="submit" disabled={create.isPending}>
+							Déléguer
+						</Button>
 					</div>
 					<p className="m-0 px-3 pb-2.5 text-xs text-muted-foreground">
-						Limites de {owner} : {fields.dPar} en parallèle, profondeur{' '}
-						{fields.dDepth}, {fields.dBudget} par sous-tâche.
+						Limites de {owner} : {MAX_PARALLEL_SUBTASKS} en parallèle,
+						profondeur {MAX_SUBTASK_DEPTH}.
 					</p>
 				</form>
 			) : null}

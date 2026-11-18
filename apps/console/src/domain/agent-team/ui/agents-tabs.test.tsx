@@ -12,7 +12,7 @@ async function currentLabels() {
 }
 
 describe('AgentsTabs', () => {
-	it('lists the five mockup tabs', async () => {
+	it('lists the six tabs', async () => {
 		await renderAtPath(<AgentsTabs active="tous" />, '/agents', EXTRA)
 		const links = await screen.findAllByRole('link')
 		expect(links.map((l) => l.textContent)).toEqual([
@@ -20,6 +20,7 @@ describe('AgentsTabs', () => {
 			'Actifs',
 			'En pause',
 			'Erreur',
+			'Archivés',
 			'Organigramme',
 		])
 	})

@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as DevUiRouteImport } from './routes/[_]dev.ui'
 import { Route as AppSkillsRouteImport } from './routes/_app.skills'
+import { Route as AppProvidersRouteImport } from './routes/_app.providers'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppArtifactsRouteImport } from './routes/_app.artifacts'
 import { Route as AppApprovalsRouteImport } from './routes/_app.approvals'
@@ -31,6 +32,7 @@ import { Route as AppAgentsOrganigrammeRouteImport } from './routes/_app.agents.
 import { Route as AppAgentsNouveauRouteImport } from './routes/_app.agents.nouveau'
 import { Route as AppSourcesSourceIdChar123TabChar125RouteImport } from './routes/_app.sources.$sourceId.{-$tab}'
 import { Route as AppRoutinesRoutineIdChar123TabChar125RouteImport } from './routes/_app.routines.$routineId.{-$tab}'
+import { Route as AppConnectorsOauthCallbackRouteImport } from './routes/_app.connectors.oauth.callback'
 import { Route as AppAgentsAgentIdChar123TabChar125RouteImport } from './routes/_app.agents.$agentId.{-$tab}'
 
 const CallbackRoute = CallbackRouteImport.update({
@@ -55,6 +57,11 @@ const DevUiRoute = DevUiRouteImport.update({
 const AppSkillsRoute = AppSkillsRouteImport.update({
   id: '/skills',
   path: '/skills',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProvidersRoute = AppProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsRoute = AppProjectsRouteImport.update({
@@ -147,6 +154,12 @@ const AppRoutinesRoutineIdChar123TabChar125Route =
     path: '/routines/$routineId/{-$tab}',
     getParentRoute: () => AppRoute,
   } as any)
+const AppConnectorsOauthCallbackRoute =
+  AppConnectorsOauthCallbackRouteImport.update({
+    id: '/connectors/oauth/callback',
+    path: '/connectors/oauth/callback',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAgentsAgentIdChar123TabChar125Route =
   AppAgentsAgentIdChar123TabChar125RouteImport.update({
     id: '/agents/$agentId/{-$tab}',
@@ -160,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
   '/projects': typeof AppProjectsRoute
+  '/providers': typeof AppProvidersRoute
   '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
@@ -175,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/sources/': typeof AppSourcesIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
   '/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
+  '/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
 }
@@ -183,6 +198,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof AppApprovalsRoute
   '/artifacts': typeof AppArtifactsRoute
   '/projects': typeof AppProjectsRoute
+  '/providers': typeof AppProvidersRoute
   '/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
@@ -199,6 +215,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesIndexRoute
   '/tasks': typeof AppTasksIndexRoute
   '/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
+  '/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
 }
@@ -209,6 +226,7 @@ export interface FileRoutesById {
   '/_app/approvals': typeof AppApprovalsRoute
   '/_app/artifacts': typeof AppArtifactsRoute
   '/_app/projects': typeof AppProjectsRoute
+  '/_app/providers': typeof AppProvidersRoute
   '/_app/skills': typeof AppSkillsRoute
   '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
@@ -225,6 +243,7 @@ export interface FileRoutesById {
   '/_app/sources/': typeof AppSourcesIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/agents/$agentId/{-$tab}': typeof AppAgentsAgentIdChar123TabChar125Route
+  '/_app/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/_app/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/_app/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
 }
@@ -236,6 +255,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/artifacts'
     | '/projects'
+    | '/providers'
     | '/skills'
     | '/_dev/ui'
     | '/agents/nouveau'
@@ -251,6 +271,7 @@ export interface FileRouteTypes {
     | '/sources/'
     | '/tasks/'
     | '/agents/$agentId/{-$tab}'
+    | '/connectors/oauth/callback'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
   fileRoutesByTo: FileRoutesByTo
@@ -259,6 +280,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/artifacts'
     | '/projects'
+    | '/providers'
     | '/skills'
     | '/_dev/ui'
     | '/'
@@ -275,6 +297,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/tasks'
     | '/agents/$agentId/{-$tab}'
+    | '/connectors/oauth/callback'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
   id:
@@ -284,6 +307,7 @@ export interface FileRouteTypes {
     | '/_app/approvals'
     | '/_app/artifacts'
     | '/_app/projects'
+    | '/_app/providers'
     | '/_app/skills'
     | '/_dev/ui'
     | '/_app/'
@@ -300,6 +324,7 @@ export interface FileRouteTypes {
     | '/_app/sources/'
     | '/_app/tasks/'
     | '/_app/agents/$agentId/{-$tab}'
+    | '/_app/connectors/oauth/callback'
     | '/_app/routines/$routineId/{-$tab}'
     | '/_app/sources/$sourceId/{-$tab}'
   fileRoutesById: FileRoutesById
@@ -345,6 +370,13 @@ declare module '@tanstack/react-router' {
       path: '/skills'
       fullPath: '/skills'
       preLoaderRoute: typeof AppSkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/providers': {
+      id: '/_app/providers'
+      path: '/providers'
+      fullPath: '/providers'
+      preLoaderRoute: typeof AppProvidersRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects': {
@@ -466,6 +498,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRoutinesRoutineIdChar123TabChar125RouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/connectors/oauth/callback': {
+      id: '/_app/connectors/oauth/callback'
+      path: '/connectors/oauth/callback'
+      fullPath: '/connectors/oauth/callback'
+      preLoaderRoute: typeof AppConnectorsOauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/agents/$agentId/{-$tab}': {
       id: '/_app/agents/$agentId/{-$tab}'
       path: '/agents/$agentId/{-$tab}'
@@ -480,6 +519,7 @@ interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
   AppArtifactsRoute: typeof AppArtifactsRoute
   AppProjectsRoute: typeof AppProjectsRoute
+  AppProvidersRoute: typeof AppProvidersRoute
   AppSkillsRoute: typeof AppSkillsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsNouveauRoute: typeof AppAgentsNouveauRoute
@@ -495,6 +535,7 @@ interface AppRouteChildren {
   AppSourcesIndexRoute: typeof AppSourcesIndexRoute
   AppTasksIndexRoute: typeof AppTasksIndexRoute
   AppAgentsAgentIdChar123TabChar125Route: typeof AppAgentsAgentIdChar123TabChar125Route
+  AppConnectorsOauthCallbackRoute: typeof AppConnectorsOauthCallbackRoute
   AppRoutinesRoutineIdChar123TabChar125Route: typeof AppRoutinesRoutineIdChar123TabChar125Route
   AppSourcesSourceIdChar123TabChar125Route: typeof AppSourcesSourceIdChar123TabChar125Route
 }
@@ -503,6 +544,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
   AppArtifactsRoute: AppArtifactsRoute,
   AppProjectsRoute: AppProjectsRoute,
+  AppProvidersRoute: AppProvidersRoute,
   AppSkillsRoute: AppSkillsRoute,
   AppIndexRoute: AppIndexRoute,
   AppAgentsNouveauRoute: AppAgentsNouveauRoute,
@@ -519,6 +561,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTasksIndexRoute: AppTasksIndexRoute,
   AppAgentsAgentIdChar123TabChar125Route:
     AppAgentsAgentIdChar123TabChar125Route,
+  AppConnectorsOauthCallbackRoute: AppConnectorsOauthCallbackRoute,
   AppRoutinesRoutineIdChar123TabChar125Route:
     AppRoutinesRoutineIdChar123TabChar125Route,
   AppSourcesSourceIdChar123TabChar125Route:

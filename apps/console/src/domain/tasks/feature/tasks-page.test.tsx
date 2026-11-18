@@ -1,42 +1,94 @@
-import { fireEvent, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import { demoStore, resetDemoState } from '#/domain/demo'
 import { TasksPage } from '#/domain/tasks/feature/tasks-page'
+import {
+	AGENT_LEAD,
+	AGENTS_ROUTE,
+	card,
+	jsonBody,
+} from '#/domain/tasks/test-fixtures'
+import { clearAuth } from '#/store/auth.store'
+import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 
 const EXTRA = ['/tasks', '/tasks/$taskId', '/agents/$agentId/{-$tab}']
 
-describe('TasksPage', () => {
-	beforeEach(resetDemoState)
+const ID_A = '11111111-aaaa-4000-8000-000000000001'
+const ID_B = '22222222-bbbb-4000-8000-000000000002'
+const ID_C = '33333333-cccc-4000-8000-000000000003'
 
-	it('renders title, banner, toolbar and grouped list', async () => {
-		const fetchSpy = vi.spyOn(globalThis, 'fetch')
-		await renderAtPath(<TasksPage view="liste" query="" />, '/tasks', EXTRA)
-		expect(await screen.findByRole('heading', { name: 'Tâches' })).toBeTruthy()
-		expect(screen.getAllByRole('status')[0]?.textContent).toContain(
-			'démonstration',
-		)
-		expect(screen.getByRole('button', { name: 'Nouvelle tâche' })).toBeTruthy()
-		expect(
-			screen.getByRole('textbox', { name: 'Rechercher des tâches' }),
-		).toBeTruthy()
-		expect(screen.getByRole('region', { name: 'Bloqué' })).toBeTruthy()
+const BASE = {
+	...AGENTS_ROUTE,
+	'GET /api/v1/projects': {
+		items: [
+			{
+				project: {
+					id: 'p1',
+					name: 'Site vitrine',
+					description: '',
+					aliases: [],
+					archived: false,
+					created_at: '2026-11-01T00:00:00Z',
+					updated_at: '2026-11-01T00:00:00Z',
+					created_by: 'u',
+				},
+				open_cards: 1,
+			},
+		],
+	},
+	'GET /api/v1/cards': {
+		items: [
+			card(ID_A, {
+				title: 'Alpha',
+				column: 'in_progress',
+				assignee_agent_id: AGENT_LEAD,
+				project: { id: 'p1', name: 'Site vitrine' },
+			}),
+			card(ID_B, { title: 'Beta', column: 'todo' }),
+			card(ID_C, { title: 'Gamma', column: 'done' }),
+		],
+	},
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+	clearAuth()
+})
+
+const render = (view: 'liste' | 'tableau' = 'liste') =>
+	renderAtPath(
+		withQueryClient(<TasksPage view={view} query="" />),
+		'/tasks',
+		EXTRA,
+	)
+
+describe('TasksPage', () => {
+	it('lists the cards grouped by column with short ids and agents', async () => {
+		mockApi(BASE)
+		await render()
+		expect(await screen.findByText('Alpha')).toBeTruthy()
+		expect(screen.getByRole('heading', { name: 'Tâches' })).toBeTruthy()
+		expect(screen.getByText('2 ouvertes')).toBeTruthy()
+		expect(screen.getByRole('region', { name: 'En cours' })).toBeTruthy()
+		expect(screen.getByRole('region', { name: 'Terminé' })).toBeTruthy()
+		expect(screen.queryByRole('region', { name: 'Bloqué' })).toBeNull()
 		const link = screen
 			.getAllByRole('link')
-			.find((l) => l.textContent?.includes('NAT-695'))
-		expect(link?.getAttribute('href')).toBe('/tasks/nat-695')
+			.find((l) => l.textContent?.includes('11111111'))
+		expect(link?.getAttribute('href')).toBe(`/tasks/${ID_A}`)
+		await waitFor(() => expect(screen.getByText('Veille légale')).toBeTruthy())
 		expect(
 			screen.getByRole('link', { name: 'Liste' }).getAttribute('aria-current'),
 		).toBe('page')
-		expect(fetchSpy).not.toHaveBeenCalled()
 	})
 
-	it('renders the board with the six first statuses', async () => {
-		await renderAtPath(<TasksPage view="tableau" query="" />, '/tasks', EXTRA)
-		await screen.findByRole('heading', { name: 'Tâches' })
-		expect(screen.getByRole('region', { name: 'Backlog' })).toBeTruthy()
+	it('renders the board with the four real columns', async () => {
+		mockApi(BASE)
+		await render('tableau')
+		await screen.findByText('Alpha')
+		expect(screen.getByRole('region', { name: 'Proposé' })).toBeTruthy()
 		expect(screen.getByRole('region', { name: 'Terminé' })).toBeTruthy()
-		expect(screen.queryByRole('region', { name: 'Annulé' })).toBeNull()
+		expect(screen.queryByRole('region', { name: 'Rejeté' })).toBeNull()
 		expect(
 			screen
 				.getByRole('link', { name: 'Tableau' })
@@ -45,20 +97,46 @@ describe('TasksPage', () => {
 	})
 
 	it('filters with the search field', async () => {
-		await renderAtPath(<TasksPage view="liste" query="" />, '/tasks', EXTRA)
-		const field = await screen.findByRole('textbox', {
-			name: 'Rechercher des tâches',
-		})
-		fireEvent.change(field, { target: { value: 'NAT-695' } })
-		expect(
-			screen
-				.getAllByRole('link')
-				.filter((l) => l.textContent?.includes('NAT-6')).length,
-		).toBe(1)
+		mockApi(BASE)
+		await render()
+		await screen.findByText('Alpha')
+		fireEvent.change(
+			screen.getByRole('textbox', { name: 'Rechercher des tâches' }),
+			{ target: { value: 'beta' } },
+		)
+		expect(screen.queryByText('Alpha')).toBeNull()
+		expect(screen.getByText('Beta')).toBeTruthy()
 	})
 
-	it('creates a task from the dialog and navigates to it', async () => {
-		await renderAtPath(<TasksPage view="liste" query="" />, '/tasks', EXTRA)
+	it('shows an empty state', async () => {
+		mockApi({ ...BASE, 'GET /api/v1/cards': { items: [] } })
+		await render()
+		expect(await screen.findByText('Aucune tâche')).toBeTruthy()
+	})
+
+	it('shows an error when the list fails', async () => {
+		mockApi({
+			...BASE,
+			'GET /api/v1/cards': {
+				status: 500,
+				body: { code: 'x', message: 'x', status: 500 },
+			},
+		})
+		await render()
+		expect(
+			await screen.findByText('Impossible de charger les tâches.'),
+		).toBeTruthy()
+	})
+
+	it('creates a card from the dialog and sends the chosen fields', async () => {
+		const created = card('44444444-dddd-4000-8000-000000000004', {
+			title: 'Ma tâche',
+		})
+		const fetchMock = mockApi({
+			...BASE,
+			'POST /api/v1/cards': { status: 201, body: created },
+		})
+		await render()
 		fireEvent.click(
 			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
 		)
@@ -69,20 +147,68 @@ describe('TasksPage', () => {
 		fireEvent.change(screen.getByLabelText('Titre'), {
 			target: { value: 'Ma tâche' },
 		})
+		await waitFor(() =>
+			expect(screen.getByRole('option', { name: 'Site vitrine' })).toBeTruthy(),
+		)
+		fireEvent.change(screen.getByLabelText('Projet'), {
+			target: { value: 'p1' },
+		})
+		fireEvent.change(screen.getByLabelText('Priorité'), {
+			target: { value: 'high' },
+		})
+		fireEvent.change(screen.getByLabelText('Assigner à'), {
+			target: { value: AGENT_LEAD },
+		})
+		fireEvent.change(screen.getByLabelText('Tâche parente'), {
+			target: { value: ID_B },
+		})
 		fireEvent.click(screen.getByRole('button', { name: 'Créer la tâche' }))
-		const created = demoStore.state.tasks.find((t) => t.title === 'Ma tâche')
-		expect(created?.status).toBe('todo')
-		expect(created?.id).toBe('NAT-696')
+		await waitFor(() =>
+			expect(jsonBody(fetchMock, 'POST', '/api/v1/cards')).toEqual({
+				title: 'Ma tâche',
+				description: null,
+				priority: 'high',
+				assignee_agent_id: AGENT_LEAD,
+				project_id: 'p1',
+				parent_id: ID_B,
+			}),
+		)
+		await waitFor(() =>
+			expect(
+				screen.queryByRole('button', { name: 'Créer la tâche' }),
+			).toBeNull(),
+		)
+	})
+
+	it('shows the API error when the creation fails', async () => {
+		mockApi({
+			...BASE,
+			'POST /api/v1/cards': {
+				status: 422,
+				body: { code: 'invalid', message: 'x', status: 422 },
+			},
+		})
+		await render()
+		fireEvent.click(
+			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
+		)
+		fireEvent.change(await screen.findByLabelText('Titre'), {
+			target: { value: 'X' },
+		})
+		fireEvent.click(screen.getByRole('button', { name: 'Créer la tâche' }))
+		expect(
+			await screen.findByText('Les informations de la tâche sont invalides.'),
+		).toBeTruthy()
 	})
 
 	it('closes the dialog on cancel without creating', async () => {
-		const before = demoStore.state.tasks.length
-		await renderAtPath(<TasksPage view="liste" query="" />, '/tasks', EXTRA)
+		const fetchMock = mockApi(BASE)
+		await render()
 		fireEvent.click(
 			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
 		)
 		fireEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
 		expect(screen.queryByRole('button', { name: 'Créer la tâche' })).toBeNull()
-		expect(demoStore.state.tasks.length).toBe(before)
+		expect(jsonBody(fetchMock, 'POST', '/api/v1/cards')).toBeUndefined()
 	})
 })

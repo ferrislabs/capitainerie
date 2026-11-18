@@ -1,19 +1,16 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	type MockInstance,
-	vi,
-} from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import { resetAgentConfigs } from '#/domain/agent-team/agent-config-store'
+import {
+	resetAgentConfigs,
+	updateAgentConfig,
+} from '#/domain/agent-team/agent-config-store'
 import { AgentTeamPage } from '#/domain/agent-team/feature/agent-team-page'
 import { OrgChartPage } from '#/domain/agent-team/feature/org-chart-page'
-import { demoStore, resetDemoState, updateAgent } from '#/domain/demo'
+import { clearAuth } from '#/store/auth.store'
+import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { TEAM } from '#/test-utils/team-agents'
 
 const EXTRA = [
 	'/agents',
@@ -22,29 +19,26 @@ const EXTRA = [
 	'/agents/$agentId/{-$tab}',
 ]
 
+const LIST = { 'GET /api/v1/team/agents': { items: TEAM } }
+
 describe('team list and org chart', () => {
-	let fetchSpy: MockInstance<typeof fetch>
-	beforeEach(() => {
-		resetDemoState()
-		resetAgentConfigs()
-		fetchSpy = vi.spyOn(globalThis, 'fetch')
-	})
+	beforeEach(resetAgentConfigs)
 	afterEach(() => {
-		expect(fetchSpy).not.toHaveBeenCalled()
-		fetchSpy.mockRestore()
+		vi.unstubAllGlobals()
+		clearAuth()
 	})
 
-	it('lists the team with banner, tabs and a new-agent link', async () => {
-		updateAgent('dev', { status: 'running' })
-		await renderAtPath(<AgentTeamPage />, '/agents', EXTRA)
+	it('lists the team from the API with tabs and a new-agent link', async () => {
+		mockApi(LIST)
+		await renderAtPath(withQueryClient(<AgentTeamPage />), '/agents', EXTRA)
 		expect(await screen.findByRole('heading', { name: 'Agents' })).toBeTruthy()
-		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
 		const nav = screen.getByRole('navigation', { name: 'Sections des agents' })
 		expect(
 			within(nav)
 				.getByRole('link', { name: 'Tous' })
 				.getAttribute('aria-current'),
 		).toBe('page')
+		expect(within(nav).getByRole('link', { name: 'Archivés' })).toBeTruthy()
 		expect(
 			within(nav)
 				.getByRole('link', { name: 'Organigramme' })
@@ -53,64 +47,128 @@ describe('team list and org chart', () => {
 		expect(
 			screen.getByRole('link', { name: /Nouvel agent/ }).getAttribute('href'),
 		).toBe('/agents/nouveau')
-		expect(screen.getAllByText('en cours')).toHaveLength(
-			demoStore.state.agents.filter((a) => a.status === 'running').length,
-		)
-		expect(screen.getAllByText('inactif').length).toBeGreaterThan(5)
-		const link = screen.getByRole('link', { name: 'Configurer Chief of Staff' })
-		expect(link.getAttribute('href')).toBe('/agents/chief-of-staff')
+		const link = await screen.findByRole('link', {
+			name: 'Configurer Chief of Staff',
+		})
+		expect(link.getAttribute('href')).toBe('/agents/a-chief')
+		expect(screen.getAllByText('en cours')).toHaveLength(1)
+		expect(screen.getAllByText('inactif')).toHaveLength(3)
 	})
 
-	it('filters running agents and shows the empty state for paused ones', async () => {
+	it('shows a loading state, then an error state', async () => {
+		mockApi({
+			'GET /api/v1/team/agents': {
+				status: 500,
+				body: { code: 'internal', message: 'boom', status: 500 },
+			},
+		})
+		await renderAtPath(withQueryClient(<AgentTeamPage />), '/agents', EXTRA)
+		expect(screen.getByText('Chargement…')).toBeTruthy()
+		expect(
+			await screen.findByText('Impossible de charger les agents.'),
+		).toBeTruthy()
+	})
+
+	it('shows the empty state when the team is empty', async () => {
+		mockApi({ 'GET /api/v1/team/agents': { items: [] } })
+		await renderAtPath(withQueryClient(<AgentTeamPage />), '/agents', EXTRA)
+		expect(await screen.findByText('Aucun agent')).toBeTruthy()
+	})
+
+	it('filters running agents and shows the empty state for errors', async () => {
+		mockApi(LIST)
 		const { unmount } = await renderAtPath(
-			<AgentTeamPage filter="actifs" />,
+			withQueryClient(<AgentTeamPage filter="actifs" />),
 			'/agents',
 			EXTRA,
 		)
-		expect(await screen.findAllByText('en cours')).toHaveLength(
-			demoStore.state.agents.filter((a) => a.status === 'running').length,
-		)
+		expect(await screen.findAllByText('en cours')).toHaveLength(1)
 		expect(screen.queryByText('inactif')).toBeNull()
 		unmount()
-		await renderAtPath(<AgentTeamPage filter="erreur" />, '/agents', EXTRA)
+		await renderAtPath(
+			withQueryClient(<AgentTeamPage filter="erreur" />),
+			'/agents',
+			EXTRA,
+		)
 		expect(await screen.findByText('Aucun agent')).toBeTruthy()
 		expect(screen.getByText(/Aucun agent erreur pour l'instant/)).toBeTruthy()
 	})
 
-	it('shows agents created during the session', async () => {
-		demoStore.setState((s) => ({
-			...s,
-			agents: [
-				...s.agents,
-				{
-					id: 'zoe',
-					name: 'Zoé',
-					role: 'PM',
-					description: 'Nouvelle',
-					status: 'idle',
-					hue: 10,
-					model: 'Claude Sonnet 5.5',
-					reportsTo: null,
-				},
-			],
-		}))
-		await renderAtPath(<AgentTeamPage />, '/agents', EXTRA)
-		expect(await screen.findByText('Zoé')).toBeTruthy()
+	it('filters paused agents from the local pause state', async () => {
+		mockApi(LIST)
+		updateAgentConfig('a-dev', { paused: true })
+		await renderAtPath(
+			withQueryClient(<AgentTeamPage filter="pause" />),
+			'/agents',
+			EXTRA,
+		)
+		expect(
+			await screen.findByRole('link', {
+				name: 'Configurer Dev (cycle autonome)',
+			}),
+		).toBeTruthy()
+		expect(screen.getAllByRole('link', { name: /Configurer/ })).toHaveLength(1)
 	})
 
-	it('draws the org chart with sub-agent counts', async () => {
-		await renderAtPath(<OrgChartPage />, '/agents/organigramme', EXTRA)
+	it('asks the API for archived agents on the archives filter', async () => {
+		const fetchMock = mockApi({ 'GET /api/v1/team/agents': { items: [] } })
+		await renderAtPath(
+			withQueryClient(<AgentTeamPage filter="archives" />),
+			'/agents',
+			EXTRA,
+		)
+		expect(
+			await screen.findByText(/Aucun agent archivés pour l'instant/),
+		).toBeTruthy()
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).includes('archived=true'),
+			),
+		).toBe(true)
+	})
+
+	it('draws the org chart from reports_to', async () => {
+		mockApi(LIST)
+		await renderAtPath(
+			withQueryClient(<OrgChartPage />),
+			'/agents/organigramme',
+			EXTRA,
+		)
 		expect(await screen.findByRole('heading', { name: 'Agents' })).toBeTruthy()
 		expect(
 			screen
 				.getByRole('link', { name: 'Organigramme' })
 				.getAttribute('aria-current'),
 		).toBe('page')
-		expect(screen.getByText(/Données de démonstration/)).toBeTruthy()
-		expect(screen.getByText('2 sous-agents')).toBeTruthy()
-		expect(screen.getAllByText(/peut déléguer/).length).toBeGreaterThan(0)
+		expect(await screen.findByText('2 sous-agents')).toBeTruthy()
+		expect(screen.getByText('1 sous-agent')).toBeTruthy()
 		const registre = screen.getByRole('link', { name: /Registre/ })
-		expect(registre.getAttribute('href')).toBe('/agents/registre')
+		expect(registre.getAttribute('href')).toBe('/agents/a-registre')
 		await userEvent.click(registre)
+	})
+
+	it('shows an empty org chart and its error state', async () => {
+		mockApi({ 'GET /api/v1/team/agents': { items: [] } })
+		const { unmount } = await renderAtPath(
+			withQueryClient(<OrgChartPage />),
+			'/agents/organigramme',
+			EXTRA,
+		)
+		expect(await screen.findByText('Aucun agent')).toBeTruthy()
+		unmount()
+		mockApi({
+			'GET /api/v1/team/agents': {
+				status: 500,
+				body: { code: 'internal', message: 'boom', status: 500 },
+			},
+		})
+		await renderAtPath(
+			withQueryClient(<OrgChartPage />),
+			'/agents/organigramme',
+			EXTRA,
+		)
+		expect(
+			await screen.findByText("Impossible de charger l'organigramme."),
+		).toBeTruthy()
 	})
 })

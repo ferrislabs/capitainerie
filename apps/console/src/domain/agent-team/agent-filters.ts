@@ -3,6 +3,7 @@ export const AGENT_FILTERS = [
 	{ id: 'actifs', label: 'Actifs' },
 	{ id: 'pause', label: 'En pause' },
 	{ id: 'erreur', label: 'Erreur' },
+	{ id: 'archives', label: 'Archivés' },
 ] as const
 
 export type AgentFilter = (typeof AGENT_FILTERS)[number]['id']

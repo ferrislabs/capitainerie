@@ -6,15 +6,19 @@ import {
 	ADAPTERS,
 	DIRECTION,
 	EFFORTS,
-	MODELS,
 	ROLES,
 	SKILL_ALL,
 	WAKE_INTERVALS,
 } from '#/domain/agent-team/constants'
+import {
+	isValidModelId,
+	MODEL_ID_ERROR,
+	MODEL_ID_PLACEHOLDER,
+} from '#/domain/agent-team/model-id'
 import { AdapterChip } from '#/domain/agent-team/ui/adapter-chip'
 import { CTL } from '#/domain/agent-team/ui/field-row'
 import { Mascot } from '#/domain/agent-team/ui/mascot'
-import { Options } from '#/domain/agent-team/ui/options'
+import { type OptionItem, Options } from '#/domain/agent-team/ui/options'
 import {
 	toggled,
 	WIZARD_LAST_STEP,
@@ -49,7 +53,7 @@ const CHOICE_ON =
 
 interface Props {
 	state: WizardState
-	reportsOptions: ReadonlyArray<string>
+	reportsOptions: ReadonlyArray<OptionItem>
 	sources: ReadonlyArray<{ id: string; name: string }>
 	connectors: ReadonlyArray<string>
 	canAdvance: boolean
@@ -110,14 +114,24 @@ function Field({
 	)
 }
 
-function Recap({ state, sources }: Pick<Props, 'state' | 'sources'>) {
+function Recap({
+	state,
+	sources,
+	reportsOptions,
+}: Pick<Props, 'state' | 'sources' | 'reportsOptions'>) {
 	const rows: ReadonlyArray<readonly [string, string]> = [
 		['Nom', state.name.trim()],
 		['Adaptateur', state.adapter],
 		['Connexion', CONNECTION_RECAP[state.conn]],
 		['Rôle', state.role + (state.title ? ` · ${state.title}` : '')],
-		['Rapporte à', state.reports],
-		['Modèle', `${state.model} · effort ${state.effort.toLowerCase()}`],
+		[
+			'Rapporte à',
+			reportsOptions.find((o) => o.value === state.reports)?.label ?? DIRECTION,
+		],
+		[
+			'Modèle',
+			`${state.model.trim() || 'modèle par défaut du fournisseur'} · effort ${state.effort.toLowerCase()}`,
+		],
 		[
 			'Réveils',
 			state.interval === 'Manuelle'
@@ -417,18 +431,28 @@ export function WizardView({
 										onChange({ reports: event.target.value })
 									}
 								>
-									<Options values={[DIRECTION, ...reportsOptions]} />
+									<Options
+										values={[
+											{ value: DIRECTION, label: DIRECTION },
+											...reportsOptions,
+										]}
+									/>
 								</select>
 							</Field>
 							<Field label="Modèle">
-								<select
+								<input
 									className={CTL}
 									value={state.model}
+									placeholder={MODEL_ID_PLACEHOLDER}
+									aria-invalid={!isValidModelId(state.model)}
 									onChange={(event) => onChange({ model: event.target.value })}
-								>
-									<Options values={MODELS} />
-								</select>
+								/>
 							</Field>
+							{isValidModelId(state.model) ? null : (
+								<p role="alert" className="m-0 text-xs text-signal-danger">
+									{MODEL_ID_ERROR}
+								</p>
+							)}
 							<Field label="Effort de réflexion">
 								<select
 									className={CTL}
@@ -512,7 +536,11 @@ export function WizardView({
 						<h1 className="leading-[1.4] mt-1.5 mb-2.5 text-center text-[22px] font-bold">
 							Tout est prêt
 						</h1>
-						<Recap state={state} sources={sources} />
+						<Recap
+							state={state}
+							sources={sources}
+							reportsOptions={reportsOptions}
+						/>
 						{state.tested ? (
 							<div className="mt-2.5 rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success">
 								Test réussi : l'agent a répondu en 2,4 s.

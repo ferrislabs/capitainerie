@@ -3,7 +3,7 @@ import {
 	type AgentConfig,
 	buildDefaultConfig,
 } from '#/domain/agent-team/agent-config'
-import { demoStore } from '#/domain/demo'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 
 const configs = new Map<string, AgentConfig>()
 const listeners = new Set<() => void>()
@@ -21,19 +21,14 @@ function subscribe(listener: () => void) {
 	}
 }
 
-export function getAgentConfig(id: string): AgentConfig {
+const FALLBACK_AGENT = { role: 'Général', model: '' }
+
+export function getAgentConfig(
+	id: string,
+	agent: Pick<TeamAgent, 'role' | 'model'> = FALLBACK_AGENT,
+): AgentConfig {
 	const existing = configs.get(id)
 	if (existing) return existing
-	const agent = demoStore.state.agents.find((a) => a.id === id) ?? {
-		id,
-		name: id,
-		role: 'Général',
-		description: '',
-		status: 'idle' as const,
-		hue: 0,
-		model: 'Claude Sonnet 5.5',
-		reportsTo: null,
-	}
 	const created = buildDefaultConfig(agent)
 	configs.set(id, created)
 	return created
@@ -57,11 +52,14 @@ export function resetAgentConfigs(): void {
 	emit()
 }
 
-export function useAgentConfig(id: string): AgentConfig {
+export function useAgentConfig(
+	id: string,
+	agent?: Pick<TeamAgent, 'role' | 'model'>,
+): AgentConfig {
 	return useSyncExternalStore(
 		subscribe,
-		() => getAgentConfig(id),
-		() => getAgentConfig(id),
+		() => getAgentConfig(id, agent),
+		() => getAgentConfig(id, agent),
 	)
 }
 

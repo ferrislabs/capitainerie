@@ -1,14 +1,15 @@
 import { Link } from '@tanstack/react-router'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { ROW, Tag, Ttl } from '#/domain/agent-team/ui/rows'
-import type { DemoAgent, DemoTask } from '#/domain/demo'
+import type { DemoTask } from '#/domain/demo'
 import { shortName } from '#/domain/demo'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { StatusIcon } from '#/domain/tasks/ui/status-icon'
 
 interface Props {
 	task: DemoTask
-	assignee: DemoAgent | undefined
+	assignee: Pick<TeamAgent, 'hue' | 'name'> | undefined
 	sub?: string
 	showName?: boolean
 }

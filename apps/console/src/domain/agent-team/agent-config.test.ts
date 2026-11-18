@@ -5,37 +5,36 @@ import {
 	describeChanges,
 	diffForm,
 } from '#/domain/agent-team/agent-config'
-import { DEMO_AGENTS } from '#/domain/demo'
-
-const legal = DEMO_AGENTS.find((a) => a.id === 'veille-legale')
-const dev = DEMO_AGENTS.find((a) => a.id === 'dev')
+import { DEV } from '#/test-utils/team-agents'
 
 describe('agent config', () => {
-	it('gives the legal agent its own instructions', () => {
-		if (!legal) throw new Error('missing fixture')
-		expect(buildDefaultConfig(legal).fields.instr).toContain(
-			'Nouveaux sous-domaines sensibles',
-		)
+	it('starts without invented revisions', () => {
+		const config = buildDefaultConfig(DEV)
+		expect(config.rev).toBe(0)
+		expect(config.revs).toEqual([])
+		expect(config.fields.title).toBe('Ingénieur · Natalia')
 	})
 
-	it('gives other agents generated instructions', () => {
-		if (!dev) throw new Error('missing fixture')
-		expect(buildDefaultConfig(dev).fields.instr).toContain('Dev')
+	it('builds the form from the API agent', () => {
+		const form = buildForm(DEV, buildDefaultConfig(DEV))
+		expect(form).toMatchObject({
+			name: 'Dev (cycle autonome)',
+			description: 'Description Dev (cycle autonome)',
+			role: 'Ingénieur',
+			model: 'Claude Sonnet 5.5',
+			instr: '# Dev · Natalia',
+			reports: 'a-chief',
+		})
+		expect(
+			buildForm({ ...DEV, reports_to: null }, buildDefaultConfig(DEV)).reports,
+		).toBe('Aucun (direction)')
 	})
 
-	it('diffs form fields including env', () => {
-		if (!dev) throw new Error('missing fixture')
-		const base = buildForm(dev, 'Chief of Staff', buildDefaultConfig(dev))
+	it('diffs form fields', () => {
+		const base = buildForm(DEV, buildDefaultConfig(DEV))
 		expect(diffForm(base, base)).toEqual([])
-		const next = {
-			...base,
-			model: 'Claude Haiku 5.5',
-			env: [
-				...base.env,
-				{ id: 'a', name: 'A', secret: 'chatwoot-api', version: '1' },
-			],
-		}
-		expect(diffForm(base, next)).toEqual(['model', 'env'])
+		const next = { ...base, model: 'claude-haiku-5-5', effort: 'Élevé' }
+		expect(diffForm(base, next)).toEqual(['model', 'effort'])
 	})
 
 	it('names changes in French', () => {

@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { Live, ROW, Tag, Ttl } from '#/domain/agent-team/ui/rows'
-import type { DemoAgent } from '#/domain/demo'
 
 export interface OrgEntry {
-	agent: DemoAgent
+	agent: TeamAgent
 	depth: number
 	subCount: number
 	canDelegate: boolean

@@ -1,7 +1,7 @@
 import { Bot } from 'lucide-react'
-import { DemoBanner } from '#/components/layout/demo-banner'
-import { Notice, useNotice } from '#/components/layout/notice'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
+import { Skeleton } from '#/components/ui/skeleton'
 import {
 	getAgentConfig,
 	useConfigVersion,
@@ -10,51 +10,49 @@ import {
 	AGENT_FILTERS,
 	type AgentFilter,
 } from '#/domain/agent-team/agent-filters'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentList } from '#/domain/agent-team/ui/agent-list'
 import { AgentsHeader } from '#/domain/agent-team/ui/agents-header'
 import { AgentsTabs } from '#/domain/agent-team/ui/agents-tabs'
 import { Panel } from '#/domain/agent-team/ui/panel'
 import { Empty } from '#/domain/agent-team/ui/rows'
-import { type DemoAgent, useDemoState } from '#/domain/demo'
 
 interface Props {
 	filter?: AgentFilter
 }
 
-function visible(agents: ReadonlyArray<DemoAgent>, filter: AgentFilter) {
-	if (filter === 'tous') return agents
+function visible(agents: ReadonlyArray<TeamAgent>, filter: AgentFilter) {
+	if (filter === 'tous' || filter === 'archives') return agents
 	if (filter === 'actifs') return agents.filter((a) => a.status === 'running')
 	if (filter === 'pause')
-		return agents.filter((a) => getAgentConfig(a.id).paused)
+		return agents.filter((a) => getAgentConfig(a.id, a).paused)
 	return []
 }
 
 export function AgentTeamPage({ filter = 'tous' }: Props) {
-	const agents = useDemoState((s) => s.agents)
+	const query = useTeamAgents(filter === 'archives')
 	useConfigVersion()
-	const [message, setMessage] = useNotice()
-	const list = visible(agents, filter)
+	const list = visible(query.data?.items ?? [], filter)
 	const label = AGENT_FILTERS.find((f) => f.id === filter)?.label ?? ''
 	return (
 		<Page>
 			<AgentsHeader />
-			<DemoBanner />
 			<AgentsTabs active={filter} />
-			<Notice message={message} />
 			<Panel>
-				{list.length > 0 ? (
-					<>
-						<AgentList agents={list} />
-						<div className="flex min-h-9 items-center justify-center border-t px-3 py-1.5">
-							<button
-								type="button"
-								className="text-xs text-primary"
-								onClick={() => setMessage('13 agents supplémentaires')}
-							>
-								Afficher les 13 autres agents
-							</button>
-						</div>
-					</>
+				{query.isError ? (
+					<InlineAlert tone="danger">
+						Impossible de charger les agents.
+					</InlineAlert>
+				) : query.isPending ? (
+					<output className="grid gap-2 p-3">
+						<span className="sr-only">Chargement…</span>
+						{['a', 'b', 'c'].map((key) => (
+							<Skeleton key={key} className="h-9" />
+						))}
+					</output>
+				) : list.length > 0 ? (
+					<AgentList agents={list} />
 				) : (
 					<Empty
 						icon={<Bot aria-hidden="true" className="mx-auto size-4" />}

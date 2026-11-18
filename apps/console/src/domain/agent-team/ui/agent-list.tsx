@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { buttonVariants } from '#/components/ui/button'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { Live, ROW, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
-import type { DemoAgent } from '#/domain/demo'
 import { cn } from '#/lib/utils'
 
 interface Props {
-	agents: ReadonlyArray<DemoAgent>
+	agents: ReadonlyArray<TeamAgent>
 }
 
 export function AgentList({ agents }: Props) {
