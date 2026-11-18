@@ -280,6 +280,13 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 				adapter={form.adapter}
 				title={form.title}
 				paused={agent.paused}
+				mood={
+					agent.paused
+						? 'sleep'
+						: runs.length > 0 || agent.status === 'running'
+							? 'running'
+							: 'idle'
+				}
 				busy={update.isPending}
 				onAssign={() => setAssignTo(agent.id)}
 				onTogglePause={togglePause}

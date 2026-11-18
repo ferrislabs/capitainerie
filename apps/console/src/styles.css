@@ -258,6 +258,24 @@ body {
   animation: signal-pulse 1.6s ease-in-out infinite;
 }
 
+@keyframes mascot-zz {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(12px, -20px);
+    opacity: 0;
+  }
+}
+
+@utility animate-mascot-zz {
+  animation: mascot-zz 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

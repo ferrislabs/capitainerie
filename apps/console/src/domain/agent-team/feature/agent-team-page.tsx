@@ -1,4 +1,3 @@
-import { Bot } from 'lucide-react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { Skeleton } from '#/components/ui/skeleton'
@@ -11,6 +10,7 @@ import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentList } from '#/domain/agent-team/ui/agent-list'
 import { AgentsHeader } from '#/domain/agent-team/ui/agents-header'
 import { AgentsTabs } from '#/domain/agent-team/ui/agents-tabs'
+import { Mascot } from '#/domain/agent-team/ui/mascot'
 import { Panel } from '#/domain/agent-team/ui/panel'
 import { Empty } from '#/domain/agent-team/ui/rows'
 
@@ -49,7 +49,7 @@ export function AgentTeamPage({ filter = 'tous' }: Props) {
 					<AgentList agents={list} />
 				) : (
 					<Empty
-						icon={<Bot aria-hidden="true" className="mx-auto size-4" />}
+						icon={<Mascot name="" className="mx-auto block h-20 w-[94px]" />}
 						title="Aucun agent"
 					>
 						Aucun agent {label.toLowerCase()} pour l'instant.
