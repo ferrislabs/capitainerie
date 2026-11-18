@@ -104,6 +104,16 @@ use capitainerie_handlers_skills::{
     response::{SkillListResponse, SkillResponse},
     update_skill::UpdateSkillRequest,
 };
+use capitainerie_handlers_sources::{
+    self as sources,
+    create_source::CreateSourceRequest,
+    hook::HookResponse,
+    response::{
+        IssuedSourceResponse, SourceEventListResponse, SourceEventResponse, SourceEventStatusDto,
+        SourceKindDto, SourceListResponse, SourceResponse,
+    },
+    update_source::UpdateSourceRequest,
+};
 use capitainerie_handlers_team::{
     self as team,
     create_agent::CreateTeamAgentRequest,
@@ -169,6 +179,15 @@ use utoipa::{
         approvals::list_approvals::handler,
         approvals::get_approval::handler,
         approvals::decide_approval::handler,
+        sources::list_sources::handler,
+        sources::create_source::handler,
+        sources::get_source::handler,
+        sources::update_source::handler,
+        sources::archive_source::handler,
+        sources::rotate_token::handler,
+        sources::list_events::handler,
+        sources::test_source::handler,
+        sources::hook::handler,
         mcp::list_connectors::handler,
         mcp::create_connector::handler,
         mcp::get_connector::handler,
@@ -309,6 +328,16 @@ use utoipa::{
         ApprovalStatusDto,
         ApprovalDecisionDto,
         DecideApprovalRequest,
+        SourceResponse,
+        SourceListResponse,
+        SourceKindDto,
+        IssuedSourceResponse,
+        SourceEventResponse,
+        SourceEventListResponse,
+        SourceEventStatusDto,
+        CreateSourceRequest,
+        UpdateSourceRequest,
+        HookResponse,
         CreateTranscriptionRequest,
         TranscriptionResponse,
         ReadDocumentRequest,
@@ -376,6 +405,7 @@ use utoipa::{
         (name = team::TAG, description = "The registry of the team's agents: their role, model, instructions, connector grants and reporting line"),
         (name = skills::TAG, description = "The organization's catalog of skills: instructions added to the system prompt of the agents whose skills list names them"),
         (name = approvals::TAG, description = "Decisions agents ask the team to take, such as a write a run was not allowed to make"),
+        (name = sources::TAG, description = "External inputs whose events become cards handled by an agent: each source has a secret webhook URL, and the API keeps only a hash of its token"),
         (name = mcp::TAG, description = "MCP servers the organization connects to, each user authorizing with their own OAuth2 session (authorization code, PKCE S256, dynamic client registration)"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
@@ -513,6 +543,27 @@ mod tests {
         for field in ["client", "projects", "cards"] {
             assert!(detail[field].is_object(), "{field}");
         }
+    }
+
+    #[test]
+    fn the_sources_and_their_public_hook_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/sources"]["get"].is_object());
+        assert!(paths["/api/v1/sources"]["post"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}"]["get"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}/archive"]["post"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}/rotate-token"]["post"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}/events"]["get"].is_object());
+        assert!(paths["/api/v1/sources/{source_id}/test"]["post"].is_object());
+        let hook = &paths["/hooks/sources/{token}"]["post"];
+        assert!(hook.is_object());
+        assert!(hook["security"].is_null());
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["IssuedSourceResponse"]["properties"]["webhook_url"].is_object());
+        assert!(schemas["SourceResponse"]["properties"]["token"].is_null());
+        assert!(schemas["SourceResponse"]["properties"]["events_last_24h"].is_object());
     }
 
     #[test]

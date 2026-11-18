@@ -50,6 +50,10 @@ struct Args {
     integrations: IntegrationsArgs,
     #[arg(id = "console_url", long = "console-url", env = "CONSOLE_URL")]
     console_url: Option<String>,
+    /// The API's public URL, e.g. https://api.example.com: webhook URLs start with it.
+    /// Unset, they follow the request's X-Forwarded-* or Host headers.
+    #[arg(id = "public_api_url", long = "public-api-url", env = "PUBLIC_API_URL")]
+    public_api_url: Option<String>,
     #[command(flatten)]
     iggy: IggyArgs,
     #[command(flatten)]
@@ -149,6 +153,9 @@ async fn main() -> anyhow::Result<()> {
             mcp: router::McpAdapters {
                 http: mcp_http,
                 console_url: args.console_url.clone(),
+            },
+            sources: router::SourceAdapters {
+                public_api_url: args.public_api_url.clone(),
             },
         },
         github,

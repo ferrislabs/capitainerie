@@ -20,6 +20,7 @@ pub mod provider;
 pub mod run;
 pub mod similarity;
 pub mod skill;
+pub mod source;
 pub mod transcript;
 pub mod transcription;
 pub mod user_provider;
