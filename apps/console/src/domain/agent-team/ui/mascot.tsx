@@ -7,6 +7,8 @@ export type MascotState = 'idle' | 'running' | 'sleep'
 
 interface Props {
 	name: string
+	/** Teinte enregistrée de l'agent ; à défaut, dérivée du nom. */
+	hue?: number
 	state?: MascotState
 	className?: string
 	interactive?: boolean
@@ -64,9 +66,9 @@ interface Motion {
 	blinkT: number
 }
 
-export function mascotPalette(name: string) {
+export function mascotPalette(name: string, hue?: number) {
 	const awake = name.trim().length > 0
-	const h = awake ? hueOf(name) : 0
+	const h = awake ? (hue ?? hueOf(name)) : 0
 	const sat = (s: number) => (awake ? s : 6)
 	const top = (h + 200) % 360
 	return {
@@ -213,6 +215,7 @@ function draw(
 
 export function Mascot({
 	name,
+	hue,
 	state = 'idle',
 	className = 'h-[104px] w-[122px]',
 	interactive = true,
@@ -318,7 +321,7 @@ export function Mascot({
 		if (state || interactive) redrawRef.current?.()
 	}, [state, interactive])
 
-	const palette = mascotPalette(name)
+	const palette = mascotPalette(name, hue)
 	const asleep = state === 'sleep'
 	const pin = asleep ? 6 + 0.05 * 16 : 18.4
 	const zzz = cn(
