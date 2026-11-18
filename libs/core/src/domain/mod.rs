@@ -8,6 +8,7 @@ pub mod budget;
 pub mod card;
 pub mod client;
 pub mod conversation;
+pub mod cost;
 pub mod crew;
 pub mod delegation;
 pub mod document;
