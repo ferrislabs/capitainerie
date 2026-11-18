@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CHART_HEIGHT, rateBars, stackedBars } from '#/domain/dashboard/chart'
+import {
+	axisDates,
+	CHART_HEIGHT,
+	dailySeries,
+	dayWindow,
+	stackedBars,
+} from '#/domain/dashboard/chart'
 
 describe('stackedBars', () => {
 	it('stacks the segments of a bar from the bottom', () => {
@@ -21,13 +27,41 @@ describe('stackedBars', () => {
 		expect(bars).toHaveLength(2)
 		expect(bars[1]?.height).toBeCloseTo(CHART_HEIGHT - 4 - 0.6, 5)
 	})
+
+	it('draws nothing when every value is zero', () => {
+		expect(stackedBars([[0], [0]])).toEqual([])
+		expect(stackedBars([])).toEqual([])
+	})
 })
 
-describe('rateBars', () => {
-	it('maps 80 to nothing and 100 to the full height', () => {
-		const bars = rateBars([80, 90, 100])
-		expect(bars[0]?.height).toBe(0)
-		expect(bars[2]?.height).toBe(CHART_HEIGHT - 4)
-		expect(bars[2]?.x).toBeCloseTo(266, 5)
+describe('dayWindow', () => {
+	it('lists the last days ending today in UTC', () => {
+		const window = dayWindow(new Date('2026-11-18T15:30:00Z'), 3)
+		expect(window.days).toEqual(['2026-11-16', '2026-11-17', '2026-11-18'])
+		expect(window.from).toBe('2026-11-16T00:00:00.000Z')
+		expect(window.to).toBe('2026-11-19T00:00:00.000Z')
+	})
+})
+
+describe('dailySeries', () => {
+	it('fills the missing days with zeros', () => {
+		const rows = [{ key: '2026-11-17T00:00:00Z', runs: 4, failed: 1 }]
+		const series = dailySeries(rows, ['2026-11-16', '2026-11-17'], 2, (row) => [
+			row.runs,
+			row.failed,
+		])
+		expect(series).toEqual([
+			[0, 0],
+			[4, 1],
+		])
+	})
+})
+
+describe('axisDates', () => {
+	it('labels the first, middle and last day', () => {
+		expect(axisDates(['2026-11-04', '2026-11-05', '2026-11-06'])).toHaveLength(
+			3,
+		)
+		expect(axisDates(['2026-11-04'])).toHaveLength(1)
 	})
 })

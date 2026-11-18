@@ -2,18 +2,20 @@ import { Link } from '@tanstack/react-router'
 import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import { hueOf } from '#/domain/agent-team/agent-identity'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { FieldRow } from '#/domain/agent-team/ui/field-row'
 import { Chip, ChipList, Empty, Rows } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import { TaskLine } from '#/domain/agent-team/ui/task-line'
-import type { DemoAgent, DemoTask } from '#/domain/demo'
+import type { DemoTask } from '#/domain/demo'
 
 interface Props {
-	agent: DemoAgent
+	agent: TeamAgent
 	form: AgentForm
 	skills: ReadonlyArray<string>
 	paused: boolean
 	subCount: number
+	reportsTo: string
 	tasks: ReadonlyArray<DemoTask>
 	onCopyKey: () => void
 }
@@ -24,6 +26,7 @@ export function OverviewTab({
 	skills,
 	paused,
 	subCount,
+	reportsTo,
 	tasks,
 	onCopyKey,
 }: Props) {
@@ -42,8 +45,9 @@ export function OverviewTab({
 						<Sev tone={tone}>{status}</Sev>
 					</FieldRow>
 					<FieldRow label="Rôle">{agent.role}</FieldRow>
+					<FieldRow label="Description">{agent.description || '—'}</FieldRow>
 					<FieldRow label="Titre">{form.title}</FieldRow>
-					<FieldRow label="Rapporte à">{form.reports}</FieldRow>
+					<FieldRow label="Rapporte à">{reportsTo}</FieldRow>
 					<FieldRow label="Rapports directs">{subCount}</FieldRow>
 					<FieldRow label="Clé publique">
 						<span className="font-mono text-[11.5px]">

@@ -1,35 +1,31 @@
-import type { DemoTask, DemoTaskStatus } from '#/domain/demo'
+import type { Task, TaskStatus } from '#/domain/tasks/model'
 
-export const STATUS_ORDER: DemoTaskStatus[] = [
-	'blocked',
+export const STATUS_ORDER: TaskStatus[] = [
 	'progress',
-	'review',
 	'todo',
 	'backlog',
 	'done',
 	'cancelled',
 ]
 
-export const BOARD_STATUSES: DemoTaskStatus[] = STATUS_ORDER.slice(0, 6)
+export const BOARD_STATUSES: TaskStatus[] = STATUS_ORDER.slice(0, 4)
 
-export const STATUS_LABEL: Record<DemoTaskStatus, string> = {
+export const STATUS_LABEL: Record<TaskStatus, string> = {
 	todo: 'À faire',
 	progress: 'En cours',
-	review: 'En revue',
 	done: 'Terminé',
-	blocked: 'Bloqué',
-	cancelled: 'Annulé',
-	backlog: 'Backlog',
+	cancelled: 'Rejeté',
+	backlog: 'Proposé',
 }
 
 export interface TaskGroup {
-	status: DemoTaskStatus
-	tasks: DemoTask[]
+	status: TaskStatus
+	tasks: Task[]
 }
 
 export function groupByStatus(
-	tasks: ReadonlyArray<DemoTask>,
-	options: { keepEmpty?: boolean; statuses?: DemoTaskStatus[] } = {},
+	tasks: ReadonlyArray<Task>,
+	options: { keepEmpty?: boolean; statuses?: TaskStatus[] } = {},
 ): TaskGroup[] {
 	return (options.statuses ?? STATUS_ORDER)
 		.map((status) => ({
@@ -40,10 +36,10 @@ export function groupByStatus(
 }
 
 export function filterTasks(
-	tasks: ReadonlyArray<DemoTask>,
+	tasks: ReadonlyArray<Task>,
 	query: string,
-	agentName: (agentId: string) => string,
-): DemoTask[] {
+	agentName: (agentId: string | null) => string,
+): Task[] {
 	const q = query.trim().toLowerCase()
 	if (!q) return [...tasks]
 	return tasks.filter((t) =>

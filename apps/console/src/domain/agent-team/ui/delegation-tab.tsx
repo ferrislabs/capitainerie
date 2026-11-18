@@ -3,35 +3,36 @@ import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
+import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { CTL, FieldRow, Note } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
 import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { TaskLine } from '#/domain/agent-team/ui/task-line'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
-import type { DemoAgent, DemoTask } from '#/domain/demo'
+import type { DemoTask } from '#/domain/demo'
 
 export interface SubAgentEntry {
-	agent: DemoAgent
+	agent: TeamAgent
 	openTasks: number
 }
 
 export interface DelegatedTask {
 	task: DemoTask
-	assignee: DemoAgent | undefined
+	assignee: TeamAgent | undefined
 }
 
 interface Props {
-	agent: DemoAgent
-	ancestors: ReadonlyArray<DemoAgent>
+	agent: TeamAgent
+	ancestors: ReadonlyArray<TeamAgent>
 	subs: ReadonlyArray<SubAgentEntry>
-	candidates: ReadonlyArray<DemoAgent>
+	candidates: ReadonlyArray<TeamAgent>
 	recent: ReadonlyArray<DelegatedTask>
 	form: AgentForm
 	onChange: (patch: Partial<AgentForm>) => void
 	onRemove: (subId: string) => void
 	onAdd: (subId: string) => void
-	onAssign: (sub: DemoAgent) => void
+	onAssign: (sub: TeamAgent) => void
 }
 
 function Choice({

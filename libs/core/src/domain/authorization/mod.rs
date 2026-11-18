@@ -44,6 +44,7 @@ pub enum Action {
     CardMove { from: Column, to: Column },
     ProviderRead,
     ProviderManage,
+    UserProviderManage,
     ModelsAssign,
     CardExecute,
     GithubManage,
@@ -58,6 +59,12 @@ pub enum Action {
     IntegrationCall { access: Access },
     CardIntervene,
     IntegrationRevert,
+    AgentRead,
+    AgentManage,
+    McpConnectorManage,
+    McpConnect,
+    AgentRun,
+    McpCall { initiated: bool, granted: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +82,7 @@ pub enum ResourceKind {
     Run,
     Card,
     Provider,
+    UserProvider,
     ModelAssignments,
     GithubInstallation,
     GithubApp,
@@ -83,6 +91,8 @@ pub enum ResourceKind {
     Member,
     Conversation,
     IntegrationInstance,
+    Agent,
+    McpConnector,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,13 +101,14 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 6] = [
+pub const READ_ACTIONS: [&str; 7] = [
     "run.read",
     "card.read",
     "provider.read",
     "conversation.read",
     "github.read",
     "integration.read",
+    "agent.read",
 ];
 
 impl Action {
@@ -118,6 +129,7 @@ impl Action {
             Self::CardMove { .. } => "card.move",
             Self::ProviderRead => "provider.read",
             Self::ProviderManage => "provider.manage",
+            Self::UserProviderManage => "user_provider.manage",
             Self::ModelsAssign => "models.assign",
             Self::CardExecute => "card.execute",
             Self::GithubManage => "github.manage",
@@ -132,6 +144,12 @@ impl Action {
             Self::IntegrationCall { .. } => "integration.call",
             Self::CardIntervene => "card.intervene",
             Self::IntegrationRevert => "integration.revert",
+            Self::AgentRead => "agent.read",
+            Self::AgentManage => "agent.manage",
+            Self::McpConnectorManage => "mcp_connector.manage",
+            Self::McpConnect => "mcp_connector.connect",
+            Self::AgentRun => "agent.run",
+            Self::McpCall { .. } => "mcp.call",
         }
     }
 }
@@ -145,6 +163,7 @@ impl ResourceKind {
             Self::Run => "run",
             Self::Card => "card",
             Self::Provider => "provider",
+            Self::UserProvider => "user_provider",
             Self::ModelAssignments => "model_assignments",
             Self::GithubInstallation => "github_installation",
             Self::GithubApp => "github_app",
@@ -153,6 +172,8 @@ impl ResourceKind {
             Self::Member => "member",
             Self::Conversation => "conversation",
             Self::IntegrationInstance => "integration_instance",
+            Self::Agent => "agent",
+            Self::McpConnector => "mcp_connector",
         }
     }
 }

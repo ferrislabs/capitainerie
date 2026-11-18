@@ -1,6 +1,9 @@
+mod agent_run;
+mod agent_task_pipeline;
 mod card;
 mod client;
 mod conversation;
+mod crew;
 mod document;
 mod execute_pipeline;
 mod execute_stream;
@@ -10,11 +13,14 @@ mod integration_action;
 mod integration_revert;
 mod intervene_pipeline;
 mod intervention;
+mod mcp;
 mod organization;
 mod pipeline;
 mod provider;
 mod run;
 mod transcription;
+mod user_provider;
+mod worksite;
 
 use std::sync::Arc;
 
@@ -27,6 +33,8 @@ use crate::infrastructure::{
     postgres,
 };
 
+pub use agent_run::{AgentTaskSource, StartedAgentRun};
+pub use agent_task_pipeline::{AgentTaskConfig, AgentTaskPipeline};
 pub use client::RunCardLinks;
 pub use document::PreparedDocumentReading;
 pub use execute_pipeline::{ExecuteConfig, ExecutePipeline, ExecutionContext, Executor};

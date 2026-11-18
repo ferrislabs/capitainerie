@@ -38,10 +38,11 @@ impl CardRepository for PgCardRepository<'_> {
                 provenance_transcript_id, provenance_start, provenance_end, provenance_quote,
                 created_by_run, created_by_subject, created_by_actor, version, created_at, updated_at,
                 client_id, project_id,
-                acceptance_criteria, priority, due_date, assignee_subject, labels, estimate
+                acceptance_criteria, priority, due_date, assignee_subject, labels, estimate,
+                assignee_agent_id, parent_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                    $18, $19, $20, $21, $22, $23)
+                    $18, $19, $20, $21, $22, $23, $24, $25)
             "#,
             card.id.0,
             card.organization_id.0,
@@ -66,6 +67,8 @@ impl CardRepository for PgCardRepository<'_> {
             card.attributes.assignee_subject,
             card.attributes.labels.as_slice(),
             card.attributes.estimate.map(Estimate::as_str),
+            card.attributes.assignee_agent_id.map(|id| id.0),
+            card.attributes.parent_id.map(|id| id.0),
         )
         .execute(&mut ***tx)
         .await
@@ -87,7 +90,8 @@ impl CardRepository for PgCardRepository<'_> {
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
-                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate,
+                   c.assignee_agent_id, c.parent_id
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id
@@ -119,7 +123,8 @@ impl CardRepository for PgCardRepository<'_> {
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
-                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate,
+                   c.assignee_agent_id, c.parent_id
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id
@@ -144,7 +149,7 @@ impl CardRepository for PgCardRepository<'_> {
             SET title = $3, description = $4, "column" = $5, version = $6, updated_at = $7,
                 client_id = $8, project_id = $9,
                 acceptance_criteria = $10, priority = $11, due_date = $12, assignee_subject = $13,
-                labels = $14, estimate = $15
+                labels = $14, estimate = $15, assignee_agent_id = $16, parent_id = $17
             WHERE organization_id = $1 AND id = $2 AND version = $6 - 1
             "#,
             card.organization_id.0,
@@ -162,6 +167,8 @@ impl CardRepository for PgCardRepository<'_> {
             card.attributes.assignee_subject,
             card.attributes.labels.as_slice(),
             card.attributes.estimate.map(Estimate::as_str),
+            card.attributes.assignee_agent_id.map(|id| id.0),
+            card.attributes.parent_id.map(|id| id.0),
         )
         .execute(&mut ***tx)
         .await
@@ -212,6 +219,35 @@ impl CardRepository for PgCardRepository<'_> {
             .collect())
     }
 
+    async fn ancestors(
+        &mut self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> Result<Vec<CardId>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query!(
+            r#"
+            WITH RECURSIVE chain AS (
+                SELECT parent_id, 1 AS depth
+                FROM cards
+                WHERE organization_id = $1 AND id = $2 AND parent_id IS NOT NULL
+                UNION ALL
+                SELECT c.parent_id, chain.depth + 1
+                FROM cards c
+                JOIN chain ON c.id = chain.parent_id
+                WHERE c.organization_id = $1 AND c.parent_id IS NOT NULL AND chain.depth < 50
+            )
+            SELECT parent_id AS "id!" FROM chain ORDER BY depth
+            "#,
+            organization_id.0,
+            id.0,
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(rows.into_iter().map(|row| CardId(row.id)).collect())
+    }
+
     async fn list(
         &mut self,
         organization_id: OrganizationId,
@@ -226,7 +262,8 @@ impl CardRepository for PgCardRepository<'_> {
                    c.created_by_run, c.created_by_subject, c.created_by_actor, c.version, c.created_at, c.updated_at,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    c.client_id, cl.name AS "client_name?", c.project_id, p.name AS "project_name?",
-                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate
+                   c.acceptance_criteria, c.priority, c.due_date, c.assignee_subject, c.labels, c.estimate,
+                   c.assignee_agent_id, c.parent_id
             FROM cards c
             LEFT JOIN transcripts t ON t.id = c.provenance_transcript_id
             LEFT JOIN clients cl ON cl.id = c.client_id

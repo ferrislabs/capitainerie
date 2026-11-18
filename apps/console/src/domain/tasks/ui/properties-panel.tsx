@@ -1,17 +1,22 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { DemoTask, DemoTaskStatus } from '#/domain/demo'
+import {
+	PRIORITY_LABEL,
+	type Task,
+	type TaskStatus,
+} from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { STATUS_LABEL, STATUS_ORDER } from '#/domain/tasks/task-list'
-import { AgentChip, HumanAvatar } from '#/domain/tasks/ui/agent-chip'
+import { AgentChip } from '#/domain/tasks/ui/agent-chip'
 import type { AgentView } from '#/domain/tasks/ui/tasks-view'
 
 interface Props {
-	task: DemoTask
+	task: Task
 	agent: AgentView
-	subtasks: ReadonlyArray<DemoTask>
-	onStatus: (status: DemoTaskStatus) => void
+	subtasks: ReadonlyArray<Task>
+	busy?: boolean
+	onStatus: (status: TaskStatus) => void
 	onClose: () => void
 }
 
@@ -37,18 +42,25 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 const LINK = 'text-xs text-primary'
 
+const dateFormat = new Intl.DateTimeFormat('fr-FR', {
+	dateStyle: 'medium',
+	timeStyle: 'short',
+})
+
+const formatDate = (iso: string): string => {
+	const time = Date.parse(iso)
+	return Number.isNaN(time) ? '' : dateFormat.format(time)
+}
+
 export function PropertiesPanel({
 	task,
 	agent,
 	subtasks,
+	busy = false,
 	onStatus,
 	onClose,
 }: Props) {
-	const first = task.id === 'NAT-611'
-	const blockedBy =
-		task.note && task.status === 'blocked'
-			? task.note.replace('attend la sous-tâche ', '')
-			: 'Aucune'
+	const card = task.card
 	return (
 		<aside
 			aria-label="Propriétés"
@@ -70,7 +82,8 @@ export function PropertiesPanel({
 					<select
 						aria-label="Statut"
 						value={task.status}
-						onChange={(event) => onStatus(event.target.value as DemoTaskStatus)}
+						disabled={busy}
+						onChange={(event) => onStatus(event.target.value as TaskStatus)}
 						className="max-w-full border-0 bg-transparent py-0.5"
 					>
 						{STATUS_ORDER.map((s) => (
@@ -81,20 +94,28 @@ export function PropertiesPanel({
 					</select>
 				</Row>
 				<Row label="Assigné à">
-					<Link
-						to="/agents/$agentId/{-$tab}"
-						params={{ agentId: task.agentId }}
-						className="text-foreground"
-					>
-						<AgentChip
-							name={agent.name}
-							hue={agent.hue}
+					{task.agentId ? (
+						<Link
+							to="/agents/$agentId/{-$tab}"
+							params={{ agentId: task.agentId }}
 							className="text-foreground"
-						/>
-					</Link>
+						>
+							<AgentChip
+								name={agent.name}
+								hue={agent.hue}
+								className="text-foreground"
+							/>
+						</Link>
+					) : (
+						'Personne'
+					)}
 				</Row>
+				<Row label="Priorité">{PRIORITY_LABEL[card.priority]}</Row>
 				<Row label="Projet">{task.project || 'Aucun'}</Row>
-				<Row label="Étiquettes">{first ? 'routine' : 'Aucune'}</Row>
+				<Row label="Client">{card.client?.name ?? 'Aucun'}</Row>
+				<Row label="Étiquettes">
+					{card.labels.length ? card.labels.join(', ') : 'Aucune'}
+				</Row>
 			</Group>
 			<Group title="Relations">
 				<Row label="Parent">
@@ -104,14 +125,12 @@ export function PropertiesPanel({
 							params={{ taskId: taskPathId(task.parentId) }}
 							className={LINK}
 						>
-							{task.parentId}
+							{task.parentId.slice(0, 8)}
 						</Link>
 					) : (
 						'Aucun'
 					)}
 				</Row>
-				<Row label="Bloquée par">{blockedBy}</Row>
-				<Row label="Bloque">{task.id === 'NAT-680' ? 'NAT-679' : 'Aucune'}</Row>
 				<Row label="Sous-tâches">
 					{subtasks.length ? (
 						<span className="flex flex-wrap gap-x-1">
@@ -122,7 +141,7 @@ export function PropertiesPanel({
 									params={{ taskId: taskPathId(c.id) }}
 									className={LINK}
 								>
-									{c.id}
+									{c.shortId}
 								</Link>
 							))}
 						</span>
@@ -131,25 +150,10 @@ export function PropertiesPanel({
 					)}
 				</Row>
 			</Group>
-			<Group title="Exécution">
-				<Row label="Relecteurs">Aucun</Row>
-				<Row label="Approbateurs">Aucun</Row>
-				<Row label="Nouvelle tentative">
-					{first ? 'Dans 2 h 27 · 17 nov. · tentative 1' : 'Aucune'}
-				</Row>
-				<Row label="Moniteur">Aucun</Row>
-				<Row label="Chien de garde">Aucun</Row>
-			</Group>
 			<Group title="À propos">
-				<Row label="Origine">
-					<span className="flex items-center gap-1.5 text-xs">
-						<HumanAvatar initials="FG" size={18} />
-						François-Guillaume Ribreau
-					</span>
-				</Row>
-				<Row label="Démarrée">14 nov. 2026, 07:00</Row>
-				<Row label="Créée">14 nov. 2026, 07:00</Row>
-				<Row label="Mise à jour">il y a 3 j</Row>
+				<Row label="Origine">{card.created_by_subject}</Row>
+				<Row label="Créée">{formatDate(card.created_at)}</Row>
+				<Row label="Mise à jour">{task.age}</Row>
 			</Group>
 		</aside>
 	)

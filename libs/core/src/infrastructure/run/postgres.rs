@@ -50,7 +50,9 @@ impl RunRepository for PgRunRepository<'_> {
                 Some(repository.to_string()),
                 Some(base_branch.as_str()),
             ),
-            RunSubject::Intervention { card_id } => (None, Some(card_id.0), None, None),
+            RunSubject::Intervention { card_id } | RunSubject::AgentTask { card_id } => {
+                (None, Some(card_id.0), None, None)
+            }
         };
         let mut tx = self.tx.lock().await;
         sqlx::query!(

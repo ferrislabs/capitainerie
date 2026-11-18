@@ -1,12 +1,16 @@
 pub mod delete_provider;
+pub mod delete_user_provider;
 pub mod dto;
 pub mod get_assignments;
 pub mod list_models;
 pub mod list_providers;
+pub mod list_user_providers;
 pub mod put_assignments;
 pub mod put_provider;
+pub mod put_user_provider;
 pub mod state;
 pub mod test_provider;
+pub mod test_user_provider;
 
 use axum::Router;
 use axum_extra::routing::RouterExt;
@@ -26,6 +30,10 @@ where
         .typed_put(put_provider::handler::<C>)
         .typed_delete(delete_provider::handler::<C>)
         .typed_post(test_provider::handler::<C>)
+        .typed_get(list_user_providers::handler::<C>)
+        .typed_put(put_user_provider::handler::<C>)
+        .typed_delete(delete_user_provider::handler::<C>)
+        .typed_post(test_user_provider::handler::<C>)
         .typed_get(list_models::handler::<C>)
         .typed_get(get_assignments::handler::<C>)
         .typed_put(put_assignments::handler::<C>)

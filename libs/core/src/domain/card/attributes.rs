@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use capitainerie_common::{ClientId, CoreError, ProjectId};
+use capitainerie_common::{AgentId, CardId, ClientId, CoreError, ProjectId};
 use chrono::{Months, NaiveDate, Utc};
 
 use crate::domain::label::clean_label;
@@ -221,6 +221,8 @@ pub struct Attributes {
     pub assignee_subject: Option<String>,
     pub labels: Labels,
     pub estimate: Option<Estimate>,
+    pub assignee_agent_id: Option<AgentId>,
+    pub parent_id: Option<CardId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

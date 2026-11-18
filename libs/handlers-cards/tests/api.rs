@@ -20,6 +20,10 @@ use capitainerie_core::{
             service::{CreateCard, MoveCard},
         },
         client::{Client, service::CreateClient},
+        crew::{
+            CrewAgent,
+            service::{CreateAgent, UpdateAgent},
+        },
         execution::GithubAppCredentials,
         project::{Project, service::CreateProject},
     },
@@ -94,6 +98,16 @@ async fn fake_github(calls: Arc<AtomicUsize>) -> String {
         .route(
             "/repos/{owner}/{repo}",
             get(|| async { Json(json!({"default_branch": "trunk"})) }),
+        )
+        .route(
+            "/repos/{owner}/{repo}/issues",
+            get(|| async {
+                Json(json!([
+                    {"number": 7, "title": "Crash on empty input", "body": "Steps to reproduce", "html_url": "https://github.com/acme/web/issues/7", "labels": [{"name": "bug"}]},
+                    {"number": 8, "title": "A pull request", "body": null, "html_url": "https://github.com/acme/web/pull/8", "labels": [], "pull_request": {}},
+                    {"number": 9, "title": "Dark mode", "body": null, "html_url": "https://github.com/acme/web/issues/9", "labels": []}
+                ]))
+            }),
         )
         .layer(axum::middleware::from_fn(
             move |request: axum::extract::Request, next: axum::middleware::Next| {
@@ -1158,4 +1172,458 @@ async fn the_board_filters_by_client_project_priority_assignee_and_label() {
         .await
         .unwrap();
     assert_eq!(response.status(), 422);
+}
+
+impl Fixture {
+    async fn project(&self) -> Project {
+        self.project_in(self.organization.id, "Site vitrine", None)
+            .await
+    }
+
+    async fn launch(&self, project: &Project, body: Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!(
+                "{}/api/v1/projects/{}/worksites",
+                self.base, project.id.0
+            ))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn worksites(&self, project: &Project) -> Value {
+        reqwest::Client::new()
+            .get(format!(
+                "{}/api/v1/projects/{}/worksites",
+                self.base, project.id.0
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn prompts_and_issues_open_one_worksite_each_in_one_call() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let project = fixture.project().await;
+
+    let response = fixture
+        .launch(
+            &project,
+            json!({
+                "repository": "acme/web",
+                "prompts": ["Ajouter un CHANGELOG\n\nÀ la racine"],
+                "issues": [9, 7, 7],
+            }),
+        )
+        .await;
+
+    assert_eq!(response.status(), 202);
+    let body: Value = response.json().await.unwrap();
+    let worksites = body["worksites"].as_array().unwrap();
+    assert_eq!(worksites.len(), 3);
+    for worksite in worksites {
+        assert_eq!(worksite["card"]["column"], "in_progress");
+        assert_eq!(worksite["card"]["project"]["id"], project.id.0.to_string());
+    }
+    let titles: Vec<_> = worksites
+        .iter()
+        .map(|worksite| worksite["card"]["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        titles,
+        ["Ajouter un CHANGELOG", "Crash on empty input", "Dark mode"]
+    );
+
+    let listed = fixture.worksites(&project).await;
+    let items = listed["items"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert!(items.iter().all(|item| item["run_status"] == "queued"));
+    assert!(items.iter().all(|item| item["repository"] == "acme/web"));
+    let numbers: Vec<_> = items
+        .iter()
+        .filter_map(|item| item["issue_number"].as_u64())
+        .collect();
+    assert_eq!(numbers.len(), 2);
+    assert!(numbers.contains(&7) && numbers.contains(&9));
+}
+
+#[tokio::test]
+async fn an_issue_becomes_a_card_once() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let project = fixture.project().await;
+    let first = fixture
+        .launch(&project, json!({"repository": "acme/web", "issues": [7]}))
+        .await;
+    assert_eq!(first.status(), 202);
+
+    let again = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/web", "prompts": ["Autre chose"], "issues": [7]}),
+        )
+        .await;
+
+    assert_eq!(again.status(), 409);
+    assert_eq!(message(again).await, "issue_already_imported");
+    let listed = fixture.worksites(&project).await;
+    assert_eq!(
+        listed["items"].as_array().unwrap().len(),
+        1,
+        "the batch rolled back"
+    );
+}
+
+#[tokio::test]
+async fn a_closed_issue_or_a_foreign_repository_opens_nothing() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let project = fixture.project().await;
+
+    let closed = fixture
+        .launch(&project, json!({"repository": "acme/web", "issues": [8]}))
+        .await;
+    assert_eq!(closed.status(), 422, "a pull request is not an issue");
+
+    let outside = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/other", "prompts": ["x"]}),
+        )
+        .await;
+    assert_eq!(outside.status(), 403);
+    assert_eq!(message(outside).await, "repository_not_allowed");
+
+    assert!(
+        fixture.worksites(&project).await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn an_empty_or_oversized_launch_is_refused() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let project = fixture.project().await;
+
+    let nothing = fixture
+        .launch(&project, json!({"repository": "acme/web"}))
+        .await;
+    assert_eq!(nothing.status(), 422);
+
+    let blank = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/web", "prompts": ["  "]}),
+        )
+        .await;
+    assert_eq!(blank.status(), 422);
+
+    let too_many: Vec<String> = (0..21).map(|n| format!("prompt {n}")).collect();
+    let many = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/web", "prompts": too_many}),
+        )
+        .await;
+    assert_eq!(many.status(), 422);
+}
+
+#[tokio::test]
+async fn without_a_github_installation_nothing_is_opened() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    let project = fixture.project().await;
+
+    let response = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/web", "prompts": ["x"]}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 409);
+    assert_eq!(message(response).await, "github_not_connected");
+}
+
+#[tokio::test]
+async fn a_project_of_another_organization_is_not_found() {
+    let Some(fixture) = fixture(true).await else {
+        return;
+    };
+    fixture.connect().await;
+    let foreign = fixture.foreign_organization().await;
+    let project = fixture.project_in(foreign, "Ailleurs", None).await;
+
+    let listed = reqwest::Client::new()
+        .get(format!(
+            "{}/api/v1/projects/{}/worksites",
+            fixture.base, project.id.0
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), 404);
+
+    let launched = fixture
+        .launch(
+            &project,
+            json!({"repository": "acme/web", "prompts": ["x"]}),
+        )
+        .await;
+    assert_eq!(launched.status(), 404);
+}
+
+impl Fixture {
+    async fn create(&self, body: Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!("{}/api/v1/cards", self.base))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn created(&self, body: Value) -> Value {
+        let response = self.create(body).await;
+        assert_eq!(response.status(), 201);
+        response.json().await.unwrap()
+    }
+
+    async fn agent_in(&self, organization_id: OrganizationId, slug: &str) -> CrewAgent {
+        self.usecase
+            .create_crew_agent(
+                Subject {
+                    organization_id,
+                    ..self.subject(false)
+                },
+                CreateAgent {
+                    slug: slug.into(),
+                    name: slug.into(),
+                    role: String::new(),
+                    description: String::new(),
+                    model: String::new(),
+                    hue: 0,
+                    reports_to: None,
+                    instructions: String::new(),
+                    connector_grants: vec![],
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn stored_cards(&self) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM cards WHERE organization_id = $1")
+            .bind(self.organization.id.0)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn a_member_creates_a_card_straight_in_todo_with_its_links_and_agent() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let client = fixture.client_in(fixture.organization.id, "Acme").await;
+    let project = fixture
+        .project_in(fixture.organization.id, "Site", Some(&client))
+        .await;
+    let agent = fixture.agent_in(fixture.organization.id, "dev").await;
+
+    let card = fixture
+        .created(json!({
+            "title": " Refaire la home ",
+            "description": "Maquette Figma",
+            "project_id": project.id.0,
+            "client_id": client.id.0,
+            "priority": "high",
+            "assignee_agent_id": agent.id.0,
+        }))
+        .await;
+
+    assert_eq!(card["title"], "Refaire la home");
+    assert_eq!(card["description"], "Maquette Figma");
+    assert_eq!(card["column"], "todo");
+    assert_eq!(card["priority"], "high");
+    assert_eq!(card["assignee_agent_id"], json!(agent.id.0));
+    assert_eq!(card["parent_id"], Value::Null);
+    assert_eq!(card["client"]["name"], "Acme");
+    assert_eq!(card["project"]["name"], "Site");
+    assert_eq!(card["created_by_subject"], "user-1");
+    assert_eq!(card["created_by_agent"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_minimal_card_defaults_to_normal_priority_and_no_relations() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+
+    let card = fixture.created(json!({"title": "Appeler Acme"})).await;
+
+    assert_eq!(card["column"], "todo");
+    assert_eq!(card["priority"], "normal");
+    assert_eq!(card["description"], "");
+    assert_eq!(card["assignee_agent_id"], Value::Null);
+    assert_eq!(card["parent_id"], Value::Null);
+}
+
+#[tokio::test]
+async fn subtasks_nest_to_three_levels_and_no_further() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let root = fixture.created(json!({"title": "Racine"})).await;
+    let child = fixture
+        .created(json!({"title": "Enfant", "parent_id": root["id"]}))
+        .await;
+    let grandchild = fixture
+        .created(json!({"title": "Petit-enfant", "parent_id": child["id"]}))
+        .await;
+    assert_eq!(child["parent_id"], root["id"]);
+    assert_eq!(grandchild["parent_id"], child["id"]);
+    let before = fixture.stored_cards().await;
+
+    let too_deep = fixture
+        .create(json!({"title": "Arrière-petit-enfant", "parent_id": grandchild["id"]}))
+        .await;
+
+    assert_eq!(too_deep.status(), 422);
+    assert_eq!(fixture.stored_cards().await, before);
+}
+
+#[tokio::test]
+async fn an_unknown_foreign_or_archived_relation_is_a_422_and_creates_nothing() {
+    let Some(mine) = fixture(false).await else {
+        return;
+    };
+    let Some(theirs) = fixture(false).await else {
+        return;
+    };
+    let foreign_card = theirs.created(json!({"title": "Ailleurs"})).await;
+    let foreign_agent = theirs.agent_in(theirs.organization.id, "dev").await;
+    let archived = mine.agent_in(mine.organization.id, "old").await;
+    mine.usecase
+        .update_crew_agent(
+            mine.subject(false),
+            archived.id,
+            UpdateAgent {
+                archived: Some(true),
+                ..UpdateAgent::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    for body in [
+        json!({"title": "x", "parent_id": Uuid::now_v7()}),
+        json!({"title": "x", "parent_id": foreign_card["id"]}),
+        json!({"title": "x", "assignee_agent_id": Uuid::now_v7()}),
+        json!({"title": "x", "assignee_agent_id": foreign_agent.id.0}),
+        json!({"title": "x", "assignee_agent_id": archived.id.0}),
+        json!({"title": "x", "project_id": Uuid::now_v7()}),
+        json!({"title": "  "}),
+    ] {
+        let response = mine.create(body.clone()).await;
+        assert_eq!(response.status(), 422, "{body}");
+    }
+    assert_eq!(mine.stored_cards().await, 0);
+}
+
+#[tokio::test]
+async fn an_agent_cannot_create_a_card_through_the_http_route() {
+    let Some(fixture) = fixture_as(Github::Absent, Some("capitainerie-agent-writer")).await else {
+        return;
+    };
+
+    let response = fixture.create(json!({"title": "Détourné"})).await;
+
+    assert_eq!(response.status(), 403);
+    assert_eq!(fixture.stored_cards().await, 0);
+}
+
+#[tokio::test]
+async fn patching_sets_and_clears_the_agent_and_the_parent_and_refuses_loops() {
+    let Some(fixture) = fixture(false).await else {
+        return;
+    };
+    let agent = fixture.agent_in(fixture.organization.id, "dev").await;
+    let parent = fixture.created(json!({"title": "Parent"})).await;
+    let child = fixture.created(json!({"title": "Enfant"})).await;
+    let child_id = CardId(child["id"].as_str().unwrap().parse().unwrap());
+    let parent_id = CardId(parent["id"].as_str().unwrap().parse().unwrap());
+
+    let response = fixture
+        .patch(
+            child_id,
+            json!({
+                "expected_version": child["version"],
+                "parent_id": parent["id"],
+                "assignee_agent_id": agent.id.0,
+            }),
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+    let patched: Value = response.json().await.unwrap();
+    assert_eq!(patched["parent_id"], parent["id"]);
+    assert_eq!(patched["assignee_agent_id"], json!(agent.id.0));
+    assert_eq!(patched["title"], "Enfant");
+
+    let looped = fixture
+        .patch(
+            parent_id,
+            json!({"expected_version": parent["version"], "parent_id": child["id"]}),
+        )
+        .await;
+    assert_eq!(looped.status(), 422);
+    let own = fixture
+        .patch(
+            parent_id,
+            json!({"expected_version": parent["version"], "parent_id": parent["id"]}),
+        )
+        .await;
+    assert_eq!(own.status(), 422);
+    let unknown = fixture
+        .patch(
+            child_id,
+            json!({"expected_version": patched["version"], "assignee_agent_id": Uuid::now_v7()}),
+        )
+        .await;
+    assert_eq!(unknown.status(), 422);
+
+    let cleared = fixture
+        .patch(
+            child_id,
+            json!({
+                "expected_version": patched["version"],
+                "parent_id": null,
+                "assignee_agent_id": null,
+            }),
+        )
+        .await;
+    assert_eq!(cleared.status(), 200);
+    let cleared: Value = cleared.json().await.unwrap();
+    assert_eq!(cleared["parent_id"], Value::Null);
+    assert_eq!(cleared["assignee_agent_id"], Value::Null);
 }

@@ -38,6 +38,12 @@ pub(super) struct RunOverviewRow {
     pub project_name: Option<String>,
 }
 
+fn is_agent_task(pipeline: &[String]) -> bool {
+    pipeline
+        .iter()
+        .any(|step| step == StepKind::AgentTask.as_str())
+}
+
 fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
     match (
         row.transcript_id,
@@ -53,6 +59,11 @@ fn subject(row: &RunOverviewRow) -> Result<RunSubject, CoreError> {
             repository: repository.parse()?,
             base_branch: base_branch.clone(),
         }),
+        (None, Some(card_id), None, None) if is_agent_task(&row.pipeline) => {
+            Ok(RunSubject::AgentTask {
+                card_id: CardId(card_id),
+            })
+        }
         (None, Some(card_id), None, None) => Ok(RunSubject::Intervention {
             card_id: CardId(card_id),
         }),

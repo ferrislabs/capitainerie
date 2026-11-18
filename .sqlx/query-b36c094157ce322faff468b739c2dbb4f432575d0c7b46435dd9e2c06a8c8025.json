@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT card_id, issue_number, issue_url, created_at\n            FROM worksite_issues\n            WHERE organization_id = $1 AND repository = $2 AND issue_number = ANY($3)\n            ORDER BY issue_number\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "issue_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "issue_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b36c094157ce322faff468b739c2dbb4f432575d0c7b46435dd9e2c06a8c8025"
+}

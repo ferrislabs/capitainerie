@@ -1,38 +1,34 @@
-import { Link } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { Archive, ArchiveRestore, Link2, Link2Off, Wrench } from 'lucide-react'
+import type { Schemas } from '#/api/api.client'
 import { Button } from '#/components/ui/button'
-import { NativeSelect } from '#/components/ui/native-select'
 import { HumanAvatar } from '#/domain/audit/ui/avatar'
 import { Sev } from '#/domain/audit/ui/sev'
-import { type DemoAgent, type DemoConnector, shortName } from '#/domain/demo'
+import { expiryLabel, hostOf } from '#/domain/connectors/model'
+
+export type ToolsState =
+	| { kind: 'ok'; tools: ReadonlyArray<Schemas.McpToolResponse> }
+	| { kind: 'error'; message: string }
 
 interface Props {
-	connector: DemoConnector
-	agents: ReadonlyArray<DemoAgent>
-	grantedIds: ReadonlyArray<string>
-	onAddAccount: (connector: string) => void
-	onGrant: (agentId: string, connector: string) => void
-	onRevoke: (agentId: string, connector: string) => void
+	connector: Schemas.McpConnectorResponse
+	busy: boolean
+	tools: ToolsState | undefined
+	onConnect: (id: string) => void
+	onDisconnect: (id: string) => void
+	onTest: (id: string) => void
+	onArchive: (id: string, archived: boolean) => void
 }
 
 export function ConnectorCard({
 	connector,
-	agents,
-	grantedIds,
-	onAddAccount,
-	onGrant,
-	onRevoke,
+	busy,
+	tools,
+	onConnect,
+	onDisconnect,
+	onTest,
+	onArchive,
 }: Props) {
-	const granted = agents.filter((a) => grantedIds.includes(a.id))
-	const candidates = agents.filter((a) => !grantedIds.includes(a.id))
-	const [picked, setPicked] = useState('')
-	const selected = candidates.some((a) => a.id === picked)
-		? picked
-		: (candidates[0]?.id ?? '')
-	const toolCount = connector.tools.length
-	const hasAccount = connector.accounts.length > 0
-
+	const expiry = connector.connected ? expiryLabel(connector.expires_at) : null
 	return (
 		<article className="flex min-w-0 flex-col gap-2 overflow-hidden rounded-lg border bg-card px-3 py-[11px]">
 			<div className="flex items-start gap-2.5">
@@ -41,93 +37,108 @@ export function ConnectorCard({
 					<h3 className="m-0 text-[13px] font-semibold">
 						{connector.name}{' '}
 						<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
-							{connector.kind}
+							MCP
 						</span>
 					</h3>
-					<p className="m-0 text-muted-foreground">{connector.description}</p>
+					<p className="m-0 truncate font-mono text-xs text-muted-foreground">
+						{hostOf(connector.url)}
+					</p>
 				</div>
 				<Button
 					variant="outline"
 					size="sm"
-					onClick={() => onAddAccount(connector.name)}
+					disabled={busy}
+					onClick={() => onArchive(connector.id, !connector.archived)}
 				>
-					<Plus aria-hidden="true" />
-					Compte
+					{connector.archived ? (
+						<ArchiveRestore aria-hidden="true" />
+					) : (
+						<Archive aria-hidden="true" />
+					)}
+					{connector.archived ? 'Restaurer' : 'Archiver'}
 				</Button>
 			</div>
-			{hasAccount ? (
-				connector.accounts.map((account) => (
-					<div
-						key={account}
-						className="flex items-center gap-2 border-t pt-[7px]"
+			<div className="flex flex-wrap items-center gap-2 border-t pt-[7px]">
+				<Sev tone={connector.connected ? 'ok' : 'info'}>
+					{connector.connected ? 'Connecté' : 'Non connecté'}
+				</Sev>
+				{expiry ? (
+					<span
+						className={
+							expiry.expired ? 'text-signal-danger' : 'text-muted-foreground'
+						}
 					>
-						<Sev tone="ok">Connecté</Sev>
-						<span className="min-w-0 flex-1 truncate">{account}</span>
-					</div>
-				))
-			) : (
-				<div className="border-t pt-[7px] text-faint">
-					Aucun compte connecté
-				</div>
-			)}
-			<div className="border-t pt-[7px]">
-				<div className="mb-[5px] text-xs text-muted-foreground">
-					{toolCount} outil{toolCount > 1 ? 's' : ''} · agents autorisés
-				</div>
-				<div className="flex flex-wrap gap-1.5">
-					{granted.length === 0 ? (
-						<span className="text-faint">
-							Aucun : accès refusé à tous les agents
-						</span>
-					) : (
-						granted.map((a) => (
-							<span
-								key={a.id}
-								className="inline-flex items-center gap-1 rounded-full border bg-background py-0.5 pr-1 pl-[9px] font-mono text-xs"
+						{expiry.text}
+					</span>
+				) : null}
+				<div className="ml-auto flex flex-wrap gap-1.5">
+					{connector.connected ? (
+						<>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={busy}
+								onClick={() => onTest(connector.id)}
 							>
-								<Link
-									to="/agents/$agentId/{-$tab}"
-									params={{ agentId: a.id, tab: 'connectors' }}
-								>
-									{shortName(a.name)}
-								</Link>
-								<button
-									type="button"
-									aria-label={`Retirer ${shortName(a.name)} de ${connector.name}`}
-									className="size-[18px] rounded-full p-0 leading-none text-faint hover:bg-secondary hover:text-signal-danger"
-									onClick={() => onRevoke(a.id, connector.name)}
-								>
-									×
-								</button>
-							</span>
-						))
+								<Wrench aria-hidden="true" />
+								Tester
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={busy}
+								onClick={() => onDisconnect(connector.id)}
+							>
+								<Link2Off aria-hidden="true" />
+								Se déconnecter
+							</Button>
+						</>
+					) : (
+						<Button
+							size="sm"
+							disabled={busy || connector.archived}
+							onClick={() => onConnect(connector.id)}
+						>
+							<Link2 aria-hidden="true" />
+							Se connecter
+						</Button>
 					)}
 				</div>
-				{hasAccount && candidates.length > 0 ? (
-					<div className="flex gap-1.5 pt-2">
-						<NativeSelect
-							aria-label={`Agent à autoriser pour ${connector.name}`}
-							className="min-w-0 flex-1"
-							value={selected}
-							onChange={(e) => setPicked(e.target.value)}
-						>
-							{candidates.map((a) => (
-								<option key={a.id} value={a.id}>
-									{a.name}
-								</option>
-							))}
-						</NativeSelect>
-						<Button
-							variant="outline"
-							size="sm"
-							aria-label={`Autoriser sur ${connector.name}`}
-							onClick={() => onGrant(selected, connector.name)}
-						>
-							Autoriser
-						</Button>
-					</div>
-				) : null}
 			</div>
+			{tools ? <ToolsResult state={tools} name={connector.name} /> : null}
 		</article>
+	)
+}
+
+function ToolsResult({ state, name }: { state: ToolsState; name: string }) {
+	if (state.kind === 'error')
+		return (
+			<p role="alert" className="m-0 border-t pt-[7px] text-signal-danger">
+				{state.message}
+			</p>
+		)
+	return (
+		<div className="border-t pt-[7px]">
+			<div className="mb-[5px] text-xs text-muted-foreground">
+				{state.tools.length} outil{state.tools.length > 1 ? 's' : ''} exposé
+				{state.tools.length > 1 ? 's' : ''} par {name}
+			</div>
+			{state.tools.length === 0 ? (
+				<span className="text-faint">Aucun outil</span>
+			) : (
+				<ul className="m-0 flex list-none flex-col gap-1 p-0">
+					{state.tools.map((tool) => (
+						<li key={tool.name} className="flex items-center gap-2">
+							<span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
+								{tool.name}
+							</span>
+							<Sev tone={tool.read_only ? 'ok' : 'warn'}>
+								{tool.read_only ? 'lecture' : 'écriture'}
+							</Sev>
+						</li>
+					))}
+				</ul>
+			)}
+		</div>
 	)
 }

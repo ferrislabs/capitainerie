@@ -3,6 +3,7 @@ pub mod detail;
 pub mod edit;
 pub mod link;
 pub mod ports;
+pub mod relations;
 pub mod service;
 
 use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId, TranscriptId};

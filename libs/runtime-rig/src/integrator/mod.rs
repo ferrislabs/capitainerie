@@ -5,6 +5,7 @@ use std::{sync::Arc, time::Duration};
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::{
     agent::Usage,
+    agent_task::ports::TaskRuntime,
     conversation::turn::{ChatMessage, ChatRole, TurnLimits, TurnState},
     integration::{
         intervention::{IntegratorReport, IntegratorRequest, IntegratorRuntime, IntegratorTools},
@@ -20,7 +21,7 @@ use crate::{
     captain::{
         anthropic_stream::AnthropicStream,
         driver::{self, Provider},
-        openai_stream::OpenAiStream,
+        openai_stream::{OpenAiStream, ReplayDialect},
     },
     client::{Clients, Endpoint},
     error::RuntimeError,
@@ -29,6 +30,7 @@ use crate::{
 
 const HARD_TIMEOUT_GRACE: Duration = Duration::from_secs(60);
 const DEADLINE_REACHED: &str = "deadline reached";
+const TASK_AGENT: &str = "agent_task";
 const BUDGET_SPENT: &str = "tool or token budget spent";
 
 const SYSTEM_PROMPT: &str = "\
@@ -59,15 +61,39 @@ impl IntegratorRuntime for RigIntegrator {
         request: &IntegratorRequest,
         tools: &T,
     ) -> Result<IntegratorReport, CoreError> {
+        self.serve(SYSTEM_PROMPT, INTEGRATOR_AGENT, request, tools)
+            .await
+    }
+}
+
+impl TaskRuntime for RigIntegrator {
+    async fn run_task<T: IntegratorTools>(
+        &self,
+        system: &str,
+        request: &IntegratorRequest,
+        tools: &T,
+    ) -> Result<IntegratorReport, CoreError> {
+        self.serve(system, TASK_AGENT, request, tools).await
+    }
+}
+
+impl RigIntegrator {
+    async fn serve<T: IntegratorTools>(
+        &self,
+        system: &str,
+        agent: &str,
+        request: &IntegratorRequest,
+        tools: &T,
+    ) -> Result<IntegratorReport, CoreError> {
         let endpoint = self.clients.endpoint(&request.target)?;
         let model = request.target.model.model.as_str();
         let kind = request.target.model.provider;
         let span = info_span!(
             "invoke_agent",
-            otel.name = "invoke_agent integrator",
+            otel.name = format!("invoke_agent {agent}"),
             gen_ai.operation.name = "invoke_agent",
             gen_ai.provider.name = crate::client::provider_name(kind),
-            gen_ai.agent.name = INTEGRATOR_AGENT,
+            gen_ai.agent.name = agent,
             gen_ai.request.model = model,
         );
         async {
@@ -77,16 +103,17 @@ impl IntegratorRuntime for RigIntegrator {
                         api,
                         model: model.to_owned(),
                     };
-                    conduct(&provider, request, tools, HARD_TIMEOUT_GRACE).await
+                    conduct(&provider, system, request, tools, HARD_TIMEOUT_GRACE).await
                 }
                 Endpoint::OpenAi { http, url, key } => {
                     let provider = OpenAiStream {
+                        dialect: ReplayDialect::of(&url),
                         http,
                         url,
                         key,
                         model: model.to_owned(),
                     };
-                    conduct(&provider, request, tools, HARD_TIMEOUT_GRACE).await
+                    conduct(&provider, system, request, tools, HARD_TIMEOUT_GRACE).await
                 }
             }
         }
@@ -97,6 +124,7 @@ impl IntegratorRuntime for RigIntegrator {
 
 async fn conduct<P: Provider, T: IntegratorTools>(
     provider: &P,
+    system: &str,
     request: &IntegratorRequest,
     tools: &T,
     grace: Duration,
@@ -112,7 +140,7 @@ async fn conduct<P: Provider, T: IntegratorTools>(
         driver::run(
             provider,
             &bounded,
-            SYSTEM_PROMPT,
+            system,
             &history,
             request.limits,
             &OpenSink,
@@ -283,9 +311,15 @@ mod tests {
         ]);
         let backend = Backend::new(Duration::ZERO);
 
-        let report = conduct(&provider, &roomy(), &backend, Duration::from_secs(60))
-            .await
-            .unwrap();
+        let report = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &roomy(),
+            &backend,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(report.text, "Devis corrigé.");
         assert_eq!(report.tool_calls.len(), 2);
@@ -315,9 +349,15 @@ mod tests {
         ]);
         let backend = Backend::new(Duration::ZERO);
 
-        let report = conduct(&provider, &roomy(), &backend, Duration::from_secs(60))
-            .await
-            .unwrap();
+        let report = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &roomy(),
+            &backend,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(report.text, "Écriture refusée.");
         assert!(!report.tool_calls[0].succeeded);
@@ -340,9 +380,15 @@ mod tests {
         let backend = Backend::new(Duration::from_millis(150));
         let request = request(Duration::from_millis(100), TurnLimits::default());
 
-        let report = conduct(&provider, &request, &backend, Duration::from_secs(60))
-            .await
-            .unwrap();
+        let report = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &request,
+            &backend,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(backend.seen(), ["slow"]);
         assert_eq!(report.text, "Rapport partiel.");
@@ -371,9 +417,15 @@ mod tests {
         let backend = Backend::new(Duration::from_secs(30));
         let request = request(Duration::from_millis(100), TurnLimits::default());
 
-        let report = conduct(&provider, &request, &backend, Duration::from_millis(50))
-            .await
-            .unwrap();
+        let report = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &request,
+            &backend,
+            Duration::from_millis(50),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(report.stopped.as_deref(), Some("deadline reached"));
         assert_eq!(report.tool_calls.len(), 1);
@@ -400,6 +452,7 @@ mod tests {
 
         let report = conduct(
             &provider,
+            SYSTEM_PROMPT,
             &request(Duration::from_secs(60), limits),
             &backend,
             Duration::from_secs(60),
@@ -433,6 +486,7 @@ mod tests {
 
         let report = conduct(
             &provider,
+            SYSTEM_PROMPT,
             &request(Duration::from_secs(60), limits),
             &backend,
             Duration::from_secs(60),
@@ -460,9 +514,15 @@ mod tests {
         ]);
         let backend = Backend::new(Duration::ZERO);
 
-        let report = conduct(&provider, &roomy(), &backend, Duration::from_secs(60))
-            .await
-            .unwrap();
+        let report = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &roomy(),
+            &backend,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(report.tool_calls.len(), 1);
         assert_eq!(report.tool_calls[0].name, "list_instances");
@@ -487,9 +547,15 @@ mod tests {
         let provider = Script::of(vec![vec![Step::Fail("boom")]]);
         let backend = Backend::new(Duration::ZERO);
 
-        let error = conduct(&provider, &roomy(), &backend, Duration::from_secs(60))
-            .await
-            .unwrap_err();
+        let error = conduct(
+            &provider,
+            SYSTEM_PROMPT,
+            &roomy(),
+            &backend,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap_err();
 
         assert!(matches!(error, CoreError::Internal(message) if message == "boom"));
     }

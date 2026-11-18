@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH RECURSIVE chain AS (\n                SELECT parent_id, 1 AS depth\n                FROM cards\n                WHERE organization_id = $1 AND id = $2 AND parent_id IS NOT NULL\n                UNION ALL\n                SELECT c.parent_id, chain.depth + 1\n                FROM cards c\n                JOIN chain ON c.id = chain.parent_id\n                WHERE c.organization_id = $1 AND c.parent_id IS NOT NULL AND chain.depth < 50\n            )\n            SELECT parent_id AS \"id!\" FROM chain ORDER BY depth\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4a523845dbbb1262980d3a938d4745bfbfec055926c3dd0bdf5d7212deb98aea"
+}

@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM mcp_oauth_states s\n            USING mcp_connectors k\n            WHERE s.state = $1 AND k.id = s.connector_id AND k.organization_id = $2\n            RETURNING s.connector_id AS \"connector_id!\", s.subject AS \"subject!\",\n                      s.verifier_nonce AS \"verifier_nonce!\",\n                      s.verifier_ciphertext AS \"verifier_ciphertext!\",\n                      s.redirect_uri AS \"redirect_uri!\", s.expires_at AS \"expires_at!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "connector_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "subject!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "verifier_nonce!",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "verifier_ciphertext!",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "redirect_uri!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "expires_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7cf01c7d5d78d0bcfadc4c9781fb9b72bdbb826fc0155b278809b0a0efd52479"
+}

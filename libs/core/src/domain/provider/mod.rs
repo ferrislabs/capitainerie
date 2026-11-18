@@ -227,6 +227,45 @@ impl ModelAssignments {
     }
 }
 
+pub fn is_model_id(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '-'))
+}
+
+/// The model an agent names: `provider:model`, a `claude*` name on Anthropic,
+/// any other id on `default_kind`. `None` for an empty or display-name value.
+pub fn model_ref_of(model: &str, default_kind: ProviderKind) -> Option<ModelRef> {
+    let model = model.trim();
+    if model.is_empty() {
+        return None;
+    }
+    if !is_model_id(model) {
+        tracing::warn!(model, "the agent's model is not a model id, it is ignored");
+        return None;
+    }
+    if let Some((provider, name)) = model.split_once(':')
+        && let Ok(provider) = ProviderKind::try_from(provider)
+        && !name.is_empty()
+    {
+        return Some(ModelRef {
+            provider,
+            model: name.to_owned(),
+        });
+    }
+    let provider = if model.starts_with("claude") {
+        ProviderKind::Anthropic
+    } else {
+        default_kind
+    };
+    Some(ModelRef {
+        provider,
+        model: model.to_owned(),
+    })
+}
+
 /// `sk-…a1b2`: enough to recognise a key, never enough to use it.
 /// How an Anthropic credential authenticates, told apart by its prefix: an
 /// OAuth token as a bearer with the OAuth beta, an API key as `x-api-key`.
@@ -435,5 +474,37 @@ mod tests {
             serde_json::from_value::<ModelAssignments>(stored).unwrap(),
             assignments
         );
+    }
+
+    #[test]
+    fn an_empty_agent_model_names_no_model() {
+        assert_eq!(model_ref_of("  ", ProviderKind::OpenAiCompatible), None);
+    }
+
+    #[test]
+    fn a_display_name_is_not_a_model_id() {
+        let kind = ProviderKind::OpenAiCompatible;
+        assert_eq!(model_ref_of("Claude Sonnet 5.5", kind), None);
+        assert_eq!(model_ref_of("-x", kind), None);
+        assert!(model_ref_of("gemini-3-flash-preview", kind).is_some());
+    }
+
+    #[test]
+    fn a_provider_prefix_picks_the_provider() {
+        let chosen = model_ref_of("anthropic:claude-sonnet-5-5", ProviderKind::Mistral).unwrap();
+        assert_eq!(chosen.provider, ProviderKind::Anthropic);
+        assert_eq!(chosen.model, "claude-sonnet-5-5");
+    }
+
+    #[test]
+    fn a_claude_name_is_anthropic_and_any_other_stays_on_the_default_kind() {
+        let kind = ProviderKind::OpenAiCompatible;
+        assert_eq!(
+            model_ref_of("claude-sonnet-5-5", kind).unwrap().provider,
+            ProviderKind::Anthropic
+        );
+        let local = model_ref_of("qwen2.5:7b-instruct", kind).unwrap();
+        assert_eq!(local.provider, kind);
+        assert_eq!(local.model, "qwen2.5:7b-instruct");
     }
 }

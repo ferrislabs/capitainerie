@@ -12,8 +12,8 @@ use capitainerie_args::{
 use capitainerie_auth::ExchangeArgs;
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
-    CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor, InterventionConfig,
-    InterventionPipeline, MeetingPipeline, PipelineConfig,
+    AgentTaskConfig, AgentTaskPipeline, CapitainerieUseCase, ExecuteConfig, ExecutePipeline,
+    Executor, InterventionConfig, InterventionPipeline, MeetingPipeline, PipelineConfig,
     domain::{
         integration::intervention::INTERVENTION_DEADLINE,
         provider::ModelAssignments,
@@ -27,7 +27,7 @@ use capitainerie_core::{
     },
 };
 use capitainerie_github::{GithubApps, GithubBases};
-use capitainerie_integrations::{HttpConnector, NetworkPolicy};
+use capitainerie_integrations::{HttpConnector, McpHttp, NetworkPolicy};
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
 use capitainerie_runtime_rig::{
     EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, RigIntegrator, claude_prices,
@@ -195,6 +195,15 @@ async fn main() -> anyhow::Result<()> {
             deadline: INTERVENTION_DEADLINE,
         },
     );
+    let mcp_http =
+        McpHttp::new(network_policy(&args.integrations)).context("building the MCP client")?;
+    let agent_task = AgentTaskPipeline::new(
+        usecase.clone(),
+        RigIntegrator::new(&args.llm)?,
+        mcp_http.clone(),
+        mcp_http,
+        AgentTaskConfig::new(default_models.clone(), args.console_url.clone()),
+    );
     let execution = ExecutePipeline::new(
         usecase,
         executor,
@@ -210,7 +219,7 @@ async fn main() -> anyhow::Result<()> {
             prices: claude_prices(),
         },
     );
-    let pipeline = Dispatcher::new(meeting, execution, intervention);
+    let pipeline = Dispatcher::new(meeting, execution, intervention, agent_task);
     let orchestrator = Orchestrator::new(
         Arc::new(pipeline),
         bus.clone(),
@@ -246,6 +255,13 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn network_policy(args: &IntegrationsArgs) -> NetworkPolicy {
+    NetworkPolicy {
+        allow_insecure_http: args.allow_insecure_http,
+        allow_private_networks: args.allow_private_networks,
+    }
+}
+
 fn integrations_connector(args: &IntegrationsArgs) -> anyhow::Result<HttpConnector> {
     if args.allow_insecure_http {
         tracing::warn!(
@@ -257,11 +273,7 @@ fn integrations_connector(args: &IntegrationsArgs) -> anyhow::Result<HttpConnect
             "INTEGRATIONS_ALLOW_PRIVATE_NETWORKS is on: instances may be reached on private, loopback and link-local addresses"
         );
     }
-    HttpConnector::new(NetworkPolicy {
-        allow_insecure_http: args.allow_insecure_http,
-        allow_private_networks: args.allow_private_networks,
-    })
-    .context("building the integrations connector")
+    HttpConnector::new(network_policy(args)).context("building the integrations connector")
 }
 
 async fn executor_from(

@@ -21,6 +21,7 @@ pub(crate) struct Call {
     pub id: String,
     pub name: String,
     pub input: Value,
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -288,6 +289,7 @@ pub(crate) mod tests {
                         id: id.into(),
                         name: name.into(),
                         input,
+                        signature: None,
                     }),
                     Step::Many(count) => {
                         for n in 0..count {
@@ -295,6 +297,7 @@ pub(crate) mod tests {
                                 id: format!("c{n}"),
                                 name: "search_cards".into(),
                                 input: json!({}),
+                                signature: None,
                             });
                         }
                     }

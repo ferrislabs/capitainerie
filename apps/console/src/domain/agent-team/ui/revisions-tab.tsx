@@ -1,7 +1,7 @@
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import type { Revision } from '#/domain/agent-team/agent-config'
-import { ROW, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
+import { Empty, ROW, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 
 interface Props {
@@ -12,6 +12,11 @@ interface Props {
 export function RevisionsTab({ revisions, onRestore }: Props) {
 	return (
 		<SectionCard title="Révisions" flush>
+			{revisions.length === 0 ? (
+				<Empty title="Aucune révision">
+					Les modifications enregistrées dans cette session apparaissent ici.
+				</Empty>
+			) : null}
 			<Rows>
 				{revisions.map((revision, index) => (
 					<div key={revision.label} className={ROW}>

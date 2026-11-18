@@ -65,6 +65,8 @@ id!(ConversationId);
 id!(ConversationMessageId);
 id!(IntegrationInstanceId);
 id!(IntegrationActionId);
+id!(AgentId);
+id!(McpConnectorId);
 
 #[cfg(test)]
 mod tests {

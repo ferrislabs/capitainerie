@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 use capitainerie_core::domain::{
     agent::SecretToken,
-    execution::{DraftPullRequest, GithubAppCredentials, PullRequestUrl, RepositoryRef},
+    execution::{
+        DraftPullRequest, GithubAppCredentials, PullRequestUrl, RepositoryIssue, RepositoryListing,
+        RepositoryRef,
+    },
 };
 use chrono::{DateTime, Duration, Utc};
 use reqwest::{
@@ -18,6 +21,7 @@ use crate::{GithubError, jwt};
 pub(crate) const API_VERSION: &str = "2022-11-28";
 pub(crate) const AGENT: &str = concat!("capitainerie/", env!("CARGO_PKG_VERSION"));
 const REFRESH_MARGIN_MINUTES: i64 = 5;
+const ISSUE_PAGES: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GithubBases {
@@ -133,6 +137,26 @@ struct RepositoriesPage {
 #[derive(Deserialize)]
 struct RepositoryEntry {
     full_name: String,
+    #[serde(default)]
+    private: bool,
+    #[serde(default)]
+    html_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct IssueEntry {
+    number: u64,
+    title: String,
+    body: Option<String>,
+    html_url: String,
+    #[serde(default)]
+    labels: Vec<IssueLabel>,
+    pull_request: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct IssueLabel {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -533,10 +557,104 @@ impl GithubClient {
         Ok(false)
     }
 
+    /// The open issues of `repository`, newest first, pull requests excluded.
+    /// Stops after `ISSUE_PAGES` pages. Needs the `issues: read` permission,
+    /// which an App created before it was declared must be re-approved for.
+    pub async fn list_open_issues(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<Vec<RepositoryIssue>, GithubError> {
+        let token = self.issues_token(installation_id, repository).await?;
+        let api_base = self.app.api_base.trim_end_matches('/');
+        let mut next = Some(self.url(&format!(
+            "/repos/{}/{}/issues?state=open&sort=created&direction=desc&per_page=100",
+            repository.owner(),
+            repository.name()
+        )));
+        let mut issues = Vec::new();
+        for _ in 0..ISSUE_PAGES {
+            let Some(url) = next.take() else { break };
+            let response = Self::send(
+                self.request(
+                    self.http
+                        .get(&url)
+                        .header(AUTHORIZATION, format!("Bearer {}", token.token.expose())),
+                ),
+            )
+            .await
+            .map_err(missing_issues_permission)?;
+            next = response
+                .headers()
+                .get(LINK)
+                .and_then(|value| value.to_str().ok())
+                .and_then(next_link)
+                .filter(|link| same_origin(link, api_base))
+                .map(str::to_owned);
+            let page: Vec<IssueEntry> = Self::decode(response).await?;
+            issues.extend(
+                page.into_iter()
+                    .filter(|entry| entry.pull_request.is_none())
+                    .map(|entry| RepositoryIssue {
+                        number: entry.number,
+                        title: entry.title,
+                        body: entry.body.unwrap_or_default(),
+                        html_url: entry.html_url,
+                        labels: entry.labels.into_iter().map(|label| label.name).collect(),
+                    }),
+            );
+        }
+        Ok(issues)
+    }
+
+    async fn issues_token(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<InstallationToken, GithubError> {
+        let jwt = jwt::sign(
+            self.app.app_id,
+            self.app.private_key_pem.expose(),
+            Utc::now(),
+        )?;
+        let response = Self::send(
+            self.request(
+                self.http
+                    .post(self.url(&format!(
+                        "/app/installations/{installation_id}/access_tokens"
+                    )))
+                    .bearer_auth(jwt)
+                    .json(&json!({
+                        "repositories": [repository.name()],
+                        "permissions": {"issues": "read"},
+                    })),
+            ),
+        )
+        .await
+        .map_err(missing_issues_permission)?;
+        let issued: TokenResponse = Self::decode(response).await?;
+        Ok(InstallationToken {
+            token: SecretToken::new(issued.token),
+            expires_at: issued.expires_at,
+        })
+    }
+
     pub async fn list_repositories(
         &self,
         installation_id: i64,
     ) -> Result<Vec<RepositoryRef>, GithubError> {
+        Ok(self
+            .list_repository_listing(installation_id)
+            .await?
+            .into_iter()
+            .map(|listing| listing.repository)
+            .collect())
+    }
+
+    pub async fn list_repository_listing(
+        &self,
+        installation_id: i64,
+    ) -> Result<Vec<RepositoryListing>, GithubError> {
         let token = self.token_for(installation_id, None).await?;
         let api_base = self.app.api_base.trim_end_matches('/');
         let mut next = Some(self.url("/installation/repositories?per_page=100"));
@@ -559,8 +677,21 @@ impl GithubClient {
                 .map(str::to_owned);
             let page: RepositoriesPage = Self::decode(response).await?;
             for entry in page.repositories {
-                match entry.full_name.parse() {
-                    Ok(repository) => repositories.push(repository),
+                match entry.full_name.parse::<RepositoryRef>() {
+                    Ok(repository) => {
+                        let html_url = entry.html_url.unwrap_or_else(|| {
+                            format!(
+                                "{}/{}",
+                                self.app.web_base.trim_end_matches('/'),
+                                entry.full_name
+                            )
+                        });
+                        repositories.push(RepositoryListing {
+                            repository,
+                            private: entry.private,
+                            html_url,
+                        });
+                    }
                     Err(_) => tracing::warn!(
                         full_name = %entry.full_name,
                         "skipping a repository with an unsupported name"
@@ -669,6 +800,17 @@ fn origin(url: &str) -> Option<(String, String, u16)> {
 
 /// Same scheme, host and port: a `Link` header must not lead the client, and
 /// the token it carries, to another server.
+/// GitHub answers 403 or 422 when the App was not granted the permission the
+/// token or the call asks for.
+fn missing_issues_permission(error: GithubError) -> GithubError {
+    match error {
+        GithubError::Status {
+            status: 403 | 422, ..
+        } => GithubError::MissingPermission("issues"),
+        other => other,
+    }
+}
+
 fn same_origin(link: &str, base: &str) -> bool {
     match (origin(link), origin(base)) {
         (Some(link), Some(base)) => link == base,
@@ -759,7 +901,10 @@ mod tests {
                     format!("<{base}/installation/repositories?per_page=100&page=2>; rel=\"next\""),
                 )],
                 Json(
-                    json!({"repositories": [{"full_name": "acme/api"}, {"full_name": "acme/web"}]}),
+                    json!({"repositories": [
+                        {"full_name": "acme/api", "private": true, "html_url": "https://github.com/acme/api"},
+                        {"full_name": "acme/web"}
+                    ]}),
                 ),
             )
                 .into_response(),
@@ -961,6 +1106,22 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_permission_is_named_and_other_errors_pass_through() {
+        for status in [403, 422] {
+            let refused = missing_issues_permission(GithubError::Status {
+                status,
+                message: "Resource not accessible by integration".into(),
+            });
+            assert!(matches!(refused, GithubError::MissingPermission("issues")));
+        }
+        let other = missing_issues_permission(GithubError::Status {
+            status: 500,
+            message: "boom".into(),
+        });
+        assert!(matches!(other, GithubError::Status { status: 500, .. }));
+    }
+
+    #[test]
     fn next_link_is_parsed() {
         let header = "<https://x/a?page=1>; rel=\"prev\", <https://x/a?page=3>; rel=\"next\", <https://x/a?page=9>; rel=\"last\"";
         assert_eq!(next_link(header), Some("https://x/a?page=3"));
@@ -1130,6 +1291,18 @@ mod tests {
         assert_eq!(names, ["acme/api", "acme/web", "acme/docs"]);
         let recorded = shared.lock().unwrap();
         assert!(recorded.token_bodies[0].get("repositories").is_none());
+    }
+
+    #[tokio::test]
+    async fn repository_listing_carries_visibility_and_link() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let listing = client.list_repository_listing(5).await.unwrap();
+        assert_eq!(listing.len(), 3);
+        assert!(listing[0].private);
+        assert_eq!(listing[0].html_url, "https://github.com/acme/api");
+        assert!(!listing[1].private);
+        assert!(listing[1].html_url.ends_with("/acme/web"));
     }
 
     #[tokio::test]

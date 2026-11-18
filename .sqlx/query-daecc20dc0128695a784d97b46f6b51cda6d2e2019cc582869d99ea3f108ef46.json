@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE mcp_connectors\n            SET name = $3, archived = $4, updated_at = $5\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "daecc20dc0128695a784d97b46f6b51cda6d2e2019cc582869d99ea3f108ef46"
+}

@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT c.id, c.title, c.\"column\", c.created_at,\n                   w.repository AS \"issue_repository?\", w.issue_number AS \"issue_number?\", w.issue_url AS \"issue_url?\",\n                   r.id AS \"run_id?\", r.status AS \"run_status?\", r.repository AS \"run_repository?\"\n            FROM cards c\n            LEFT JOIN worksite_issues w ON w.card_id = c.id\n            LEFT JOIN LATERAL (\n                SELECT id, status, repository\n                FROM runs\n                WHERE card_id = c.id AND repository IS NOT NULL\n                ORDER BY created_at DESC\n                LIMIT 1\n            ) r ON TRUE\n            WHERE c.organization_id = $1 AND c.project_id = $2 AND c.\"column\" <> 'proposed'\n            ORDER BY c.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "column",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "issue_repository?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "issue_number?",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "issue_url?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "run_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "run_status?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "run_repository?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "a291eafc6ed57312bd5472dd05be62b6f58b9f49ba93dd35433a9799473bf709"
+}

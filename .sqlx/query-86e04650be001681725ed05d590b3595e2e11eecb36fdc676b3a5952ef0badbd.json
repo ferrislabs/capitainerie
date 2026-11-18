@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM mcp_connections c\n            USING mcp_connectors k\n            WHERE k.id = c.connector_id AND k.organization_id = $1\n              AND c.connector_id = $2 AND c.subject = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "86e04650be001681725ed05d590b3595e2e11eecb36fdc676b3a5952ef0badbd"
+}

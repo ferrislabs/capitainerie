@@ -6,6 +6,7 @@ import {
 	History,
 	House,
 	Inbox,
+	KeyRound,
 	Plug,
 	Radio,
 	Repeat,
@@ -28,6 +29,7 @@ export interface NavItem {
 		| '/connectors/{-$tab}'
 		| '/approvals'
 		| '/audit/{-$tab}'
+		| '/providers'
 	label: string
 	icon: LucideIcon
 	live?: boolean
@@ -66,5 +68,9 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 			{ to: '/approvals', label: 'Approbations', icon: Shield },
 			{ to: '/audit/{-$tab}', label: 'Audit', icon: History },
 		],
+	},
+	{
+		label: 'Mon compte',
+		items: [{ to: '/providers', label: 'Fournisseurs LLM', icon: KeyRound }],
 	},
 ]

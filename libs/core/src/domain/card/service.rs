@@ -1,11 +1,13 @@
-use capitainerie_common::{CardCommentId, CardId, CoreError, RunId, TranscriptId};
+use capitainerie_common::{
+    AgentId, CardCommentId, CardId, ClientId, CoreError, ProjectId, RunId, TranscriptId,
+};
 use capitainerie_events::card::{CardAuthor, CardCommented, CardMoved, CardProposed, CardUpdated};
 use chrono::Utc;
 
 use super::{
     Author, COMMENT_MAX_CHARS, Card, CardComment, CardTitle, Column, DESCRIPTION_MAX_CHARS,
     Provenance,
-    attributes::{Attributes, CardFilter},
+    attributes::{Attributes, CardFilter, Priority},
     bounded_text,
     ports::{CardCommentRepository, CardRepository},
 };
@@ -23,6 +25,18 @@ pub struct CreateCard {
     pub provenance: Option<ProvenanceInput>,
     pub run_id: Option<RunId>,
     pub attributes: Attributes,
+}
+
+/// A card a human writes by hand.
+#[derive(Debug, Clone)]
+pub struct CreateTask {
+    pub title: String,
+    pub description: String,
+    pub priority: Priority,
+    pub client: Option<ClientId>,
+    pub project: Option<ProjectId>,
+    pub assignee_agent: Option<AgentId>,
+    pub parent: Option<CardId>,
 }
 
 #[derive(Debug, Clone)]

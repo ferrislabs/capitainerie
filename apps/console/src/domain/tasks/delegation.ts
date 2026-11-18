@@ -1,5 +1,3 @@
-import type { DemoTask } from '#/domain/demo'
-
 interface Input {
 	title: string
 	depth: number
@@ -8,9 +6,14 @@ interface Input {
 	maxParallel: number
 }
 
+export const MAX_SUBTASK_DEPTH = 2
+export const MAX_PARALLEL_SUBTASKS = 3
+
 export type DelegationResult = { ok: true } | { ok: false; reason: string }
 
-export function openChildCount(children: ReadonlyArray<DemoTask>): number {
+export function openChildCount(
+	children: ReadonlyArray<{ status: string }>,
+): number {
 	return children.filter((c) => c.status !== 'done' && c.status !== 'cancelled')
 		.length
 }

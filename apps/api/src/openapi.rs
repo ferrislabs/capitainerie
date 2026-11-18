@@ -7,6 +7,7 @@ use capitainerie_handlers_analytics::{
 use capitainerie_handlers_cards::{
     self as cards,
     comment_card::CommentCardRequest,
+    create_card::CreateCardRequest,
     execute_card::{ExecuteCardRequest, ExecuteCardResponse},
     intervene_card::{
         GrantAccessDto, InstanceGrantRequest, InterveneCardRequest, InterveneCardResponse,
@@ -17,6 +18,11 @@ use capitainerie_handlers_cards::{
     response::{
         CardDetailResponse, CardResponse, ColumnDto, CommentResponse, CriterionDto, EstimateDto,
         PriorityDto, ProvenanceResponse,
+    },
+    run_agent::{RunAgentRequest, RunAgentResponse},
+    worksites::{
+        LaunchWorksitesRequest, LaunchWorksitesResponse, LaunchedWorksiteResponse,
+        WorksiteListResponse, WorksiteResponse,
     },
 };
 use capitainerie_handlers_clients::{
@@ -52,18 +58,29 @@ use capitainerie_handlers_integrations::{
     GithubIntegrationResponse, InstallUrlResponse, InstanceFailureResponse,
     IntegrationActionListResponse, IntegrationActionResponse, IntegrationEnvironmentDto,
     IntegrationInstanceListResponse, IntegrationInstanceResponse, IntegrationKindDto,
-    ManifestOwner, ManifestResponse, RepositoryListResponse, RepositoryResponse,
-    RevertIntegrationActionRequest, UpdateIntegrationInstanceRequest,
+    IssueListResponse, IssueResponse, ManifestOwner, ManifestResponse, RepositoryListResponse,
+    RepositoryResponse, RevertIntegrationActionRequest, UpdateIntegrationInstanceRequest,
+};
+use capitainerie_handlers_mcp::{
+    self as mcp,
+    authorize::AuthorizeMcpConnectorResponse,
+    callback::{McpOAuthCallbackRequest, McpOAuthCallbackResponse},
+    create_connector::CreateMcpConnectorRequest,
+    response::{McpConnectorListResponse, McpConnectorResponse, McpToolResponse},
+    test_connector::TestMcpConnectorResponse,
+    update_connector::UpdateMcpConnectorRequest,
 };
 use capitainerie_handlers_providers::{
     self as providers,
     dto::{
         CapabilitiesResponse, ModelAssignmentsDto, ModelAssignmentsResponse, ModelCatalogResponse,
         ModelRefDto, ModelResponse, PriceResponse, ProviderErrorResponse, ProviderKindDto,
-        ProviderListResponse, ProviderResponse,
+        ProviderListResponse, ProviderResponse, UserProviderResponse,
     },
     put_provider::PutProviderRequest,
+    put_user_provider::PutUserProviderRequest,
     test_provider::TestProviderResponse,
+    test_user_provider::TestUserProviderResponse,
 };
 use capitainerie_handlers_runs::{
     self as runs,
@@ -75,6 +92,12 @@ use capitainerie_handlers_runs::{
         DecisionResponse, RunTimelineResponse, StepResponse, StepStatusResponse, ToolCallResponse,
         UsageTotals,
     },
+};
+use capitainerie_handlers_team::{
+    self as team,
+    create_agent::CreateTeamAgentRequest,
+    response::{TeamAgentListResponse, TeamAgentResponse, TeamAgentStatusDto},
+    update_agent::UpdateTeamAgentRequest,
 };
 use capitainerie_handlers_transcriptions::{
     self as transcriptions,
@@ -100,12 +123,16 @@ use utoipa::{
         runs::get_run::handler,
         runs::timeline::handler,
         cards::list_cards::handler,
+        cards::create_card::handler,
         cards::get_card::handler,
         cards::move_card::handler,
         cards::patch_card::handler,
         cards::comment_card::handler,
         cards::execute_card::handler,
         cards::intervene_card::handler,
+        cards::run_agent::handler,
+        cards::worksites::list_handler,
+        cards::worksites::launch_handler,
         clients::list_clients::handler,
         clients::create_client::handler,
         clients::get_client::handler,
@@ -114,6 +141,18 @@ use utoipa::{
         clients::create_project::handler,
         clients::get_project::handler,
         clients::update_project::handler,
+        team::list_agents::handler,
+        team::create_agent::handler,
+        team::get_agent::handler,
+        team::update_agent::handler,
+        mcp::list_connectors::handler,
+        mcp::create_connector::handler,
+        mcp::get_connector::handler,
+        mcp::update_connector::handler,
+        mcp::authorize::handler,
+        mcp::callback::handler,
+        mcp::disconnect::handler,
+        mcp::test_connector::handler,
         analytics::costs::handler,
         analytics::agents::handler,
         transcriptions::create_transcription::handler,
@@ -125,6 +164,10 @@ use utoipa::{
         providers::list_models::handler,
         providers::get_assignments::handler,
         providers::put_assignments::handler,
+        providers::list_user_providers::handler,
+        providers::put_user_provider::handler,
+        providers::delete_user_provider::handler,
+        providers::test_user_provider::handler,
         integrations::get_integration::handler,
         integrations::disconnect::handler,
         integrations::install_url::handler,
@@ -133,6 +176,7 @@ use utoipa::{
         integrations::create_app::handler,
         integrations::delete_app::handler,
         integrations::list_repositories::handler,
+        integrations::list_issues::handler,
         integrations::instances::list::handler,
         integrations::instances::create::handler,
         integrations::instances::update::handler,
@@ -176,6 +220,7 @@ use utoipa::{
         ProvenanceResponse,
         MoveCardRequest,
         PatchCardRequest,
+        CreateCardRequest,
         ClientRefResponse,
         ProjectRefResponse,
         ClientResponse,
@@ -196,15 +241,38 @@ use utoipa::{
         CommentCardRequest,
         ExecuteCardRequest,
         ExecuteCardResponse,
+        LaunchWorksitesRequest,
+        LaunchWorksitesResponse,
+        LaunchedWorksiteResponse,
+        WorksiteListResponse,
+        WorksiteResponse,
+        IssueListResponse,
+        IssueResponse,
         GrantAccessDto,
         InstanceGrantRequest,
         InterveneCardRequest,
         InterveneCardResponse,
+        RunAgentRequest,
+        RunAgentResponse,
         CostsResponse,
         CostRowResponse,
         CostTotals,
         CostDimensionParam,
         AgentResponse,
+        McpConnectorResponse,
+        McpConnectorListResponse,
+        McpToolResponse,
+        CreateMcpConnectorRequest,
+        UpdateMcpConnectorRequest,
+        AuthorizeMcpConnectorResponse,
+        McpOAuthCallbackRequest,
+        McpOAuthCallbackResponse,
+        TestMcpConnectorResponse,
+        TeamAgentResponse,
+        TeamAgentListResponse,
+        TeamAgentStatusDto,
+        CreateTeamAgentRequest,
+        UpdateTeamAgentRequest,
         CreateTranscriptionRequest,
         TranscriptionResponse,
         ReadDocumentRequest,
@@ -213,6 +281,9 @@ use utoipa::{
         ProviderResponse,
         ProviderListResponse,
         PutProviderRequest,
+        PutUserProviderRequest,
+        UserProviderResponse,
+        TestUserProviderResponse,
         TestProviderResponse,
         ModelResponse,
         CapabilitiesResponse,
@@ -266,6 +337,8 @@ use utoipa::{
         (name = runs::TAG, description = "Transcripts and the runs processing them"),
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = clients::TAG, description = "The clients the team works for, their projects, and the link of a card to them"),
+        (name = team::TAG, description = "The registry of the team's agents: their role, model, instructions, connector grants and reporting line"),
+        (name = mcp::TAG, description = "MCP servers the organization connects to, each user authorizing with their own OAuth2 session (authorization code, PKCE S256, dynamic client registration)"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
         (name = transcriptions::TAG, description = "Audio and PDF files turned into text for the transcript form; the file is never kept"),
@@ -405,6 +478,60 @@ mod tests {
     }
 
     #[test]
+    fn the_team_registry_and_card_creation_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/team/agents"]["get"].is_object());
+        assert!(paths["/api/v1/team/agents"]["post"].is_object());
+        assert!(paths["/api/v1/team/agents/{agent_id}"]["get"].is_object());
+        assert!(paths["/api/v1/team/agents/{agent_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/team/agents/{agent_id}"]["delete"].is_null());
+        assert!(paths["/api/v1/agents"]["get"].is_object());
+        assert!(paths["/api/v1/cards"]["post"].is_object());
+        let schemas = &spec["components"]["schemas"];
+        for field in ["assignee_agent_id", "parent_id"] {
+            for schema in ["CardResponse", "PatchCardRequest", "CreateCardRequest"] {
+                assert!(
+                    schemas[schema]["properties"][field].is_object(),
+                    "{schema}.{field}"
+                );
+            }
+        }
+        for field in ["connector_grants", "reports_to", "instructions", "status"] {
+            assert!(
+                schemas["TeamAgentResponse"]["properties"][field].is_object(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_mcp_connector_endpoints_are_documented_without_a_token_in_any_response() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/mcp-connectors"]["get"].is_object());
+        assert!(paths["/api/v1/mcp-connectors"]["post"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/{connector_id}"]["get"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/{connector_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/{connector_id}/authorize"]["post"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/oauth/callback"]["post"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/{connector_id}/connection"]["delete"].is_object());
+        assert!(paths["/api/v1/mcp-connectors/{connector_id}/test"]["post"].is_object());
+        let connector = &spec["components"]["schemas"]["McpConnectorResponse"]["properties"];
+        for field in ["connected", "expires_at", "resource", "scopes", "slug"] {
+            assert!(connector[field].is_object(), "{field}");
+        }
+        for secret in [
+            "access_token",
+            "refresh_token",
+            "client_id",
+            "code_verifier",
+        ] {
+            assert!(connector.get(secret).is_none(), "{secret}");
+        }
+    }
+
+    #[test]
     fn the_provider_endpoints_are_documented_without_a_key_in_any_response() {
         let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
         let paths = &spec["paths"];
@@ -415,6 +542,14 @@ mod tests {
         assert!(paths["/api/v1/models"]["get"].is_object());
         assert!(paths["/api/v1/model-assignments"]["get"].is_object());
         assert!(paths["/api/v1/model-assignments"]["put"].is_object());
+        assert!(paths["/api/v1/me/providers"]["get"].is_object());
+        assert!(paths["/api/v1/me/providers/{kind}"]["put"].is_object());
+        assert!(paths["/api/v1/me/providers/{kind}"]["delete"].is_object());
+        assert!(paths["/api/v1/me/providers/{kind}/test"]["post"].is_object());
+        let mine = &spec["components"]["schemas"]["UserProviderResponse"]["properties"];
+        assert!(mine.get("api_key").is_none());
+        assert!(mine["preview"].is_object());
+        assert!(mine["is_default"].is_object());
         let provider = &spec["components"]["schemas"]["ProviderResponse"]["properties"];
         assert!(provider.get("api_key").is_none());
         assert!(provider["preview"].is_object());
@@ -577,6 +712,29 @@ mod tests {
                 "{status}"
             );
         }
+    }
+
+    #[test]
+    fn the_agent_run_endpoint_is_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let run = &spec["paths"]["/api/v1/cards/{card_id}/agent-runs"]["post"];
+        assert_eq!(run["operationId"], "runCardAgent");
+        for status in ["202", "401", "403", "404", "409", "422"] {
+            assert!(run["responses"][status].is_object(), "{status}");
+        }
+        let request = &spec["components"]["schemas"]["RunAgentRequest"];
+        assert!(request["properties"]["expected_version"].is_object());
+        assert!(request["properties"]["allow_writes"].is_object());
+        let required: Vec<_> = request["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field.as_str().unwrap())
+            .collect();
+        assert_eq!(required, ["expected_version"]);
+        assert!(
+            spec["components"]["schemas"]["RunAgentResponse"]["properties"]["run_id"].is_object()
+        );
     }
 
     #[test]

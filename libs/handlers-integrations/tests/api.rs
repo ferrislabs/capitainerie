@@ -186,9 +186,19 @@ async fn fake_github(conversions: Arc<AtomicUsize>) -> String {
         .route(
             "/installation/repositories",
             get(|| async {
-                Json(
-                    json!({"repositories": [{"full_name": "acme/web"}, {"full_name": "acme/api"}]}),
-                )
+                Json(json!({"repositories": [
+                    {"full_name": "acme/web", "private": true, "html_url": "https://github.com/acme/web"},
+                    {"full_name": "acme/api"}
+                ]}))
+            }),
+        )
+        .route(
+            "/repos/{owner}/{repo}/issues",
+            get(|| async {
+                Json(json!([
+                    {"number": 4, "title": "Crash", "body": null, "html_url": "https://github.com/acme/web/issues/4", "labels": [{"name": "bug"}]},
+                    {"number": 5, "title": "A PR", "body": null, "html_url": "https://github.com/acme/web/pull/5", "labels": [], "pull_request": {}}
+                ]))
             }),
         );
     spawn(app).await
@@ -513,6 +523,18 @@ async fn the_admin_creates_the_app_installs_it_and_a_member_reads_the_result() {
     }
     assert_eq!(repositories["repositories"][0]["full_name"], "acme/web");
     assert_eq!(repositories["repositories"][1]["name"], "api");
+    assert_eq!(repositories["repositories"][0]["private"], true);
+    assert_eq!(
+        repositories["repositories"][0]["html_url"],
+        "https://github.com/acme/web"
+    );
+    assert_eq!(repositories["repositories"][1]["private"], false);
+    assert!(
+        repositories["repositories"][1]["html_url"]
+            .as_str()
+            .unwrap()
+            .ends_with("/acme/api")
+    );
     assert_eq!(disconnected["app"]["slug"], "capitainerie-test");
     assert!(disconnected["installation"].is_null());
 }
@@ -1015,4 +1037,52 @@ async fn an_installation_of_an_organization_the_user_does_not_administer_is_refu
     assert_eq!(response.status(), 403);
     assert_eq!(json_of(response).await["code"], "installation_not_owned");
     assert_eq!(count(&pool, "github_installations", &organization).await, 0);
+}
+
+#[tokio::test]
+async fn open_issues_are_listed_without_pull_requests_and_refused_outside_the_installation() {
+    let Some(pool) = pool().await else { return };
+    let organization = organization(&pool).await;
+    let backend = backend().await;
+    let (admin, client) = admin_with_app(&pool, &organization, &backend).await;
+    let state = install_state(&client, &admin, &backend.base).await;
+    assert_eq!(
+        connect(&client, &admin, &state, fresh_installation())
+            .await
+            .status(),
+        200
+    );
+
+    let issues = json_of(
+        client
+            .get(format!(
+                "{admin}/api/v1/integrations/github/issues?repository=acme/web"
+            ))
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    let outside = client
+        .get(format!(
+            "{admin}/api/v1/integrations/github/issues?repository=acme/other"
+        ))
+        .send()
+        .await
+        .unwrap();
+    let malformed = client
+        .get(format!(
+            "{admin}/api/v1/integrations/github/issues?repository=nope"
+        ))
+        .send()
+        .await
+        .unwrap();
+
+    let listed = issues["issues"].as_array().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["number"], 4);
+    assert_eq!(listed[0]["labels"][0], "bug");
+    assert!(listed[0]["card_id"].is_null());
+    assert_eq!(outside.status(), 403);
+    assert_eq!(malformed.status(), 422);
 }

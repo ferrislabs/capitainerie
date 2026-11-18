@@ -6,6 +6,7 @@ use capitainerie_core::{
     domain::provider::{
         ModelAssignments, ModelRef, ProviderKind, ProviderSummary, ports::CatalogModel,
     },
+    domain::user_provider::UserProviderSummary,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,44 @@ pub struct ProviderPath {
 #[typed_path("/api/v1/providers/{kind}/test")]
 pub struct TestProviderPath {
     pub kind: ProviderKindDto,
+}
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/api/v1/me/providers/{kind}")]
+pub struct UserProviderPath {
+    pub kind: ProviderKindDto,
+}
+
+#[derive(TypedPath, Deserialize)]
+#[typed_path("/api/v1/me/providers/{kind}/test")]
+pub struct TestUserProviderPath {
+    pub kind: ProviderKindDto,
+}
+
+/// A provider the caller connected with their own key. The key itself is
+/// never part of any response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UserProviderResponse {
+    pub kind: ProviderKindDto,
+    pub base_url: Option<String>,
+    pub default_model: String,
+    /// The last four characters of the key.
+    pub preview: String,
+    pub is_default: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<UserProviderSummary> for UserProviderResponse {
+    fn from(summary: UserProviderSummary) -> Self {
+        Self {
+            kind: summary.kind.into(),
+            base_url: summary.base_url,
+            default_model: summary.default_model,
+            preview: summary.preview,
+            is_default: summary.is_default,
+            updated_at: summary.updated_at,
+        }
+    }
 }
 
 /// A configured provider. The key itself is never part of any response.

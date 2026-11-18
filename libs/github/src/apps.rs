@@ -6,7 +6,8 @@ use capitainerie_core::{
     domain::{
         agent::SecretToken,
         execution::{
-            DraftPullRequest, GithubAppCredentials, PullRequestUrl, RepositoryRef, ports::CodeHost,
+            DraftPullRequest, GithubAppCredentials, PullRequestUrl, RepositoryIssue,
+            RepositoryListing, RepositoryRef, ports::CodeHost,
         },
     },
 };
@@ -229,6 +230,37 @@ impl CodeHost for GithubApps {
             .await?
             .list_repositories(installation_id)
             .await?)
+    }
+
+    async fn repository_listing(
+        &self,
+        organization_id: OrganizationId,
+        installation_id: i64,
+    ) -> Result<Vec<RepositoryListing>, CoreError> {
+        Ok(self
+            .required(organization_id)
+            .await?
+            .list_repository_listing(installation_id)
+            .await?)
+    }
+
+    async fn open_issues(
+        &self,
+        organization_id: OrganizationId,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<Vec<RepositoryIssue>, CoreError> {
+        Ok(self
+            .required(organization_id)
+            .await?
+            .list_open_issues(installation_id, repository)
+            .await
+            .map_err(|error| match error {
+                GithubError::MissingPermission("issues") => {
+                    CoreError::Invalid("github_app_issues_permission_missing".into())
+                }
+                other => other.into(),
+            })?)
     }
 
     async fn branch_head(

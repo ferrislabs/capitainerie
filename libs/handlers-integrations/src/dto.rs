@@ -1,4 +1,6 @@
-use capitainerie_core::domain::execution::{GithubAppSummary, GithubInstallation, RepositoryRef};
+use capitainerie_core::domain::execution::{
+    GithubAppSummary, GithubInstallation, RepositoryListing,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -114,14 +116,19 @@ pub struct RepositoryResponse {
     pub owner: String,
     pub name: String,
     pub full_name: String,
+    pub private: bool,
+    pub html_url: String,
 }
 
-impl From<&RepositoryRef> for RepositoryResponse {
-    fn from(repository: &RepositoryRef) -> Self {
+impl From<&RepositoryListing> for RepositoryResponse {
+    fn from(listing: &RepositoryListing) -> Self {
+        let repository = &listing.repository;
         Self {
             owner: repository.owner().to_owned(),
             name: repository.name().to_owned(),
             full_name: repository.to_string(),
+            private: listing.private,
+            html_url: listing.html_url.clone(),
         }
     }
 }

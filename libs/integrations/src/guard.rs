@@ -6,7 +6,7 @@ use std::time::Duration;
 use capitainerie_common::CoreError;
 use capitainerie_core::domain::integration::{BaseUrl, ConnectorFailure};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
-use reqwest::header::HeaderValue;
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, RequestBuilder, StatusCode, Url, redirect};
 use serde_json::Value;
 
@@ -104,6 +104,16 @@ async fn resolve_host(
     }
 }
 
+pub(crate) async fn guarded_addresses(
+    policy: NetworkPolicy,
+    host: &str,
+) -> Result<Vec<SocketAddr>, Box<dyn std::error::Error + Send + Sync>> {
+    match resolve_host(policy, host, 0).await? {
+        Resolved::Allowed(addresses) => Ok(addresses),
+        Resolved::Blocked => Err(Box::new(BlockedHost(host.to_owned()))),
+    }
+}
+
 struct GuardedResolver {
     policy: NetworkPolicy,
 }
@@ -149,6 +159,20 @@ pub(crate) async fn check_target(
     }
     let url = Url::parse(base_url.as_str())
         .map_err(|_| ConnectorFailure::Protocol("the instance URL is invalid".into()))?;
+    check_resolution(policy, &url).await
+}
+
+pub(crate) async fn check_url(policy: NetworkPolicy, url: &Url) -> Result<(), ConnectorFailure> {
+    if url.scheme() != "https" && !(url.scheme() == "http" && policy.allow_insecure_http) {
+        return Err(ConnectorFailure::Blocked(format!(
+            "{} (plain http is refused)",
+            url.host_str().unwrap_or_default()
+        )));
+    }
+    check_resolution(policy, url).await
+}
+
+async fn check_resolution(policy: NetworkPolicy, url: &Url) -> Result<(), ConnectorFailure> {
     let host = url
         .host_str()
         .ok_or_else(|| ConnectorFailure::Protocol("the instance URL has no host".into()))?;
@@ -172,6 +196,7 @@ pub(crate) async fn check_target(
 
 pub(crate) struct Answer {
     pub(crate) status: StatusCode,
+    pub(crate) headers: HeaderMap,
     pub(crate) body: Vec<u8>,
 }
 
@@ -181,13 +206,26 @@ impl Answer {
     }
 }
 
-fn too_large() -> ConnectorFailure {
-    ConnectorFailure::Protocol("the answer exceeds 10 MiB".into())
+fn too_large(limit: usize) -> ConnectorFailure {
+    let size = if limit >= 1024 * 1024 {
+        format!("{} MiB", limit / (1024 * 1024))
+    } else {
+        format!("{} KiB", limit / 1024)
+    };
+    ConnectorFailure::Protocol(format!("the answer exceeds {size}"))
 }
 
 pub(crate) async fn send(request: RequestBuilder) -> Result<Answer, ConnectorFailure> {
+    send_limited(request, MAX_BODY_BYTES).await
+}
+
+pub(crate) async fn send_limited(
+    request: RequestBuilder,
+    limit: usize,
+) -> Result<Answer, ConnectorFailure> {
     let mut response = request.send().await.map_err(map_error)?;
     let status = response.status();
+    let headers = response.headers().clone();
     if status.is_redirection() {
         return Err(ConnectorFailure::Protocol(
             "redirects are not followed".into(),
@@ -195,18 +233,22 @@ pub(crate) async fn send(request: RequestBuilder) -> Result<Answer, ConnectorFai
     }
     if response
         .content_length()
-        .is_some_and(|length| length > MAX_BODY_BYTES as u64)
+        .is_some_and(|length| length > limit as u64)
     {
-        return Err(too_large());
+        return Err(too_large(limit));
     }
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(map_error)? {
-        if body.len() + chunk.len() > MAX_BODY_BYTES {
-            return Err(too_large());
+        if body.len() + chunk.len() > limit {
+            return Err(too_large(limit));
         }
         body.extend_from_slice(&chunk);
     }
-    Ok(Answer { status, body })
+    Ok(Answer {
+        status,
+        headers,
+        body,
+    })
 }
 
 fn map_error(error: reqwest::Error) -> ConnectorFailure {

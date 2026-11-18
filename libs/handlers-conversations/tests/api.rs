@@ -20,7 +20,10 @@ use capitainerie_core::{
             },
         },
         delegation::{DelegatedToken, ports::TokenExchanger},
-        execution::{DraftPullRequest, PullRequestUrl, RepositoryRef, ports::CodeHost},
+        execution::{
+            DraftPullRequest, PullRequestUrl, RepositoryIssue, RepositoryListing, RepositoryRef,
+            ports::CodeHost,
+        },
         provider::{
             ModelAssignments, ModelRef, ProviderAccess, ProviderKind,
             ports::{CatalogModel, ModelCatalog},
@@ -205,6 +208,23 @@ impl CodeHost for FakeHost {
             "acme/site".parse().unwrap(),
             "acme/api".parse().unwrap(),
         ])
+    }
+
+    async fn repository_listing(
+        &self,
+        _: OrganizationId,
+        _: i64,
+    ) -> Result<Vec<RepositoryListing>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn open_issues(
+        &self,
+        _: OrganizationId,
+        _: i64,
+        _: &RepositoryRef,
+    ) -> Result<Vec<RepositoryIssue>, CoreError> {
+        Ok(Vec::new())
     }
 
     async fn branch_head(

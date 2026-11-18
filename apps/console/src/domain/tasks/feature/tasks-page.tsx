@@ -8,16 +8,18 @@ import {
 	Plus,
 	Search,
 } from 'lucide-react'
-import { useState } from 'react'
-import { DemoBanner } from '#/components/layout/demo-banner'
+import { useMemo, useState } from 'react'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
+import { Skeleton } from '#/components/ui/skeleton'
 import { TextInput } from '#/components/ui/text-input'
-import { useDemoState } from '#/domain/demo'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useAgentOf } from '#/domain/tasks/feature/use-agent-of'
+import { useCards } from '#/domain/tasks/hooks/use-tasks'
+import { toTask } from '#/domain/tasks/model'
 import {
 	BOARD_STATUSES,
 	filterTasks,
@@ -37,13 +39,20 @@ const TOGGLE =
 	'grid h-7 w-[30px] place-items-center bg-card text-muted-foreground'
 
 export function TasksPage({ view, query }: Props) {
-	const tasks = useDemoState((s) => s.tasks)
+	const cards = useCards()
+	const tasks = useMemo(
+		() => (cards.data?.items ?? []).map((card) => toTask(card)),
+		[cards.data],
+	)
 	const agentOf = useAgentOf()
 	const navigate = useNavigate()
 	const [text, setText] = useState(query)
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [message, notify] = useNotice()
 	const visible = filterTasks(tasks, text, (id) => agentOf(id).name)
+	const open = tasks.filter(
+		(t) => t.status !== 'done' && t.status !== 'cancelled',
+	).length
 	const board = view === 'tableau'
 	const groups = groupByStatus(
 		visible,
@@ -51,8 +60,10 @@ export function TasksPage({ view, query }: Props) {
 	)
 	return (
 		<Page className="leading-[1.4]">
-			<DemoBanner />
-			<PageHeader title="Tâches" description="122 ouvertes · 65 bloquées" />
+			<PageHeader
+				title="Tâches"
+				description={cards.data ? `${open} ouvertes` : undefined}
+			/>
 			<div className="mb-3 flex flex-wrap items-center gap-2">
 				<Button variant="outline" onClick={() => setDialogOpen(true)}>
 					<Plus aria-hidden="true" />
@@ -120,12 +131,27 @@ export function TasksPage({ view, query }: Props) {
 					Grouper
 				</Button>
 			</div>
-			{visible.length === 0 ? (
+			{cards.isError ? (
+				<InlineAlert tone="danger">
+					Impossible de charger les tâches.
+				</InlineAlert>
+			) : cards.isPending ? (
+				<output className="grid gap-2">
+					<span className="sr-only">Chargement…</span>
+					{['a', 'b', 'c'].map((key) => (
+						<Skeleton key={key} className="h-9 rounded-md" />
+					))}
+				</output>
+			) : visible.length === 0 ? (
 				<div className="px-4 py-[26px] text-center text-muted-foreground">
+					{' '}
 					<b className="mt-1.5 mb-0.5 block font-semibold text-foreground">
-						Aucune tâche
-					</b>
-					Modifie la recherche.
+						{' '}
+						Aucune tâche{' '}
+					</b>{' '}
+					{tasks.length === 0
+						? 'Crée une tâche pour la confier à un agent.'
+						: 'Modifie la recherche.'}{' '}
 				</div>
 			) : board ? (
 				<TasksBoard

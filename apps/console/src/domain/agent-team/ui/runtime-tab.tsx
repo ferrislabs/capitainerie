@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Play } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
@@ -7,16 +8,20 @@ import {
 	ADAPTERS,
 	DIRECTION,
 	EFFORTS,
-	MODELS,
 	ROLES,
 } from '#/domain/agent-team/constants'
+import {
+	isValidModelId,
+	MODEL_ID_ERROR,
+	MODEL_ID_PLACEHOLDER,
+} from '#/domain/agent-team/model-id'
 import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
-import { Options } from '#/domain/agent-team/ui/options'
+import { type OptionItem, Options } from '#/domain/agent-team/ui/options'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 
 interface Props {
 	form: AgentForm
-	reportsOptions: ReadonlyArray<string>
+	reportsOptions: ReadonlyArray<OptionItem>
 	testResult: string | undefined
 	onChange: (patch: Partial<AgentForm>) => void
 	onTest: () => void
@@ -34,7 +39,7 @@ function Select({
 	label: string
 	hint?: string
 	value: string
-	values: ReadonlyArray<string>
+	values: ReadonlyArray<string | OptionItem>
 	onChange: (value: string) => void
 }) {
 	return (
@@ -115,6 +120,11 @@ export function RuntimeTab({
 					onChange={(name) => onChange({ name })}
 				/>
 				<Text
+					label="Description"
+					value={form.description}
+					onChange={(description) => onChange({ description })}
+				/>
+				<Text
 					label="Titre"
 					value={form.title}
 					onChange={(title) => onChange({ title })}
@@ -122,13 +132,13 @@ export function RuntimeTab({
 				<Select
 					label="Rôle"
 					value={form.role}
-					values={ROLES}
+					values={ROLES.includes(form.role) ? ROLES : [form.role, ...ROLES]}
 					onChange={(role) => onChange({ role })}
 				/>
 				<Select
 					label="Rapporte à"
 					value={form.reports}
-					values={[DIRECTION, ...reportsOptions]}
+					values={[{ value: DIRECTION, label: DIRECTION }, ...reportsOptions]}
 					onChange={(reports) => onChange({ reports })}
 				/>
 			</SectionCard>
@@ -161,12 +171,24 @@ export function RuntimeTab({
 				</div>
 			</SectionCard>
 			<SectionCard title="Modèle" flush>
-				<Select
+				<Text
 					label="Modèle"
+					placeholder={MODEL_ID_PLACEHOLDER}
 					value={form.model}
-					values={MODELS}
 					onChange={(model) => onChange({ model })}
 				/>
+				{isValidModelId(form.model) ? null : (
+					<p role="alert" className="m-0 px-3 pb-2 text-signal-danger">
+						{MODEL_ID_ERROR}
+					</p>
+				)}
+				<p className="m-0 border-t px-3 py-2 text-muted-foreground">
+					Le modèle utilisé est celui de votre fournisseur par défaut, sauf si
+					vous renseignez un identifiant de modèle valide ici.{' '}
+					<Link to="/providers" className="text-primary underline">
+						Gérer mes fournisseurs
+					</Link>
+				</p>
 				<Select
 					label="Effort de réflexion"
 					value={form.effort}

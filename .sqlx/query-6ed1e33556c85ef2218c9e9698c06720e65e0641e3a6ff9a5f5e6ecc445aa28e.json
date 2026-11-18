@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT c.connector_id, c.expires_at\n            FROM mcp_connections c\n            JOIN mcp_connectors k ON k.id = c.connector_id\n            WHERE k.organization_id = $1 AND c.subject = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "connector_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "6ed1e33556c85ef2218c9e9698c06720e65e0641e3a6ff9a5f5e6ecc445aa28e"
+}

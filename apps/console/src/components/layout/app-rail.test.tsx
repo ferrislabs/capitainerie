@@ -89,7 +89,12 @@ describe('AppRail', () => {
 		expect(
 			screen.getByRole('navigation', { name: 'Navigation principale' }),
 		).toBeTruthy()
-		for (const section of ['Général', 'Travail', 'Organisation']) {
+		for (const section of [
+			'Général',
+			'Travail',
+			'Organisation',
+			'Mon compte',
+		]) {
 			expect(screen.getByRole('list', { name: section })).toBeTruthy()
 		}
 		for (const label of [
@@ -104,6 +109,7 @@ describe('AppRail', () => {
 			'Connecteurs',
 			'Approbations',
 			'Audit',
+			'Fournisseurs LLM',
 		]) {
 			expect(screen.getByRole('link', { name: label })).toBeTruthy()
 		}
@@ -176,6 +182,7 @@ describe('AppRail', () => {
 			'Connecteurs',
 			'Approbations',
 			'Audit',
+			'Fournisseurs LLM',
 		]) {
 			fireEvent.keyDown(nav, { key: 'ArrowDown' })
 			expect(document.activeElement).toBe(

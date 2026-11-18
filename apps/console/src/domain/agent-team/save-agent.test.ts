@@ -1,48 +1,62 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { buildDefaultConfig, buildForm } from '#/domain/agent-team/agent-config'
 import {
 	getAgentConfig,
 	resetAgentConfigs,
 } from '#/domain/agent-team/agent-config-store'
-import { readAgentForm, saveAgentForm } from '#/domain/agent-team/save-agent'
-import { demoStore, resetDemoState } from '#/domain/demo'
+import { agentPatch, recordRevision } from '#/domain/agent-team/save-agent'
+import { DEV } from '#/test-utils/team-agents'
 
-describe('saveAgentForm', () => {
-	beforeEach(() => {
-		resetDemoState()
-		resetAgentConfigs()
+const base = () => buildForm(DEV, buildDefaultConfig(DEV))
+
+describe('agentPatch', () => {
+	it('is empty when nothing changed or only local fields changed', () => {
+		expect(agentPatch(base(), base())).toEqual({})
+		expect(agentPatch(base(), { ...base(), effort: 'Élevé' })).toEqual({})
 	})
 
-	it('does nothing when nothing changed', () => {
-		const before = getAgentConfig('dev').rev
-		expect(saveAgentForm('dev', readAgentForm('dev'))).toEqual([])
-		expect(getAgentConfig('dev').rev).toBe(before)
+	it('maps the form to API fields', () => {
+		expect(
+			agentPatch(base(), {
+				...base(),
+				name: ' Dev 2 ',
+				description: 'd',
+				role: 'DevOps',
+				model: 'claude-haiku-5-5',
+				instr: 'nouvelles',
+				reports: 'a-legal',
+			}),
+		).toEqual({
+			name: 'Dev 2',
+			description: 'd',
+			role: 'DevOps',
+			model: 'claude-haiku-5-5',
+			instructions: 'nouvelles',
+			reports_to: 'a-legal',
+		})
 	})
 
-	it('bumps the revision and lists changed fields', () => {
-		const before = getAgentConfig('dev').rev
-		const form = {
-			...readAgentForm('dev'),
-			model: 'Claude Haiku 5.5',
-			effort: 'Élevé',
-		}
-		expect(saveAgentForm('dev', form)).toEqual(['model', 'effort'])
-		const config = getAgentConfig('dev')
-		expect(config.rev).toBe(before + 1)
+	it('keeps the current name when it is emptied', () => {
+		expect(agentPatch(base(), { ...base(), name: '  ' })).toEqual({})
+	})
+
+	it('sends a null parent for the direction', () => {
+		expect(
+			agentPatch(base(), { ...base(), reports: 'Aucun (direction)' }),
+		).toEqual({ reports_to: null })
+	})
+})
+
+describe('recordRevision', () => {
+	beforeEach(resetAgentConfigs)
+
+	it('bumps the revision, lists changed fields and keeps local fields', () => {
+		const next = { ...base(), model: 'claude-haiku-5-5', effort: 'Élevé' }
+		expect(recordRevision(DEV, base(), next)).toBe(1)
+		const config = getAgentConfig(DEV.id)
+		expect(config.rev).toBe(1)
 		expect(config.revs[0]?.changed).toBe('modèle, effort de réflexion')
 		expect(config.fields.effort).toBe('Élevé')
-		expect(demoStore.state.agents.find((a) => a.id === 'dev')?.model).toBe(
-			'Claude Haiku 5.5',
-		)
-	})
-
-	it('moves the hierarchy and renames without orphaning sub-agents', () => {
-		const form = { ...readAgentForm('veille-legale'), name: 'Veille juridique' }
-		saveAgentForm('veille-legale', form)
-		expect(demoStore.state.reportsTo.registre).toBe('Veille juridique')
-		saveAgentForm('dev', {
-			...readAgentForm('dev'),
-			reports: 'Aucun (direction)',
-		})
-		expect(demoStore.state.reportsTo.dev).toBeNull()
+		expect(recordRevision(DEV, next, { ...next, chrome: true })).toBe(2)
 	})
 })

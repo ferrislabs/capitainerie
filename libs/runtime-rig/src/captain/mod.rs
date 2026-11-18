@@ -13,7 +13,11 @@ use capitainerie_core::domain::conversation::{
 };
 use tracing::{Instrument, info_span};
 
-use self::{anthropic_stream::AnthropicStream, openai_stream::OpenAiStream, tools::CaptainTools};
+use self::{
+    anthropic_stream::AnthropicStream,
+    openai_stream::{OpenAiStream, ReplayDialect},
+    tools::CaptainTools,
+};
 use crate::{
     args::LlmArgs,
     client::{Clients, Endpoint},
@@ -101,6 +105,7 @@ impl CaptainRuntime for RigCaptain {
                 }
                 Endpoint::OpenAi { http, url, key } => {
                     let provider = OpenAiStream {
+                        dialect: ReplayDialect::of(&url),
                         http,
                         url,
                         key,

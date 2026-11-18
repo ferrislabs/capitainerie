@@ -32,6 +32,13 @@ pub trait CardRepository: Send {
         links: &Links,
     ) -> impl Future<Output = Result<Vec<(CardId, i32)>, CoreError>> + Send;
 
+    /// The parents of a card, nearest first.
+    fn ancestors(
+        &mut self,
+        organization_id: OrganizationId,
+        id: CardId,
+    ) -> impl Future<Output = Result<Vec<CardId>, CoreError>> + Send;
+
     fn list(
         &mut self,
         organization_id: OrganizationId,
