@@ -63,6 +63,16 @@ export namespace Schemas {
     kind: TriggerKindDto;
     schedule?: (null | ScheduleDto) | undefined;
   };
+  export type AgentSpendResponse = {
+    agent_id?: (null | AgentId) | undefined;
+    cost_micros: number;
+    input_tokens: number;
+    name: string;
+    output_tokens: number;
+    runs: number;
+  };
+  export type SpentResponse = { cost_micros: number; input_tokens: number; output_tokens: number };
+  export type AgentCostsResponse = { from: string; rows: Array<AgentSpendResponse>; to: string; total: SpentResponse };
   export type AgentLimitRequest = {
     agent_id: AgentId;
     alert_threshold_percent?: (number | null) | undefined;
@@ -653,6 +663,7 @@ export namespace Schemas {
     provider: ProviderKindDto;
   };
   export type ModelCatalogResponse = { errors: Array<ProviderErrorResponse>; models: Array<ModelResponse> };
+  export type ModelSpendResponse = { cost_micros: number; input_tokens: number; model: string; output_tokens: number };
   export type MoveCardRequest = { expected_version: number; to: ColumnDto };
   export type PatchCardRequest = {
     acceptance_criteria?: (Array<CriterionDto> | null) | undefined;
@@ -668,6 +679,20 @@ export namespace Schemas {
     priority?: (null | PriorityDto) | undefined;
     project_id?: (null | ProjectId) | undefined;
     title?: (string | null) | undefined;
+  };
+  export type ProjectSpendResponse = {
+    agents: Array<AgentSpendResponse>;
+    cost_micros: number;
+    input_tokens: number;
+    name?: (string | null) | undefined;
+    output_tokens: number;
+    project_id?: (null | ProjectId) | undefined;
+  };
+  export type ProjectCostsResponse = {
+    from: string;
+    rows: Array<ProjectSpendResponse>;
+    to: string;
+    total: SpentResponse;
   };
   export type ProjectDetailResponse = { cards: Array<ColumnCountResponse>; project: ProjectResponse };
   export type ProjectListItemResponse = { open_cards: number; project: ProjectResponse };
@@ -768,6 +793,16 @@ export namespace Schemas {
     title: string;
   };
   export type SubmitTranscriptResponse = { run_id: RunId; transcript_id: TranscriptId };
+  export type TaskSpendResponse = {
+    agents: Array<AgentSpendResponse>;
+    card_id: CardId;
+    cost_micros: number;
+    input_tokens: number;
+    output_tokens: number;
+    project_id?: (null | ProjectId) | undefined;
+    title: string;
+  };
+  export type TaskCostsResponse = { from: string; rows: Array<TaskSpendResponse>; to: string; total: SpentResponse };
   export type TeamAgentStatusDto = "idle" | "running";
   export type TeamAgentResponse = {
     archived: boolean;
@@ -873,6 +908,14 @@ export namespace Schemas {
     slug: string | null;
   }>;
   export type UpdateTriggerRequest = Partial<{ enabled: boolean | null; schedule: null | ScheduleDto }>;
+  export type UserSpendResponse = {
+    cost_micros: number;
+    input_tokens: number;
+    models: Array<ModelSpendResponse>;
+    output_tokens: number;
+    user: string;
+  };
+  export type UserCostsResponse = { from: string; rows: Array<UserSpendResponse>; to: string; total: SpentResponse };
   export type UserProviderResponse = {
     base_url?: (string | null) | undefined;
     default_model: string;
@@ -918,6 +961,66 @@ export namespace Endpoints {
       200: Schemas.CostsResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListAgentCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs/agents";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ from: string; to: string; agent_id: string; card_id: string }>;
+    };
+    responses: {
+      200: Schemas.AgentCostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListProjectCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs/projects";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ from: string; to: string; agent_id: string; card_id: string }>;
+    };
+    responses: {
+      200: Schemas.ProjectCostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListTaskCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs/tasks";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ from: string; to: string; agent_id: string; card_id: string; project_id: string }>;
+    };
+    responses: {
+      200: Schemas.TaskCostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListUserCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs/users";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ from: string; to: string; agent_id: string; card_id: string }>;
+    };
+    responses: {
+      200: Schemas.UserCostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
     };
   };
@@ -2509,6 +2612,10 @@ export type EndpointByMethod = {
   get: {
     "/api/v1/agents": Endpoints.get_ListAgents;
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
+    "/api/v1/analytics/costs/agents": Endpoints.get_ListAgentCosts;
+    "/api/v1/analytics/costs/projects": Endpoints.get_ListProjectCosts;
+    "/api/v1/analytics/costs/tasks": Endpoints.get_ListTaskCosts;
+    "/api/v1/analytics/costs/users": Endpoints.get_ListUserCosts;
     "/api/v1/approvals": Endpoints.get_ListApprovals;
     "/api/v1/approvals/{approval_id}": Endpoints.get_GetApproval;
     "/api/v1/artifacts": Endpoints.get_ListArtifacts;

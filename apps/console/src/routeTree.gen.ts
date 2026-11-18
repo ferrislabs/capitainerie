@@ -26,6 +26,7 @@ import { Route as AppAgentsIndexRouteImport } from './routes/_app.agents.index'
 import { Route as AppTasksTaskIdRouteImport } from './routes/_app.tasks.$taskId'
 import { Route as AppSourcesNouvelleRouteImport } from './routes/_app.sources.nouvelle'
 import { Route as AppRoutinesNouvelleRouteImport } from './routes/_app.routines.nouvelle'
+import { Route as AppMetricsChar123TabChar125RouteImport } from './routes/_app.metrics.{-$tab}'
 import { Route as AppInboxChar123TabChar125RouteImport } from './routes/_app.inbox.{-$tab}'
 import { Route as AppConnectorsChar123TabChar125RouteImport } from './routes/_app.connectors.{-$tab}'
 import { Route as AppAuditChar123TabChar125RouteImport } from './routes/_app.audit.{-$tab}'
@@ -120,6 +121,12 @@ const AppRoutinesNouvelleRoute = AppRoutinesNouvelleRouteImport.update({
   path: '/routines/nouvelle',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMetricsChar123TabChar125Route =
+  AppMetricsChar123TabChar125RouteImport.update({
+    id: '/metrics/{-$tab}',
+    path: '/metrics/{-$tab}',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppInboxChar123TabChar125Route =
   AppInboxChar123TabChar125RouteImport.update({
     id: '/inbox/{-$tab}',
@@ -188,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
+  '/metrics/{-$tab}': typeof AppMetricsChar123TabChar125Route
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/tasks/$taskId': typeof AppTasksTaskIdRoute
@@ -215,6 +223,7 @@ export interface FileRoutesByTo {
   '/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
+  '/metrics/{-$tab}': typeof AppMetricsChar123TabChar125Route
   '/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/tasks/$taskId': typeof AppTasksTaskIdRoute
@@ -244,6 +253,7 @@ export interface FileRoutesById {
   '/_app/audit/{-$tab}': typeof AppAuditChar123TabChar125Route
   '/_app/connectors/{-$tab}': typeof AppConnectorsChar123TabChar125Route
   '/_app/inbox/{-$tab}': typeof AppInboxChar123TabChar125Route
+  '/_app/metrics/{-$tab}': typeof AppMetricsChar123TabChar125Route
   '/_app/routines/nouvelle': typeof AppRoutinesNouvelleRoute
   '/_app/sources/nouvelle': typeof AppSourcesNouvelleRoute
   '/_app/tasks/$taskId': typeof AppTasksTaskIdRoute
@@ -273,6 +283,7 @@ export interface FileRouteTypes {
     | '/audit/{-$tab}'
     | '/connectors/{-$tab}'
     | '/inbox/{-$tab}'
+    | '/metrics/{-$tab}'
     | '/routines/nouvelle'
     | '/sources/nouvelle'
     | '/tasks/$taskId'
@@ -300,6 +311,7 @@ export interface FileRouteTypes {
     | '/audit/{-$tab}'
     | '/connectors/{-$tab}'
     | '/inbox/{-$tab}'
+    | '/metrics/{-$tab}'
     | '/routines/nouvelle'
     | '/sources/nouvelle'
     | '/tasks/$taskId'
@@ -328,6 +340,7 @@ export interface FileRouteTypes {
     | '/_app/audit/{-$tab}'
     | '/_app/connectors/{-$tab}'
     | '/_app/inbox/{-$tab}'
+    | '/_app/metrics/{-$tab}'
     | '/_app/routines/nouvelle'
     | '/_app/sources/nouvelle'
     | '/_app/tasks/$taskId'
@@ -468,6 +481,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRoutinesNouvelleRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/metrics/{-$tab}': {
+      id: '/_app/metrics/{-$tab}'
+      path: '/metrics/{-$tab}'
+      fullPath: '/metrics/{-$tab}'
+      preLoaderRoute: typeof AppMetricsChar123TabChar125RouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/inbox/{-$tab}': {
       id: '/_app/inbox/{-$tab}'
       path: '/inbox/{-$tab}'
@@ -547,6 +567,7 @@ interface AppRouteChildren {
   AppAuditChar123TabChar125Route: typeof AppAuditChar123TabChar125Route
   AppConnectorsChar123TabChar125Route: typeof AppConnectorsChar123TabChar125Route
   AppInboxChar123TabChar125Route: typeof AppInboxChar123TabChar125Route
+  AppMetricsChar123TabChar125Route: typeof AppMetricsChar123TabChar125Route
   AppRoutinesNouvelleRoute: typeof AppRoutinesNouvelleRoute
   AppSourcesNouvelleRoute: typeof AppSourcesNouvelleRoute
   AppTasksTaskIdRoute: typeof AppTasksTaskIdRoute
@@ -573,6 +594,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAuditChar123TabChar125Route: AppAuditChar123TabChar125Route,
   AppConnectorsChar123TabChar125Route: AppConnectorsChar123TabChar125Route,
   AppInboxChar123TabChar125Route: AppInboxChar123TabChar125Route,
+  AppMetricsChar123TabChar125Route: AppMetricsChar123TabChar125Route,
   AppRoutinesNouvelleRoute: AppRoutinesNouvelleRoute,
   AppSourcesNouvelleRoute: AppSourcesNouvelleRoute,
   AppTasksTaskIdRoute: AppTasksTaskIdRoute,
