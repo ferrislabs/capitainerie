@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO projection_cursors (name, last_event_id, updated_at)\n            VALUES ($1, '00000000-0000-0000-0000-000000000000', now())\n            ON CONFLICT (name) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fef16c48b708d0d35ec7862a3000f56403a78f6f2eae1e0918c560a292b0c558"
+}

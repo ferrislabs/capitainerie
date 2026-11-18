@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use super::model::{RunOverviewRow, StepRow};
 use crate::{
     domain::run::{
-        Run, RunOverview, RunSubject,
+        Run, RunFilter, RunOverview, RunStatus, RunSubject,
         ports::{RunRepository, StepRepository},
         step::Step,
     },
@@ -90,6 +90,7 @@ impl RunRepository for PgRunRepository<'_> {
     async fn list(
         &mut self,
         organization_id: OrganizationId,
+        filter: &RunFilter,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<RunOverview>, u64), CoreError> {
@@ -101,26 +102,42 @@ impl RunRepository for PgRunRepository<'_> {
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
-                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?",
+                   atk.agent_id AS "agent_id?", ag.name AS "agent_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
             LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
             LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            LEFT JOIN agents ag ON ag.id = atk.agent_id
             WHERE r.organization_id = $1
+              AND ($4::text IS NULL OR r.status = $4)
+              AND ($5::uuid IS NULL OR atk.agent_id = $5)
             ORDER BY r.created_at DESC, r.id DESC
             LIMIT $2 OFFSET $3
             "#,
             organization_id.0,
             i64::from(limit),
             i64::from(offset),
+            filter.status.map(RunStatus::as_str),
+            filter.agent_id.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await
         .map_err(map_sqlx_error)?;
         let total = sqlx::query_scalar!(
-            r#"SELECT count(*) AS "count!" FROM runs WHERE organization_id = $1"#,
+            r#"
+            SELECT count(*) AS "count!"
+            FROM runs r
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            WHERE r.organization_id = $1
+              AND ($2::text IS NULL OR r.status = $2)
+              AND ($3::uuid IS NULL OR atk.agent_id = $3)
+            "#,
             organization_id.0,
+            filter.status.map(RunStatus::as_str),
+            filter.agent_id.map(|id| id.0),
         )
         .fetch_one(&mut ***tx)
         .await
@@ -146,12 +163,15 @@ impl RunRepository for PgRunRepository<'_> {
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
-                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?",
+                   atk.agent_id AS "agent_id?", ag.name AS "agent_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
             LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
             LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            LEFT JOIN agents ag ON ag.id = atk.agent_id
             WHERE r.organization_id = $1 AND r.id = $2
             "#,
             organization_id.0,
@@ -177,12 +197,15 @@ impl RunRepository for PgRunRepository<'_> {
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
-                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?",
+                   atk.agent_id AS "agent_id?", ag.name AS "agent_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
             LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
             LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            LEFT JOIN agents ag ON ag.id = atk.agent_id
             WHERE r.organization_id = $1 AND r.card_id = $2
             ORDER BY r.created_at DESC, r.id DESC
             "#,
@@ -210,12 +233,15 @@ impl RunRepository for PgRunRepository<'_> {
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
-                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?",
+                   atk.agent_id AS "agent_id?", ag.name AS "agent_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
             LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
             LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            LEFT JOIN agents ag ON ag.id = atk.agent_id
             WHERE r.organization_id = $1 AND r.status IN ('queued', 'running')
             ORDER BY r.created_at, r.id
             LIMIT $2
@@ -240,12 +266,15 @@ impl RunRepository for PgRunRepository<'_> {
                    r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,
                    COALESCE(t.repository, p.repository) AS "repository_hint?",
                    COALESCE(t.client_id, c.client_id) AS "client_id?", cl.name AS "client_name?",
-                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?"
+                   COALESCE(t.project_id, c.project_id) AS "project_id?", p.name AS "project_name?",
+                   atk.agent_id AS "agent_id?", ag.name AS "agent_name?"
             FROM runs r
             LEFT JOIN transcripts t ON t.id = r.transcript_id
             LEFT JOIN cards c ON c.id = r.card_id
             LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)
             LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)
+            LEFT JOIN agent_tasks atk ON atk.run_id = r.id
+            LEFT JOIN agents ag ON ag.id = atk.agent_id
             WHERE r.id = $1
             FOR UPDATE OF r SKIP LOCKED
             "#,

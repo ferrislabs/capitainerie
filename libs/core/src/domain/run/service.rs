@@ -1,7 +1,7 @@
 use capitainerie_common::{CoreError, RunId, TranscriptId};
 use chrono::Utc;
 
-use super::{Run, RunOverview, ports::RunRepository};
+use super::{Run, RunFilter, RunOverview, ports::RunRepository};
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     client::links::{Chosen, LinkChoice},
@@ -111,13 +111,14 @@ where
     pub async fn list(
         mut self,
         subject: Subject,
+        filter: RunFilter,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<RunOverview>, u64), CoreError> {
         let organization_id = subject.organization_id;
         self.require_read(subject, None).await?;
         self.runs
-            .list(organization_id, limit.clamp(1, 100), offset)
+            .list(organization_id, &filter, limit.clamp(1, 100), offset)
             .await
     }
 

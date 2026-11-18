@@ -1,6 +1,8 @@
 mod agent_run;
 mod agent_task_pipeline;
 mod approval;
+mod artifact;
+mod audit;
 mod card;
 mod client;
 mod conversation;
@@ -9,6 +11,7 @@ mod document;
 mod execute_pipeline;
 mod execute_stream;
 mod execution;
+mod inbox;
 mod integration;
 mod integration_action;
 mod integration_revert;

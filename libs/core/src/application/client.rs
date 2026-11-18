@@ -218,6 +218,7 @@ impl CapitainerieUseCase {
                     organization_id: organization_id.0,
                     version,
                     run_id: Some(run_id.0),
+                    assigned_to: None,
                     author: CardAuthor {
                         subject: initiated_by.to_owned(),
                         actor: Some(agent.to_owned()),

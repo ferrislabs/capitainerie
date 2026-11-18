@@ -26,6 +26,7 @@ use crate::domain::{
         tools::{ExposedTool, expose, redacted_arguments},
     },
     approval::Approval,
+    artifact::{Artifact, ReportOrigin},
     authorization::{Decision, Subject},
     card::{Card, CardComment},
     conversation::{ToolRecord, turn::ToolSpec},
@@ -349,8 +350,43 @@ impl<R: TaskRuntime, O: McpOAuth, G: McpGateway> AgentTaskPipeline<R, O, G> {
             Ok(report) => Finished::reported(report),
             Err(error) => Finished::failed(reason_of(&error), records),
         };
-        self.conclude(context, step, started, finished, Some(&slug))
-            .await
+        let report = finished.result.is_ok().then(|| finished.report.clone());
+        let result = self
+            .conclude(context, step, started, finished, Some(&slug))
+            .await?;
+        if let (Ok(()), Some(report)) = (&result, report) {
+            self.publish_report(context, &source, &report).await;
+        }
+        Ok(result)
+    }
+
+    /// Files the final answer as a markdown artifact of the card. A failure is
+    /// logged: the run succeeded and its answer is on the card already.
+    async fn publish_report(
+        &self,
+        context: &AgentTaskContext,
+        source: &AgentTaskSource,
+        report: &str,
+    ) {
+        let run = &context.run;
+        let origin = ReportOrigin {
+            organization_id: run.organization_id,
+            card_id: context.card_id,
+            run_id: run.id,
+            agent_id: source.task.agent_id,
+        };
+        let Some(artifact) = Artifact::report(
+            origin,
+            source.card.title.as_str(),
+            report,
+            run.initiated_by.clone(),
+            Utc::now(),
+        ) else {
+            return;
+        };
+        if let Err(error) = self.usecase.publish_artifact(artifact).await {
+            tracing::warn!(run_id = %run.id, %error, "the report artifact was not filed");
+        }
     }
 
     async fn prepare(&self, context: &AgentTaskContext) -> Result<Prepared, CoreError> {

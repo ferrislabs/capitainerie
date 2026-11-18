@@ -149,11 +149,17 @@ where
         }
         card.touch(Utc::now());
         self.cards.update(&card).await?;
+        let assigned_to = card
+            .attributes
+            .assignee_subject
+            .clone()
+            .filter(|_| card.attributes.assignee_subject != before.attributes.assignee_subject);
         self.emitter.emit(&CardUpdated {
             card_id: card.id.0,
             organization_id: card.organization_id.0,
             version: card.version,
             run_id: None,
+            assigned_to,
             author: CardAuthor::from(&Author {
                 subject: subject.id,
                 actor: subject.actor,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT count(*) AS \"count!\" FROM runs WHERE organization_id = $1",
+  "query": "SELECT count(*) AS \"count!\" FROM agents WHERE organization_id = $1 AND id = ANY($2)",
   "describe": {
     "columns": [
       {
@@ -11,12 +11,13 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "UuidArray"
       ]
     },
     "nullable": [
       null
     ]
   },
-  "hash": "bd6a35605d19c75bcfb476680f357d38afda147a99a0d7a38e7a7bec3031b64a"
+  "hash": "1ec96155d0fa1b8cb2751a5816427f05c05930ad5570769d76ba2297942bbfb3"
 }

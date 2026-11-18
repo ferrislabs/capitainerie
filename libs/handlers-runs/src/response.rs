@@ -1,13 +1,13 @@
-use capitainerie_common::{CardId, ClientId, ProjectId, RunId, TranscriptId};
+use capitainerie_common::{AgentId, CardId, ClientId, ProjectId, RunId, TranscriptId};
 use capitainerie_core::domain::{
     client::links::Links,
     run::{RunOverview, RunSubject},
 };
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatusResponse {
     Queued,
@@ -20,6 +20,13 @@ pub enum RunStatusResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ClientRefResponse {
     pub id: ClientId,
+    pub name: String,
+}
+
+/// The agent an agent task run works for.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RunAgentResponse {
+    pub id: AgentId,
     pub name: String,
 }
 
@@ -54,6 +61,8 @@ pub struct RunResponse {
     pub repository_hint: Option<String>,
     pub client: Option<ClientRefResponse>,
     pub project: Option<ProjectRefResponse>,
+    /// The agent of an agent task run; null for the other runs.
+    pub agent: Option<RunAgentResponse>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
     pub failure: Option<String>,
@@ -64,10 +73,23 @@ pub struct RunResponse {
     pub trace_id: Option<String>,
 }
 
+impl From<RunStatusResponse> for capitainerie_core::domain::run::RunStatus {
+    fn from(status: RunStatusResponse) -> Self {
+        match status {
+            RunStatusResponse::Queued => Self::Queued,
+            RunStatusResponse::Running => Self::Running,
+            RunStatusResponse::Succeeded => Self::Succeeded,
+            RunStatusResponse::Failed => Self::Failed,
+            RunStatusResponse::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
 impl From<RunOverview> for RunResponse {
     fn from(
         RunOverview {
             run,
+            agent,
             title,
             repository_hint,
             links,
@@ -104,6 +126,10 @@ impl From<RunOverview> for RunResponse {
             repository_hint: repository_hint.map(|hint| hint.to_string()),
             client,
             project,
+            agent: agent.map(|agent| RunAgentResponse {
+                id: agent.id,
+                name: agent.name,
+            }),
             initiated_by: run.initiated_by,
             pipeline: run
                 .pipeline

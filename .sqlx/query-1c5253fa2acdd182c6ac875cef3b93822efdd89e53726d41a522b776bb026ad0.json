@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM runs r\n            LEFT JOIN agent_tasks atk ON atk.run_id = r.id\n            WHERE r.organization_id = $1\n              AND ($2::text IS NULL OR r.status = $2)\n              AND ($3::uuid IS NULL OR atk.agent_id = $3)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1c5253fa2acdd182c6ac875cef3b93822efdd89e53726d41a522b776bb026ad0"
+}

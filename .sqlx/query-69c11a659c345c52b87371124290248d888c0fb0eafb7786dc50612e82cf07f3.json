@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT b.id, b.organization_id, b.agent_id, a.name AS \"agent_name?\",\n                   b.monthly_limit_cents, b.alert_threshold_percent, b.updated_by, b.updated_at\n            FROM budgets b\n            LEFT JOIN agents a ON a.id = b.agent_id\n            WHERE b.organization_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "agent_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "agent_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "monthly_limit_cents",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "alert_threshold_percent",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "69c11a659c345c52b87371124290248d888c0fb0eafb7786dc50612e82cf07f3"
+}

@@ -39,6 +39,7 @@ fn decide_for_human(subject: &Subject, action: Action) -> Decision {
         | Action::ModelsAssign
         | Action::GithubManage
         | Action::IntegrationManage
+        | Action::BudgetManage
             if !subject.is_admin =>
         {
             deny("only an organization admin may do this")
@@ -741,6 +742,38 @@ mod tests {
             ] {
                 assert!(!allowed(action, actor), "{actor:?} {action:?}");
             }
+        }
+    }
+
+    #[test]
+    fn members_read_the_audit_inbox_and_artifacts_and_no_agent_does() {
+        for action in [Action::AuditRead, Action::InboxRead, Action::ArtifactRead] {
+            assert!(allowed(action, None), "{action:?}");
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+            for actor in [CAPTAIN, AGENT, INTEGRATOR, CREW] {
+                assert!(!allowed(action, actor), "{actor:?} {action:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn only_admins_manage_budgets_and_no_agent_does() {
+        assert_eq!(
+            decide(&admin_request(Action::BudgetManage, None, true)),
+            Decision::Allow
+        );
+        assert!(matches!(
+            decide(&admin_request(Action::BudgetManage, None, false)),
+            Decision::Deny { .. }
+        ));
+        for actor in [CAPTAIN, AGENT, INTEGRATOR, CREW] {
+            assert!(matches!(
+                decide(&admin_request(Action::BudgetManage, actor, true)),
+                Decision::Deny { .. }
+            ));
         }
     }
 

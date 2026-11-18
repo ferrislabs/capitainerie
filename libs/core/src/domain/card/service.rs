@@ -196,6 +196,7 @@ where
             organization_id: card.organization_id.0,
             version: card.version,
             run_id: command.run_id.map(|id| id.0),
+            assigned_to: None,
             author: CardAuthor::from(&author(&subject)),
         })?;
         Ok(card)

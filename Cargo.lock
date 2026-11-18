@@ -1050,10 +1050,13 @@ dependencies = [
  "capitainerie-handlers",
  "capitainerie-handlers-analytics",
  "capitainerie-handlers-approvals",
+ "capitainerie-handlers-artifacts",
+ "capitainerie-handlers-audit",
  "capitainerie-handlers-cards",
  "capitainerie-handlers-clients",
  "capitainerie-handlers-conversations",
  "capitainerie-handlers-identity",
+ "capitainerie-handlers-inbox",
  "capitainerie-handlers-integrations",
  "capitainerie-handlers-mcp",
  "capitainerie-handlers-providers",
@@ -1281,6 +1284,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "capitainerie-handlers-artifacts"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "capitainerie-auth",
+ "capitainerie-common",
+ "capitainerie-core",
+ "capitainerie-handlers",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "capitainerie-handlers-audit"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "capitainerie-auth",
+ "capitainerie-common",
+ "capitainerie-core",
+ "capitainerie-events",
+ "capitainerie-handlers",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "capitainerie-handlers-cards"
 version = "0.1.0"
 dependencies = [
@@ -1348,6 +1392,26 @@ dependencies = [
 
 [[package]]
 name = "capitainerie-handlers-identity"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "capitainerie-auth",
+ "capitainerie-common",
+ "capitainerie-core",
+ "capitainerie-handlers",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "capitainerie-handlers-inbox"
 version = "0.1.0"
 dependencies = [
  "axum",

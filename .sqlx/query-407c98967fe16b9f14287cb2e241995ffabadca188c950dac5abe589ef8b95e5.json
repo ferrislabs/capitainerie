@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"total!\", count(*) FILTER (WHERE read_at IS NULL) AS \"unread!\"\n            FROM inbox_items\n            WHERE organization_id = $1 AND member_subject = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "unread!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "407c98967fe16b9f14287cb2e241995ffabadca188c950dac5abe589ef8b95e5"
+}

@@ -85,6 +85,9 @@ pub fn router<
         .merge(capitainerie_handlers_team::router())
         .merge(capitainerie_handlers_skills::router())
         .merge(capitainerie_handlers_approvals::router())
+        .merge(capitainerie_handlers_audit::router())
+        .merge(capitainerie_handlers_inbox::router())
+        .merge(capitainerie_handlers_artifacts::router())
         .merge(capitainerie_handlers_sources::router(
             adapters.sources.public_api_url.clone(),
         ))

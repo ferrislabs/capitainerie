@@ -1,5 +1,7 @@
 pub mod agent_task;
 pub mod approval;
+pub mod artifact;
+pub mod audit;
 pub mod authorization;
 pub mod card;
 pub mod client;
@@ -9,6 +11,7 @@ pub mod crypto;
 pub mod delegation;
 pub mod event;
 pub mod execution;
+pub mod inbox;
 pub mod integration;
 pub mod mcp;
 pub mod member;

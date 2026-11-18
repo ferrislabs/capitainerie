@@ -8,7 +8,7 @@ use capitainerie_core::{
     domain::{
         authorization::Subject,
         event::ports::EventBus,
-        run::{RunStatus, service::SubmitTranscript},
+        run::{RunFilter, RunStatus, service::SubmitTranscript},
         transcript::MeetingMetadata,
     },
     infrastructure::{
@@ -224,7 +224,7 @@ async fn a_rejected_submission_leaves_no_trace() {
 
     assert!(matches!(error, CoreError::Invalid(_)));
     let (runs, total) = usecase(&pool)
-        .list_runs(member(organization_id), 10, 0)
+        .list_runs(member(organization_id), RunFilter::default(), 10, 0)
         .await
         .unwrap();
     assert!(runs.is_empty());
@@ -249,9 +249,12 @@ async fn runs_are_listed_newest_first_and_never_across_organizations() {
             .unwrap();
     }
 
-    let (runs, total) = usecase(&pool).list_runs(member(mine), 10, 0).await.unwrap();
+    let (runs, total) = usecase(&pool)
+        .list_runs(member(mine), RunFilter::default(), 10, 0)
+        .await
+        .unwrap();
     let (other, other_total) = usecase(&pool)
-        .list_runs(member(theirs), 10, 0)
+        .list_runs(member(theirs), RunFilter::default(), 10, 0)
         .await
         .unwrap();
     let foreign = usecase(&pool).get_run(member(theirs), runs[0].run.id).await;

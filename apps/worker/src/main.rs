@@ -1,4 +1,5 @@
 mod dispatch;
+mod inbox;
 mod indexer;
 mod orchestrator;
 mod scheduler;
@@ -38,7 +39,7 @@ use clap::Parser;
 use tokio::sync::watch;
 
 use crate::{
-    dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator,
+    dispatch::Dispatcher, inbox::InboxProjector, indexer::CardIndexer, orchestrator::Orchestrator,
     scheduler::RoutineScheduler,
 };
 
@@ -209,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
         AgentTaskConfig::new(default_models.clone(), args.console_url.clone()),
     );
     let routines = RoutineScheduler::new(usecase.clone());
+    let inbox = InboxProjector::new(usecase.clone());
     let execution = ExecutePipeline::new(
         usecase,
         executor,
@@ -242,13 +244,14 @@ async fn main() -> anyhow::Result<()> {
     );
     let relay = OutboxRelay::new(pool, bus, OutboxRelayConfig::default());
     let mut relay_stop = stopped.clone();
-    let (relayed, orchestrated, (), (), ()) = tokio::join!(
+    let (relayed, orchestrated, (), (), (), ()) = tokio::join!(
         relay.run(async move {
             let _ = relay_stop.wait_for(|stop| *stop).await;
         }),
         orchestrator.run(stopped.clone()),
         indexer.run(stopped.clone()),
-        routines.run(stopped),
+        routines.run(stopped.clone()),
+        inbox.run(stopped),
         async move {
             capitainerie_telemetry::shutdown_signal().await;
             tracing::info!("worker stopping");

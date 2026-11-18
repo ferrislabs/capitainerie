@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   COALESCE(t.client_id, c.client_id) AS \"client_id?\", cl.name AS \"client_name?\",\n                   COALESCE(t.project_id, c.project_id) AS \"project_id?\", p.name AS \"project_name?\"\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)\n            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)\n            WHERE r.organization_id = $1\n            ORDER BY r.created_at DESC, r.id DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "query": "\n            SELECT r.id, r.organization_id, r.transcript_id, r.card_id, r.repository, r.base_branch, r.initiated_by, r.status, r.pipeline,\n                   r.failure, r.created_at, r.started_at, r.finished_at, r.trace_id, r.models, COALESCE(t.title, c.title) AS title,\n                   COALESCE(t.repository, p.repository) AS \"repository_hint?\",\n                   COALESCE(t.client_id, c.client_id) AS \"client_id?\", cl.name AS \"client_name?\",\n                   COALESCE(t.project_id, c.project_id) AS \"project_id?\", p.name AS \"project_name?\",\n                   atk.agent_id AS \"agent_id?\", ag.name AS \"agent_name?\"\n            FROM runs r\n            LEFT JOIN transcripts t ON t.id = r.transcript_id\n            LEFT JOIN cards c ON c.id = r.card_id\n            LEFT JOIN projects p ON p.id = COALESCE(t.project_id, c.project_id)\n            LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, c.client_id)\n            LEFT JOIN agent_tasks atk ON atk.run_id = r.id\n            LEFT JOIN agents ag ON ag.id = atk.agent_id\n            WHERE r.organization_id = $1 AND r.id = $2\n            ",
   "describe": {
     "columns": [
       {
@@ -107,13 +107,22 @@
         "ordinal": 20,
         "name": "project_name?",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "agent_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 22,
+        "name": "agent_name?",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -137,8 +146,10 @@
       null,
       false,
       null,
+      false,
+      false,
       false
     ]
   },
-  "hash": "951052414fab4f44c494a973637cfb1a8a4a0bf96cdbdd4560236c623aff57e8"
+  "hash": "c93d748a1c270fe523d4ea56656a8b83989c8e12583521bdc8450f5f72059999"
 }

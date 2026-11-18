@@ -3,6 +3,7 @@
 
 pub mod approval;
 pub mod card;
+pub mod inbox;
 pub mod routine;
 pub mod run;
 pub mod source;
@@ -19,15 +20,17 @@ pub enum Topic {
     Approvals,
     Sources,
     Routines,
+    Inbox,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 5] = [
+    pub const ALL: [Topic; 6] = [
         Topic::Runs,
         Topic::Cards,
         Topic::Approvals,
         Topic::Sources,
         Topic::Routines,
+        Topic::Inbox,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -37,6 +40,7 @@ impl Topic {
             Self::Approvals => "approvals",
             Self::Sources => "sources",
             Self::Routines => "routines",
+            Self::Inbox => "inbox",
         }
     }
 }

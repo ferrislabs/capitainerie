@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE inbox_items SET read_at = $5\n            WHERE organization_id = $1 AND member_subject = $2 AND read_at IS NULL\n              AND ($3 OR id = ANY($4))\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bool",
+        "UuidArray",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8c60aa43c8a12a19a9c2d32438988293e5c53546107b6ad7717f2d733631f88f"
+}

@@ -1,7 +1,10 @@
 pub mod agent;
 pub mod agent_task;
 pub mod approval;
+pub mod artifact;
+pub mod audit;
 pub mod authorization;
+pub mod budget;
 pub mod card;
 pub mod client;
 pub mod conversation;
@@ -10,6 +13,7 @@ pub mod delegation;
 pub mod document;
 pub mod event;
 pub mod execution;
+pub mod inbox;
 pub mod integration;
 pub mod label;
 pub mod mcp;

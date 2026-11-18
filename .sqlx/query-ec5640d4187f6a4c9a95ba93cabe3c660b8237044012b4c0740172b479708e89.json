@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT t.agent_id, COALESCE(sum(s.cost_micros), 0)::bigint AS \"spent!\"\n            FROM run_steps s\n            JOIN agent_tasks t ON t.run_id = s.run_id\n            WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3\n            GROUP BY t.agent_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "agent_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "spent!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "ec5640d4187f6a4c9a95ba93cabe3c660b8237044012b4c0740172b479708e89"
+}
