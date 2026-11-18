@@ -3,6 +3,7 @@ import {
 	Box,
 	CircleCheck,
 	Folder,
+	HardHat,
 	History,
 	House,
 	Inbox,
@@ -21,6 +22,7 @@ export interface NavItem {
 		| '/inbox/{-$tab}'
 		| '/tasks'
 		| '/projects'
+		| '/worksites'
 		| '/routines'
 		| '/artifacts'
 		| '/agents'
@@ -54,6 +56,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 		items: [
 			{ to: '/tasks', label: 'Tâches', icon: CircleCheck },
 			{ to: '/projects', label: 'Projets', icon: Folder },
+			{ to: '/worksites', label: 'Chantiers', icon: HardHat },
 			{ to: '/routines', label: 'Routines', icon: Repeat },
 			{ to: '/artifacts', label: 'Artifacts', icon: Box },
 		],

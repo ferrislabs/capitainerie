@@ -13,6 +13,7 @@ import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as DevUiRouteImport } from './routes/[_]dev.ui'
+import { Route as AppWorksitesRouteImport } from './routes/_app.worksites'
 import { Route as AppSkillsRouteImport } from './routes/_app.skills'
 import { Route as AppProvidersRouteImport } from './routes/_app.providers'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
@@ -53,6 +54,11 @@ const DevUiRoute = DevUiRouteImport.update({
   id: '/_dev/ui',
   path: '/_dev/ui',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppWorksitesRoute = AppWorksitesRouteImport.update({
+  id: '/worksites',
+  path: '/worksites',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSkillsRoute = AppSkillsRouteImport.update({
   id: '/skills',
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AppProjectsRoute
   '/providers': typeof AppProvidersRoute
   '/skills': typeof AppSkillsRoute
+  '/worksites': typeof AppWorksitesRoute
   '/_dev/ui': typeof DevUiRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
   '/agents/organigramme': typeof AppAgentsOrganigrammeRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AppProjectsRoute
   '/providers': typeof AppProvidersRoute
   '/skills': typeof AppSkillsRoute
+  '/worksites': typeof AppWorksitesRoute
   '/_dev/ui': typeof DevUiRoute
   '/': typeof AppIndexRoute
   '/agents/nouveau': typeof AppAgentsNouveauRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/_app/projects': typeof AppProjectsRoute
   '/_app/providers': typeof AppProvidersRoute
   '/_app/skills': typeof AppSkillsRoute
+  '/_app/worksites': typeof AppWorksitesRoute
   '/_dev/ui': typeof DevUiRoute
   '/_app/': typeof AppIndexRoute
   '/_app/agents/nouveau': typeof AppAgentsNouveauRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/providers'
     | '/skills'
+    | '/worksites'
     | '/_dev/ui'
     | '/agents/nouveau'
     | '/agents/organigramme'
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/providers'
     | '/skills'
+    | '/worksites'
     | '/_dev/ui'
     | '/'
     | '/agents/nouveau'
@@ -309,6 +320,7 @@ export interface FileRouteTypes {
     | '/_app/projects'
     | '/_app/providers'
     | '/_app/skills'
+    | '/_app/worksites'
     | '/_dev/ui'
     | '/_app/'
     | '/_app/agents/nouveau'
@@ -364,6 +376,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/_dev/ui'
       preLoaderRoute: typeof DevUiRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/worksites': {
+      id: '/_app/worksites'
+      path: '/worksites'
+      fullPath: '/worksites'
+      preLoaderRoute: typeof AppWorksitesRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/skills': {
       id: '/_app/skills'
@@ -521,6 +540,7 @@ interface AppRouteChildren {
   AppProjectsRoute: typeof AppProjectsRoute
   AppProvidersRoute: typeof AppProvidersRoute
   AppSkillsRoute: typeof AppSkillsRoute
+  AppWorksitesRoute: typeof AppWorksitesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsNouveauRoute: typeof AppAgentsNouveauRoute
   AppAgentsOrganigrammeRoute: typeof AppAgentsOrganigrammeRoute
@@ -546,6 +566,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProjectsRoute: AppProjectsRoute,
   AppProvidersRoute: AppProvidersRoute,
   AppSkillsRoute: AppSkillsRoute,
+  AppWorksitesRoute: AppWorksitesRoute,
   AppIndexRoute: AppIndexRoute,
   AppAgentsNouveauRoute: AppAgentsNouveauRoute,
   AppAgentsOrganigrammeRoute: AppAgentsOrganigrammeRoute,
