@@ -78,9 +78,7 @@ describe('agent detail page', () => {
 				.getAttribute('aria-current'),
 		).toBe('page')
 		expect(
-			within(nav)
-				.getByRole('link', { name: 'Exécutions' })
-				.getAttribute('href'),
+			within(nav).getByRole('link', { name: 'Audit →' }).getAttribute('href'),
 		).toBe('/audit/runs')
 		for (const label of ['Assigner une tâche', 'Pause', "Plus d'actions"])
 			expect(screen.getByRole('button', { name: label })).toBeTruthy()
