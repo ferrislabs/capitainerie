@@ -1,9 +1,12 @@
 #![allow(clippy::unwrap_used)]
 
-use capitainerie_common::{CoreError, OrganizationId, ProjectId};
+use capitainerie_common::{AgentId, CardId, CoreError, OrganizationId, ProjectId};
 use capitainerie_core::{
     CapitainerieUseCase,
-    domain::{authorization::Subject, cost::Period},
+    domain::{
+        authorization::Subject,
+        cost::{CostFilter, Period},
+    },
     infrastructure::postgres,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -255,7 +258,7 @@ async fn projects_list_their_agents_and_a_projectless_row() {
     pipeline_run(&pool, org, Some(p2), "u", &[step("m", 20)]).await;
 
     let report = usecase(&pool)
-        .project_costs(admin(org), period())
+        .project_costs(admin(org), period(), CostFilter::default())
         .await
         .unwrap();
 
@@ -287,7 +290,7 @@ async fn agents_cover_agent_tasks_and_pipeline_roles() {
     pipeline_run(&pool, org, None, "u", &[extractor]).await;
 
     let report = usecase(&pool)
-        .agent_costs(admin(org), period())
+        .agent_costs(admin(org), period(), CostFilter::default())
         .await
         .unwrap();
 
@@ -312,7 +315,7 @@ async fn a_task_adds_every_run_of_its_card() {
     agent_run(&pool, org, c, bob, "u", &[step("m", 25)]).await;
 
     let report = usecase(&pool)
-        .task_costs(admin(org), period(), None)
+        .task_costs(admin(org), period(), None, CostFilter::default())
         .await
         .unwrap();
 
@@ -335,7 +338,12 @@ async fn tasks_can_be_narrowed_to_a_project() {
     agent_run(&pool, org, outside, ann, "u", &[step("m", 9)]).await;
 
     let report = usecase(&pool)
-        .task_costs(admin(org), period(), Some(ProjectId(p)))
+        .task_costs(
+            admin(org),
+            period(),
+            Some(ProjectId(p)),
+            CostFilter::default(),
+        )
         .await
         .unwrap();
 
@@ -351,7 +359,7 @@ async fn users_list_their_models() {
     pipeline_run(&pool, org, None, "bob", &[step("m1", 40)]).await;
 
     let report = usecase(&pool)
-        .user_costs(admin(org), period())
+        .user_costs(admin(org), period(), CostFilter::default())
         .await
         .unwrap();
 
@@ -395,7 +403,10 @@ async fn the_period_is_half_open() {
     .await;
 
     let period = Period::new(Some(from), Some(to), to).unwrap();
-    let report = usecase(&pool).user_costs(admin(org), period).await.unwrap();
+    let report = usecase(&pool)
+        .user_costs(admin(org), period, CostFilter::default())
+        .await
+        .unwrap();
 
     assert_eq!(report.total.cost_micros, 20);
 }
@@ -420,35 +431,40 @@ async fn another_organization_never_shows() {
     let case = usecase(&pool);
 
     assert!(
-        case.project_costs(admin(mine), period())
+        case.project_costs(admin(mine), period(), CostFilter::default())
             .await
             .unwrap()
             .rows
             .is_empty()
     );
     assert!(
-        case.agent_costs(admin(mine), period())
+        case.agent_costs(admin(mine), period(), CostFilter::default())
             .await
             .unwrap()
             .rows
             .is_empty()
     );
     assert!(
-        case.task_costs(admin(mine), period(), None)
+        case.task_costs(admin(mine), period(), None, CostFilter::default())
             .await
             .unwrap()
             .rows
             .is_empty()
     );
     assert!(
-        case.user_costs(admin(mine), period())
+        case.user_costs(admin(mine), period(), CostFilter::default())
             .await
             .unwrap()
             .rows
             .is_empty()
     );
     let error = case
-        .task_costs(admin(mine), period(), Some(ProjectId(other_project)))
+        .task_costs(
+            admin(mine),
+            period(),
+            Some(ProjectId(other_project)),
+            CostFilter::default(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(error, CoreError::NotFound));
@@ -467,10 +483,16 @@ async fn missing_model_and_agent_fall_under_unknown() {
     pipeline_run(&pool, org, None, "u", &[bare]).await;
     let case = usecase(&pool);
 
-    let agents = case.agent_costs(admin(org), period()).await.unwrap();
+    let agents = case
+        .agent_costs(admin(org), period(), CostFilter::default())
+        .await
+        .unwrap();
     assert_eq!(agents.rows[0].agent.name, "unknown");
     assert!(agents.rows[0].agent.id.is_none());
-    let users = case.user_costs(admin(org), period()).await.unwrap();
+    let users = case
+        .user_costs(admin(org), period(), CostFilter::default())
+        .await
+        .unwrap();
     assert_eq!(users.rows[0].models[0].model, "unknown");
 }
 
@@ -483,11 +505,154 @@ async fn an_archived_agent_keeps_its_past_cost() {
     agent_run(&pool, org, c, old, "u", &[step("m", 12)]).await;
 
     let report = usecase(&pool)
-        .agent_costs(admin(org), period())
+        .agent_costs(admin(org), period(), CostFilter::default())
         .await
         .unwrap();
 
     assert_eq!(report.rows.len(), 1);
     assert_eq!(report.rows[0].agent.name, "Retired");
     assert_eq!(report.rows[0].spent.cost_micros, 12);
+}
+
+fn only_agent(agent: Uuid) -> CostFilter {
+    CostFilter {
+        agent: Some(AgentId(agent)),
+        card: None,
+    }
+}
+
+fn only_card(card: Uuid) -> CostFilter {
+    CostFilter {
+        agent: None,
+        card: Some(CardId(card)),
+    }
+}
+
+#[tokio::test]
+async fn agent_filter_narrows_every_report() {
+    let Some(pool) = pool().await else { return };
+    let org = organization(&pool).await;
+    let p = project(&pool, org, "Alpha").await;
+    let (ann, bob) = (
+        agent(&pool, org, "Ann", false).await,
+        agent(&pool, org, "Bob", false).await,
+    );
+    let c1 = card(&pool, org, "one", Some(p)).await;
+    let c2 = card(&pool, org, "two", Some(p)).await;
+    agent_run(&pool, org, c1, ann, "u1", &[step("m1", 100)]).await;
+    agent_run(&pool, org, c2, bob, "u2", &[step("m2", 40)]).await;
+    pipeline_run(&pool, org, Some(p), "u1", &[step("m1", 7)]).await;
+    let case = usecase(&pool);
+    let filter = only_agent(ann);
+
+    let projects = case
+        .project_costs(admin(org), period(), filter)
+        .await
+        .unwrap();
+    assert_eq!(projects.total.cost_micros, 100);
+    assert_eq!(projects.rows.len(), 1);
+    assert_eq!(projects.rows[0].agents.len(), 1);
+    assert_eq!(projects.rows[0].agents[0].agent.name, "Ann");
+    let agents = case
+        .agent_costs(admin(org), period(), filter)
+        .await
+        .unwrap();
+    assert_eq!(agents.rows.len(), 1);
+    assert_eq!(agents.total.cost_micros, 100);
+    let tasks = case
+        .task_costs(admin(org), period(), None, filter)
+        .await
+        .unwrap();
+    assert_eq!(tasks.rows.len(), 1);
+    assert_eq!(tasks.rows[0].card_id, CardId(c1));
+    let users = case.user_costs(admin(org), period(), filter).await.unwrap();
+    assert_eq!(users.rows.len(), 1);
+    assert_eq!(users.rows[0].user, "u1");
+    assert_eq!(users.rows[0].spent.cost_micros, 100);
+    assert_eq!(users.rows[0].models[0].model, "m1");
+}
+
+#[tokio::test]
+async fn card_filter_narrows_every_report() {
+    let Some(pool) = pool().await else { return };
+    let org = organization(&pool).await;
+    let ann = agent(&pool, org, "Ann", false).await;
+    let c1 = card(&pool, org, "one", None).await;
+    let c2 = card(&pool, org, "two", None).await;
+    agent_run(&pool, org, c1, ann, "u1", &[step("m", 100)]).await;
+    agent_run(&pool, org, c2, ann, "u2", &[step("m", 40)]).await;
+    pipeline_run(&pool, org, None, "u2", &[step("m", 7)]).await;
+    let case = usecase(&pool);
+    let filter = only_card(c2);
+
+    let projects = case
+        .project_costs(admin(org), period(), filter)
+        .await
+        .unwrap();
+    assert_eq!(projects.total.cost_micros, 40);
+    let agents = case
+        .agent_costs(admin(org), period(), filter)
+        .await
+        .unwrap();
+    assert_eq!(agents.total.cost_micros, 40);
+    let tasks = case
+        .task_costs(admin(org), period(), None, filter)
+        .await
+        .unwrap();
+    assert_eq!(tasks.rows.len(), 1);
+    assert_eq!(tasks.rows[0].card_id, CardId(c2));
+    let users = case.user_costs(admin(org), period(), filter).await.unwrap();
+    assert_eq!(users.rows.len(), 1);
+    assert_eq!(users.rows[0].user, "u2");
+    assert_eq!(users.total.cost_micros, 40);
+}
+
+#[tokio::test]
+async fn agent_and_card_filters_combine() {
+    let Some(pool) = pool().await else { return };
+    let org = organization(&pool).await;
+    let (ann, bob) = (
+        agent(&pool, org, "Ann", false).await,
+        agent(&pool, org, "Bob", false).await,
+    );
+    let c1 = card(&pool, org, "one", None).await;
+    let c2 = card(&pool, org, "two", None).await;
+    agent_run(&pool, org, c1, ann, "u", &[step("m", 100)]).await;
+    agent_run(&pool, org, c1, bob, "u", &[step("m", 40)]).await;
+    agent_run(&pool, org, c2, ann, "u", &[step("m", 7)]).await;
+    let filter = CostFilter {
+        agent: Some(AgentId(ann)),
+        card: Some(CardId(c1)),
+    };
+
+    let tasks = usecase(&pool)
+        .task_costs(admin(org), period(), None, filter)
+        .await
+        .unwrap();
+
+    assert_eq!(tasks.total.cost_micros, 100);
+    assert_eq!(tasks.rows.len(), 1);
+    assert_eq!(tasks.rows[0].agents.len(), 1);
+}
+
+#[tokio::test]
+async fn unknown_agent_or_card_is_not_found() {
+    let Some(pool) = pool().await else { return };
+    let (mine, other) = (organization(&pool).await, organization(&pool).await);
+    let foreign_agent = agent(&pool, other, "Eve", false).await;
+    let foreign_card = card(&pool, other, "secret", None).await;
+    let case = usecase(&pool);
+    let filters = [
+        only_agent(foreign_agent),
+        only_agent(Uuid::now_v7()),
+        only_card(foreign_card),
+        only_card(Uuid::now_v7()),
+    ];
+
+    for filter in filters {
+        let result = case.agent_costs(admin(mine), period(), filter).await;
+        assert!(matches!(result, Err(CoreError::NotFound)), "{filter:?}");
+        let result = case.user_costs(admin(mine), period(), filter).await;
+        assert!(matches!(result, Err(CoreError::NotFound)), "{filter:?}");
+    }
 }

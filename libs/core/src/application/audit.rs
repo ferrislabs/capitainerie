@@ -8,7 +8,8 @@ use crate::domain::{
     authorization::Subject,
     budget::{BudgetOverview, BudgetSettings, service::BudgetService},
     cost::{
-        AgentSpend, CostReport, Period, ProjectSpend, TaskSpend, UserSpend, service::CostService,
+        AgentSpend, CostFilter, CostReport, Period, ProjectSpend, TaskSpend, UserSpend,
+        service::CostService,
     },
 };
 
@@ -47,9 +48,10 @@ impl CapitainerieUseCase {
         &self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<ProjectSpend>, CoreError> {
         CostService::new(cost_repository, authz)
-            .projects(subject, period)
+            .projects(subject, period, filter)
             .await
     }
 
@@ -58,9 +60,10 @@ impl CapitainerieUseCase {
         &self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<AgentSpend>, CoreError> {
         CostService::new(cost_repository, authz)
-            .agents(subject, period)
+            .agents(subject, period, filter)
             .await
     }
 
@@ -70,9 +73,10 @@ impl CapitainerieUseCase {
         subject: Subject,
         period: Period,
         project: Option<ProjectId>,
+        filter: CostFilter,
     ) -> Result<CostReport<TaskSpend>, CoreError> {
         CostService::new(cost_repository, authz)
-            .tasks(subject, period, project)
+            .tasks(subject, period, project, filter)
             .await
     }
 
@@ -81,9 +85,10 @@ impl CapitainerieUseCase {
         &self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<UserSpend>, CoreError> {
         CostService::new(cost_repository, authz)
-            .users(subject, period)
+            .users(subject, period, filter)
             .await
     }
 }

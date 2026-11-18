@@ -5,7 +5,8 @@ use axum::{
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{AgentId, CardId, CoreError, ProjectId};
 use capitainerie_core::domain::cost::{
-    AgentSpend, CostReport, ModelSpend, Period, ProjectSpend, Spent, TaskSpend, UserSpend,
+    AgentSpend, CostFilter, CostReport, ModelSpend, Period, ProjectSpend, Spent, TaskSpend,
+    UserSpend,
 };
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use chrono::{DateTime, Utc};
@@ -35,6 +36,10 @@ pub struct CostsQuery {
     pub from: Option<DateTime<Utc>>,
     /// End of the window, exclusive; now by default.
     pub to: Option<DateTime<Utc>>,
+    /// Only the work of this agent (agents of the team, not pipeline roles).
+    pub agent_id: Option<AgentId>,
+    /// Only the runs of this task.
+    pub card_id: Option<CardId>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -44,6 +49,10 @@ pub struct TaskCostsQuery {
     pub from: Option<DateTime<Utc>>,
     /// End of the window, exclusive; now by default.
     pub to: Option<DateTime<Utc>>,
+    /// Only the work of this agent (agents of the team, not pipeline roles).
+    pub agent_id: Option<AgentId>,
+    /// Only the runs of this task.
+    pub card_id: Option<CardId>,
     /// Only the tasks of this project.
     pub project_id: Option<ProjectId>,
 }
@@ -231,6 +240,10 @@ from_report!(AgentCostsResponse, AgentSpend);
 from_report!(TaskCostsResponse, TaskSpend);
 from_report!(UserCostsResponse, UserSpend);
 
+fn filter(agent: Option<AgentId>, card: Option<CardId>) -> CostFilter {
+    CostFilter { agent, card }
+}
+
 fn period(from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<Period, CoreError> {
     Period::new(from, to, Utc::now())
 }
@@ -245,6 +258,7 @@ fn period(from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<Peri
         (status = 200, description = "Spend per project over the window, each with its agents; work outside any project comes under a null project", body = ProjectCostsResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the read; agents have no access to costs", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 404, description = "`agent_id` or `card_id` is not one of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "`from` is not before `to`", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -258,7 +272,11 @@ pub async fn projects_handler(
     let period = period(query.from, query.to)?;
     let report = state
         .usecase
-        .project_costs(caller.subject(), period)
+        .project_costs(
+            caller.subject(),
+            period,
+            filter(query.agent_id, query.card_id),
+        )
         .await?;
     Ok(Json(report.into()))
 }
@@ -273,6 +291,7 @@ pub async fn projects_handler(
         (status = 200, description = "Spend and runs per agent over the window", body = AgentCostsResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the read; agents have no access to costs", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 404, description = "`agent_id` or `card_id` is not one of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "`from` is not before `to`", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -284,7 +303,14 @@ pub async fn agents_handler(
     Query(query): Query<CostsQuery>,
 ) -> Result<Json<AgentCostsResponse>, ApiError> {
     let period = period(query.from, query.to)?;
-    let report = state.usecase.agent_costs(caller.subject(), period).await?;
+    let report = state
+        .usecase
+        .agent_costs(
+            caller.subject(),
+            period,
+            filter(query.agent_id, query.card_id),
+        )
+        .await?;
     Ok(Json(report.into()))
 }
 
@@ -298,7 +324,7 @@ pub async fn agents_handler(
         (status = 200, description = "Spend per task over the window, each with its agents", body = TaskCostsResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the read; agents have no access to costs", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 404, description = "`project_id` is not a project of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 404, description = "`project_id`, `agent_id` or `card_id` is not one of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "`from` is not before `to`", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -312,7 +338,12 @@ pub async fn tasks_handler(
     let period = period(query.from, query.to)?;
     let report = state
         .usecase
-        .task_costs(caller.subject(), period, query.project_id)
+        .task_costs(
+            caller.subject(),
+            period,
+            query.project_id,
+            filter(query.agent_id, query.card_id),
+        )
         .await?;
     Ok(Json(report.into()))
 }
@@ -327,6 +358,7 @@ pub async fn tasks_handler(
         (status = 200, description = "Spend per user over the window, each with its models", body = UserCostsResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the read; agents have no access to costs", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 404, description = "`agent_id` or `card_id` is not one of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "`from` is not before `to`", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -338,6 +370,13 @@ pub async fn users_handler(
     Query(query): Query<CostsQuery>,
 ) -> Result<Json<UserCostsResponse>, ApiError> {
     let period = period(query.from, query.to)?;
-    let report = state.usecase.user_costs(caller.subject(), period).await?;
+    let report = state
+        .usecase
+        .user_costs(
+            caller.subject(),
+            period,
+            filter(query.agent_id, query.card_id),
+        )
+        .await?;
     Ok(Json(report.into()))
 }

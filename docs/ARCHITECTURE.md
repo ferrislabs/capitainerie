@@ -185,7 +185,7 @@ sequenceDiagram
 - Write : l'agent Rédacteur n'a qu'un outil, `propose_card(action_index, title, description)`. La provenance, le `run_id` et le jeton viennent du code, jamais du modèle, et une action ne donne qu'une carte.
 - Réessais : 3 tentatives avec backoff pour les erreurs transitoires (modèle ou FerrisKey injoignable) ; un refus ou une sortie invalide échoue tout de suite, avec la raison stockée sur le run.
 - Coût : tokens × prix par million (`LLM_PRICE_*`, 0 pour Ollama), par étape. L'exporteur (`apps/exporter`) écrit les événements de run en Parquet ; l'API les interroge avec DataFusion (`/api/v1/analytics/costs`, `/api/v1/agents`).
-- Rapports de coût sur une période : `GET /api/v1/analytics/costs/{projects,agents,tasks,users}` (`libs/handlers-audit`, autorisation `Action::AuditRead`). Ils lisent Postgres (`run_steps`, jointures runs, cartes, projets), sur `[from, to[` (30 jours par défaut). `/api/v1/analytics/costs` continue de lire le Parquet.
+- Rapports de coût sur une période : `GET /api/v1/analytics/costs/{projects,agents,tasks,users}` (`libs/handlers-audit`, autorisation `Action::AuditRead`). Ils lisent Postgres (`run_steps`, jointures runs, cartes, projets), sur `[from, to[` (30 jours par défaut), filtrables par `agent_id` et `card_id` (404 si l'id n'est pas de l'organisation). `/api/v1/analytics/costs` continue de lire le Parquet.
 - Timeline : `GET /api/v1/runs/{id}/timeline` (étapes, appels d'outils, décisions du PDP, totaux) ; page `/runs/$runId` dans la console, avec un lien vers la trace Jaeger.
 
 ## 6. Observabilité
