@@ -26,6 +26,7 @@ members = [
     "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/handlers-skills",
+    "libs/handlers-routines",
     "libs/handlers-sources",
     "libs/handlers-team",
     "libs/handlers-transcriptions",
@@ -52,7 +53,9 @@ axum-extra = { version = "0.12.6", features = ["typed-routing"] }
 base64 = "0.22.1"
 bytes = "1.10"
 chrono = { version = "0.4.42", features = ["serde"] }
+chrono-tz = "0.10.4"
 clap = { version = "4.6.1", features = ["env", "derive"] }
+croner = "3.0.1"
 dotenvy = "0.15.7"
 mockall = "0.13.1"
 kube = { version = "4.2.0", default-features = false, features = ["client", "rustls-tls", "aws-lc-rs"] }
@@ -118,6 +121,7 @@ capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-handlers-skills = { path = "libs/handlers-skills" }
+capitainerie-handlers-routines = { path = "libs/handlers-routines" }
 capitainerie-handlers-sources = { path = "libs/handlers-sources" }
 capitainerie-handlers-team = { path = "libs/handlers-team" }
 capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }

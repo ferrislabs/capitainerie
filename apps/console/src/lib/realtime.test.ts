@@ -248,6 +248,26 @@ describe('startRealtime', () => {
 		expect(invalidated(key('/api/v1/approvals'))).toBe(false)
 	})
 
+	it('invalidates the routines on routine events', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'routine.run_created' })
+		expect(invalidated(key('/api/v1/routines'))).toBe(true)
+		expect(
+			invalidated(
+				key('/api/v1/routines/{routine_id}/runs', { routine_id: 'r1' }),
+			),
+		).toBe(true)
+		expect(invalidated(key('/api/v1/sources'))).toBe(false)
+	})
+
+	it('invalidates the routines on skipped runs', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'routine.run_skipped' })
+		expect(
+			invalidated(key('/api/v1/routines/{routine_id}', { routine_id: 'r1' })),
+		).toBe(true)
+	})
+
 	it('invalidates everything on resync', () => {
 		start()
 		latest().receive({ op: 'resync' })

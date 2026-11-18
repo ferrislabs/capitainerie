@@ -1,19 +1,7 @@
-import type { RunTone } from '#/domain/routines/types'
-import { Sev, type SevTone } from '#/domain/sources/ui/mockup'
+import { type RoutineRun, runOutcome } from '#/domain/routines/model'
+import { Sev } from '#/domain/sources/ui/mockup'
 
-interface Props {
-	tone: RunTone
-	label: string
-	listing?: boolean
+export function RunBadge({ run }: { run: RoutineRun }) {
+	const outcome = runOutcome(run)
+	return <Sev tone={outcome.tone}>{outcome.label}</Sev>
 }
-
-const TONES: Record<RunTone, SevTone> = {
-	success: 'ok',
-	danger: 'crit',
-	neutral: 'info',
-	violet: 'info',
-}
-
-export const RunBadge = ({ tone, label, listing = false }: Props) => (
-	<Sev tone={listing && tone === 'violet' ? 'vio' : TONES[tone]}>{label}</Sev>
-)

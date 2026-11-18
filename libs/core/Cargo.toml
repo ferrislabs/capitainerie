@@ -14,6 +14,8 @@ capitainerie-events.workspace = true
 capitainerie-macros.workspace = true
 capitainerie-telemetry.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
+croner.workspace = true
 mockall = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true

@@ -20,6 +20,8 @@ pub mod domain {
     pub struct ModelAssignment;
     pub struct Organization;
     pub struct Project;
+    pub struct Routine;
+    pub struct RoutineRun;
     pub struct Run;
     pub struct Skill;
     pub struct Source;

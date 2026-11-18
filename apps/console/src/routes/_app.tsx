@@ -20,6 +20,7 @@ import { usePendingApprovalsCount } from '#/domain/approvals/hooks/use-approvals
 import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useMe } from '#/domain/identity/hooks/use-me'
+import { useRoutine } from '#/domain/routines/hooks/use-routines'
 import { useSource } from '#/domain/sources/hooks/use-sources'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useCards } from '#/domain/tasks/hooks/use-tasks'
@@ -34,9 +35,12 @@ export const Route = createFileRoute('/_app')({ component: AppLayout })
 
 const RAIL_STORAGE_KEY = 'capitainerie.rail-expanded'
 
-function sourceIdOf(pathname: string): string | undefined {
+function entityIdOf(
+	pathname: string,
+	expected: 'sources' | 'routines',
+): string | undefined {
 	const [section, id] = pathname.split('/').filter(Boolean)
-	if (section !== 'sources' || !id || id === 'nouvelle') return undefined
+	if (section !== expected || !id || id === 'nouvelle') return undefined
 	try {
 		return decodeURIComponent(id)
 	} catch {
@@ -57,8 +61,11 @@ function AppLayout() {
 	const liveCount = useActiveRuns().data?.items.length ?? 0
 	const organization = useMe().data?.organization.name
 	const pendingApprovals = usePendingApprovalsCount()
-	const sourceId = sourceIdOf(pathname)
+	const sourceId = entityIdOf(pathname, 'sources')
 	const sourceName = useSource(sourceId ?? '', sourceId !== undefined).data
+		?.name
+	const routineId = entityIdOf(pathname, 'routines')
+	const routineName = useRoutine(routineId ?? '', routineId !== undefined).data
 		?.name
 	const badges = useMemo<RailBadges>(
 		() => (pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
@@ -77,8 +84,9 @@ function AppLayout() {
 			task: (id) => cards?.find((t) => t.id === id)?.title,
 			agent: (id) => agents?.find((a) => a.id === id)?.name,
 			source: (id) => (id === sourceId ? sourceName : undefined),
+			routine: (id) => (id === routineId ? routineName : undefined),
 		}),
-		[cards, agents, sourceId, sourceName],
+		[cards, agents, sourceId, sourceName, routineId, routineName],
 	)
 	const { preference, setPreference } = useTheme()
 	const dark = resolveTheme(preference, systemPrefersDark()) === 'dark'

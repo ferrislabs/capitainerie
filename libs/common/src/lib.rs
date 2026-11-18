@@ -71,6 +71,9 @@ id!(SkillId);
 id!(ApprovalId);
 id!(SourceId);
 id!(SourceEventId);
+id!(RoutineId);
+id!(RoutineTriggerId);
+id!(RoutineRunId);
 
 #[cfg(test)]
 mod tests {

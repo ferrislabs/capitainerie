@@ -17,6 +17,7 @@ pub mod member;
 pub mod organization;
 pub mod project;
 pub mod provider;
+pub mod routine;
 pub mod run;
 pub mod similarity;
 pub mod skill;

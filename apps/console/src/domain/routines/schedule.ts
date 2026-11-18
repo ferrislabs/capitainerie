@@ -1,18 +1,36 @@
-export const FREQUENCIES = [
-	'Toutes les N heures',
-	'Tous les jours',
-	'Toutes les semaines',
-	'Tous les mois',
-	'Expression cron',
-] as const
+import type { Schemas } from '#/api/api.client'
 
-export type Frequency = (typeof FREQUENCIES)[number]
+export type Frequency = Schemas.FrequencyDto
 
-export const DAYS = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'] as const
+export const FREQUENCIES: ReadonlyArray<{ value: Frequency; label: string }> = [
+	{ value: 'every_hours', label: 'Toutes les N heures' },
+	{ value: 'daily', label: 'Tous les jours' },
+	{ value: 'weekly', label: 'Certains jours de la semaine' },
+	{ value: 'monthly', label: 'Le 1er de chaque mois' },
+	{ value: 'cron', label: 'Expression cron' },
+]
+
+export const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 
 export type Day = (typeof DAYS)[number]
 
-export interface Schedule {
+export const DAY_LABELS: Record<Day, string> = {
+	mon: 'Lun',
+	tue: 'Mar',
+	wed: 'Mer',
+	thu: 'Jeu',
+	fri: 'Ven',
+	sat: 'Sam',
+	sun: 'Dim',
+}
+
+export const MAX_EVERY_HOURS = 744
+const DEFAULT_TIME = '08:00'
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+const CRON_FIELDS = 5
+
+/** Planning en cours d'édition : tous les champs restent présents pour changer de fréquence sans rien perdre. */
+export interface ScheduleDraft {
 	frequency: Frequency
 	hours: number
 	time: string
@@ -20,120 +38,107 @@ export interface Schedule {
 	cron: string
 }
 
-const DEFAULT_TIME = '08:00'
-const SEARCH_DAYS = 60
-const SEARCH_MONTHS = 24
-
-export const defaultSchedule = (): Schedule => ({
-	frequency: 'Toutes les semaines',
+export const defaultSchedule = (): ScheduleDraft => ({
+	frequency: 'weekly',
 	hours: 24,
 	time: DEFAULT_TIME,
-	days: ['lun'],
+	days: ['mon'],
 	cron: '',
 })
 
-const capitalize = (word: string) =>
-	word.charAt(0).toUpperCase() + word.slice(1)
+const isDay = (value: string): value is Day =>
+	(DAYS as ReadonlyArray<string>).includes(value)
 
-export function parseSchedule(text: string): Schedule {
-	const schedule: Schedule = {
-		...defaultSchedule(),
-		time: text.match(/(\d{2}:\d{2})/)?.[1] ?? DEFAULT_TIME,
+export function scheduleDraftOf(
+	dto: Schemas.ScheduleDto | null | undefined,
+): ScheduleDraft {
+	const base = defaultSchedule()
+	if (!dto) return base
+	const days = (dto.days ?? []).filter(isDay)
+	return {
+		frequency: dto.frequency,
+		hours: dto.hours ?? base.hours,
+		time: dto.time ?? base.time,
+		days: days.length > 0 ? days : base.days,
+		cron: dto.cron ?? '',
 	}
-	if (/Chaque jour/.test(text))
-		return { ...schedule, frequency: 'Tous les jours' }
-	if (/Jours ouvrés/.test(text)) return { ...schedule, days: DAYS.slice(0, 5) }
-	const hours = text.match(/Toutes les (\d+) h/)?.[1]
-	if (hours)
-		return {
-			...schedule,
-			frequency: 'Toutes les N heures',
-			hours: Number(hours),
-		}
-	if (/1er du mois/.test(text))
-		return { ...schedule, frequency: 'Tous les mois' }
-	const day = DAYS.find((d) => new RegExp(`^${d}`, 'i').test(text))
-	return day ? { ...schedule, days: [day] } : schedule
 }
 
-const isWorkingDays = (days: ReadonlyArray<Day>) =>
-	days.length === 5 && !days.includes('sam') && !days.includes('dim')
+export function scheduleDto(draft: ScheduleDraft): Schemas.ScheduleDto {
+	switch (draft.frequency) {
+		case 'every_hours':
+			return { frequency: 'every_hours', hours: draft.hours }
+		case 'daily':
+		case 'monthly':
+			return { frequency: draft.frequency, time: draft.time }
+		case 'weekly':
+			return { frequency: 'weekly', time: draft.time, days: [...draft.days] }
+		case 'cron':
+			return { frequency: 'cron', cron: draft.cron.trim() }
+	}
+}
 
-export function scheduleText(schedule: Schedule): string {
-	const time = schedule.time || DEFAULT_TIME
-	switch (schedule.frequency) {
-		case 'Toutes les N heures':
-			return `Toutes les ${schedule.hours || 1} h`
-		case 'Tous les jours':
+/** Message d'erreur du planning, ou `null` s'il est valide. */
+export function scheduleError(draft: ScheduleDraft): string | null {
+	switch (draft.frequency) {
+		case 'every_hours':
+			return Number.isInteger(draft.hours) &&
+				draft.hours >= 1 &&
+				draft.hours <= MAX_EVERY_HOURS
+				? null
+				: `Indique un nombre d'heures entre 1 et ${MAX_EVERY_HOURS}.`
+		case 'cron':
+			return draft.cron.trim().split(/\s+/).filter(Boolean).length ===
+				CRON_FIELDS
+				? null
+				: "L'expression cron doit avoir 5 champs : minute heure jour mois jour-semaine."
+		case 'weekly':
+			if (draft.days.length === 0) return 'Choisis au moins un jour.'
+			break
+		default:
+			break
+	}
+	return TIME_PATTERN.test(draft.time)
+		? null
+		: "L'heure doit être au format HH:MM (ex. 08:30)."
+}
+
+export const toggleDay = (
+	days: ReadonlyArray<Day>,
+	day: Day,
+): ReadonlyArray<Day> =>
+	(days.includes(day) ? days.filter((d) => d !== day) : [...days, day]).sort(
+		(a, b) => DAYS.indexOf(a) - DAYS.indexOf(b),
+	)
+
+const WORKING_DAYS: ReadonlyArray<Day> = ['mon', 'tue', 'wed', 'thu', 'fri']
+
+function daysText(days: ReadonlyArray<string>): string {
+	const known = DAYS.filter((d) => days.includes(d))
+	if (known.length === DAYS.length) return 'Chaque jour'
+	if (
+		known.length === WORKING_DAYS.length &&
+		WORKING_DAYS.every((d) => known.includes(d))
+	)
+		return 'Jours ouvrés'
+	return known.map((d) => DAY_LABELS[d]).join(', ') || 'Aucun jour'
+}
+
+/** Résumé d'un planning tel que l'API le renvoie, ex. « Lun, Mer 08:00 ». */
+export function scheduleText(dto: Schemas.ScheduleDto): string {
+	const time = dto.time ?? DEFAULT_TIME
+	switch (dto.frequency) {
+		case 'every_hours':
+			return dto.hours === 1
+				? 'Toutes les heures'
+				: `Toutes les ${dto.hours ?? 1} h`
+		case 'daily':
 			return `Chaque jour ${time}`
-		case 'Toutes les semaines': {
-			const days = isWorkingDays(schedule.days)
-				? 'Jours ouvrés'
-				: schedule.days.map(capitalize).join(', ') || 'Aucun jour'
-			return `${days} ${time}`
-		}
-		case 'Tous les mois':
+		case 'weekly':
+			return `${daysText(dto.days ?? [])} ${time}`
+		case 'monthly':
 			return `Le 1er du mois ${time}`
-		case 'Expression cron':
-			return schedule.cron || '* * * * *'
+		case 'cron':
+			return `Cron ${dto.cron ?? ''}`.trim()
 	}
 }
-
-const weekdayOf = (date: Date): Day => DAYS[(date.getDay() + 6) % 7] ?? 'lun'
-
-/** Prochains passages à partir de `now` ; une expression cron est calculée côté serveur. */
-export function nextRuns(
-	schedule: Schedule,
-	now: Date,
-	count: number,
-): ReadonlyArray<Date> {
-	const [hour = 0, minute = 0] = (schedule.time || DEFAULT_TIME)
-		.split(':')
-		.map((part) => Number(part) || 0)
-	const out: Date[] = []
-	if (schedule.frequency === 'Toutes les N heures') {
-		const cursor = new Date(now)
-		cursor.setMinutes(0, 0, 0)
-		cursor.setHours(cursor.getHours() + 1)
-		for (let k = 0; k < count; k++) {
-			out.push(new Date(cursor))
-			cursor.setHours(cursor.getHours() + (schedule.hours || 1))
-		}
-	} else if (
-		schedule.frequency === 'Tous les jours' ||
-		schedule.frequency === 'Toutes les semaines'
-	) {
-		for (let k = 0; out.length < count && k < SEARCH_DAYS; k++) {
-			const day = new Date(now)
-			day.setDate(day.getDate() + k)
-			day.setHours(hour, minute, 0, 0)
-			if (day <= now) continue
-			if (
-				schedule.frequency === 'Tous les jours' ||
-				schedule.days.includes(weekdayOf(day))
-			)
-				out.push(day)
-		}
-	} else if (schedule.frequency === 'Tous les mois') {
-		for (let k = 0; out.length < count && k < SEARCH_MONTHS; k++) {
-			const day = new Date(
-				now.getFullYear(),
-				now.getMonth() + k,
-				1,
-				hour,
-				minute,
-			)
-			if (day > now) out.push(day)
-		}
-	}
-	return out
-}
-
-export const formatRun = (date: Date): string =>
-	date.toLocaleString('fr-FR', {
-		weekday: 'short',
-		day: 'numeric',
-		month: 'short',
-		hour: '2-digit',
-		minute: '2-digit',
-	})

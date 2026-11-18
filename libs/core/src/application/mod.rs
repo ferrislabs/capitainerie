@@ -18,6 +18,7 @@ mod mcp;
 mod organization;
 mod pipeline;
 mod provider;
+mod routine;
 mod run;
 mod skill;
 mod source;

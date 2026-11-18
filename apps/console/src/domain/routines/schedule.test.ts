@@ -1,187 +1,103 @@
 import { describe, expect, it } from 'vitest'
+import type { Schemas } from '#/api/api.client'
 import {
-	DAYS,
-	FREQUENCIES,
-	formatRun,
-	nextRuns,
-	parseSchedule,
-	type Schedule,
+	defaultSchedule,
+	scheduleDraftOf,
+	scheduleDto,
+	scheduleError,
 	scheduleText,
+	toggleDay,
 } from '#/domain/routines/schedule'
 
-const NOW = new Date(2026, 10, 17, 10, 0, 0)
-
-const base: Schedule = {
-	frequency: 'Toutes les semaines',
-	hours: 24,
-	time: '08:00',
-	days: ['lun'],
-	cron: '',
-}
-
-const stamps = (dates: ReadonlyArray<Date>) =>
-	dates.map((d) => [
-		d.getMonth() + 1,
-		d.getDate(),
-		d.getHours(),
-		d.getMinutes(),
-	])
-
-describe('FREQUENCIES', () => {
-	it('lists the five frequencies in order', () => {
-		expect(FREQUENCIES).toEqual([
-			'Toutes les N heures',
-			'Tous les jours',
-			'Toutes les semaines',
-			'Tous les mois',
-			'Expression cron',
-		])
-		expect(DAYS).toHaveLength(7)
-	})
-})
-
-describe('parseSchedule', () => {
-	it('reads a single weekday', () => {
-		expect(parseSchedule('Lun. 06:30')).toMatchObject({
-			frequency: 'Toutes les semaines',
-			days: ['lun'],
-			time: '06:30',
-		})
-		expect(parseSchedule('Mar. 09:30').days).toEqual(['mar'])
-	})
-	it('reads daily', () => {
-		expect(parseSchedule('Chaque jour 06:00')).toMatchObject({
-			frequency: 'Tous les jours',
-			time: '06:00',
-		})
-	})
-	it('reads working days', () => {
-		expect(parseSchedule('Jours ouvrés 08:00')).toMatchObject({
-			frequency: 'Toutes les semaines',
-			days: ['lun', 'mar', 'mer', 'jeu', 'ven'],
-			time: '08:00',
-		})
-	})
-	it('reads an hour interval', () => {
-		expect(parseSchedule('Toutes les 48 h')).toMatchObject({
-			frequency: 'Toutes les N heures',
-			hours: 48,
-		})
-	})
-	it('reads monthly', () => {
-		expect(parseSchedule('Le 1er du mois').frequency).toBe('Tous les mois')
-	})
-})
-
 describe('scheduleText', () => {
-	it('round-trips the fixture texts', () => {
-		for (const text of [
-			'Lun 06:30',
-			'Chaque jour 06:00',
-			'Jours ouvrés 08:00',
+	it('summarises every frequency', () => {
+		expect(scheduleText({ frequency: 'every_hours', hours: 48 })).toBe(
 			'Toutes les 48 h',
-		]) {
-			expect(scheduleText(parseSchedule(text))).toBe(text)
-		}
-	})
-	it('describes monthly and cron schedules', () => {
-		expect(scheduleText({ ...base, frequency: 'Tous les mois' })).toBe(
-			'Le 1er du mois 08:00',
 		)
-		expect(scheduleText({ ...base, frequency: 'Expression cron' })).toBe(
-			'* * * * *',
+		expect(scheduleText({ frequency: 'every_hours', hours: 1 })).toBe(
+			'Toutes les heures',
+		)
+		expect(scheduleText({ frequency: 'daily', time: '06:00' })).toBe(
+			'Chaque jour 06:00',
 		)
 		expect(
 			scheduleText({
-				...base,
-				frequency: 'Expression cron',
-				cron: '30 6 * * 1',
+				frequency: 'weekly',
+				time: '09:30',
+				days: ['mon', 'wed'],
 			}),
-		).toBe('30 6 * * 1')
-	})
-	it('says when no weekday is chosen', () => {
-		expect(scheduleText({ ...base, days: [] })).toBe('Aucun jour 08:00')
-	})
-})
-
-describe('nextRuns', () => {
-	it('computes weekly runs on the chosen days', () => {
-		expect(stamps(nextRuns({ ...base, time: '06:30' }, NOW, 3))).toEqual([
-			[11, 23, 6, 30],
-			[11, 30, 6, 30],
-			[12, 7, 6, 30],
-		])
-	})
-	it('computes daily runs after now', () => {
+		).toBe('Lun, Mer 09:30')
 		expect(
-			stamps(
-				nextRuns(
-					{ ...base, frequency: 'Tous les jours', time: '06:00' },
-					NOW,
-					3,
-				),
-			),
-		).toEqual([
-			[11, 18, 6, 0],
-			[11, 19, 6, 0],
-			[11, 20, 6, 0],
-		])
-	})
-	it('keeps today when the time is still ahead', () => {
-		expect(
-			stamps(
-				nextRuns(
-					{ ...base, frequency: 'Tous les jours', time: '18:00' },
-					NOW,
-					1,
-				),
-			),
-		).toEqual([[11, 17, 18, 0]])
-	})
-	it('skips weekends for working days', () => {
-		const t = parseSchedule('Jours ouvrés 08:00')
-		expect(stamps(nextRuns(t, new Date(2026, 10, 20, 10, 0), 3))).toEqual([
-			[11, 23, 8, 0],
-			[11, 24, 8, 0],
-			[11, 25, 8, 0],
-		])
-	})
-	it('steps by the hour interval from the next full hour', () => {
-		expect(
-			stamps(
-				nextRuns(
-					{ ...base, frequency: 'Toutes les N heures', hours: 24 },
-					NOW,
-					3,
-				),
-			),
-		).toEqual([
-			[11, 17, 11, 0],
-			[11, 18, 11, 0],
-			[11, 19, 11, 0],
-		])
-	})
-	it('computes monthly runs on the first', () => {
-		expect(
-			stamps(nextRuns({ ...base, frequency: 'Tous les mois' }, NOW, 3)),
-		).toEqual([
-			[12, 1, 8, 0],
-			[1, 1, 8, 0],
-			[2, 1, 8, 0],
-		])
-	})
-	it('returns nothing for cron or without days', () => {
-		expect(nextRuns({ ...base, frequency: 'Expression cron' }, NOW, 3)).toEqual(
-			[],
+			scheduleText({
+				frequency: 'weekly',
+				time: '08:00',
+				days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+			}),
+		).toBe('Jours ouvrés 08:00')
+		expect(scheduleText({ frequency: 'monthly', time: '07:00' })).toBe(
+			'Le 1er du mois 07:00',
 		)
-		expect(nextRuns({ ...base, days: [] }, NOW, 3)).toEqual([])
+		expect(scheduleText({ frequency: 'cron', cron: '30 6 * * 1' })).toBe(
+			'Cron 30 6 * * 1',
+		)
 	})
 })
 
-describe('formatRun', () => {
-	it('formats in French with weekday and time', () => {
-		const text = formatRun(new Date(2026, 10, 18, 6, 30))
-		expect(text).toContain('18')
-		expect(text).toContain('06:30')
+describe('scheduleDto', () => {
+	it('sends only the fields of the chosen frequency', () => {
+		const draft = { ...defaultSchedule(), days: ['mon', 'fri'] as const }
+		expect(scheduleDto({ ...draft, frequency: 'weekly' })).toEqual({
+			frequency: 'weekly',
+			time: '08:00',
+			days: ['mon', 'fri'],
+		})
+		expect(
+			scheduleDto({ ...draft, frequency: 'every_hours', hours: 6 }),
+		).toEqual({ frequency: 'every_hours', hours: 6 })
+		expect(
+			scheduleDto({ ...draft, frequency: 'cron', cron: ' 0 6 * * * ' }),
+		).toEqual({ frequency: 'cron', cron: '0 6 * * *' })
+		expect(scheduleDto({ ...draft, frequency: 'daily' })).toEqual({
+			frequency: 'daily',
+			time: '08:00',
+		})
+	})
+
+	it('round-trips through scheduleDraftOf', () => {
+		const dto: Schemas.ScheduleDto = {
+			frequency: 'weekly',
+			time: '10:15',
+			days: ['sat'],
+		}
+		expect(scheduleDto(scheduleDraftOf(dto))).toEqual(dto)
+		expect(scheduleDraftOf(null)).toEqual(defaultSchedule())
+	})
+})
+
+describe('scheduleError', () => {
+	it('validates hours, days, time and cron', () => {
+		const base = defaultSchedule()
+		expect(scheduleError(base)).toBeNull()
+		expect(scheduleError({ ...base, days: [] })).toMatch(/au moins un jour/)
+		expect(scheduleError({ ...base, time: '25:00' })).toMatch(/HH:MM/)
+		expect(
+			scheduleError({ ...base, frequency: 'every_hours', hours: 0 }),
+		).toMatch(/entre 1 et 744/)
+		expect(
+			scheduleError({ ...base, frequency: 'every_hours', hours: 12 }),
+		).toBeNull()
+		expect(
+			scheduleError({ ...base, frequency: 'cron', cron: '* * *' }),
+		).toMatch(/5 champs/)
+		expect(
+			scheduleError({ ...base, frequency: 'cron', cron: '0 6 * * 1-5' }),
+		).toBeNull()
+	})
+})
+
+describe('toggleDay', () => {
+	it('adds in week order and removes', () => {
+		expect(toggleDay(['fri'], 'mon')).toEqual(['mon', 'fri'])
+		expect(toggleDay(['mon', 'fri'], 'mon')).toEqual(['fri'])
 	})
 })

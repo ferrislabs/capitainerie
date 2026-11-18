@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM routine_triggers\n            WHERE organization_id = $1 AND routine_id = $2 AND id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "15ab877e2909d3b2e4c7d32de6a232f0bc0489ad86244d92b6b7ed818b0db4bd"
+}

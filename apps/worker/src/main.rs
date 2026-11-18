@@ -1,6 +1,7 @@
 mod dispatch;
 mod indexer;
 mod orchestrator;
+mod scheduler;
 
 use std::{sync::Arc, time::Duration};
 
@@ -36,7 +37,10 @@ use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
 use tokio::sync::watch;
 
-use crate::{dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator};
+use crate::{
+    dispatch::Dispatcher, indexer::CardIndexer, orchestrator::Orchestrator,
+    scheduler::RoutineScheduler,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "capitainerie-worker", version)]
@@ -204,6 +208,7 @@ async fn main() -> anyhow::Result<()> {
         mcp_http,
         AgentTaskConfig::new(default_models.clone(), args.console_url.clone()),
     );
+    let routines = RoutineScheduler::new(usecase.clone());
     let execution = ExecutePipeline::new(
         usecase,
         executor,
@@ -237,12 +242,13 @@ async fn main() -> anyhow::Result<()> {
     );
     let relay = OutboxRelay::new(pool, bus, OutboxRelayConfig::default());
     let mut relay_stop = stopped.clone();
-    let (relayed, orchestrated, (), ()) = tokio::join!(
+    let (relayed, orchestrated, (), (), ()) = tokio::join!(
         relay.run(async move {
             let _ = relay_stop.wait_for(|stop| *stop).await;
         }),
         orchestrator.run(stopped.clone()),
-        indexer.run(stopped),
+        indexer.run(stopped.clone()),
+        routines.run(stopped),
         async move {
             capitainerie_telemetry::shutdown_signal().await;
             tracing::info!("worker stopping");
