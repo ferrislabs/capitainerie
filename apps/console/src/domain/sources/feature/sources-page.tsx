@@ -13,7 +13,7 @@ import {
 	filterSources,
 	type Source,
 } from '#/domain/sources/model'
-import { Empty } from '#/domain/sources/ui/mockup'
+import { Empty } from '#/domain/sources/ui/kit'
 import { SourcesTable } from '#/domain/sources/ui/sources-table'
 
 function describe(sources: ReadonlyArray<Source>, archived: boolean): string {

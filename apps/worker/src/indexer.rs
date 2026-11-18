@@ -265,6 +265,7 @@ mod tests {
                 organization_id: org,
                 version: 2,
                 run_id: None,
+                assigned_to: None,
                 author: author(),
             }),
             envelope(&CardMoved {

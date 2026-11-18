@@ -60,6 +60,7 @@ mod tests {
         );
         RunOverview {
             run,
+            agent: None,
             title: None,
             repository_hint: None,
             links: Default::default(),

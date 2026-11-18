@@ -4,7 +4,7 @@ pub mod ports;
 pub mod service;
 pub mod step;
 
-use capitainerie_common::{CardId, CoreError, OrganizationId, RunId, TranscriptId};
+use capitainerie_common::{AgentId, CardId, CoreError, OrganizationId, RunId, TranscriptId};
 use capitainerie_events::run::RunQueued;
 use chrono::{DateTime, Utc};
 
@@ -64,10 +64,25 @@ pub struct Run {
     pub models: Option<crate::domain::provider::ModelAssignments>,
 }
 
+/// The agent an agent task run works for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunAgent {
+    pub id: AgentId,
+    pub name: String,
+}
+
+/// Narrows the run list; `None` keeps every value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RunFilter {
+    pub status: Option<RunStatus>,
+    pub agent_id: Option<AgentId>,
+}
+
 /// A run as the console lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOverview {
     pub run: Run,
+    pub agent: Option<RunAgent>,
     pub title: Option<String>,
     pub repository_hint: Option<RepositoryRef>,
     pub links: Links,

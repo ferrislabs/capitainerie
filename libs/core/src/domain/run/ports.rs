@@ -1,7 +1,7 @@
 use capitainerie_common::{CardId, CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 
-use super::{Run, RunOverview, step::Step};
+use super::{Run, RunFilter, RunOverview, step::Step};
 
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
 pub trait RunRepository: Send {
@@ -11,6 +11,7 @@ pub trait RunRepository: Send {
     fn list(
         &mut self,
         organization_id: OrganizationId,
+        filter: &RunFilter,
         limit: u32,
         offset: u32,
     ) -> impl Future<Output = Result<(Vec<RunOverview>, u64), CoreError>> + Send;

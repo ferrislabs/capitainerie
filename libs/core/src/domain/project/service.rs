@@ -182,6 +182,7 @@ where
                 organization_id: organization_id.0,
                 version,
                 run_id: None,
+                assigned_to: None,
                 author: CardAuthor {
                     subject: subject.id.clone(),
                     actor: subject.actor.clone(),

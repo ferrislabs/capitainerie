@@ -430,3 +430,115 @@ async fn an_unknown_client_or_project_is_a_422_and_stores_nothing() {
 
     assert_eq!(fixture.transcripts().await, 0);
 }
+
+impl Fixture {
+    /// An agent task run of agent `name`, on a fresh card.
+    async fn agent_run(&self, name: &str) -> (Uuid, RunId) {
+        let organization_id = self.organization.id.0;
+        let agent = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO agents (id, organization_id, slug, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $4, 'user-1', now(), now())",
+        )
+        .bind(agent)
+        .bind(organization_id)
+        .bind(name.to_lowercase())
+        .bind(name)
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        let card = Uuid::now_v7();
+        sqlx::query(
+            r#"INSERT INTO cards (id, organization_id, title, description, "column", version, created_by_subject, created_at, updated_at) VALUES ($1, $2, 'Revue', '', 'todo', 1, 'user-1', now(), now())"#,
+        )
+        .bind(card)
+        .bind(organization_id)
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        let run = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO runs (id, organization_id, card_id, initiated_by, status, pipeline, created_at) VALUES ($1, $2, $3, 'user-1', 'succeeded', '{agent_task}', now())",
+        )
+        .bind(run)
+        .bind(organization_id)
+        .bind(card)
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO agent_tasks (run_id, organization_id, card_id, agent_id, allow_writes, created_by, created_at) VALUES ($1, $2, $3, $4, false, 'user-1', now())",
+        )
+        .bind(run)
+        .bind(organization_id)
+        .bind(card)
+        .bind(agent)
+        .execute(&self.pool)
+        .await
+        .unwrap();
+        (agent, RunId(run))
+    }
+
+    async fn runs(&self, query: &str) -> (reqwest::StatusCode, Value) {
+        let response = reqwest::get(format!("{}/api/v1/runs{query}", self.base))
+            .await
+            .unwrap();
+        let status = response.status();
+        (status, response.json().await.unwrap_or(Value::Null))
+    }
+}
+
+fn ids(list: &Value) -> Vec<String> {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn the_run_list_names_the_agent_and_filters_by_status_and_agent() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    let organization_id = fixture.organization.id;
+    let meeting = fixture.submit(organization_id, "Point hebdo").await;
+    let failed = fixture.submit(organization_id, "Revue").await;
+    fixture.set_status(failed, "failed").await;
+    let (iris, iris_run) = fixture.agent_run("Iris").await;
+    let (_, other_run) = fixture.agent_run("Hippolyte").await;
+
+    let (status, all) = fixture.runs("").await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{all}");
+    assert_eq!(all["total"], 4);
+    let listed = all["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == iris_run.0.to_string())
+        .unwrap();
+    assert_eq!(listed["agent"], json!({"id": iris, "name": "Iris"}));
+    let meeting_item = all["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == meeting.0.to_string())
+        .unwrap();
+    assert_eq!(meeting_item["agent"], Value::Null);
+
+    let (_, by_status) = fixture.runs("?status=failed").await;
+    assert_eq!(ids(&by_status), [failed.0.to_string()]);
+    assert_eq!(by_status["total"], 1);
+    let (_, by_agent) = fixture.runs(&format!("?agent_id={iris}")).await;
+    assert_eq!(ids(&by_agent), [iris_run.0.to_string()]);
+    assert_eq!(by_agent["total"], 1);
+    let (_, both) = fixture
+        .runs(&format!("?agent_id={iris}&status=failed"))
+        .await;
+    assert!(ids(&both).is_empty());
+    let (_, succeeded) = fixture.runs("?status=succeeded").await;
+    assert_eq!(succeeded["total"], 2);
+    assert!(ids(&succeeded).contains(&other_run.0.to_string()));
+    let (status, _) = fixture.runs("?status=maybe").await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
+}

@@ -1,43 +1,65 @@
-import type { Severity, TimelineEvent } from '#/domain/audit/mock/audit-data'
-import { Panel, Row, Rows } from '#/domain/audit/ui/rows'
-import { SEV_TONES, type SevTone } from '#/domain/audit/ui/sev'
+import {
+	type AuditEvent,
+	groupByDay,
+	SEVERITIES,
+	timeOf,
+} from '#/domain/audit/model'
+import { Eyebrow, Panel, PanelEmpty, Row, Rows } from '#/domain/audit/ui/rows'
+import { SEV_TONES } from '#/domain/audit/ui/sev'
 import { cn } from '#/lib/utils'
 
 interface Props {
-	events: ReadonlyArray<TimelineEvent>
-}
-
-const SEVERITIES: Record<Severity, { label: string; tone: SevTone }> = {
-	critical: { label: 'Critique', tone: 'crit' },
-	warning: { label: 'Avertissement', tone: 'warn' },
-	info: { label: 'Information', tone: 'info' },
-	success: { label: 'Succès', tone: 'ok' },
-	created: { label: 'Création', tone: 'vio' },
+	events: ReadonlyArray<AuditEvent>
 }
 
 export function TimelineList({ events }: Props) {
+	if (events.length === 0) {
+		return (
+			<Panel>
+				<PanelEmpty title="Chronologie vide">
+					Aucun événement enregistré pour le moment.
+				</PanelEmpty>
+			</Panel>
+		)
+	}
 	return (
-		<Panel>
-			<Rows>
-				{events.map((event) => (
-					<Row key={`${event.time}-${event.text}`}>
-						<time className="w-11 font-mono text-[11.5px] text-muted-foreground">
-							{event.time}
-						</time>
-						<span
-							role="img"
-							aria-label={SEVERITIES[event.severity].label}
-							className={cn(
-								'size-2.5 shrink-0 rounded-full border',
-								SEV_TONES[SEVERITIES[event.severity].tone],
-							)}
-						/>
-						<span className="min-w-0 flex-1 truncate font-medium">
-							{event.text}
-						</span>
-					</Row>
-				))}
-			</Rows>
-		</Panel>
+		<>
+			{groupByDay(events).map((group) => (
+				<section key={group.day} aria-label={group.day}>
+					<Eyebrow>{group.day}</Eyebrow>
+					<Panel>
+						<Rows>
+							{group.events.map((event) => {
+								const severity = SEVERITIES[event.severity]
+								return (
+									<Row key={event.id}>
+										<time
+											dateTime={event.occurred_at}
+											className="w-11 font-mono text-[11.5px] text-muted-foreground"
+										>
+											{timeOf(event.occurred_at)}
+										</time>
+										<span
+											role="img"
+											aria-label={severity.label}
+											className={cn(
+												'size-2.5 shrink-0 rounded-full border',
+												SEV_TONES[severity.tone],
+											)}
+										/>
+										<span className="min-w-0 flex-1 truncate font-medium">
+											{event.summary}
+										</span>
+										<span className="truncate text-xs text-muted-foreground">
+											{event.actor.name}
+										</span>
+									</Row>
+								)
+							})}
+						</Rows>
+					</Panel>
+				</section>
+			))}
+		</>
 	)
 }

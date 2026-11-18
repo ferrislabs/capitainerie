@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT o.id, o.topic, o.envelope\n            FROM outbox_events o\n            WHERE o.organization_id = $1\n              AND o.topic <> 'inbox'\n              AND ($2::text IS NULL OR o.topic = $2)\n              AND ($3::text IS NULL OR o.kind = $3)\n              AND ($4::text IS NULL\n                   OR o.envelope->'payload'->>'initiated_by' = $4\n                   OR o.envelope->'payload'->'author'->>'subject' = $4\n                   OR o.envelope->'payload'->>'decided_by' = $4)\n              AND ($5::uuid IS NULL\n                   OR o.envelope->'payload'->>'requested_by_agent_id' = $5::text\n                   OR o.envelope->'payload'->'author'->>'actor' =\n                      (SELECT 'agent:' || a.slug FROM agents a WHERE a.id = $5 AND a.organization_id = $1)\n                   OR o.envelope->'payload'->>'run_id' IN\n                      (SELECT t.run_id::text FROM agent_tasks t WHERE t.agent_id = $5 AND t.organization_id = $1))\n              AND ($6::uuid IS NULL OR o.envelope->'payload'->>'card_id' = $6::text)\n              AND ($7::timestamptz IS NULL OR o.created_at >= $7)\n              AND ($8::timestamptz IS NULL OR o.created_at < $8)\n              AND ($9::uuid IS NULL OR o.id < $9)\n            ORDER BY o.id DESC\n            LIMIT $10\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "topic",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "envelope",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0408ab4468eaac5cf2021def2d28e9532246b42f7dc407bd23e98a15aa834b04"
+}

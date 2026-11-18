@@ -8,7 +8,7 @@ import {
 	slugFromName,
 	validateDraft,
 } from '#/domain/sources/model'
-import { CTL, Fr, Sw } from '#/domain/sources/ui/mockup'
+import { CTL, Fr, Sw } from '#/domain/sources/ui/kit'
 import { cn } from '#/lib/utils'
 
 interface Option {

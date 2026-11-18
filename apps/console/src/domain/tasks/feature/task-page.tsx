@@ -9,6 +9,7 @@ import { Page } from '#/components/layout/page'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { TaskArtifactsPanel } from '#/domain/artifacts/feature/task-artifacts-panel'
 import { relativeAge } from '#/domain/dashboard/format'
 import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
 import { RunStatusPanel } from '#/domain/tasks/feature/run-status-panel'
@@ -274,6 +275,7 @@ export function TaskPage({ pathId }: Props) {
 							</small>
 						</div>
 						<SubtasksPanel task={task} tasks={tasks} onNotify={notify} />
+						<TaskArtifactsPanel cardId={task.id} />
 						{comments.length ? (
 							<ul aria-label="Commentaires" className="contents">
 								{comments.map((c) => (

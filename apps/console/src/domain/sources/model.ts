@@ -1,6 +1,6 @@
 import type { Schemas } from '#/api/api.client'
 import { slugify } from '#/domain/agent-team/agent-identity'
-import type { SevTone } from '#/domain/sources/ui/mockup'
+import type { SevTone } from '#/domain/sources/ui/kit'
 
 export type Source = Schemas.SourceResponse
 export type SourceEvent = Schemas.SourceEventResponse

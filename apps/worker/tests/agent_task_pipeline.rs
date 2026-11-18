@@ -1045,3 +1045,185 @@ async fn another_users_credential_is_never_used() {
     };
     assert_eq!(world.refusal, Some(AgentRunRefusal::NoProvider));
 }
+
+type FiledArtifact = (
+    String,
+    String,
+    Option<String>,
+    Option<Uuid>,
+    Option<Uuid>,
+    String,
+);
+
+async fn artifacts(world: &World) -> Vec<FiledArtifact> {
+    sqlx::query_as(
+        "SELECT kind, title, content, card_id, agent_id, created_by FROM artifacts WHERE run_id = $1",
+    )
+    .bind(world.run_id.0)
+    .fetch_all(&world.pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_successful_run_files_its_answer_as_a_markdown_artifact_once() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let gateway = Gateway::default();
+    let script = script(vec![], "## Factures\nTrois factures en retard.");
+    let pipeline = pipeline(&world, &script, &oauth, &gateway);
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let filed = artifacts(&world).await;
+    assert_eq!(filed.len(), 1);
+    let (kind, title, content, card_id, agent_id, created_by) = &filed[0];
+    assert_eq!(kind, "markdown");
+    assert_eq!(title, "Relancer les factures");
+    assert_eq!(
+        content.as_deref(),
+        Some("## Factures\nTrois factures en retard.")
+    );
+    assert_eq!(*card_id, Some(world.card.id.0));
+    assert_eq!(
+        *agent_id,
+        world.card.attributes.assignee_agent_id.map(|id| id.0)
+    );
+    assert_eq!(created_by, USER);
+}
+
+#[tokio::test]
+async fn a_failed_run_files_no_artifact() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(
+        Options {
+            disconnect: true,
+            ..Options::default()
+        },
+        &oauth,
+    )
+    .await
+    else {
+        return;
+    };
+    let gateway = Gateway::default();
+    let script = script(vec![], "jamais");
+
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(run_row(&world).await.0, "failed");
+    assert!(artifacts(&world).await.is_empty());
+}
+
+/// Projects the whole outbox, other tests' events included.
+async fn project_inbox(world: &World) {
+    while world.usecase.project_inbox(1_000, 0).await.unwrap() == 1_000 {}
+}
+
+async fn inbox(world: &World) -> Vec<(String, String, String, Option<Uuid>)> {
+    sqlx::query_as(
+        "SELECT member_subject, kind, title, run_id FROM inbox_items WHERE organization_id = $1 ORDER BY kind",
+    )
+    .bind(world.organization_id.0)
+    .fetch_all(&world.pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_inbox_tells_the_initiator_of_the_approval_and_of_the_end_of_the_run_once() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let gateway = Gateway::default();
+    let script = script(
+        vec![("mestier__create_order", json!({"q": "x"}))],
+        "Je n'ai rien modifié.",
+    );
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    project_inbox(&world).await;
+    project_inbox(&world).await;
+
+    let items = inbox(&world).await;
+    assert_eq!(
+        items,
+        [
+            (
+                USER.to_owned(),
+                "approval".to_owned(),
+                "Écriture demandée par Darnold : mestier__create_order".to_owned(),
+                Some(world.run_id.0),
+            ),
+            (
+                USER.to_owned(),
+                "run".to_owned(),
+                "Darnold a terminé « Relancer les factures »".to_owned(),
+                Some(world.run_id.0),
+            ),
+        ],
+        "the agent's closing comment is told by the run item, not twice"
+    );
+    let announced: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE organization_id = $1 AND kind = 'inbox.item_created'",
+    )
+    .bind(world.organization_id.0)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(announced, 2);
+
+    let page = world
+        .usecase
+        .list_inbox(human(world.organization_id), true, None, 50)
+        .await
+        .unwrap();
+    assert_eq!((page.total, page.unread), (2, 2));
+    assert_eq!(page.items[0].kind.as_str(), "run");
+}
+
+#[tokio::test]
+async fn an_agent_comment_on_a_card_someone_else_created_reaches_its_creator() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    sqlx::query("UPDATE cards SET created_by_subject = 'user-2' WHERE id = $1")
+        .bind(world.card.id.0)
+        .execute(&world.pool)
+        .await
+        .unwrap();
+    let gateway = Gateway::default();
+    let script = script(vec![], "Fait.");
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    project_inbox(&world).await;
+
+    let items = inbox(&world).await;
+    assert!(items.contains(&(
+        "user-2".to_owned(),
+        "card".to_owned(),
+        "Darnold a commenté « Relancer les factures »".to_owned(),
+        Some(world.run_id.0),
+    )));
+    assert!(items.contains(&(
+        USER.to_owned(),
+        "run".to_owned(),
+        "Darnold a terminé « Relancer les factures »".to_owned(),
+        Some(world.run_id.0),
+    )));
+    assert_eq!(items.len(), 2, "{items:?}");
+}

@@ -367,4 +367,31 @@ describe('TaskPage', () => {
 			await screen.findByText('Profondeur maximale atteinte (2)'),
 		).toBeTruthy()
 	})
+
+	it('lists the artifacts of the task and opens one', async () => {
+		const artifact = {
+			id: 'art1',
+			kind: 'markdown',
+			title: 'Compte rendu',
+			card_id: ROOT,
+			created_by: 'agent',
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		}
+		const fetchMock = mockApi({
+			...BASE,
+			'GET /api/v1/artifacts': { items: [artifact], next_cursor: null },
+			'GET /api/v1/artifacts/art1': { ...artifact, content: '## Synthèse' },
+		})
+		await open(ROOT)
+		fireEvent.click(await screen.findByRole('button', { name: /Compte rendu/ }))
+		const dialog = await screen.findByRole('dialog')
+		expect(
+			await within(dialog).findByRole('heading', { name: 'Synthèse' }),
+		).toBeTruthy()
+		const request = fetchMock.mock.calls
+			.map(([input]) => new URL(String(input)))
+			.find((url) => url.pathname === '/api/v1/artifacts')
+		expect(request?.searchParams.get('card_id')).toBe(ROOT)
+	})
 })

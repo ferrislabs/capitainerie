@@ -12,7 +12,7 @@ use crate::{
         delegation::ports::{DelegationVault, TokenExchanger},
         provider::ports::ModelAssignmentRepository,
         run::{
-            RunOverview,
+            RunFilter, RunOverview,
             active::ActiveRun,
             ports::StepRepository,
             service::{RunService, SubmitTranscript},
@@ -131,11 +131,12 @@ impl CapitainerieUseCase {
     pub async fn list_runs(
         &self,
         subject: Subject,
+        filter: RunFilter,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<RunOverview>, u64), CoreError> {
         RunService::new(transcript_repository, run_repository, emitter, authz)
-            .list(subject, limit, offset)
+            .list(subject, filter, limit, offset)
             .await
     }
 

@@ -88,6 +88,7 @@ where
             organization_id: card.organization_id.0,
             version: card.version,
             run_id: None,
+            assigned_to: None,
             author: CardAuthor::from(&Author {
                 subject: subject.id,
                 actor: subject.actor,

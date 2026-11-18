@@ -27,6 +27,9 @@ pub struct CardUpdated {
     pub version: i32,
     pub run_id: Option<Uuid>,
     pub author: CardAuthor,
+    /// The member the update assigned the card to, when it changed the assignee.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_to: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

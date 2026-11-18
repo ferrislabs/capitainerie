@@ -5,7 +5,7 @@ import { Button } from '#/components/ui/button'
 import { useRoutineRuns } from '#/domain/routines/hooks/use-routines'
 import { RUNS_PAGE_SIZE } from '#/domain/routines/model'
 import { RunsTable } from '#/domain/routines/ui/runs-table'
-import { Empty } from '#/domain/sources/ui/mockup'
+import { Empty } from '#/domain/sources/ui/kit'
 
 interface Props {
 	routineId: string

@@ -79,7 +79,7 @@ function AddForm({ pending, error, onSubmit, onClose }: Omit<Props, 'open'>) {
 				<input
 					id="connector-url"
 					value={url}
-					placeholder="https://demo.mestier.fr/mcp"
+					placeholder="https://mcp.example.com/mcp"
 					onChange={(event) => setUrl(event.target.value)}
 					className={CONTROL}
 				/>

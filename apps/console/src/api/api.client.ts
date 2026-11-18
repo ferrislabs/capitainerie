@@ -8,6 +8,8 @@ export namespace Schemas {
     model?: (string | null) | undefined;
     started_at: string;
   };
+  export type AgentId = string;
+  export type RunAgentRef = { id: AgentId; name: string };
   export type CardId = string;
   export type ClientId = string;
   export type ClientRefResponse = { id: ClientId; name: string };
@@ -17,6 +19,7 @@ export namespace Schemas {
   export type RunStatusResponse = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type TranscriptId = string;
   export type RunResponse = {
+    agent?: (null | RunAgentRef) | undefined;
     card_id?: (null | CardId) | undefined;
     client?: (null | ClientRefResponse) | undefined;
     created_at: string;
@@ -45,6 +48,7 @@ export namespace Schemas {
     steps_total: number;
   };
   export type ActiveRunListResponse = { items: Array<ActiveRunResponse> };
+  export type ActorKindDto = "member" | "agent" | "system";
   export type TriggerKindDto = "planning" | "webhook";
   export type FrequencyDto = "every_hours" | "daily" | "weekly" | "monthly" | "cron";
   export type ScheduleDto = {
@@ -59,7 +63,11 @@ export namespace Schemas {
     kind: TriggerKindDto;
     schedule?: (null | ScheduleDto) | undefined;
   };
-  export type AgentId = string;
+  export type AgentLimitRequest = {
+    agent_id: AgentId;
+    alert_threshold_percent?: (number | null) | undefined;
+    monthly_limit_cents: number;
+  };
   export type AgentResponse = {
     agent: string;
     cost_micros: number;
@@ -89,7 +97,63 @@ export namespace Schemas {
     title: string;
   };
   export type ApprovalListResponse = { items: Array<ApprovalResponse>; pending: number };
+  export type ArtifactId = string;
+  export type ArtifactKindDto = "markdown" | "json" | "link";
+  export type ArtifactSummaryResponse = {
+    agent_id?: (null | AgentId) | undefined;
+    agent_name?: (string | null) | undefined;
+    card_id?: (null | CardId) | undefined;
+    card_title?: (string | null) | undefined;
+    created_at: string;
+    created_by: string;
+    id: ArtifactId;
+    kind: ArtifactKindDto;
+    run_id?: (null | RunId) | undefined;
+    title: string;
+    updated_at: string;
+    url?: (string | null) | undefined;
+  };
+  export type ArtifactListResponse = {
+    items: Array<ArtifactSummaryResponse>;
+    next_cursor?: (null | ArtifactId) | undefined;
+  };
+  export type ArtifactResponse = ArtifactSummaryResponse & Partial<{ content: string | null }>;
+  export type AuditActorResponse = { id?: (string | null) | undefined; kind: ActorKindDto; name: string };
+  export type SeverityDto = "critical" | "warning" | "info" | "success" | "created";
+  export type AuditEventResponse = {
+    actor: AuditActorResponse;
+    card_id?: (string | null) | undefined;
+    id: string;
+    occurred_at: string;
+    payload: Record<string, unknown>;
+    run_id?: (string | null) | undefined;
+    severity: SeverityDto;
+    summary: string;
+    topic: string;
+    type: string;
+  };
+  export type AuditEventListResponse = { items: Array<AuditEventResponse>; next_cursor?: (string | null) | undefined };
   export type AuthorizeMcpConnectorResponse = { authorization_url: string };
+  export type BudgetScopeDto = "organization" | "agent";
+  export type BudgetResponse = {
+    agent_id?: (null | AgentId) | undefined;
+    agent_name?: (string | null) | undefined;
+    alert: boolean;
+    alert_threshold_percent: number;
+    exceeded: boolean;
+    monthly_limit_cents: number;
+    percent: number;
+    scope: BudgetScopeDto;
+    spent_micros: number;
+    updated_at: string;
+    updated_by: string;
+  };
+  export type BudgetsResponse = {
+    items: Array<BudgetResponse>;
+    month_end: string;
+    month_start: string;
+    spent_micros: number;
+  };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
   export type CardColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type CardCommentId = string;
@@ -368,6 +432,26 @@ export namespace Schemas {
   export type GrantAccessDto = "read" | "write";
   export type SourceEventId = string;
   export type HookResponse = { event_id: SourceEventId };
+  export type InboxItemId = string;
+  export type InboxKindDto = "approval" | "run" | "card" | "source" | "routine";
+  export type InboxItemResponse = {
+    body: string;
+    card_id?: (null | CardId) | undefined;
+    created_at: string;
+    id: InboxItemId;
+    kind: InboxKindDto;
+    link?: (string | null) | undefined;
+    read_at?: (string | null) | undefined;
+    run_id?: (null | RunId) | undefined;
+    title: string;
+    unread: boolean;
+  };
+  export type InboxResponse = {
+    items: Array<InboxItemResponse>;
+    next_cursor?: (null | InboxItemId) | undefined;
+    total: number;
+    unread: number;
+  };
   export type InstallUrlResponse = { url: string };
   export type InstanceGrantRequest = { access: GrantAccessDto; instance_id: IntegrationInstanceId };
   export type IntegrationActionId = string;
@@ -502,7 +586,10 @@ export namespace Schemas {
   };
   export type LaunchedWorksiteResponse = { card: CardResponse; run_id: RunId };
   export type LaunchWorksitesResponse = { worksites: Array<LaunchedWorksiteResponse> };
+  export type LimitRequest = { alert_threshold_percent?: (number | null) | undefined; monthly_limit_cents: number };
   export type ManifestResponse = { action_url: string; manifest: string; state: string };
+  export type MarkReadRequest = Partial<{ all: boolean; ids: Array<InboxItemId> | null }>;
+  export type MarkReadResponse = { unread: number; updated: number };
   export type McpConnectorId = string;
   export type McpConnectorResponse = {
     archived: boolean;
@@ -639,6 +726,7 @@ export namespace Schemas {
     steps: Array<StepResponse>;
     totals: UsageTotals;
   };
+  export type SaveBudgetsRequest = Partial<{ agents: Array<AgentLimitRequest>; organization: null | LimitRequest }>;
   export type SendMessageRequest = Partial<{ message: string | null }>;
   export type SkillId = string;
   export type SkillResponse = {
@@ -874,6 +962,87 @@ export namespace Endpoints {
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
       409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListArtifacts = {
+    method: "GET";
+    path: "/api/v1/artifacts";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{
+        card_id: string;
+        agent_id: string;
+        kind: "markdown" | "json" | "link";
+        limit: number;
+        cursor: string;
+      }>;
+    };
+    responses: {
+      200: Schemas.ArtifactListResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetArtifact = {
+    method: "GET";
+    path: "/api/v1/artifacts/{artifact_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { artifact_id: string };
+    };
+    responses: {
+      200: Schemas.ArtifactResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListAuditEvents = {
+    method: "GET";
+    path: "/api/v1/audit/events";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{
+        topic: string;
+        type: string;
+        actor: string;
+        agent_id: string;
+        card_id: string;
+        from: string;
+        to: string;
+        limit: number;
+        cursor: string;
+      }>;
+    };
+    responses: {
+      200: Schemas.AuditEventListResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListBudgets = {
+    method: "GET";
+    path: "/api/v1/budgets";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.BudgetsResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type put_SaveBudgets = {
+    method: "PUT";
+    path: "/api/v1/budgets";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.SaveBudgetsRequest;
+    };
+    responses: {
+      200: Schemas.BudgetsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
     };
   };
@@ -1214,6 +1383,35 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
       502: Schemas.ApiErrorResponse;
       503: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListInbox = {
+    method: "GET";
+    path: "/api/v1/inbox";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ unread_only: boolean; limit: number; cursor: string }>;
+    };
+    responses: {
+      200: Schemas.InboxResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_MarkInboxRead = {
+    method: "POST";
+    path: "/api/v1/inbox/read";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.MarkReadRequest;
+    };
+    responses: {
+      200: Schemas.MarkReadResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
     };
   };
   export type post_RevertIntegrationAction = {
@@ -1909,9 +2107,14 @@ export namespace Endpoints {
     path: "/api/v1/runs";
     requestFormat: "json";
     parameters: {
-      query: Partial<{ limit: number; offset: number }>;
+      query: Partial<{
+        limit: number;
+        offset: number;
+        status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        agent_id: string;
+      }>;
     };
-    responses: { 200: Schemas.RunListResponse; 401: Schemas.ApiErrorResponse };
+    responses: { 200: Schemas.RunListResponse; 400: Schemas.ApiErrorResponse; 401: Schemas.ApiErrorResponse };
   };
   export type get_ListActiveRuns = {
     method: "GET";
@@ -2306,6 +2509,10 @@ export type EndpointByMethod = {
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/approvals": Endpoints.get_ListApprovals;
     "/api/v1/approvals/{approval_id}": Endpoints.get_GetApproval;
+    "/api/v1/artifacts": Endpoints.get_ListArtifacts;
+    "/api/v1/artifacts/{artifact_id}": Endpoints.get_GetArtifact;
+    "/api/v1/audit/events": Endpoints.get_ListAuditEvents;
+    "/api/v1/budgets": Endpoints.get_ListBudgets;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
     "/api/v1/cards/{card_id}/integration-actions": Endpoints.get_ListCardIntegrationActions;
@@ -2314,6 +2521,7 @@ export type EndpointByMethod = {
     "/api/v1/clients/{client_id}/integrations": Endpoints.get_ListIntegrationInstances;
     "/api/v1/conversations": Endpoints.get_ListConversations;
     "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
+    "/api/v1/inbox": Endpoints.get_ListInbox;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/issues": Endpoints.get_ListGithubIssues;
@@ -2361,6 +2569,7 @@ export type EndpointByMethod = {
     "/api/v1/conversations": Endpoints.post_CreateConversation;
     "/api/v1/conversations/{id}/messages": Endpoints.post_SendConversationMessage;
     "/api/v1/documents/text": Endpoints.post_ReadDocument;
+    "/api/v1/inbox/read": Endpoints.post_MarkInboxRead;
     "/api/v1/integration-actions/{id}/revert": Endpoints.post_RevertIntegrationAction;
     "/api/v1/integration-instances/{id}/check": Endpoints.post_CheckIntegrationInstance;
     "/api/v1/integrations/github/app": Endpoints.post_CreateGithubApp;
@@ -2392,6 +2601,12 @@ export type EndpointByMethod = {
     "/hooks/routines/{token}": Endpoints.post_TriggerRoutine;
     "/hooks/sources/{token}": Endpoints.post_ReceiveSourceEvent;
   };
+  put: {
+    "/api/v1/budgets": Endpoints.put_SaveBudgets;
+    "/api/v1/me/providers/{kind}": Endpoints.put_PutMyProvider;
+    "/api/v1/model-assignments": Endpoints.put_PutModelAssignments;
+    "/api/v1/providers/{kind}": Endpoints.put_PutProvider;
+  };
   patch: {
     "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
     "/api/v1/clients/{client_id}": Endpoints.patch_UpdateClient;
@@ -2414,11 +2629,6 @@ export type EndpointByMethod = {
     "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
     "/api/v1/routines/{routine_id}/triggers/{trigger_id}": Endpoints.delete_RemoveRoutineTrigger;
   };
-  put: {
-    "/api/v1/me/providers/{kind}": Endpoints.put_PutMyProvider;
-    "/api/v1/model-assignments": Endpoints.put_PutModelAssignments;
-    "/api/v1/providers/{kind}": Endpoints.put_PutProvider;
-  };
 };
 
 // </EndpointByMethod>
@@ -2426,9 +2636,9 @@ export type EndpointByMethod = {
 // <EndpointByMethod.Shorthands>
 export type GetEndpoints = EndpointByMethod["get"];
 export type PostEndpoints = EndpointByMethod["post"];
+export type PutEndpoints = EndpointByMethod["put"];
 export type PatchEndpoints = EndpointByMethod["patch"];
 export type DeleteEndpoints = EndpointByMethod["delete"];
-export type PutEndpoints = EndpointByMethod["put"];
 // </EndpointByMethod.Shorthands>
 
 // <ApiClientTypes>
@@ -2723,6 +2933,37 @@ export class ApiClient {
   }
   // </ApiClient.post>
 
+  // <ApiClient.put>
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
+    >
+  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
+
+  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<
+      TEndpoint extends { parameters: infer UParams }
+        ? NotNever<UParams> extends true
+          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
+    >
+  ): Promise<SafeApiResponse<TEndpoint>>;
+
+  put<Path extends keyof PutEndpoints, _TEndpoint extends PutEndpoints[Path]>(
+    path: Path,
+    ...params: MaybeOptionalArg<any>
+  ): Promise<any> {
+    return this.request("put", path, ...params);
+  }
+  // </ApiClient.put>
+
   // <ApiClient.patch>
   patch<Path extends keyof PatchEndpoints, TEndpoint extends PatchEndpoints[Path]>(
     path: Path,
@@ -2784,37 +3025,6 @@ export class ApiClient {
     return this.request("delete", path, ...params);
   }
   // </ApiClient.delete>
-
-  // <ApiClient.put>
-  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: false; throwOnStatusError?: boolean }
-    >
-  ): Promise<Extract<InferResponseByStatus<TEndpoint, SuccessStatusCode>, { data: {} }>["data"]>;
-
-  put<Path extends keyof PutEndpoints, TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<
-      TEndpoint extends { parameters: infer UParams }
-        ? NotNever<UParams> extends true
-          ? UParams & { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-          : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-        : { overrides?: RequestInit; withResponse?: true; throwOnStatusError?: boolean }
-    >
-  ): Promise<SafeApiResponse<TEndpoint>>;
-
-  put<Path extends keyof PutEndpoints, _TEndpoint extends PutEndpoints[Path]>(
-    path: Path,
-    ...params: MaybeOptionalArg<any>
-  ): Promise<any> {
-    return this.request("put", path, ...params);
-  }
-  // </ApiClient.put>
 
   // <ApiClient.request>
   /**

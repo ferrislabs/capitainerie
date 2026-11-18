@@ -9,6 +9,8 @@ use capitainerie_handlers_approvals::{
     decide_approval::{ApprovalDecisionDto, DecideApprovalRequest},
     response::{ApprovalKindDto, ApprovalListResponse, ApprovalResponse, ApprovalStatusDto},
 };
+use capitainerie_handlers_artifacts as artifacts;
+use capitainerie_handlers_audit as audit;
 use capitainerie_handlers_cards::{
     self as cards,
     comment_card::CommentCardRequest,
@@ -56,6 +58,7 @@ use capitainerie_handlers_identity::{
     list_members::{MemberListResponse, MemberResponse},
     me::{MeOrganization, MeResponse},
 };
+use capitainerie_handlers_inbox as inbox;
 use capitainerie_handlers_integrations::{
     self as integrations, ActionAccessDto, ActionOutcomeDto, CheckIntegrationInstanceResponse,
     ConnectGithubRequest, CreateGithubAppRequest, CreateIntegrationInstanceRequest,
@@ -190,6 +193,13 @@ use utoipa::{
         approvals::list_approvals::handler,
         approvals::get_approval::handler,
         approvals::decide_approval::handler,
+        audit::events::handler,
+        audit::budgets::get_handler,
+        audit::budgets::put_handler,
+        inbox::list_handler,
+        inbox::read_handler,
+        artifacts::list_handler,
+        artifacts::get_handler,
         sources::list_sources::handler,
         sources::create_source::handler,
         sources::get_source::handler,
@@ -448,6 +458,9 @@ use utoipa::{
         (name = team::TAG, description = "The registry of the team's agents: their role, model, instructions, connector grants and reporting line"),
         (name = skills::TAG, description = "The organization's catalog of skills: instructions added to the system prompt of the agents whose skills list names them"),
         (name = approvals::TAG, description = "Decisions agents ask the team to take, such as a write a run was not allowed to make"),
+        (name = audit::TAG, description = "Who did what, from the organization's event log, and the monthly budgets set against the agents' spend"),
+        (name = inbox::TAG, description = "Each member's notifications, projected from the event log: approvals to give, agent runs they started, cards assigned or commented by an agent, failed sources and routines"),
+        (name = artifacts::TAG, description = "Deliverables the agents produced, such as the final report of an agent run"),
         (name = sources::TAG, description = "External inputs whose events become cards handled by an agent: each source has a secret webhook URL, and the API keeps only a hash of its token"),
         (name = routines::TAG, description = "Recurring work an agent does: on a planning or a webhook, each passage creates a card assigned to the agent and starts its run on behalf of the routine's creator"),
         (name = mcp::TAG, description = "MCP servers the organization connects to, each user authorizing with their own OAuth2 session (authorization code, PKCE S256, dynamic client registration)"),
@@ -654,6 +667,25 @@ mod tests {
         assert!(schemas["SkillResponse"]["properties"]["used_by"].is_object());
         assert!(schemas["ApprovalListResponse"]["properties"]["pending"].is_object());
         assert!(schemas["DecideApprovalRequest"]["properties"]["decision"].is_object());
+    }
+
+    #[test]
+    fn the_audit_inbox_and_artifacts_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/audit/events"]["get"].is_object());
+        assert!(paths["/api/v1/budgets"]["get"].is_object());
+        assert!(paths["/api/v1/budgets"]["put"].is_object());
+        assert!(paths["/api/v1/inbox"]["get"].is_object());
+        assert!(paths["/api/v1/inbox/read"]["post"].is_object());
+        assert!(paths["/api/v1/artifacts"]["get"].is_object());
+        assert!(paths["/api/v1/artifacts/{artifact_id}"]["get"].is_object());
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["AuditEventResponse"]["properties"]["summary"].is_object());
+        assert!(schemas["BudgetsResponse"]["properties"]["spent_micros"].is_object());
+        assert!(schemas["InboxResponse"]["properties"]["unread"].is_object());
+        assert!(schemas["ArtifactListResponse"]["properties"]["next_cursor"].is_object());
+        assert!(schemas["RunResponse"]["properties"]["agent"].is_object());
     }
 
     #[test]

@@ -20,6 +20,7 @@ import { usePendingApprovalsCount } from '#/domain/approvals/hooks/use-approvals
 import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useMe } from '#/domain/identity/hooks/use-me'
+import { useInboxUnreadCount } from '#/domain/inbox/hooks/use-inbox'
 import { useRoutine } from '#/domain/routines/hooks/use-routines'
 import { useSource } from '#/domain/sources/hooks/use-sources'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
@@ -61,6 +62,7 @@ function AppLayout() {
 	const liveCount = useActiveRuns().data?.items.length ?? 0
 	const organization = useMe().data?.organization.name
 	const pendingApprovals = usePendingApprovalsCount()
+	const unreadInbox = useInboxUnreadCount()
 	const sourceId = entityIdOf(pathname, 'sources')
 	const sourceName = useSource(sourceId ?? '', sourceId !== undefined).data
 		?.name
@@ -68,8 +70,11 @@ function AppLayout() {
 	const routineName = useRoutine(routineId ?? '', routineId !== undefined).data
 		?.name
 	const badges = useMemo<RailBadges>(
-		() => (pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
-		[pendingApprovals],
+		() => ({
+			...(pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
+			...(unreadInbox > 0 ? { '/inbox/{-$tab}': unreadInbox } : {}),
+		}),
+		[pendingApprovals, unreadInbox],
 	)
 	const router = useRouter()
 	const liveAgents = useMemo(

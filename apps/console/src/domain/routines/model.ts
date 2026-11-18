@@ -8,7 +8,7 @@ import {
 	scheduleError,
 	scheduleText,
 } from '#/domain/routines/schedule'
-import type { SevTone } from '#/domain/sources/ui/mockup'
+import type { SevTone } from '#/domain/sources/ui/kit'
 import { PRIORITY_LABEL } from '#/domain/tasks/model'
 
 export type Routine = Schemas.RoutineResponse

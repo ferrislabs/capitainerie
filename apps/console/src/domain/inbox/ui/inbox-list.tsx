@@ -1,16 +1,37 @@
-import { Link } from '@tanstack/react-router'
-import type { InboxItem } from '#/domain/inbox/filter-inbox'
+import { Link, type LinkProps } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
+import { relativeAge } from '#/domain/dashboard/format'
+import { type InboxItem, KIND_LABEL, targetOf } from '#/domain/inbox/model'
 import { cn } from '#/lib/utils'
 
 interface Props {
 	items: ReadonlyArray<InboxItem>
+	onOpen: (item: InboxItem) => void
 }
 
 const ROW =
-	'flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 first:border-t-0 hover:bg-secondary'
+	'flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 text-left first:border-t-0 hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
 
-function Row({ item }: { item: InboxItem }) {
-	const content = (
+function linkOf(item: InboxItem): LinkProps | { href: string } {
+	const target = targetOf(item)
+	switch (target.kind) {
+		case 'task':
+			return { to: '/tasks/$taskId', params: { taskId: target.taskId } }
+		case 'internal':
+			return { to: target.href as LinkProps['to'] }
+		case 'external':
+			return { href: target.href }
+		case 'page':
+			return target.to === '/tasks'
+				? { to: '/tasks', search: { vue: 'liste', q: '' } }
+				: target.to === '/audit/{-$tab}'
+					? { to: '/audit/{-$tab}', params: { tab: 'runs' } }
+					: { to: target.to }
+	}
+}
+
+function Row({ item, onOpen }: { item: InboxItem; onOpen: Props['onOpen'] }) {
+	const content: ReactNode = (
 		<>
 			<span
 				role="img"
@@ -20,34 +41,54 @@ function Row({ item }: { item: InboxItem }) {
 					item.unread && 'h-[7px] rounded-full bg-primary',
 				)}
 			/>
-			<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
-				{item.ref || 'Routine'}
+			<span className="w-[86px] flex-none font-mono text-[11px] font-medium whitespace-nowrap text-faint">
+				{KIND_LABEL[item.kind]}
 			</span>
 			<span className="min-w-0 flex-1">
-				<b className="block truncate font-medium leading-[19px]">
+				<b
+					className={cn(
+						'block truncate leading-[19px]',
+						item.unread ? 'font-semibold' : 'font-medium',
+					)}
+				>
 					{item.title}
 				</b>
-				<span className="block truncate text-xs leading-[1.4] text-muted-foreground">
-					{item.source}
-				</span>
+				{item.body ? (
+					<span className="block truncate text-xs leading-[1.4] text-muted-foreground">
+						{item.body}
+					</span>
+				) : null}
 			</span>
-			<span className="font-mono text-[11.5px] whitespace-nowrap text-faint">
-				{item.when}
-			</span>
+			<time
+				dateTime={item.created_at}
+				className="font-mono text-[11.5px] whitespace-nowrap text-faint"
+			>
+				{relativeAge(item.created_at)}
+			</time>
 		</>
 	)
-	return item.ref ? (
-		<Link to="/tasks/$taskId" params={{ taskId: item.id }} className={ROW}>
-			{content}
-		</Link>
-	) : (
-		<Link to="/routines" className={ROW}>
+	const link = linkOf(item)
+	if ('href' in link) {
+		return (
+			<a
+				href={link.href}
+				target="_blank"
+				rel="noopener noreferrer"
+				className={ROW}
+				onClick={() => onOpen(item)}
+			>
+				{content}
+			</a>
+		)
+	}
+	return (
+		<Link {...link} className={ROW} onClick={() => onOpen(item)}>
 			{content}
 		</Link>
 	)
 }
 
-export function InboxList({ items }: Props) {
+export function InboxList({ items, onOpen }: Props) {
 	return (
 		<section className="overflow-hidden rounded-lg border bg-card">
 			{items.length === 0 ? (
@@ -61,7 +102,7 @@ export function InboxList({ items }: Props) {
 				<ul className="m-0 list-none p-0">
 					{items.map((item) => (
 						<li key={item.id}>
-							<Row item={item} />
+							<Row item={item} onOpen={onOpen} />
 						</li>
 					))}
 				</ul>

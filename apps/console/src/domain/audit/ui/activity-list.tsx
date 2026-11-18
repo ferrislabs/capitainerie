@@ -1,38 +1,56 @@
-import type { ActivityEvent } from '#/domain/audit/mock/audit-data'
-import { AgentAvatar, HumanAvatar } from '#/domain/audit/ui/avatar'
-import { Panel, Row, Rows, When } from '#/domain/audit/ui/rows'
+import { type AuditEvent, initials } from '#/domain/audit/model'
+import { HumanAvatar } from '#/domain/audit/ui/avatar'
+import { Panel, PanelEmpty, Row, Rows, When } from '#/domain/audit/ui/rows'
+import { relativeAge } from '#/domain/dashboard/format'
+import { AgentAvatar } from '#/domain/tasks/ui/agent-chip'
 
 interface Props {
-	events: ReadonlyArray<ActivityEvent>
+	events: ReadonlyArray<AuditEvent>
+	hueOf: (id: string | null | undefined, name: string) => number
 }
 
-function Actor({ event }: { event: ActivityEvent }) {
-	if (event.actor === 'agent') return <AgentAvatar name={event.who} size={22} />
+function Actor({ event, hueOf }: { event: AuditEvent } & Pick<Props, 'hueOf'>) {
+	const { actor } = event
+	if (actor.kind === 'agent')
+		return <AgentAvatar hue={hueOf(actor.id, actor.name)} size={22} />
 	return (
 		<HumanAvatar
-			initials={event.actor === 'system' ? 'SY' : (event.initials ?? '')}
+			initials={actor.kind === 'system' ? 'SY' : initials(actor.name)}
 			size={22}
 		/>
 	)
 }
 
-export function ActivityList({ events }: Props) {
+export function ActivityList({ events, hueOf }: Props) {
 	return (
 		<Panel>
-			<Rows>
-				{events.map((event) => (
-					<Row key={`${event.who}-${event.what}-${event.when}`}>
-						<Actor event={event} />
-						<span className="min-w-0 flex-1">
-							<b className="font-medium">{event.who}</b>{' '}
-							<span className="text-xs text-muted-foreground">
-								{event.what}
+			{events.length === 0 ? (
+				<PanelEmpty title="Aucun événement">
+					Le journal se remplit au fil des actions des agents et des membres.
+				</PanelEmpty>
+			) : (
+				<Rows>
+					{events.map((event) => (
+						<Row key={event.id}>
+							<Actor event={event} hueOf={hueOf} />
+							<span className="min-w-0 flex-1">
+								<b className="font-medium">{event.actor.name}</b>{' '}
+								<span className="text-xs text-muted-foreground">
+									{event.summary}
+								</span>
 							</span>
-						</span>
-						<When>{event.when}</When>
-					</Row>
-				))}
-			</Rows>
+							<When>
+								<time
+									dateTime={event.occurred_at}
+									title={new Date(event.occurred_at).toLocaleString('fr-FR')}
+								>
+									{relativeAge(event.occurred_at)}
+								</time>
+							</When>
+						</Row>
+					))}
+				</Rows>
+			)}
 		</Panel>
 	)
 }

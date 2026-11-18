@@ -5,7 +5,7 @@ import { Button } from '#/components/ui/button'
 import { useSourceEvents } from '#/domain/sources/hooks/use-sources'
 import { EVENTS_PAGE_SIZE } from '#/domain/sources/model'
 import { EventsTable } from '#/domain/sources/ui/events-table'
-import { Empty } from '#/domain/sources/ui/mockup'
+import { Empty } from '#/domain/sources/ui/kit'
 
 interface Props {
 	sourceId: string

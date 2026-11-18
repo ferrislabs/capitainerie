@@ -1,5 +1,5 @@
 use capitainerie_common::{
-    CardId, ClientId, CoreError, OrganizationId, ProjectId, RunId, StepId, TranscriptId,
+    AgentId, CardId, ClientId, CoreError, OrganizationId, ProjectId, RunId, StepId, TranscriptId,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -9,7 +9,7 @@ use crate::domain::{
     client::{ClientRef, links::Links},
     project::ProjectRef,
     run::{
-        Run, RunOverview, RunStatus, RunSubject, StepKind,
+        Run, RunAgent, RunOverview, RunStatus, RunSubject, StepKind,
         step::{Step, StepStatus},
     },
 };
@@ -36,6 +36,8 @@ pub(super) struct RunOverviewRow {
     pub client_name: Option<String>,
     pub project_id: Option<Uuid>,
     pub project_name: Option<String>,
+    pub agent_id: Option<Uuid>,
+    pub agent_name: Option<String>,
 }
 
 fn is_agent_task(pipeline: &[String]) -> bool {
@@ -102,6 +104,10 @@ impl TryFrom<RunOverviewRow> for RunOverview {
                     .transpose()
                     .map_err(|error| CoreError::Internal(format!("stored run models: {error}")))?,
             },
+            agent: row.agent_id.zip(row.agent_name).map(|(id, name)| RunAgent {
+                id: AgentId(id),
+                name,
+            }),
             title: row.title,
             repository_hint: row
                 .repository_hint

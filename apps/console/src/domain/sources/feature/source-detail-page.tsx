@@ -27,7 +27,7 @@ import {
 	updateBody,
 } from '#/domain/sources/model'
 import { resolveTab, SOURCE_TABS } from '#/domain/sources/tabs'
-import { Sev } from '#/domain/sources/ui/mockup'
+import { Sev } from '#/domain/sources/ui/kit'
 import { OverviewPanel } from '#/domain/sources/ui/overview-panel'
 import { RotateTokenDialog } from '#/domain/sources/ui/rotate-token-dialog'
 import { SourceFormView } from '#/domain/sources/ui/source-form-view'

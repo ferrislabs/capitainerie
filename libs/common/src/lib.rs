@@ -74,6 +74,8 @@ id!(SourceEventId);
 id!(RoutineId);
 id!(RoutineTriggerId);
 id!(RoutineRunId);
+id!(InboxItemId);
+id!(ArtifactId);
 
 #[cfg(test)]
 mod tests {
