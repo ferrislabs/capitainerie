@@ -13,6 +13,7 @@ pub mod domain {
     pub struct CardComment;
     pub struct Client;
     pub struct Conversation;
+    pub struct Cost;
     pub struct CrewAgent;
     pub struct ConversationMessage;
     pub struct DecisionLog;

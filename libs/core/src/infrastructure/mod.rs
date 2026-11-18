@@ -6,6 +6,7 @@ pub mod authorization;
 pub mod card;
 pub mod client;
 pub mod conversation;
+pub mod cost;
 pub mod crew;
 pub mod crypto;
 pub mod delegation;
