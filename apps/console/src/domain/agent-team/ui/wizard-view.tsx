@@ -296,7 +296,7 @@ export function WizardView({
 						</li>
 					</ol>
 					<div className="flex flex-col items-center pt-1.5 pb-3.5 text-center">
-						<Mascot name={state.name} />
+						<Mascot name={state.name} state="idle" />
 						<h1 className="leading-[1.4] mt-1.5 mb-0.5 text-2xl font-bold tracking-[-0.02em]">
 							{step === 0
 								? 'Rencontre ton prochain agent'
@@ -355,7 +355,11 @@ export function WizardView({
 		<div className="mx-auto mt-[2vh] grid w-full max-w-[880px] grid-cols-[200px_minmax(0,1fr)] gap-7">
 			<aside>
 				<div className="mb-[18px] flex items-center gap-3">
-					<Mascot name={state.name} />
+					<Mascot
+						name={state.name}
+						state="idle"
+						className="h-[72px] w-[85px] shrink-0"
+					/>
 					<div>
 						<b className="block text-lg">{state.name}</b>
 						<span className="flex items-center gap-1.5 text-xs text-muted-foreground">

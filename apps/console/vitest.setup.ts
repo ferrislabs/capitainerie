@@ -1,5 +1,7 @@
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
+
+configure({ asyncUtilTimeout: 5000 })
 
 window.scrollTo = () => {}
 
@@ -17,10 +19,12 @@ if (typeof window.ResizeObserver !== 'function') {
 
 // jsdom n'implémente pas matchMedia, dont dépend `useIsMobile` — donc toute la
 // primitive Sidebar. Média toujours faux : les tests rendent la version bureau.
+// Seule exception, `prefers-reduced-motion` est vrai : la mascotte ne lance pas
+// sa boucle requestAnimationFrame dans chaque page rendue par les tests.
 if (typeof window.matchMedia !== 'function') {
 	window.matchMedia = (query: string): MediaQueryList =>
 		({
-			matches: false,
+			matches: query.includes('prefers-reduced-motion'),
 			media: query,
 			onchange: null,
 			addEventListener: () => {},

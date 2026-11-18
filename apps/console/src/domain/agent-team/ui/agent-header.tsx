@@ -1,13 +1,14 @@
 import { Button } from '#/components/ui/button'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AdapterChip } from '#/domain/agent-team/ui/adapter-chip'
-import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
+import { Mascot, type MascotState } from '#/domain/agent-team/ui/mascot'
 
 interface Props {
 	agent: TeamAgent
 	adapter: string
 	title: string
 	paused: boolean
+	mood?: MascotState
 	busy?: boolean
 	onAssign: () => void
 	onTogglePause: () => void
@@ -19,6 +20,7 @@ export function AgentHeader({
 	adapter,
 	title,
 	paused,
+	mood = 'idle',
 	busy = false,
 	onAssign,
 	onTogglePause,
@@ -26,8 +28,12 @@ export function AgentHeader({
 }: Props) {
 	return (
 		<header className="mb-3 flex flex-wrap items-end gap-x-3.5 gap-y-2.5">
-			<AgentAvatar hue={agent.hue} size={40} />
-			<div className="min-w-0">
+			<Mascot
+				name={agent.name}
+				state={mood}
+				className="-mb-1 h-[60px] w-[71px] shrink-0"
+			/>
+			<div className="min-w-0 pb-0.5">
 				<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
 					{agent.name}
 					{agent.archived ? (
