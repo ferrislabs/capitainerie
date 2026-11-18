@@ -3,7 +3,7 @@ use capitainerie_macros::repository;
 
 use crate::{
     domain::cost::{
-        AgentRef, AgentRow, Period, ProjectAgentRow, Spent, TaskAgentRow, UserModelRow,
+        AgentRef, AgentRow, CostFilter, Period, ProjectAgentRow, Spent, TaskAgentRow, UserModelRow,
         ports::CostRepository,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
@@ -40,6 +40,7 @@ impl CostRepository for PgCostRepository<'_> {
         &mut self,
         organization_id: OrganizationId,
         period: &Period,
+        filter: &CostFilter,
     ) -> Result<Vec<ProjectAgentRow>, CoreError> {
         let mut tx = self.tx.lock().await;
         let rows = sqlx::query!(
@@ -59,12 +60,15 @@ impl CostRepository for PgCostRepository<'_> {
             LEFT JOIN projects p ON p.id = COALESCE(c.project_id, tr.project_id)
                  AND p.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
+              AND ($4::uuid IS NULL OR a.id = $4) AND ($5::uuid IS NULL OR r.card_id = $5)
             GROUP BY p.id, p.name, a.id, COALESCE(a.name, s.agent, 'unknown')
             ORDER BY 8 DESC, p.name, 4, a.id
             "#,
             organization_id.0,
             period.from(),
             period.to(),
+            filter.agent.map(|id| id.0),
+            filter.card.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await
@@ -85,6 +89,7 @@ impl CostRepository for PgCostRepository<'_> {
         &mut self,
         organization_id: OrganizationId,
         period: &Period,
+        filter: &CostFilter,
     ) -> Result<Vec<AgentRow>, CoreError> {
         let mut tx = self.tx.lock().await;
         let rows = sqlx::query!(
@@ -99,12 +104,15 @@ impl CostRepository for PgCostRepository<'_> {
             LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
             LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
+              AND ($4::uuid IS NULL OR a.id = $4) AND ($5::uuid IS NULL OR r.card_id = $5)
             GROUP BY a.id, COALESCE(a.name, s.agent, 'unknown')
             ORDER BY 6 DESC, 2, a.id
             "#,
             organization_id.0,
             period.from(),
             period.to(),
+            filter.agent.map(|id| id.0),
+            filter.card.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await
@@ -124,6 +132,7 @@ impl CostRepository for PgCostRepository<'_> {
         organization_id: OrganizationId,
         period: &Period,
         project: Option<ProjectId>,
+        filter: &CostFilter,
     ) -> Result<Vec<TaskAgentRow>, CoreError> {
         let mut tx = self.tx.lock().await;
         let rows = sqlx::query!(
@@ -142,6 +151,7 @@ impl CostRepository for PgCostRepository<'_> {
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
               AND r.card_id IS NOT NULL
               AND ($4::uuid IS NULL OR c.project_id = $4)
+              AND ($5::uuid IS NULL OR a.id = $5) AND ($6::uuid IS NULL OR r.card_id = $6)
             GROUP BY c.id, c.title, c.project_id, a.id, COALESCE(a.name, s.agent, 'unknown')
             ORDER BY 9 DESC, c.title, c.id, 5, a.id
             "#,
@@ -149,6 +159,8 @@ impl CostRepository for PgCostRepository<'_> {
             period.from(),
             period.to(),
             project.map(|id| id.0),
+            filter.agent.map(|id| id.0),
+            filter.card.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await
@@ -170,6 +182,7 @@ impl CostRepository for PgCostRepository<'_> {
         &mut self,
         organization_id: OrganizationId,
         period: &Period,
+        filter: &CostFilter,
     ) -> Result<Vec<UserModelRow>, CoreError> {
         let mut tx = self.tx.lock().await;
         let rows = sqlx::query!(
@@ -180,13 +193,18 @@ impl CostRepository for PgCostRepository<'_> {
                    COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
             FROM run_steps s
             JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
+            LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
+            LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
+              AND ($4::uuid IS NULL OR a.id = $4) AND ($5::uuid IS NULL OR r.card_id = $5)
             GROUP BY r.initiated_by, COALESCE(s.model, 'unknown')
             ORDER BY 5 DESC, 1, 2
             "#,
             organization_id.0,
             period.from(),
             period.to(),
+            filter.agent.map(|id| id.0),
+            filter.card.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await
@@ -211,6 +229,38 @@ impl CostRepository for PgCostRepository<'_> {
             r#"SELECT EXISTS (SELECT 1 FROM projects WHERE organization_id = $1 AND id = $2) AS "exists!""#,
             organization_id.0,
             project_id.0,
+        )
+        .fetch_one(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)
+    }
+
+    async fn agent_exists(
+        &mut self,
+        organization_id: OrganizationId,
+        agent_id: AgentId,
+    ) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS (SELECT 1 FROM agents WHERE organization_id = $1 AND id = $2) AS "exists!""#,
+            organization_id.0,
+            agent_id.0,
+        )
+        .fetch_one(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)
+    }
+
+    async fn card_exists(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<bool, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_scalar!(
+            r#"SELECT EXISTS (SELECT 1 FROM cards WHERE organization_id = $1 AND id = $2) AS "exists!""#,
+            organization_id.0,
+            card_id.0,
         )
         .fetch_one(&mut ***tx)
         .await

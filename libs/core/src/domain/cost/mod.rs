@@ -36,6 +36,13 @@ impl Period {
     }
 }
 
+/// Narrows a report to the steps of one agent and/or one task; both apply together.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CostFilter {
+    pub agent: Option<AgentId>,
+    pub card: Option<CardId>,
+}
+
 /// Tokens and cost in micro-dollars; a step without cost counts 0.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Spent {

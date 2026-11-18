@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use capitainerie_common::{CardId, CoreError, ProjectId};
+use capitainerie_common::{CardId, CoreError, OrganizationId, ProjectId};
 
 use super::{
-    AgentRef, AgentRow, AgentSpend, CostReport, ModelSpend, Period, ProjectSpend, Spent, TaskSpend,
-    UserSpend, ports::CostRepository,
+    AgentRef, AgentRow, AgentSpend, CostFilter, CostReport, ModelSpend, Period, ProjectSpend,
+    Spent, TaskSpend, UserSpend, ports::CostRepository,
 };
 use crate::domain::authorization::{
     AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require,
@@ -24,10 +24,15 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         mut self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<ProjectSpend>, CoreError> {
         let organization_id = subject.organization_id;
         self.require(subject).await?;
-        let rows = self.costs.project_rows(organization_id, &period).await?;
+        self.check_filter(organization_id, &filter).await?;
+        let rows = self
+            .costs
+            .project_rows(organization_id, &period, &filter)
+            .await?;
         let mut groups: Grouped<Option<ProjectId>, ProjectSpend> = Grouped::default();
         for row in rows {
             let group = groups.entry(row.project_id, || ProjectSpend {
@@ -50,10 +55,15 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         mut self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<AgentSpend>, CoreError> {
         let organization_id = subject.organization_id;
         self.require(subject).await?;
-        let rows = self.costs.agent_rows(organization_id, &period).await?;
+        self.check_filter(organization_id, &filter).await?;
+        let rows = self
+            .costs
+            .agent_rows(organization_id, &period, &filter)
+            .await?;
         let mut agents = Vec::new();
         for AgentRow { agent, runs, spent } in rows {
             add_agent(&mut agents, agent, runs, &spent);
@@ -67,9 +77,11 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         subject: Subject,
         period: Period,
         project: Option<ProjectId>,
+        filter: CostFilter,
     ) -> Result<CostReport<TaskSpend>, CoreError> {
         let organization_id = subject.organization_id;
         self.require(subject).await?;
+        self.check_filter(organization_id, &filter).await?;
         if let Some(project_id) = project
             && !self
                 .costs
@@ -80,7 +92,7 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         }
         let rows = self
             .costs
-            .task_rows(organization_id, &period, project)
+            .task_rows(organization_id, &period, project, &filter)
             .await?;
         let mut groups: Grouped<CardId, TaskSpend> = Grouped::default();
         for row in rows {
@@ -105,10 +117,15 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         mut self,
         subject: Subject,
         period: Period,
+        filter: CostFilter,
     ) -> Result<CostReport<UserSpend>, CoreError> {
         let organization_id = subject.organization_id;
         self.require(subject).await?;
-        let rows = self.costs.user_rows(organization_id, &period).await?;
+        self.check_filter(organization_id, &filter).await?;
+        let rows = self
+            .costs
+            .user_rows(organization_id, &period, &filter)
+            .await?;
         let mut groups: Grouped<String, UserSpend> = Grouped::default();
         for row in rows {
             let group = groups.entry(row.user.clone(), || UserSpend {
@@ -133,6 +150,24 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         }
         rows.sort_by(|a, b| by_cost_then_name(&a.spent, &a.user, &b.spent, &b.user));
         Ok(report(&period, rows, |group| group.spent))
+    }
+
+    async fn check_filter(
+        &mut self,
+        organization_id: OrganizationId,
+        filter: &CostFilter,
+    ) -> Result<(), CoreError> {
+        if let Some(agent_id) = filter.agent
+            && !self.costs.agent_exists(organization_id, agent_id).await?
+        {
+            return Err(CoreError::NotFound);
+        }
+        if let Some(card_id) = filter.card
+            && !self.costs.card_exists(organization_id, card_id).await?
+        {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
     }
 
     async fn require(&self, subject: Subject) -> Result<(), CoreError> {
@@ -286,13 +321,13 @@ mod tests {
             project_row(None, &a1, 10),
         ];
         let mut repository = MockCostRepository::new();
-        repository.expect_project_rows().returning(move |_, _| {
+        repository.expect_project_rows().returning(move |_, _, _| {
             let rows = rows.clone();
             Box::pin(async move { Ok(rows) })
         });
         let authorizer = allow();
         let report = CostService::new(repository, &authorizer)
-            .projects(admin(), period())
+            .projects(admin(), period(), CostFilter::default())
             .await
             .unwrap();
         assert_eq!(report.total, spent(160));
@@ -335,13 +370,13 @@ mod tests {
             },
         ];
         let mut repository = MockCostRepository::new();
-        repository.expect_agent_rows().returning(move |_, _| {
+        repository.expect_agent_rows().returning(move |_, _, _| {
             let rows = rows.clone();
             Box::pin(async move { Ok(rows) })
         });
         let authorizer = allow();
         let report = CostService::new(repository, &authorizer)
-            .agents(admin(), period())
+            .agents(admin(), period(), CostFilter::default())
             .await
             .unwrap();
         let names: Vec<_> = report.rows.iter().map(|r| r.agent.name.as_str()).collect();
@@ -363,13 +398,13 @@ mod tests {
         };
         let rows = vec![row(&a1, 5), row(&a2, 7)];
         let mut repository = MockCostRepository::new();
-        repository.expect_task_rows().returning(move |_, _, _| {
+        repository.expect_task_rows().returning(move |_, _, _, _| {
             let rows = rows.clone();
             Box::pin(async move { Ok(rows) })
         });
         let authorizer = allow();
         let report = CostService::new(repository, &authorizer)
-            .tasks(admin(), period(), None)
+            .tasks(admin(), period(), None, CostFilter::default())
             .await
             .unwrap();
         assert_eq!(report.total, spent(12));
@@ -387,7 +422,12 @@ mod tests {
         repository.expect_task_rows().never();
         let authorizer = allow();
         let error = CostService::new(repository, &authorizer)
-            .tasks(admin(), period(), Some(ProjectId::new()))
+            .tasks(
+                admin(),
+                period(),
+                Some(ProjectId::new()),
+                CostFilter::default(),
+            )
             .await
             .unwrap_err();
         assert!(matches!(error, CoreError::NotFound));
@@ -406,13 +446,13 @@ mod tests {
             row("bob", "m1", 40),
         ];
         let mut repository = MockCostRepository::new();
-        repository.expect_user_rows().returning(move |_, _| {
+        repository.expect_user_rows().returning(move |_, _, _| {
             let rows = rows.clone();
             Box::pin(async move { Ok(rows) })
         });
         let authorizer = allow();
         let report = CostService::new(repository, &authorizer)
-            .users(admin(), period())
+            .users(admin(), period(), CostFilter::default())
             .await
             .unwrap();
         assert_eq!(report.total, spent(90));
@@ -428,10 +468,10 @@ mod tests {
         let mut repository = MockCostRepository::new();
         repository
             .expect_project_rows()
-            .returning(|_, _| Box::pin(async { Ok(vec![]) }));
+            .returning(|_, _, _| Box::pin(async { Ok(vec![]) }));
         let authorizer = allow();
         let report = CostService::new(repository, &authorizer)
-            .projects(admin(), period())
+            .projects(admin(), period(), CostFilter::default())
             .await
             .unwrap();
         assert!(report.rows.is_empty());
@@ -450,7 +490,7 @@ mod tests {
         });
         let repository = MockCostRepository::new();
         let error = CostService::new(repository, &authorizer)
-            .projects(admin(), period())
+            .projects(admin(), period(), CostFilter::default())
             .await
             .unwrap_err();
         assert!(matches!(error, CoreError::Forbidden { .. }));

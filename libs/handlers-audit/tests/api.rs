@@ -607,3 +607,43 @@ async fn tasks_with_a_foreign_project_are_not_found() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn costs_with_an_unknown_agent_or_task_are_not_found() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    for route in COST_ROUTES {
+        for filter in ["agent_id", "card_id"] {
+            let (status, _) = fixture
+                .get(&format!(
+                    "/api/v1/analytics/costs/{route}?{filter}={}",
+                    Uuid::now_v7()
+                ))
+                .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{route} {filter}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn costs_are_narrowed_by_agent_and_task() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    fixture.story(1_500).await;
+    let (_, agents) = fixture.get("/api/v1/analytics/costs/agents").await;
+    let agent = agents["rows"][0]["agent_id"].as_str().unwrap().to_owned();
+    let (_, tasks) = fixture.get("/api/v1/analytics/costs/tasks").await;
+    let card = tasks["rows"][0]["card_id"].as_str().unwrap().to_owned();
+
+    for route in COST_ROUTES {
+        let (status, report) = fixture
+            .get(&format!(
+                "/api/v1/analytics/costs/{route}?agent_id={agent}&card_id={card}"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{route}: {report}");
+        assert_eq!(report["total"]["cost_micros"], 1_500, "{route}");
+    }
+}
