@@ -1,6 +1,6 @@
 # Spec : observabilité des coûts
 
-Statut : à approuver. Taille M, une PR.
+Statut : réalisée le 2026-11-18, une PR (taille M).
 
 Goal:
   Lire le coût des runs sur une période `from`/`to`, par projet, par agent, par tâche et par utilisateur, avec le détail agent (projet, tâche) ou modèle (utilisateur).
@@ -23,8 +23,8 @@ Goal:
 | O3 | Tâche | Une carte (`runs.card_id`). Coût = somme de tous ses runs : tâches d'agent, exécutions, interventions | Un run par ligne |
 | O4 | Agent d'une étape | Agent de `agent_tasks` si le run est une tâche d'agent ; sinon `run_steps.agent` (rôle : `extractor`, `executor`…). Un agent = une clé `run_steps.agent` ou un agent de la table `agents` | Parser le texte seul |
 | O5 | Projet d'un run | `cards.project_id` via `runs.card_id`, sinon `transcripts.project_id`. Aucun projet : ligne « sans projet » | Ignorer ces runs |
-| O6 | Accès | Humains seulement, comme `/analytics/costs` (`human_only`) | Ouvrir aux agents |
-| O7 | Endroit | Port de lecture dans `core/domain`, adapter Postgres dans `core/infrastructure`, routes dans `handlers-analytics` | Nouveau crate |
+| O6 | Accès | Autorisation par `Action::AuditRead` (PDP), un agent reçoit 403 | `human_only` |
+| O7 | Endroit | Port de lecture dans `core/domain`, adapter Postgres dans `core/infrastructure`, routes dans `libs/handlers-audit` (le crate `handlers-analytics` n'a ni Postgres ni PDP) | Nouveau crate |
 
 ## Invariants
 
@@ -43,7 +43,7 @@ Goal:
 | `GET /api/v1/analytics/costs/tasks?from&to&project_id?` | Par carte : titre, projet, total, et la liste des agents intervenus avec leur coût |
 | `GET /api/v1/analytics/costs/users?from&to` | Par utilisateur (`initiated_by`) : total, et la liste des modèles avec leur coût |
 
-Chaque réponse : `{rows, total, from, to}`. Tri par coût décroissant.
+Chaque réponse : `{rows, total, from, to}`. Tri par coût décroissant. `runs` n'est renvoyé que par agent, pas par projet ni par tâche : un run de pipeline compte pour chacun de ses agents, la somme serait fausse.
 
 ## Out of scope
 
@@ -65,15 +65,16 @@ Chaque réponse : `{rows, total, from, to}`. Tri par coût décroissant.
 
 ## Modules
 
-`core` (domain + infrastructure), `handlers-analytics`, `apps/api` (câblage, OpenAPI).
+`core` (domain + infrastructure), `handlers-audit`, `apps/api` (câblage, OpenAPI).
 
 ## Files
 
-- `libs/core/src/domain/cost/{mod,ports}.rs` (`Period`, lignes, port `CostReports`)
+- `libs/core/src/domain/cost/` (`Period`, lignes, port `CostReports`)
 - `libs/core/src/infrastructure/cost/postgres.rs` (requêtes sqlx, `.sqlx` régénéré)
-- `libs/core/tests/cost/` (Postgres)
-- `libs/handlers-analytics/src/{projects,tasks,users}.rs` + `costs.rs`/`agents.rs` pour les routes agents
-- `apps/api` câblage
+- `libs/core/tests/cost.rs` (Postgres)
+- `libs/handlers-audit/src/costs.rs` (routes)
+- `libs/handlers-audit/tests/api.rs`
+- `apps/api/src/openapi.rs`
 
 ## Verify (exit)
 
@@ -81,9 +82,11 @@ Chaque réponse : `{rows, total, from, to}`. Tri par coût décroissant.
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test -p capitainerie-core cost
-cargo test -p capitainerie-handlers-analytics
+cargo test -p capitainerie-handlers-audit
 ```
 
 ## Questions ouvertes
 
 Aucune. Amendement 2026-11-18 : « agents intervenus » = tous les agents des étapes des runs de la ligne (plusieurs runs ou plusieurs étapes). Le code n'a aucune délégation d'un agent à un autre dans un même run (`reports_to` n'est que l'organigramme) : une délégation future produira ses propres étapes avec leur `agent` et leur coût, et apparaîtra ici sans changement de requête.
+
+Amended: 2026-11-18 autorisation par le PDP et routes dans handlers-audit (le crate handlers-analytics n'a ni Postgres ni PDP).
