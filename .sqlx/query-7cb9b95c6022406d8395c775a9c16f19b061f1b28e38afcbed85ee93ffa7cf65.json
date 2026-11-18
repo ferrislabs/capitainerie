@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO agents (\n                id, organization_id, slug, name, role, description, model, status, hue,\n                reports_to, archived, instructions, connector_grants, config, skills, paused, revision,\n                   created_by, created_at, updated_at, repository_grants\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int2",
+        "Uuid",
+        "Bool",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "TextArray",
+        "Bool",
+        "Int4",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7cb9b95c6022406d8395c775a9c16f19b061f1b28e38afcbed85ee93ffa7cf65"
+}

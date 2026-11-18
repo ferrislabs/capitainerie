@@ -5,8 +5,7 @@ use capitainerie_core::{
     CapitainerieUseCase,
     domain::{
         agent::SecretToken,
-        execution::{RepositoryRef, TaskGrant},
-        provider::ProviderKind,
+        execution::{ExecutionMode, RepositoryRef, TaskGrant},
     },
 };
 use capitainerie_github::GithubApps;
@@ -27,15 +26,21 @@ pub trait Credentials: Send + Sync + 'static {
         token_sha256: [u8; 32],
     ) -> impl Future<Output = Result<Option<TaskGrant>, CredentialsError>> + Send;
 
+    /// The Anthropic key of the run: its initiator's own one first, then the
+    /// organization's.
     fn anthropic_key(
         &self,
         organization_id: OrganizationId,
+        initiated_by: Option<&str>,
     ) -> impl Future<Output = Result<Option<SecretToken>, CredentialsError>> + Send;
 
+    /// An installation token over the run's repository; a read-only run gets
+    /// one that can only read its contents.
     fn github_token(
         &self,
         organization_id: OrganizationId,
         repository: &RepositoryRef,
+        mode: ExecutionMode,
     ) -> impl Future<Output = Result<Option<SecretToken>, CredentialsError>> + Send;
 }
 
@@ -61,10 +66,11 @@ impl Credentials for Live {
     async fn anthropic_key(
         &self,
         organization_id: OrganizationId,
+        initiated_by: Option<&str>,
     ) -> Result<Option<SecretToken>, CredentialsError> {
         Ok(self
             .usecase
-            .provider_access(organization_id, ProviderKind::Anthropic)
+            .executor_anthropic_access(organization_id, initiated_by)
             .await
             .map_err(CredentialsError::from_display)?
             .map(|access| access.secret))
@@ -74,6 +80,7 @@ impl Credentials for Live {
         &self,
         organization_id: OrganizationId,
         repository: &RepositoryRef,
+        mode: ExecutionMode,
     ) -> Result<Option<SecretToken>, CredentialsError> {
         let Some(github) = self
             .github
@@ -91,10 +98,19 @@ impl Credentials for Live {
         else {
             return Ok(None);
         };
-        let token = github
-            .installation_token(installation.installation_id, repository)
-            .await
-            .map_err(CredentialsError::from_display)?;
+        let token = match mode {
+            ExecutionMode::Change => {
+                github
+                    .installation_token(installation.installation_id, repository)
+                    .await
+            }
+            ExecutionMode::Audit => {
+                github
+                    .read_only_installation_token(installation.installation_id, repository)
+                    .await
+            }
+        }
+        .map_err(CredentialsError::from_display)?;
         Ok(Some(token.token))
     }
 }

@@ -1,4 +1,5 @@
 pub mod ports;
+pub mod report;
 
 use std::{fmt, time::Duration};
 
@@ -13,6 +14,77 @@ use crate::domain::{
 
 /// FerrisKey client of the executor agent.
 pub const EXECUTOR_AGENT: &str = "capitainerie-agent-executor";
+
+/// Where an audit writes its report in the task's container: outside the
+/// checkout, so the report is never part of the repository.
+pub const REPORT_PATH: &str = "/workspace/.capitainerie/report.md";
+
+/// What an execution may do to its repository.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum ExecutionMode {
+    /// Changes are pushed to the run's branch and a draft pull request opens.
+    #[default]
+    Change,
+    /// Read-only analysis: nothing is pushed, a report is filed instead.
+    Audit,
+}
+
+impl ExecutionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Change => "change",
+            Self::Audit => "audit",
+        }
+    }
+
+    pub fn of_writes(allow_writes: bool) -> Self {
+        if allow_writes {
+            Self::Change
+        } else {
+            Self::Audit
+        }
+    }
+
+    pub fn is_read_only(self) -> bool {
+        self == Self::Audit
+    }
+}
+
+impl TryFrom<&str> for ExecutionMode {
+    type Error = CoreError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "change" => Ok(Self::Change),
+            "audit" => Ok(Self::Audit),
+            other => Err(CoreError::Invalid(format!(
+                "unknown execution mode {other:?}"
+            ))),
+        }
+    }
+}
+
+/// A branch name safe on a `git clone --branch` command line and in a URL.
+pub fn valid_branch_name(branch: &str) -> bool {
+    !branch.is_empty()
+        && branch.len() <= 255
+        && !branch.starts_with(['-', '/', '.'])
+        && !branch.ends_with(['/', '.'])
+        && !branch.ends_with(".lock")
+        && !branch.contains("..")
+        && !branch.contains("//")
+        && !branch.contains("@{")
+        && branch
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+}
+
+/// Whether the worker could start executions when it last started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutorStatus {
+    pub enabled: bool,
+    pub reason: Option<String>,
+}
 
 /// A GitHub repository, `owner/name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -121,6 +193,29 @@ impl ExecutorModel {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// The model an agent's execution runs on: the agent's own model when it is
+/// an Anthropic model id, else the default model of the initiator's Anthropic
+/// key, else `fallback`.
+pub fn agent_executor_model(
+    agent_model: &str,
+    user_default: Option<&str>,
+    fallback: &ExecutorModel,
+) -> ExecutorModel {
+    use crate::domain::provider::{ProviderKind, is_model_id, model_ref_of};
+    let agent = model_ref_of(agent_model, ProviderKind::Anthropic)
+        .filter(|wanted| wanted.provider == ProviderKind::Anthropic)
+        .map(|wanted| wanted.model);
+    let user = user_default
+        .map(str::trim)
+        .filter(|model| is_model_id(model))
+        .map(str::to_owned);
+    [agent, user]
+        .into_iter()
+        .flatten()
+        .find_map(|model| ExecutorModel::new(model).ok())
+        .unwrap_or_else(|| fallback.clone())
 }
 
 impl TryFrom<String> for ExecutorModel {
@@ -233,6 +328,7 @@ pub struct TaskSpec {
     pub model: ExecutorModel,
     pub max_turns: u32,
     pub deadline: Duration,
+    pub mode: ExecutionMode,
     /// Only the credentials proxy accepts it; never a real key.
     pub task_token: SecretToken,
 }
@@ -250,8 +346,23 @@ pub enum TaskLine {
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum TaskMarker {
     Cloned,
-    Pushed { sha: String },
+    Pushed {
+        sha: String,
+    },
     NoChanges,
+    /// A piece of the audit report, base64.
+    ReportChunk {
+        data: String,
+    },
+    /// The audit report is complete: the SHA-256 (hex) and size of what the
+    /// chunks decode to, and whether the script cut it.
+    ReportEnd {
+        sha256: String,
+        bytes: u64,
+        #[serde(default)]
+        truncated: bool,
+    },
+    AuditDone,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,6 +394,10 @@ pub struct TaskGrant {
     pub branch: String,
     /// The only model the proxy lets the task ask Anthropic for.
     pub model: String,
+    pub mode: ExecutionMode,
+    /// Who started the run, whose own Anthropic key is used before the
+    /// organization's; `None` on grants issued before it was recorded.
+    pub initiated_by: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
@@ -368,6 +483,8 @@ mod tests {
             repository: "acme/web".parse().unwrap(),
             branch: "capitainerie/0a1b2c3d4e5f".into(),
             model: "claude-sonnet-5-5".into(),
+            mode: ExecutionMode::Change,
+            initiated_by: None,
             expires_at: now + chrono::Duration::minutes(5),
             revoked_at: None,
         };
@@ -375,6 +492,103 @@ mod tests {
         assert!(!grant.is_usable(now + chrono::Duration::minutes(6)));
         grant.revoked_at = Some(now);
         assert!(!grant.is_usable(now));
+    }
+
+    #[test]
+    fn the_mode_round_trips_and_only_audit_is_read_only() {
+        for mode in [ExecutionMode::Change, ExecutionMode::Audit] {
+            assert_eq!(ExecutionMode::try_from(mode.as_str()).unwrap(), mode);
+        }
+        assert!(ExecutionMode::try_from("push").is_err());
+        assert_eq!(ExecutionMode::of_writes(true), ExecutionMode::Change);
+        assert_eq!(ExecutionMode::of_writes(false), ExecutionMode::Audit);
+        assert!(ExecutionMode::Audit.is_read_only());
+        assert!(!ExecutionMode::Change.is_read_only());
+        assert_eq!(ExecutionMode::default(), ExecutionMode::Change);
+    }
+
+    #[test]
+    fn an_agent_runs_on_its_model_then_the_users_default_then_the_fallback() {
+        let fallback = ExecutorModel::default();
+        let model = |agent: &str, user: Option<&str>| {
+            agent_executor_model(agent, user, &fallback)
+                .as_str()
+                .to_owned()
+        };
+        assert_eq!(
+            model("claude-opus-5", Some("claude-haiku-5-5")),
+            "claude-opus-5"
+        );
+        assert_eq!(model("anthropic:claude-opus-5", None), "claude-opus-5");
+        assert_eq!(model("mistral:claude-x", None), ExecutorModel::DEFAULT);
+        assert_eq!(model("", Some("claude-haiku-5-5")), "claude-haiku-5-5");
+        assert_eq!(
+            model("gpt-4o", Some("claude-haiku-5-5")),
+            "claude-haiku-5-5"
+        );
+        assert_eq!(model("Claude Opus", None), ExecutorModel::DEFAULT);
+        assert_eq!(
+            model("mistral-large", Some("gemini-3")),
+            ExecutorModel::DEFAULT
+        );
+    }
+
+    #[test]
+    fn a_base_branch_is_a_plain_ref_name() {
+        for good in ["main", "release/2.1", "feat_x-y.z"] {
+            assert!(valid_branch_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            "-x",
+            "/main",
+            "a..b",
+            "a b",
+            "main.lock",
+            "a//b",
+            "x@{1}",
+            "a/",
+            ".hidden",
+            "a;rm",
+            "$(x)",
+        ] {
+            assert!(!valid_branch_name(bad), "{bad}");
+        }
+        assert!(!valid_branch_name(&"a".repeat(256)));
+    }
+
+    #[test]
+    fn the_report_lives_outside_the_checkout() {
+        assert!(REPORT_PATH.starts_with("/workspace/"));
+        assert!(!REPORT_PATH.starts_with("/workspace/repo/"));
+    }
+
+    #[test]
+    fn report_markers_parse_from_the_entrypoint_lines() {
+        let chunk: TaskMarker =
+            serde_json::from_str(r#"{"type":"capitainerie","event":"report_chunk","data":"aGk="}"#)
+                .unwrap();
+        assert_eq!(
+            chunk,
+            TaskMarker::ReportChunk {
+                data: "aGk=".into()
+            }
+        );
+        let end: TaskMarker = serde_json::from_str(
+            r#"{"type":"capitainerie","event":"report_end","sha256":"ab","bytes":2,"truncated":true}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            end,
+            TaskMarker::ReportEnd {
+                sha256: "ab".into(),
+                bytes: 2,
+                truncated: true
+            }
+        );
+        let done: TaskMarker =
+            serde_json::from_str(r#"{"type":"capitainerie","event":"audit_done"}"#).unwrap();
+        assert_eq!(done, TaskMarker::AuditDone);
     }
 
     #[test]

@@ -385,6 +385,7 @@ export namespace Schemas {
     model?: (string | null) | undefined;
     name: string;
     reports_to?: (null | AgentId) | undefined;
+    repository_grants?: (Array<string> | null) | undefined;
     role?: (string | null) | undefined;
     slug: string;
   };
@@ -699,7 +700,12 @@ export namespace Schemas {
   export type RevertIntegrationActionRequest = Partial<{ confirm_production: boolean }>;
   export type RoutineListResponse = { items: Array<RoutineResponse> };
   export type RoutineRunListResponse = { items: Array<RoutineRunResponse>; total: number };
-  export type RunAgentRequest = { allow_writes?: boolean | undefined; expected_version: number };
+  export type RunAgentRequest = {
+    allow_writes?: boolean | undefined;
+    base_branch?: (string | null) | undefined;
+    expected_version: number;
+    repository?: (string | null) | undefined;
+  };
   export type RunAgentResponse = { run_id: RunId };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
   export type StepStatusResponse = "running" | "succeeded" | "failed" | "skipped";
@@ -783,6 +789,7 @@ export namespace Schemas {
     name: string;
     paused: boolean;
     reports_to?: (null | AgentId) | undefined;
+    repository_grants: Array<string>;
     revision: number;
     role: string;
     skills: Array<string>;
@@ -868,6 +875,7 @@ export namespace Schemas {
     name: string | null;
     paused: boolean | null;
     reports_to: null | AgentId;
+    repository_grants: Array<string> | null;
     role: string | null;
     skills: Array<string> | null;
     slug: string | null;

@@ -35,6 +35,9 @@ import { Route as AppSourcesSourceIdChar123TabChar125RouteImport } from './route
 import { Route as AppRoutinesRoutineIdChar123TabChar125RouteImport } from './routes/_app.routines.$routineId.{-$tab}'
 import { Route as AppConnectorsOauthCallbackRouteImport } from './routes/_app.connectors.oauth.callback'
 import { Route as AppAgentsAgentIdChar123TabChar125RouteImport } from './routes/_app.agents.$agentId.{-$tab}'
+import { Route as AppSettingsIntegrationsGithubIndexRouteImport } from './routes/_app.settings.integrations.github.index'
+import { Route as AppSettingsIntegrationsGithubCallbackRouteImport } from './routes/_app.settings.integrations.github.callback'
+import { Route as AppSettingsIntegrationsGithubAppCallbackRouteImport } from './routes/_app.settings.integrations.github.app-callback'
 
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
@@ -172,6 +175,24 @@ const AppAgentsAgentIdChar123TabChar125Route =
     path: '/agents/$agentId/{-$tab}',
     getParentRoute: () => AppRoute,
   } as any)
+const AppSettingsIntegrationsGithubIndexRoute =
+  AppSettingsIntegrationsGithubIndexRouteImport.update({
+    id: '/settings/integrations/github/',
+    path: '/settings/integrations/github/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppSettingsIntegrationsGithubCallbackRoute =
+  AppSettingsIntegrationsGithubCallbackRouteImport.update({
+    id: '/settings/integrations/github/callback',
+    path: '/settings/integrations/github/callback',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppSettingsIntegrationsGithubAppCallbackRoute =
+  AppSettingsIntegrationsGithubAppCallbackRouteImport.update({
+    id: '/settings/integrations/github/app-callback',
+    path: '/settings/integrations/github/app-callback',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -199,6 +220,9 @@ export interface FileRoutesByFullPath {
   '/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
+  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
+  '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
+  '/settings/integrations/github/': typeof AppSettingsIntegrationsGithubIndexRoute
 }
 export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
@@ -226,6 +250,9 @@ export interface FileRoutesByTo {
   '/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
+  '/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
+  '/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
+  '/settings/integrations/github': typeof AppSettingsIntegrationsGithubIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -255,6 +282,9 @@ export interface FileRoutesById {
   '/_app/connectors/oauth/callback': typeof AppConnectorsOauthCallbackRoute
   '/_app/routines/$routineId/{-$tab}': typeof AppRoutinesRoutineIdChar123TabChar125Route
   '/_app/sources/$sourceId/{-$tab}': typeof AppSourcesSourceIdChar123TabChar125Route
+  '/_app/settings/integrations/github/app-callback': typeof AppSettingsIntegrationsGithubAppCallbackRoute
+  '/_app/settings/integrations/github/callback': typeof AppSettingsIntegrationsGithubCallbackRoute
+  '/_app/settings/integrations/github/': typeof AppSettingsIntegrationsGithubIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -284,6 +314,9 @@ export interface FileRouteTypes {
     | '/connectors/oauth/callback'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
+    | '/settings/integrations/github/app-callback'
+    | '/settings/integrations/github/callback'
+    | '/settings/integrations/github/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/callback'
@@ -311,6 +344,9 @@ export interface FileRouteTypes {
     | '/connectors/oauth/callback'
     | '/routines/$routineId/{-$tab}'
     | '/sources/$sourceId/{-$tab}'
+    | '/settings/integrations/github/app-callback'
+    | '/settings/integrations/github/callback'
+    | '/settings/integrations/github'
   id:
     | '__root__'
     | '/_app'
@@ -339,6 +375,9 @@ export interface FileRouteTypes {
     | '/_app/connectors/oauth/callback'
     | '/_app/routines/$routineId/{-$tab}'
     | '/_app/sources/$sourceId/{-$tab}'
+    | '/_app/settings/integrations/github/app-callback'
+    | '/_app/settings/integrations/github/callback'
+    | '/_app/settings/integrations/github/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -531,6 +570,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgentsAgentIdChar123TabChar125RouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/integrations/github/': {
+      id: '/_app/settings/integrations/github/'
+      path: '/settings/integrations/github'
+      fullPath: '/settings/integrations/github/'
+      preLoaderRoute: typeof AppSettingsIntegrationsGithubIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/integrations/github/callback': {
+      id: '/_app/settings/integrations/github/callback'
+      path: '/settings/integrations/github/callback'
+      fullPath: '/settings/integrations/github/callback'
+      preLoaderRoute: typeof AppSettingsIntegrationsGithubCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/integrations/github/app-callback': {
+      id: '/_app/settings/integrations/github/app-callback'
+      path: '/settings/integrations/github/app-callback'
+      fullPath: '/settings/integrations/github/app-callback'
+      preLoaderRoute: typeof AppSettingsIntegrationsGithubAppCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -558,6 +618,9 @@ interface AppRouteChildren {
   AppConnectorsOauthCallbackRoute: typeof AppConnectorsOauthCallbackRoute
   AppRoutinesRoutineIdChar123TabChar125Route: typeof AppRoutinesRoutineIdChar123TabChar125Route
   AppSourcesSourceIdChar123TabChar125Route: typeof AppSourcesSourceIdChar123TabChar125Route
+  AppSettingsIntegrationsGithubAppCallbackRoute: typeof AppSettingsIntegrationsGithubAppCallbackRoute
+  AppSettingsIntegrationsGithubCallbackRoute: typeof AppSettingsIntegrationsGithubCallbackRoute
+  AppSettingsIntegrationsGithubIndexRoute: typeof AppSettingsIntegrationsGithubIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -587,6 +650,12 @@ const AppRouteChildren: AppRouteChildren = {
     AppRoutinesRoutineIdChar123TabChar125Route,
   AppSourcesSourceIdChar123TabChar125Route:
     AppSourcesSourceIdChar123TabChar125Route,
+  AppSettingsIntegrationsGithubAppCallbackRoute:
+    AppSettingsIntegrationsGithubAppCallbackRoute,
+  AppSettingsIntegrationsGithubCallbackRoute:
+    AppSettingsIntegrationsGithubCallbackRoute,
+  AppSettingsIntegrationsGithubIndexRoute:
+    AppSettingsIntegrationsGithubIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

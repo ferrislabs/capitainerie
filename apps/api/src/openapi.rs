@@ -730,6 +730,7 @@ mod tests {
         }
         for field in [
             "connector_grants",
+            "repository_grants",
             "reports_to",
             "instructions",
             "status",

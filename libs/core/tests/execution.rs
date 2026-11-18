@@ -9,7 +9,7 @@ use capitainerie_core::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
-        execution::{EXECUTOR_AGENT, ExecutorModel, TaskGrant},
+        execution::{EXECUTOR_AGENT, ExecutionMode, ExecutorModel, TaskGrant},
         provider::ModelAssignments,
     },
     infrastructure::{crypto::SecretCipher, postgres},
@@ -523,6 +523,8 @@ async fn a_task_grant_is_found_by_hash_and_revoked_with_its_run() {
         repository: "acme/web".parse().unwrap(),
         branch: "capitainerie/0a1b2c3d4e5f".into(),
         model: "claude-sonnet-5-5".into(),
+        mode: ExecutionMode::Change,
+        initiated_by: None,
         expires_at: Utc::now() + chrono::Duration::minutes(40),
         revoked_at: None,
     };
@@ -576,6 +578,8 @@ async fn deleting_a_run_deletes_its_grants() {
                 repository: "acme/web".parse().unwrap(),
                 branch: "capitainerie/x".into(),
                 model: "claude-sonnet-5-5".into(),
+                mode: ExecutionMode::Change,
+                initiated_by: None,
                 expires_at: Utc::now() + chrono::Duration::minutes(1),
                 revoked_at: None,
             },
@@ -643,11 +647,11 @@ async fn the_executor_comments_once_as_the_human_acting_through_the_agent() {
     running_execute_step(&usecase, &started).await;
 
     let first = usecase
-        .comment_card_as_executor(started.run_id, card.id, "Fait.".into())
+        .comment_card_as_executor(started.run_id, card.id, None, "Fait.".into())
         .await
         .unwrap();
     let again = usecase
-        .comment_card_as_executor(started.run_id, card.id, "Fait deux fois.".into())
+        .comment_card_as_executor(started.run_id, card.id, None, "Fait deux fois.".into())
         .await
         .unwrap();
 
@@ -699,7 +703,7 @@ async fn the_executor_comment_is_refused_for_a_card_the_run_is_not_about() {
     running_execute_step(&usecase, &started).await;
 
     let error = usecase
-        .comment_card_as_executor(started.run_id, other.id, "x".into())
+        .comment_card_as_executor(started.run_id, other.id, None, "x".into())
         .await
         .unwrap_err();
 

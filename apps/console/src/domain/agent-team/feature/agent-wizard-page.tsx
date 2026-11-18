@@ -18,6 +18,7 @@ import {
 	type WizardState,
 } from '#/domain/agent-team/wizard'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
+import { useGithubRepositoryChoices } from '#/domain/integrations/hooks/use-github'
 import { useSkillCatalog } from '#/domain/skills/hooks/use-skills'
 
 export function AgentWizardPage() {
@@ -27,6 +28,7 @@ export function AgentWizardPage() {
 	const configure = useUpdateTeamAgent()
 	const connectorsQuery = useMcpConnectors(false)
 	const catalog = useSkillCatalog()
+	const repositories = useGithubRepositoryChoices()
 	const navigate = useNavigate()
 	const agents = team.data?.items ?? []
 	const connectors = (connectorsQuery.data?.items ?? []).map((c) => ({
@@ -86,6 +88,7 @@ export function AgentWizardPage() {
 				reportsOptions={agents.map((a) => ({ value: a.id, label: a.name }))}
 				connectors={connectors}
 				connectorsLoading={connectorsQuery.isPending}
+				repositories={repositories}
 				skillOptions={skillOptions}
 				canAdvance={canAdvance(state) && !pending}
 				onChange={patch}

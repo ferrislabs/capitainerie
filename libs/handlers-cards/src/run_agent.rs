@@ -6,10 +6,17 @@ use axum::{
 };
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{CardId, CoreError, RunId};
-use capitainerie_core::domain::agent_task::{AgentRunError, AgentRunRefusal, StartAgentRun};
+use capitainerie_core::domain::{
+    agent_task::{AgentRunError, AgentRunRefusal, RepositoryTarget, StartAgentRun},
+    authorization::Subject,
+    execution::{RepositoryRef, ports::CodeHost},
+};
+use capitainerie_github::GithubApps;
 use capitainerie_handlers::{ApiError, AppState, Caller, errors::ApiErrorResponse};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+use crate::execute_card::CodeHostHandle;
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/api/v1/cards/{card_id}/agent-runs")]
@@ -20,8 +27,19 @@ pub struct RunAgentPath {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RunAgentRequest {
     pub expected_version: i32,
+    /// Without a repository: lets the agent's connectors write. With one:
+    /// `false` runs a read-only audit that files a report, `true` lets it push
+    /// a branch and open a draft pull request.
     #[serde(default)]
     pub allow_writes: bool,
+    /// `owner/name`: runs the agent in the executor on this repository, one
+    /// of the agent's `repository_grants`, instead of with its connectors.
+    #[serde(default)]
+    pub repository: Option<String>,
+    /// The branch to check out; the repository's default branch when absent.
+    /// Ignored without `repository`.
+    #[serde(default)]
+    pub base_branch: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -56,9 +74,10 @@ impl IntoResponse for RunAgentError {
             Self::Api(error) => error.into_response(),
             Self::Refused(refusal) => {
                 let status = match refusal {
-                    AgentRunRefusal::NotConnected(_) | AgentRunRefusal::NoProvider => {
-                        StatusCode::CONFLICT
-                    }
+                    AgentRunRefusal::NotConnected(_)
+                    | AgentRunRefusal::NoProvider
+                    | AgentRunRefusal::GithubNotConnected
+                    | AgentRunRefusal::ExecutorDisabled(_) => StatusCode::CONFLICT,
                     _ => StatusCode::UNPROCESSABLE_ENTITY,
                 };
                 let body = ApiErrorResponse {
@@ -80,12 +99,12 @@ impl IntoResponse for RunAgentError {
     params(("card_id" = CardId, Path, description = "Card identifier")),
     request_body = RunAgentRequest,
     responses(
-        (status = 202, description = "A run of the card's assignee agent is queued", body = RunAgentResponse),
+        (status = 202, description = "A run of the card's assignee agent is queued: with its connectors, or with `repository` an Execute run in the sandboxed executor (audit when writes are not allowed, change otherwise)", body = RunAgentResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 403, description = "The policy refused: an agent cannot start an agent run", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 403, description = "The policy refused (an agent cannot start an agent run), or repository_not_allowed: the GitHub installation does not reach that repository", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 409, description = "not_connected (the message names the connector slug), no_provider (neither the caller nor the organization connected an LLM provider), execution_already_active, or the card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "card_without_agent, agent_archived, agent_paused or agent_without_connector", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 409, description = "not_connected (the message names the connector slug), no_provider (neither the caller nor the organization connected an LLM provider; with `repository`, an Anthropic one), github_not_connected, executor_disabled, execution_already_active, or the card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "card_without_agent, agent_archived, agent_paused, agent_without_connector (without `repository`), repository_not_granted (the agent may not work on that repository), or an invalid repository or base_branch", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -93,25 +112,88 @@ pub async fn handler(
     RunAgentPath { card_id }: RunAgentPath,
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
+    Extension(CodeHostHandle(github)): Extension<CodeHostHandle>,
     Json(request): Json<RunAgentRequest>,
 ) -> Result<(StatusCode, Json<RunAgentResponse>), RunAgentError> {
-    let started = state
-        .usecase
-        .start_agent_run(
-            caller.subject(),
-            card_id,
-            StartAgentRun {
-                expected_version: request.expected_version,
-                allow_writes: request.allow_writes,
-            },
-        )
-        .await?;
+    let command = StartAgentRun {
+        expected_version: request.expected_version,
+        allow_writes: request.allow_writes,
+    };
+    let started = match request.repository {
+        None => {
+            state
+                .usecase
+                .start_agent_run(caller.subject(), card_id, command)
+                .await?
+        }
+        Some(repository) => {
+            let target = RepositoryTarget::new(repository.parse()?, request.base_branch)?;
+            start_on_repository(&state, &github, caller.subject(), card_id, command, target).await?
+        }
+    };
     Ok((
         StatusCode::ACCEPTED,
         Json(RunAgentResponse {
             run_id: started.run_id,
         }),
     ))
+}
+
+/// Refuses what the agent and the organization lack before it asks GitHub
+/// whether the installation reaches the repository and which branch to use.
+async fn start_on_repository(
+    state: &AppState,
+    github: &GithubApps,
+    subject: Subject,
+    card_id: CardId,
+    command: StartAgentRun,
+    mut target: RepositoryTarget,
+) -> Result<capitainerie_core::StartedAgentRun, RunAgentError> {
+    state
+        .usecase
+        .check_agent_repository_run(subject.clone(), card_id, command, target.repository.clone())
+        .await?;
+    let organization_id = subject.organization_id;
+    let not_connected = || RunAgentError::Refused(AgentRunRefusal::GithubNotConnected);
+    if github.client(organization_id).await?.is_none() {
+        return Err(not_connected());
+    }
+    let installation = state
+        .usecase
+        .github_installation(subject.clone())
+        .await?
+        .ok_or_else(not_connected)?;
+    let reachable = github
+        .repositories(organization_id, installation.installation_id)
+        .await?;
+    if !reaches(&reachable, &target.repository) {
+        return Err(RunAgentError::Api(ApiError::Forbidden(Some(
+            "repository_not_allowed".into(),
+        ))));
+    }
+    if target.base_branch.is_none() {
+        target.base_branch = Some(
+            github
+                .default_branch(
+                    organization_id,
+                    installation.installation_id,
+                    &target.repository,
+                )
+                .await?,
+        );
+    }
+    Ok(state
+        .usecase
+        .start_agent_repository_run(subject, card_id, command, target)
+        .await?)
+}
+
+/// GitHub names are case-insensitive.
+fn reaches(reachable: &[RepositoryRef], repository: &RepositoryRef) -> bool {
+    reachable.iter().any(|candidate| {
+        candidate.owner().eq_ignore_ascii_case(repository.owner())
+            && candidate.name().eq_ignore_ascii_case(repository.name())
+    })
 }
 
 #[cfg(test)]
@@ -160,6 +242,21 @@ mod tests {
                 StatusCode::CONFLICT,
                 "no_provider",
             ),
+            (
+                AgentRunRefusal::RepositoryNotGranted("acme/web".into()),
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "repository_not_granted",
+            ),
+            (
+                AgentRunRefusal::GithubNotConnected,
+                StatusCode::CONFLICT,
+                "github_not_connected",
+            ),
+            (
+                AgentRunRefusal::ExecutorDisabled("EXECUTOR_NAMESPACE".into()),
+                StatusCode::CONFLICT,
+                "executor_disabled",
+            ),
         ];
         for (refusal, expected, code) in cases {
             let message = refusal.to_string();
@@ -182,5 +279,14 @@ mod tests {
         let request: RunAgentRequest =
             serde_json::from_value(serde_json::json!({"expected_version": 2})).unwrap();
         assert!(!request.allow_writes);
+        assert_eq!(request.repository, None);
+        assert_eq!(request.base_branch, None);
+    }
+
+    #[test]
+    fn the_reachable_check_ignores_case() {
+        let reachable: Vec<RepositoryRef> = vec!["Acme/Web".parse().unwrap()];
+        assert!(reaches(&reachable, &"acme/web".parse().unwrap()));
+        assert!(!reaches(&reachable, &"acme/api".parse().unwrap()));
     }
 }

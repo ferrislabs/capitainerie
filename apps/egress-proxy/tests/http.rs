@@ -21,7 +21,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use capitainerie_common::{OrganizationId, RunId};
 use capitainerie_core::domain::{
     agent::SecretToken,
-    execution::{RepositoryRef, TaskGrant},
+    execution::{ExecutionMode, RepositoryRef, TaskGrant},
 };
 use capitainerie_egress_proxy::{Credentials, CredentialsError, Proxy, ProxyConfig, router};
 use chrono::Utc;
@@ -31,6 +31,9 @@ use tokio::{net::TcpListener, sync::mpsc};
 const TASK_TOKEN: &str = "task-token-0001";
 const ANTHROPIC_KEY: &str = "sk-ant-real-key";
 const INSTALLATION_TOKEN: &str = "ghs_installation";
+const READ_ONLY_TOKEN: &str = "ghs_read_only";
+const INITIATOR: &str = "user-1";
+const INITIATOR_KEY: &str = "sk-ant-initiator-key";
 const MODEL: &str = "claude-sonnet-5-5";
 const BRANCH: &str = "capitainerie/0a1b2c3d4e5f";
 const OLD: &str = "1111111111111111111111111111111111111111";
@@ -53,6 +56,8 @@ fn grant() -> TaskGrant {
         repository: "acme/web".parse().unwrap(),
         branch: BRANCH.into(),
         model: MODEL.into(),
+        mode: ExecutionMode::Change,
+        initiated_by: Some(INITIATOR.into()),
         expires_at: Utc::now() + chrono::Duration::minutes(30),
         revoked_at: None,
     }
@@ -61,8 +66,11 @@ fn grant() -> TaskGrant {
 struct Fake {
     grants: HashMap<[u8; 32], TaskGrant>,
     anthropic_key: Option<&'static str>,
+    /// Personal Anthropic keys, by subject.
+    user_keys: HashMap<&'static str, &'static str>,
     github_token: Option<&'static str>,
     lookups: Arc<AtomicUsize>,
+    token_modes: Arc<Mutex<Vec<ExecutionMode>>>,
 }
 
 impl Fake {
@@ -70,8 +78,10 @@ impl Fake {
         Self {
             grants: HashMap::from([(sha256(TASK_TOKEN), grant)]),
             anthropic_key: Some(ANTHROPIC_KEY),
+            user_keys: HashMap::new(),
             github_token: Some(INSTALLATION_TOKEN),
             lookups: Arc::new(AtomicUsize::new(0)),
+            token_modes: Arc::default(),
         }
     }
 }
@@ -85,16 +95,23 @@ impl Credentials for Fake {
     async fn anthropic_key(
         &self,
         _: OrganizationId,
+        initiated_by: Option<&str>,
     ) -> Result<Option<SecretToken>, CredentialsError> {
-        Ok(self.anthropic_key.map(SecretToken::new))
+        let own = initiated_by.and_then(|subject| self.user_keys.get(subject).copied());
+        Ok(own.or(self.anthropic_key).map(SecretToken::new))
     }
 
     async fn github_token(
         &self,
         _: OrganizationId,
         _: &RepositoryRef,
+        mode: ExecutionMode,
     ) -> Result<Option<SecretToken>, CredentialsError> {
-        Ok(self.github_token.map(SecretToken::new))
+        self.token_modes.lock().unwrap().push(mode);
+        Ok(self.github_token.map(|token| match mode {
+            ExecutionMode::Change => SecretToken::new(token),
+            ExecutionMode::Audit => SecretToken::new(READ_ONLY_TOKEN),
+        }))
     }
 }
 
@@ -606,6 +623,117 @@ async fn git_fetch_is_forwarded_with_the_installation_token() {
             assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
         }
     }
+}
+
+fn read_only() -> Fake {
+    Fake::with(TaskGrant {
+        mode: ExecutionMode::Audit,
+        ..grant()
+    })
+}
+
+#[tokio::test]
+async fn a_read_only_run_fetches_with_a_read_only_token() {
+    let fake = read_only();
+    let modes = fake.token_modes.clone();
+    let h = harness_with(fake).await;
+    let refs = h
+        .git_get("acme/web.git/info/refs?service=git-upload-pack", TASK_TOKEN)
+        .await;
+    assert_eq!(refs.status(), 200);
+    let pack = h
+        .git_post(
+            "acme/web.git/git-upload-pack",
+            TASK_TOKEN,
+            b"0032want abc\n0000".to_vec(),
+        )
+        .await;
+    assert_eq!(pack.status(), 200);
+    let seen = Harness::received(&h.github);
+    assert_eq!(seen.len(), 2);
+    for request in &seen {
+        assert_eq!(
+            request.headers["authorization"],
+            basic(READ_ONLY_TOKEN).as_str()
+        );
+    }
+    assert_eq!(
+        *modes.lock().unwrap(),
+        [ExecutionMode::Audit, ExecutionMode::Audit]
+    );
+}
+
+#[tokio::test]
+async fn a_read_only_run_cannot_push_at_all() {
+    let fake = read_only();
+    let modes = fake.token_modes.clone();
+    let h = harness_with(fake).await;
+    let advertised = h
+        .git_get(
+            "acme/web.git/info/refs?service=git-receive-pack",
+            TASK_TOKEN,
+        )
+        .await;
+    assert_eq!(advertised.status(), 403);
+    assert!(advertised.text().await.unwrap().contains("read-only"));
+    let push = h
+        .git_post(
+            "acme/web.git/git-receive-pack",
+            TASK_TOKEN,
+            push_body(&[(OLD, NEW, &branch_ref())]),
+        )
+        .await;
+    assert_eq!(push.status(), 403);
+    assert!(Harness::received(&h.github).is_empty());
+    assert!(modes.lock().unwrap().is_empty(), "no token was minted");
+}
+
+#[tokio::test]
+async fn a_change_run_asks_for_a_writing_token() {
+    let fake = Fake::with(grant());
+    let modes = fake.token_modes.clone();
+    let h = harness_with(fake).await;
+    let response = h
+        .git_post(
+            "acme/web.git/git-receive-pack",
+            TASK_TOKEN,
+            push_body(&[(OLD, NEW, &branch_ref())]),
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(*modes.lock().unwrap(), [ExecutionMode::Change]);
+}
+
+#[tokio::test]
+async fn the_initiators_own_anthropic_key_comes_before_the_organizations() {
+    let mut fake = Fake::with(grant());
+    fake.user_keys.insert(INITIATOR, INITIATOR_KEY);
+    let h = harness_with(fake).await;
+    let response = h.messages("/v1/messages", TASK_TOKEN).await;
+    assert_eq!(response.status(), 200);
+    let seen = Harness::received(&h.anthropic);
+    assert_eq!(seen[0].headers["x-api-key"], INITIATOR_KEY);
+
+    let mut someone_else = Fake::with(grant());
+    someone_else.user_keys.insert("user-2", INITIATOR_KEY);
+    let h = harness_with(someone_else).await;
+    assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
+    assert_eq!(
+        Harness::received(&h.anthropic)[0].headers["x-api-key"],
+        ANTHROPIC_KEY
+    );
+
+    let mut legacy = Fake::with(TaskGrant {
+        initiated_by: None,
+        ..grant()
+    });
+    legacy.user_keys.insert(INITIATOR, INITIATOR_KEY);
+    let h = harness_with(legacy).await;
+    assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
+    assert_eq!(
+        Harness::received(&h.anthropic)[0].headers["x-api-key"],
+        ANTHROPIC_KEY
+    );
 }
 
 #[tokio::test]

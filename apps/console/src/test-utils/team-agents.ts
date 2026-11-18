@@ -18,6 +18,7 @@ export function teamAgent(
 		archived: false,
 		instructions: `# ${name}`,
 		connector_grants: [],
+		repository_grants: [],
 		config: {},
 		skills: [],
 		paused: false,

@@ -24,6 +24,9 @@ pub struct UpdateTeamAgentRequest {
     pub instructions: Option<String>,
     /// Replaces the whole list.
     pub connector_grants: Option<Vec<String>>,
+    /// Replaces the whole list of GitHub repositories, `owner/name`, the agent
+    /// may run the executor on; at most 50.
+    pub repository_grants: Option<Vec<String>>,
     /// Replaces the whole object; at most 64 KiB.
     #[schema(value_type = Option<Object>)]
     pub config: Option<Value>,
@@ -73,6 +76,7 @@ pub async fn handler(
                 archived: request.archived,
                 instructions: request.instructions,
                 connector_grants: request.connector_grants,
+                repository_grants: request.repository_grants,
                 config: request.config,
                 skills: request.skills,
                 paused: request.paused,

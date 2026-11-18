@@ -17,6 +17,7 @@ use capitainerie_core::{
     AgentTaskConfig, AgentTaskPipeline, CapitainerieUseCase, ExecuteConfig, ExecutePipeline,
     Executor, InterventionConfig, InterventionPipeline, MeetingPipeline, PipelineConfig,
     domain::{
+        execution::ExecutorStatus,
         integration::intervention::INTERVENTION_DEADLINE,
         provider::ModelAssignments,
         run::step::Pricing,
@@ -189,6 +190,19 @@ async fn main() -> anyhow::Result<()> {
         },
     );
     let executor = executor_from(&args, usecase.clone()).await;
+    let status = match &executor {
+        Executor::Ready { .. } => ExecutorStatus {
+            enabled: true,
+            reason: None,
+        },
+        Executor::Disabled { reason } => ExecutorStatus {
+            enabled: false,
+            reason: Some(reason.clone()),
+        },
+    };
+    if let Err(error) = usecase.record_executor_status(&status).await {
+        tracing::warn!(%error, "the executor status was not recorded");
+    }
     let intervention = InterventionPipeline::new(
         usecase.clone(),
         RigIntegrator::new(&args.llm)?,

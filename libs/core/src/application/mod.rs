@@ -40,7 +40,7 @@ use crate::infrastructure::{
     postgres,
 };
 
-pub use agent_run::{AgentTaskSource, StartedAgentRun};
+pub use agent_run::{AgentTaskSource, ExecutionAgentSource, StartedAgentRun};
 pub use agent_task_pipeline::{AgentTaskConfig, AgentTaskPipeline};
 pub use approval::DecidedApproval;
 pub use client::RunCardLinks;

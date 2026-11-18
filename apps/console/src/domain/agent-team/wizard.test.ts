@@ -67,6 +67,16 @@ describe('wizard', () => {
 		)
 		expect(body).not.toHaveProperty('instructions')
 		expect(body.reports_to).toBeNull()
+		expect(body).not.toHaveProperty('repository_grants')
+	})
+
+	it('grants the chosen GitHub repositories at creation', () => {
+		const body = buildCreateRequest(
+			{ ...initialWizard(), name: 'Zoé', repositories: ['acme/web'] },
+			'zoe',
+			[],
+		)
+		expect(body.repository_grants).toEqual(['acme/web'])
 	})
 
 	it('builds the configuration patch sent after creation', () => {

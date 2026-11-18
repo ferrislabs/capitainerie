@@ -19,6 +19,7 @@ export const agent = (
 	status: 'idle',
 	archived: false,
 	connector_grants: [],
+	repository_grants: [],
 	config: {},
 	skills: [],
 	paused: false,

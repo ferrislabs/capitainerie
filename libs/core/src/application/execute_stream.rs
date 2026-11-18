@@ -4,7 +4,10 @@ use serde_json::Value;
 
 use crate::domain::{
     agent::ToolCall,
-    execution::{TaskLine, TaskMarker},
+    execution::{
+        TaskLine, TaskMarker,
+        report::{ReportAssembler, ReportOutcome},
+    },
     run::step::CachedUsage,
 };
 
@@ -94,6 +97,7 @@ impl Digest {
 pub(super) struct StreamReader {
     redactor: Redactor,
     digest: Digest,
+    report: ReportAssembler,
     pending: HashMap<String, PendingCall>,
     order: Vec<String>,
     dirty: bool,
@@ -104,6 +108,7 @@ impl StreamReader {
         Self {
             redactor,
             digest: Digest::default(),
+            report: ReportAssembler::default(),
             pending: HashMap::new(),
             order: Vec::new(),
             dirty: false,
@@ -112,6 +117,7 @@ impl StreamReader {
 
     pub(super) fn reset(&mut self) {
         self.digest = Digest::default();
+        self.report = ReportAssembler::default();
         self.pending.clear();
         self.order.clear();
         self.dirty = true;
@@ -129,8 +135,28 @@ impl StreamReader {
         self.digest.marker.as_ref()
     }
 
+    /// The audit report the output carried, redacted.
+    pub(super) fn report(&self) -> ReportOutcome {
+        match self.report.outcome() {
+            ReportOutcome::Ready { text, truncated } => ReportOutcome::Ready {
+                text: self.redactor.apply(&text),
+                truncated,
+            },
+            other => other,
+        }
+    }
+
     pub(super) fn accept(&mut self, line: &TaskLine) {
         match line {
+            TaskLine::Capitainerie(TaskMarker::ReportChunk { data }) => self.report.chunk(data),
+            TaskLine::Capitainerie(TaskMarker::ReportEnd {
+                sha256,
+                bytes,
+                truncated,
+            }) => {
+                self.report.end(sha256, *bytes, *truncated);
+                self.dirty = true;
+            }
             TaskLine::Capitainerie(marker) => {
                 self.digest.marker = Some(marker.clone());
                 self.dirty = true;
@@ -410,6 +436,74 @@ mod tests {
             reader.accept(&line);
         }
         assert_eq!(reader.finish().tool_calls.len(), 3);
+    }
+
+    fn report_lines(text: &str, chunk: usize, sha: Option<String>) -> Vec<TaskLine> {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let encoded = STANDARD.encode(text);
+        let mut lines: Vec<TaskLine> = encoded
+            .as_bytes()
+            .chunks(chunk)
+            .map(|piece| {
+                TaskLine::Capitainerie(TaskMarker::ReportChunk {
+                    data: String::from_utf8(piece.to_vec()).unwrap(),
+                })
+            })
+            .collect();
+        let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, text.as_bytes());
+        let hex: String = digest.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+        lines.push(TaskLine::Capitainerie(TaskMarker::ReportEnd {
+            sha256: sha.unwrap_or(hex),
+            bytes: text.len() as u64,
+            truncated: false,
+        }));
+        lines.push(TaskLine::Capitainerie(TaskMarker::AuditDone));
+        lines
+    }
+
+    #[test]
+    fn report_chunks_rebuild_the_report_and_leave_the_marker_alone() {
+        let mut reader = StreamReader::new(Redactor::new("tok-secret"));
+        for line in lines(SAMPLE) {
+            reader.accept(&line);
+        }
+        let text = "# Rapport\n\nLe jeton tok-secret traînait dans .env.";
+        for line in report_lines(text, 5, None) {
+            reader.accept(&line);
+        }
+        assert_eq!(reader.marker(), Some(&TaskMarker::AuditDone));
+        assert_eq!(
+            reader.report(),
+            ReportOutcome::Ready {
+                text: "# Rapport\n\nLe jeton *** traînait dans .env.".into(),
+                truncated: false
+            }
+        );
+        assert_eq!(reader.finish().tool_calls.len(), 3);
+    }
+
+    #[test]
+    fn a_report_whose_digest_does_not_match_is_invalid() {
+        let mut reader = StreamReader::new(Redactor::new(""));
+        for line in report_lines("rapport", 4, Some("00".repeat(32))) {
+            reader.accept(&line);
+        }
+        assert!(matches!(reader.report(), ReportOutcome::Invalid(_)));
+    }
+
+    #[test]
+    fn a_reattached_follower_rebuilds_the_report_from_scratch() {
+        let mut reader = StreamReader::new(Redactor::new(""));
+        let sent = report_lines("rapport", 4, None);
+        for line in &sent {
+            reader.accept(line);
+        }
+        reader.reset();
+        assert_eq!(reader.report(), ReportOutcome::Missing);
+        for line in &sent {
+            reader.accept(line);
+        }
+        assert!(matches!(reader.report(), ReportOutcome::Ready { text, .. } if text == "rapport"));
     }
 
     #[test]

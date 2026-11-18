@@ -156,11 +156,11 @@ async fn run<C: Credentials>(
     check_body(&body, &grant.model).map_err(|reason| ProxyError::forbidden(run_id, reason))?;
     let key = proxy
         .credentials
-        .anthropic_key(grant.organization_id)
+        .anthropic_key(grant.organization_id, grant.initiated_by.as_deref())
         .await?
         .ok_or(ProxyError::forbidden(
             run_id,
-            "no Anthropic key is configured for the organization",
+            "no Anthropic key is configured for the run's initiator or the organization",
         ))?;
 
     let mut upstream_headers = forward::copy_allowed(headers, &KEPT);

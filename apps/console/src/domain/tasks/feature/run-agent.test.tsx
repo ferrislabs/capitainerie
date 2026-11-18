@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
 import { TaskPage } from '#/domain/tasks/feature/task-page'
 import {
 	AGENT_LEAD,
 	AGENTS_ROUTE,
+	agent,
 	card,
 	jsonBody,
 } from '#/domain/tasks/test-fixtures'
@@ -17,6 +18,7 @@ const EXTRA = [
 	'/agents/$agentId/{-$tab}',
 	'/connectors/{-$tab}',
 	'/providers',
+	'/settings/integrations/github',
 ]
 const ID = '11111111-aaaa-4000-8000-000000000001'
 const RUN = '99999999-aaaa-4000-8000-000000000009'
@@ -223,5 +225,221 @@ describe('run agent', () => {
 		await launch()
 		expect(await screen.findByText('Échec')).toBeTruthy()
 		expect(screen.getByText('quota dépassé')).toBeTruthy()
+	})
+
+	describe('on a repository', () => {
+		const coder = agent(AGENT_LEAD, 'Veille légale (lead)', {
+			repository_grants: ['acme/web', 'acme/api'],
+		})
+		const repoBase = (extra = {}) => ({
+			...base(
+				detail({
+					title: 'Audite le dépôt acme/api',
+					description: 'Sécurité et dette',
+					...extra,
+				}),
+			),
+			'GET /api/v1/team/agents': { items: [coder] },
+		})
+
+		const openDialog = async () => {
+			await open()
+			fireEvent.click(
+				await screen.findByRole('button', { name: /Exécuter avec/ }),
+			)
+			return screen.findByRole('dialog')
+		}
+
+		it('preselects the repository the task names and runs a read-only audit', async () => {
+			const fetchMock = mockApi({
+				...repoBase(),
+				[POST]: { status: 202, body: { run_id: RUN } },
+				[`GET /api/v1/runs/${RUN}`]: run('running'),
+			})
+			const dialog = await openDialog()
+
+			expect(
+				within(dialog)
+					.getByRole('radio', { name: 'Un dépôt GitHub' })
+					.getAttribute('aria-checked'),
+			).toBe('true')
+			expect(
+				(
+					within(dialog).getByRole('combobox', {
+						name: 'Dépôt',
+					}) as HTMLSelectElement
+				).value,
+			).toBe('acme/api')
+			expect(
+				within(dialog).getByText(
+					"Audit en lecture seule : l'agent lit le code et produit un rapport.",
+				),
+			).toBeTruthy()
+
+			fireEvent.change(
+				within(dialog).getByRole('textbox', { name: /Branche de base/ }),
+				{ target: { value: 'develop' } },
+			)
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			expect(await screen.findByText('En cours')).toBeTruthy()
+			expect(
+				jsonBody(fetchMock, 'POST', `/api/v1/cards/${ID}/agent-runs`),
+			).toEqual({
+				expected_version: 3,
+				allow_writes: false,
+				repository: 'acme/api',
+				base_branch: 'develop',
+			})
+		})
+
+		it('explains a change run when writes are allowed', async () => {
+			const fetchMock = mockApi({
+				...repoBase(),
+				[POST]: { status: 202, body: { run_id: RUN } },
+				[`GET /api/v1/runs/${RUN}`]: run('running'),
+			})
+			const dialog = await openDialog()
+
+			fireEvent.click(
+				within(dialog).getByRole('checkbox', {
+					name: /Autoriser les écritures/,
+				}),
+			)
+			expect(
+				within(dialog).getByText(
+					"L'agent pousse une branche et ouvre une PR brouillon.",
+				),
+			).toBeTruthy()
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			await waitFor(() =>
+				expect(
+					jsonBody(fetchMock, 'POST', `/api/v1/cards/${ID}/agent-runs`),
+				).toEqual({
+					expected_version: 3,
+					allow_writes: true,
+					repository: 'acme/api',
+				}),
+			)
+		})
+
+		it('can still run with the MCP connectors', async () => {
+			const fetchMock = mockApi({
+				...repoBase(),
+				[POST]: { status: 202, body: { run_id: RUN } },
+				[`GET /api/v1/runs/${RUN}`]: run('running'),
+			})
+			const dialog = await openDialog()
+
+			fireEvent.click(
+				within(dialog).getByRole('radio', { name: 'Connecteurs MCP' }),
+			)
+			expect(
+				within(dialog).queryByRole('combobox', { name: 'Dépôt' }),
+			).toBeNull()
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			await waitFor(() =>
+				expect(
+					jsonBody(fetchMock, 'POST', `/api/v1/cards/${ID}/agent-runs`),
+				).toEqual({ expected_version: 3, allow_writes: false }),
+			)
+		})
+
+		it('shows why the executor is disabled', async () => {
+			mockApi({
+				...repoBase(),
+				[POST]: {
+					status: 409,
+					body: {
+						code: 'executor_disabled',
+						message:
+							'les exécutions sur un dépôt sont désactivées : EXECUTOR_NAMESPACE manquant',
+						status: 409,
+					},
+				},
+			})
+			const dialog = await openDialog()
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			expect(
+				await screen.findByText(
+					/désactivées sur ce serveur : EXECUTOR_NAMESPACE manquant/,
+				),
+			).toBeTruthy()
+		})
+
+		it('links to the GitHub settings when GitHub is not connected', async () => {
+			mockApi({
+				...repoBase(),
+				[POST]: {
+					status: 409,
+					body: {
+						code: 'github_not_connected',
+						message: "GitHub n'est pas connecté pour cette organisation",
+						status: 409,
+					},
+				},
+			})
+			const dialog = await openDialog()
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			const link = await screen.findByRole('link', {
+				name: 'Ouvrir les réglages GitHub',
+			})
+			expect(link.getAttribute('href')).toBe('/settings/integrations/github')
+		})
+
+		it("links to the agent's access when the repository is not granted", async () => {
+			mockApi({
+				...repoBase(),
+				[POST]: {
+					status: 422,
+					body: {
+						code: 'repository_not_granted',
+						message: "l'agent n'a pas accès au dépôt acme/api",
+						status: 422,
+					},
+				},
+			})
+			const dialog = await openDialog()
+			fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }))
+
+			const link = await screen.findByRole('link', {
+				name: "Ouvrir les accès de l'agent",
+			})
+			expect(link.getAttribute('href')).toBe(`/agents/${AGENT_LEAD}/connectors`)
+		})
+
+		it('shows the pull request a run comment cites', async () => {
+			mockApi(
+				base(
+					detail({}, [
+						{
+							id: 'c1',
+							card_id: ID,
+							author_subject: 'u',
+							author_actor: 'agent:veille légale (lead)',
+							body: 'Claude Code a ouvert une pull request en brouillon : https://github.com/acme/api/pull/12\n\nCorrige la dette.',
+							created_at: new Date().toISOString(),
+						},
+					]),
+				),
+			)
+			await open()
+
+			const chip = await screen.findByRole('link', {
+				name: /Ouvrir la pull request acme\/api#12/,
+			})
+			expect(chip.getAttribute('href')).toBe(
+				'https://github.com/acme/api/pull/12',
+			)
+			expect(
+				screen
+					.getByRole('link', { name: 'https://github.com/acme/api/pull/12' })
+					.getAttribute('target'),
+			).toBe('_blank')
+		})
 	})
 })

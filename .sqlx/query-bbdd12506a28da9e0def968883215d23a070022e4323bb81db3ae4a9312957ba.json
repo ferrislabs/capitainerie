@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO executor_status (singleton, enabled, reason, updated_at)\n        VALUES (TRUE, $1, $2, $3)\n        ON CONFLICT (singleton)\n        DO UPDATE SET enabled = EXCLUDED.enabled, reason = EXCLUDED.reason,\n                      updated_at = EXCLUDED.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bbdd12506a28da9e0def968883215d23a070022e4323bb81db3ae4a9312957ba"
+}

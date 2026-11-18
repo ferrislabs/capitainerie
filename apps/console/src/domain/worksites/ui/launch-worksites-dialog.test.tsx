@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
+import { renderAtPath } from '#/components/layout/test-router'
 import {
 	countWorksites,
 	type IssuesState,
@@ -178,10 +179,35 @@ describe('LaunchWorksitesDialog', () => {
 		expect(screen.getByText('Une des issues a déjà un chantier.')).toBeTruthy()
 	})
 
-	it('says GitHub is not connected and offers no launch', () => {
-		setup({ repositories: { kind: 'not_connected' } })
+	it('says GitHub is not connected, links to its settings and offers no launch', async () => {
+		await renderAtPath(
+			<LaunchWorksitesDialog
+				open
+				projectName="Site vitrine"
+				repositories={{ kind: 'not_connected' }}
+				repository=""
+				prompts={['']}
+				issues={{ kind: 'ready', issues: [] }}
+				selectedIssues={[]}
+				isPending={false}
+				onRepositoryChange={vi.fn()}
+				onPromptChange={vi.fn()}
+				onAddPrompt={vi.fn()}
+				onRemovePrompt={vi.fn()}
+				onToggleIssue={vi.fn()}
+				onRetry={vi.fn()}
+				onSubmit={vi.fn()}
+				onClose={vi.fn()}
+			/>,
+			'/worksites',
+		)
 
 		expect(screen.getByText(/GitHub n'est pas connecté/)).toBeTruthy()
+		expect(
+			screen
+				.getByRole('link', { name: 'Connecter GitHub' })
+				.getAttribute('href'),
+		).toBe('/settings/integrations/github')
 		expect(screen.queryByRole('button', { name: /Lancer/ })).toBeNull()
 	})
 })

@@ -48,6 +48,10 @@ impl Operation {
         }
     }
 
+    fn pushes(self) -> bool {
+        matches!(self, Self::InfoRefs("git-receive-pack") | Self::ReceivePack)
+    }
+
     fn class(op: Option<Self>) -> &'static str {
         match op {
             Some(Self::InfoRefs(_)) => "git:info-refs",
@@ -101,6 +105,12 @@ async fn run<C: Credentials>(
         run_id,
         "only fetch and push of the execution branch are allowed",
     ))?;
+    if grant.mode.is_read_only() && operation.pushes() {
+        return Err(ProxyError::forbidden(
+            run_id,
+            "this execution is read-only: push is refused",
+        ));
+    }
     if forward::declared_length(headers).is_some_and(|length| length > MAX_BODY) {
         return Err(ProxyError::TooLarge { run_id });
     }
@@ -164,7 +174,7 @@ async fn installation_token<C: Credentials>(
 ) -> Result<(), ProxyError> {
     let token = proxy
         .credentials
-        .github_token(grant.organization_id, &grant.repository)
+        .github_token(grant.organization_id, &grant.repository, grant.mode)
         .await?
         .ok_or(ProxyError::forbidden(
             grant.run_id,
@@ -217,5 +227,21 @@ where
                 ));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_receive_pack_operations_push() {
+        let classified = |method: Method, rest: &str, query: Option<&str>| {
+            Operation::classify(&method, rest, query).unwrap()
+        };
+        assert!(classified(Method::GET, "info/refs", Some("service=git-receive-pack")).pushes());
+        assert!(classified(Method::POST, "git-receive-pack", None).pushes());
+        assert!(!classified(Method::GET, "info/refs", Some("service=git-upload-pack")).pushes());
+        assert!(!classified(Method::POST, "git-upload-pack", None).pushes());
     }
 }

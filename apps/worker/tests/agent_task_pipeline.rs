@@ -326,6 +326,7 @@ async fn world(options: Options, oauth: &OAuth) -> Option<World> {
                 reports_to: None,
                 instructions: "Tu es Darnold, comptable méticuleux.".into(),
                 connector_grants: vec!["mestier".into()],
+                repository_grants: vec![],
             },
         )
         .await

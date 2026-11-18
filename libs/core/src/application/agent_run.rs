@@ -7,7 +7,7 @@ use super::{CapitainerieUseCase, execution::COMMENT_ID_FIELD};
 use crate::{
     domain::{
         agent_task::{
-            AgentRunError, AgentRunRefusal, AgentTask, StartAgentRun, actor_of,
+            AgentRunError, AgentRunRefusal, AgentTask, RepositoryTarget, StartAgentRun, actor_of,
             ports::AgentTaskRepository,
         },
         approval::{
@@ -21,13 +21,14 @@ use crate::{
         },
         crew::{CrewAgent, ports::CrewRepository},
         event::ports::EventEmitter,
+        execution::{RepositoryRef, ports::GithubInstallationRepository},
         mcp::{
             McpConnector,
             ports::{McpConnectionRepository, McpConnectorRepository},
         },
         member::ports::MemberRepository,
         provider::{
-            ModelRef,
+            ModelRef, ProviderKind,
             ports::{ModelAssignmentRepository, ProviderRepository},
         },
         run::{
@@ -38,8 +39,14 @@ use crate::{
         user_provider::ports::UserProviderRepository,
     },
     infrastructure::{
-        agent_task::postgres::PgAgentTaskRepository, mcp::postgres::PgMcpConnectionRepository,
+        agent_task::postgres::PgAgentTaskRepository,
+        card::postgres::PgCardRepository,
+        crew::postgres::PgCrewRepository,
+        execution::postgres::{PgGithubInstallationRepository, executor_status_in},
+        mcp::postgres::PgMcpConnectionRepository,
+        postgres::SharedTx,
         provider::postgres::PgProviderRepository,
+        run::postgres::PgRunRepository,
         user_provider::postgres::PgUserProviderRepository,
     },
 };
@@ -47,6 +54,25 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct StartedAgentRun {
     pub run_id: RunId,
+}
+
+/// The agent an execution runs as, when a person started it from an agent.
+#[derive(Debug, Clone)]
+pub struct ExecutionAgentSource {
+    pub task: AgentTask,
+    pub agent: CrewAgent,
+    /// The agent's active skills, in the order it lists them.
+    pub skills: Vec<Skill>,
+}
+
+fn in_agent_order(mut found: Vec<Skill>, agent: &CrewAgent) -> Vec<Skill> {
+    let mut skills = Vec::with_capacity(found.len());
+    for slug in agent.skills.as_slice() {
+        if let Some(index) = found.iter().position(|skill| skill.slug.as_str() == slug) {
+            skills.push(found.swap_remove(index));
+        }
+    }
+    skills
 }
 
 #[derive(Debug, Clone)]
@@ -218,6 +244,194 @@ impl CapitainerieUseCase {
         Ok(Ok(StartedAgentRun { run_id: run.id }))
     }
 
+    /// The read-only half of `start_agent_repository_run`, so a handler can
+    /// refuse before it calls GitHub; the run checks everything again.
+    pub async fn check_agent_repository_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        repository: RepositoryRef,
+    ) -> Result<(), AgentRunError> {
+        self.vetted_repository_run(subject, card_id, command, repository)
+            .await??;
+        Ok(())
+    }
+
+    #[transactional()]
+    async fn vetted_repository_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        repository: RepositoryRef,
+    ) -> Stored<()> {
+        Ok(self
+            .vet_repository_run(&tx, &subject, card_id, command, &repository)
+            .await?
+            .map(|_| ()))
+    }
+
+    /// Starts an execution of the card's agent on `target`: read-only audit
+    /// unless writes are allowed, then the usual branch and draft pull request.
+    pub async fn start_agent_repository_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        target: RepositoryTarget,
+    ) -> Result<StartedAgentRun, AgentRunError> {
+        Ok(self
+            .store_agent_repository_run(subject, card_id, command, target)
+            .await??)
+    }
+
+    #[transactional(run, model_assignment, emitter)]
+    async fn store_agent_repository_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        target: RepositoryTarget,
+    ) -> Stored<StartedAgentRun> {
+        let mut run_repository = run_repository;
+        let mut model_assignment_repository = model_assignment_repository;
+        let base_branch = target
+            .base_branch
+            .clone()
+            .ok_or_else(|| CoreError::Invalid("the base branch is unknown".into()))?;
+        let agent = match self
+            .vet_repository_run(&tx, &subject, card_id, command, &target.repository)
+            .await?
+        {
+            Ok(agent) => agent,
+            Err(refusal) => return Ok(Err(refusal)),
+        };
+        let organization_id = subject.organization_id;
+        let now = Utc::now().trunc_subsecs(6);
+        let (mut run, queued) = Run::queue_execution(
+            organization_id,
+            card_id,
+            target.repository,
+            base_branch,
+            subject.id.clone(),
+            now,
+        );
+        run.models = model_assignment_repository.get(organization_id).await?;
+        run_repository.insert(&run).await?;
+        emitter.emit(&queued)?;
+        PgAgentTaskRepository::new(&tx)
+            .insert(&AgentTask {
+                run_id: run.id,
+                organization_id,
+                card_id,
+                agent_id: agent.id,
+                allow_writes: command.allow_writes,
+                model: None,
+                created_by: subject.id,
+                created_at: now,
+            })
+            .await?;
+        Ok(Ok(StartedAgentRun { run_id: run.id }))
+    }
+
+    /// Everything a repository run of the card's agent needs, in the order a
+    /// person can fix it.
+    async fn vet_repository_run(
+        &self,
+        tx: &SharedTx<'_>,
+        subject: &Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        repository: &RepositoryRef,
+    ) -> Stored<CrewAgent> {
+        let organization_id = subject.organization_id;
+        require(
+            &self.authz,
+            AccessRequest::new(
+                subject.clone(),
+                Action::AgentRun,
+                ResourceKind::Card,
+                Some(card_id.0),
+            ),
+        )
+        .await?;
+        if command.allow_writes {
+            require(
+                &self.authz,
+                AccessRequest::new(
+                    subject.clone(),
+                    Action::CardExecute,
+                    ResourceKind::Card,
+                    Some(card_id.0),
+                ),
+            )
+            .await?;
+        }
+        let card = PgCardRepository::new(tx)
+            .find(organization_id, card_id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        card.ensure_version(command.expected_version)?;
+        let Some(agent_id) = card.attributes.assignee_agent_id else {
+            return Ok(Err(AgentRunRefusal::NoAssignee));
+        };
+        let Some(agent) = PgCrewRepository::new(tx)
+            .find(organization_id, agent_id)
+            .await?
+        else {
+            return Ok(Err(AgentRunRefusal::NoAssignee));
+        };
+        if agent.archived {
+            return Ok(Err(AgentRunRefusal::AgentArchived));
+        }
+        if agent.paused {
+            return Ok(Err(AgentRunRefusal::AgentPaused));
+        }
+        if !agent.repository_grants.allows(repository) {
+            return Ok(Err(AgentRunRefusal::RepositoryNotGranted(
+                repository.to_string(),
+            )));
+        }
+        if PgGithubInstallationRepository::new(tx)
+            .get(organization_id)
+            .await?
+            .is_none()
+        {
+            return Ok(Err(AgentRunRefusal::GithubNotConnected));
+        }
+        if let Some(status) = executor_status_in(tx).await?
+            && !status.enabled
+        {
+            return Ok(Err(AgentRunRefusal::ExecutorDisabled(
+                status
+                    .reason
+                    .unwrap_or_else(|| "aucun exécutant disponible".into()),
+            )));
+        }
+        let own = PgUserProviderRepository::new(tx, self.secrets.as_deref())
+            .list(organization_id, &subject.id)
+            .await?;
+        let anthropic = own
+            .iter()
+            .any(|summary| summary.kind == ProviderKind::Anthropic)
+            || PgProviderRepository::new(tx, self.secrets.as_deref())
+                .list(organization_id)
+                .await?
+                .iter()
+                .any(|summary| summary.kind == ProviderKind::Anthropic);
+        if !anthropic {
+            return Ok(Err(AgentRunRefusal::NoProvider));
+        }
+        if PgRunRepository::new(tx)
+            .has_active_execution(card_id)
+            .await?
+        {
+            return Err(CoreError::Conflict("execution_already_active".into()));
+        }
+        Ok(Ok(agent))
+    }
+
     #[transactional()]
     pub(super) async fn freeze_agent_task_model(
         &self,
@@ -237,6 +451,39 @@ impl CapitainerieUseCase {
             .await
             .map(|found| found.unwrap_or(false))
             .map_err(|error| CoreError::Database(error.to_string()))
+    }
+
+    /// `None` for an execution no agent was asked to run (a worksite). An
+    /// execution whose agent vanished is refused rather than run without it.
+    #[transactional(crew_agent, skill)]
+    pub async fn execution_agent_source(
+        &self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> Result<Option<ExecutionAgentSource>, CoreError> {
+        let mut crew_agent_repository = crew_agent_repository;
+        let mut skill_repository = skill_repository;
+        let Some(task) = PgAgentTaskRepository::new(&tx)
+            .find(organization_id, run_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let agent = crew_agent_repository
+            .find(organization_id, task.agent_id)
+            .await?
+            .ok_or_else(|| CoreError::Invalid("l'agent de l'exécution est introuvable".into()))?;
+        let skills = in_agent_order(
+            skill_repository
+                .active_by_slugs(organization_id, agent.skills.as_slice())
+                .await?,
+            &agent,
+        );
+        Ok(Some(ExecutionAgentSource {
+            task,
+            agent,
+            skills,
+        }))
     }
 
     #[transactional(card, card_comment, crew_agent, mcp_connector, skill, approval, member)]
@@ -284,15 +531,12 @@ impl CapitainerieUseCase {
                     .cloned()
             })
             .collect();
-        let mut found = skill_repository
-            .active_by_slugs(organization_id, agent.skills.as_slice())
-            .await?;
-        let mut skills = Vec::with_capacity(found.len());
-        for slug in agent.skills.as_slice() {
-            if let Some(index) = found.iter().position(|skill| skill.slug.as_str() == slug) {
-                skills.push(found.swap_remove(index));
-            }
-        }
+        let skills = in_agent_order(
+            skill_repository
+                .active_by_slugs(organization_id, agent.skills.as_slice())
+                .await?,
+            &agent,
+        );
         let mut approved_call = None;
         if let Some(grant) = approval_repository
             .grant_for_run(organization_id, run_id)

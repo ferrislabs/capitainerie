@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     domain::crew::{
-        AgentConfig, AgentRevision, AgentStatus, ConnectorGrants, CrewAgent, Hue, Skills, Slug,
-        ports::CrewRepository,
+        AgentConfig, AgentRevision, AgentStatus, ConnectorGrants, CrewAgent, Hue, RepositoryGrants,
+        Skills, Slug, ports::CrewRepository,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
@@ -33,9 +33,9 @@ impl CrewRepository for PgCrewRepository<'_> {
             INSERT INTO agents (
                 id, organization_id, slug, name, role, description, model, status, hue,
                 reports_to, archived, instructions, connector_grants, config, skills, paused, revision,
-                   created_by, created_at, updated_at
+                   created_by, created_at, updated_at, repository_grants
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             "#,
             agent.id.0,
             agent.organization_id.0,
@@ -57,6 +57,7 @@ impl CrewRepository for PgCrewRepository<'_> {
             agent.created_by,
             agent.created_at,
             agent.updated_at,
+            &agent.repository_grants.to_strings(),
         )
         .execute(&mut ***tx)
         .await
@@ -75,7 +76,7 @@ impl CrewRepository for PgCrewRepository<'_> {
             r#"
             SELECT id, organization_id, slug, name, role, description, model, status, hue,
                    reports_to, archived, instructions, connector_grants, config, skills, paused, revision,
-                   created_by, created_at, updated_at
+                   created_by, created_at, updated_at, repository_grants
             FROM agents
             WHERE organization_id = $1 AND id = $2
             "#,
@@ -97,7 +98,7 @@ impl CrewRepository for PgCrewRepository<'_> {
             SET slug = $3, name = $4, role = $5, description = $6, model = $7, status = $8,
                 hue = $9, reports_to = $10, archived = $11, instructions = $12,
                 connector_grants = $13, config = $14, skills = $15, paused = $16,
-                revision = $17, updated_at = $18
+                revision = $17, updated_at = $18, repository_grants = $19
             WHERE organization_id = $1 AND id = $2
             "#,
             agent.organization_id.0,
@@ -118,6 +119,7 @@ impl CrewRepository for PgCrewRepository<'_> {
             agent.paused,
             agent.revision,
             agent.updated_at,
+            &agent.repository_grants.to_strings(),
         )
         .execute(&mut ***tx)
         .await
@@ -139,7 +141,7 @@ impl CrewRepository for PgCrewRepository<'_> {
             r#"
             SELECT id, organization_id, slug, name, role, description, model, status, hue,
                    reports_to, archived, instructions, connector_grants, config, skills, paused, revision,
-                   created_by, created_at, updated_at
+                   created_by, created_at, updated_at, repository_grants
             FROM agents
             WHERE organization_id = $1 AND ($2::bool IS NULL OR archived = $2)
             ORDER BY lower(name), id
@@ -297,6 +299,7 @@ struct AgentRow {
     created_by: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    repository_grants: Vec<String>,
 }
 
 impl TryFrom<AgentRow> for CrewAgent {
@@ -319,6 +322,7 @@ impl TryFrom<AgentRow> for CrewAgent {
             archived: row.archived,
             instructions: row.instructions,
             connector_grants: ConnectorGrants::try_from(row.connector_grants).map_err(stored)?,
+            repository_grants: RepositoryGrants::try_from(row.repository_grants).map_err(stored)?,
             config: AgentConfig::try_from(row.config).map_err(stored)?,
             skills: Skills::try_from(row.skills).map_err(stored)?,
             paused: row.paused,

@@ -114,7 +114,9 @@ export function safeHref(url: string): string | null {
 }
 
 const INLINE =
-	/(`[^`]+`)|(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\([^)\s]+\))/
+	/(`[^`]+`)|(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?»"'])/
+
+const LINK_CLASS = 'text-primary underline-offset-2 hover:underline'
 
 export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
 	const nodes: ReactNode[] = []
@@ -144,6 +146,18 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
 			)
 		} else if (match[3]) {
 			nodes.push(<em key={id}>{renderInline(token.slice(1, -1), id)}</em>)
+		} else if (match[5]) {
+			nodes.push(
+				<a
+					key={id}
+					href={token}
+					target="_blank"
+					rel="noopener noreferrer"
+					className={LINK_CLASS}
+				>
+					{token}
+				</a>,
+			)
 		} else {
 			const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token)
 			const label = link?.[1] ?? token
@@ -155,7 +169,7 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
 						href={href}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="text-primary underline-offset-2 hover:underline"
+						className={LINK_CLASS}
 					>
 						{renderInline(label, id)}
 					</a>

@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import type { FormEvent } from 'react'
 import type { Schemas } from '#/api/api.client'
@@ -247,7 +248,10 @@ export function LaunchWorksitesDialog({
 					{repositories.kind === 'not_connected' ? (
 						<InlineAlert tone="info">
 							GitHub n'est pas connecté à l'organisation : un chantier a besoin
-							d'un dépôt accessible par l'application GitHub.
+							d'un dépôt accessible par l'application GitHub.{' '}
+							<Link to="/settings/integrations/github" className="underline">
+								Connecter GitHub
+							</Link>
 						</InlineAlert>
 					) : (
 						<>

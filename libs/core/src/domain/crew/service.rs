@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::{
     AgentConfig, AgentRevision, AgentSnapshot, AgentStatus, CHANGED_MAX_CHARS, ConnectorGrants,
     CrewAgent, DESCRIPTION_MAX_CHARS, Hue, INSTRUCTIONS_MAX_CHARS, MODEL_MAX_CHARS, ROLE_MAX_CHARS,
-    Skills, Slug, closes_a_loop, ports::CrewRepository,
+    RepositoryGrants, Skills, Slug, closes_a_loop, ports::CrewRepository,
 };
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
@@ -26,6 +26,7 @@ pub struct CreateAgent {
     pub reports_to: Option<AgentId>,
     pub instructions: String,
     pub connector_grants: Vec<String>,
+    pub repository_grants: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,8 @@ pub struct UpdateAgent {
     pub archived: Option<bool>,
     pub instructions: Option<String>,
     pub connector_grants: Option<Vec<String>>,
+    /// Replaces the whole list.
+    pub repository_grants: Option<Vec<String>>,
     /// Replaces the whole object.
     pub config: Option<Value>,
     /// Replaces the whole list.
@@ -62,6 +65,7 @@ impl Default for UpdateAgent {
             archived: None,
             instructions: None,
             connector_grants: None,
+            repository_grants: None,
             config: None,
             skills: None,
             paused: None,
@@ -82,6 +86,7 @@ impl UpdateAgent {
             && self.archived.is_none()
             && self.instructions.is_none()
             && self.connector_grants.is_none()
+            && self.repository_grants.is_none()
             && self.config.is_none()
             && self.skills.is_none()
             && self.paused.is_none()
@@ -162,6 +167,7 @@ where
                 true,
             )?,
             connector_grants: ConnectorGrants::try_from(command.connector_grants)?,
+            repository_grants: RepositoryGrants::try_from(command.repository_grants)?,
             config: AgentConfig::default(),
             skills: Skills::default(),
             paused: false,
@@ -225,6 +231,9 @@ where
         }
         if let Some(grants) = command.connector_grants {
             agent.connector_grants = ConnectorGrants::try_from(grants)?;
+        }
+        if let Some(grants) = command.repository_grants {
+            agent.repository_grants = RepositoryGrants::try_from(grants)?;
         }
         if let Some(archived) = command.archived {
             agent.archived = archived;
@@ -315,6 +324,7 @@ where
             true,
         )?;
         agent.connector_grants = ConnectorGrants::try_from(snapshot.connector_grants)?;
+        agent.repository_grants = RepositoryGrants::try_from(snapshot.repository_grants)?;
         agent.config = AgentConfig::try_from(snapshot.config)?;
         agent.skills = Skills::try_from(snapshot.skills)?;
         agent.paused = snapshot.paused;
@@ -432,6 +442,7 @@ mod tests {
             reports_to: None,
             instructions: "Tu codes.".into(),
             connector_grants: vec!["github".into()],
+            repository_grants: vec!["acme/web".into()],
         }
     }
 
@@ -508,6 +519,7 @@ mod tests {
                     && revision.snapshot.paused
                     && revision.snapshot.config["effort"] == "Max"
                     && revision.snapshot.skills == ["review"]
+                    && revision.snapshot.repository_grants == ["acme/web"]
             })
             .returning(|_| Box::pin(async { Ok(()) }));
         let authorizer = allow();
@@ -519,6 +531,7 @@ mod tests {
                 UpdateAgent {
                     config: Some(serde_json::json!({"effort": "Max"})),
                     skills: Some(vec!["review".into()]),
+                    repository_grants: Some(vec!["acme/web".into()]),
                     paused: Some(true),
                     change_summary: Some(" effort ".into()),
                     ..UpdateAgent::default()

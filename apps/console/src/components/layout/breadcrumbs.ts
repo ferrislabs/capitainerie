@@ -73,6 +73,9 @@ export function breadcrumbs(
 ): ReadonlyArray<Crumb> {
 	const [section, id] = pathname.split('/').filter(Boolean)
 	if (!section) return [{ label: HOME }]
+	if (pathname.startsWith('/settings/integrations/github')) {
+		return [{ label: 'GitHub' }]
+	}
 	const label = SECTION_LABELS[section] ?? decode(section)
 	if (!id) return [{ label }]
 	if (id === LIST_VIEWS[section]) return [{ label }]

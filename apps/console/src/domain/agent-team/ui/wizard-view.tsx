@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { cloneElement, type ReactElement, type ReactNode, useId } from 'react'
 import { Button } from '#/components/ui/button'
+import { Combobox } from '#/components/ui/combobox'
 import {
 	ADAPTERS,
 	DIRECTION,
@@ -22,6 +23,7 @@ import {
 	WIZARD_LAST_STEP,
 	type WizardState,
 } from '#/domain/agent-team/wizard'
+import type { RepositoriesState } from '#/domain/integrations/hooks/use-github'
 import { cn } from '#/lib/utils'
 
 const STEPS = ['Connexion', 'Configuration', 'Confirmation'] as const
@@ -54,6 +56,7 @@ interface Props {
 	reportsOptions: ReadonlyArray<OptionItem>
 	connectors: ReadonlyArray<{ slug: string; name: string }>
 	connectorsLoading: boolean
+	repositories: RepositoriesState
 	/** Slugs proposés : catalogue des compétences et sélection courante. */
 	skillOptions: ReadonlyArray<string>
 	canAdvance: boolean
@@ -149,6 +152,10 @@ function Recap({
 						.join(', ')
 				: 'Aucun (accès refusé)',
 		],
+		[
+			'Dépôts GitHub',
+			state.repositories.length ? state.repositories.join(', ') : 'Aucun',
+		],
 	]
 	return (
 		<div className="overflow-hidden rounded-lg border bg-background">
@@ -161,6 +168,56 @@ function Recap({
 					<span>{value}</span>
 				</div>
 			))}
+		</div>
+	)
+}
+
+function RepositoryPicker({
+	state,
+	value,
+	onChange,
+}: {
+	state: RepositoriesState
+	value: ReadonlyArray<string>
+	onChange: (next: string[]) => void
+}) {
+	const id = useId()
+	return (
+		<div className="col-span-full grid gap-1 text-xs text-muted-foreground">
+			<label htmlFor={id}>Dépôts GitHub autorisés (aucun par défaut)</label>
+			{state.kind === 'not_connected' ? (
+				<span className="font-normal">
+					GitHub n'est pas connecté à l'organisation.{' '}
+					<Link to="/settings/integrations/github" className="text-primary">
+						Connecter GitHub
+					</Link>
+				</span>
+			) : state.kind === 'error' ? (
+				<span className="font-normal text-signal-danger">
+					Impossible de charger les dépôts GitHub.
+				</span>
+			) : (
+				<Combobox
+					id={id}
+					multiple
+					className="font-mono text-xs"
+					items={(state.kind === 'ready' ? state.repositories : []).map(
+						(repository) => ({
+							value: repository.full_name,
+							label: repository.full_name,
+						}),
+					)}
+					value={value}
+					loading={state.kind === 'loading'}
+					onValueChange={onChange}
+					placeholder="Choisir des dépôts…"
+					emptyText="Aucun dépôt ne correspond"
+				/>
+			)}
+			<span className="font-normal">
+				L'agent pourra auditer ces dépôts ou y proposer des changements en pull
+				request brouillon.
+			</span>
 		</div>
 	)
 }
@@ -178,6 +235,7 @@ export function WizardView({
 	reportsOptions,
 	connectors,
 	connectorsLoading,
+	repositories,
 	skillOptions,
 	canAdvance,
 	onChange,
@@ -511,6 +569,11 @@ export function WizardView({
 									))
 								)}
 							</Pills>
+							<RepositoryPicker
+								state={repositories}
+								value={state.repositories}
+								onChange={(next) => onChange({ repositories: next })}
+							/>
 						</div>
 					</>
 				) : null}
