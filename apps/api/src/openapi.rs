@@ -203,6 +203,7 @@ use utoipa::{
         audit::costs::agents_handler,
         audit::costs::tasks_handler,
         audit::costs::users_handler,
+        audit::costs::days_handler,
         inbox::list_handler,
         inbox::read_handler,
         artifacts::list_handler,
@@ -686,7 +687,7 @@ mod tests {
         assert!(paths["/api/v1/audit/events"]["get"].is_object());
         assert!(paths["/api/v1/budgets"]["get"].is_object());
         assert!(paths["/api/v1/budgets"]["put"].is_object());
-        for route in ["projects", "agents", "tasks", "users"] {
+        for route in ["projects", "agents", "tasks", "users", "days"] {
             assert!(paths[format!("/api/v1/analytics/costs/{route}")]["get"].is_object());
         }
         assert!(paths["/api/v1/inbox"]["get"].is_object());

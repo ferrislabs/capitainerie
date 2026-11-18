@@ -5,11 +5,11 @@ use axum::{
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{AgentId, CardId, CoreError, ProjectId};
 use capitainerie_core::domain::cost::{
-    AgentSpend, CostFilter, CostReport, ModelSpend, Period, ProjectSpend, Spent, TaskSpend,
-    UserSpend,
+    AgentSpend, CostFilter, CostReport, DaySpend, ModelSpend, Period, ProjectSpend, Spent,
+    TaskSpend, UserSpend,
 };
 use capitainerie_handlers::{ApiError, AppState, Caller};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -24,6 +24,10 @@ pub struct AgentCostsPath;
 #[derive(TypedPath)]
 #[typed_path("/api/v1/analytics/costs/tasks")]
 pub struct TaskCostsPath;
+
+#[derive(TypedPath)]
+#[typed_path("/api/v1/analytics/costs/days")]
+pub struct DayCostsPath;
 
 #[derive(TypedPath)]
 #[typed_path("/api/v1/analytics/costs/users")]
@@ -189,6 +193,35 @@ impl From<UserSpend> for UserSpendResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct DaySpendResponse {
+    /// UTC day.
+    pub day: NaiveDate,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cost_micros: i64,
+}
+
+impl From<DaySpend> for DaySpendResponse {
+    fn from(spend: DaySpend) -> Self {
+        Self {
+            day: spend.day,
+            input_tokens: spend.spent.input_tokens,
+            output_tokens: spend.spent.output_tokens,
+            cost_micros: spend.spent.cost_micros,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DayCostsResponse {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    pub total: SpentResponse,
+    /// Oldest first; days without any step are absent.
+    pub rows: Vec<DaySpendResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectCostsResponse {
     pub from: DateTime<Utc>,
     pub to: DateTime<Utc>,
@@ -239,6 +272,7 @@ from_report!(ProjectCostsResponse, ProjectSpend);
 from_report!(AgentCostsResponse, AgentSpend);
 from_report!(TaskCostsResponse, TaskSpend);
 from_report!(UserCostsResponse, UserSpend);
+from_report!(DayCostsResponse, DaySpend);
 
 fn filter(agent: Option<AgentId>, card: Option<CardId>) -> CostFilter {
     CostFilter { agent, card }
@@ -373,6 +407,39 @@ pub async fn users_handler(
     let report = state
         .usecase
         .user_costs(
+            caller.subject(),
+            period,
+            filter(query.agent_id, query.card_id),
+        )
+        .await?;
+    Ok(Json(report.into()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/analytics/costs/days",
+    operation_id = "listDayCosts",
+    tag = super::TAG,
+    params(CostsQuery),
+    responses(
+        (status = 200, description = "Spend per UTC day over the window", body = DayCostsResponse),
+        (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 403, description = "The policy refused the read; agents have no access to costs", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 404, description = "`agent_id` or `card_id` is not one of the organization", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "`from` is not before `to`", body = capitainerie_handlers::errors::ApiErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn days_handler(
+    _: DayCostsPath,
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<CostsQuery>,
+) -> Result<Json<DayCostsResponse>, ApiError> {
+    let period = period(query.from, query.to)?;
+    let report = state
+        .usecase
+        .day_costs(
             caller.subject(),
             period,
             filter(query.agent_id, query.card_id),
