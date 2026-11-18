@@ -8,7 +8,7 @@ interface Props {
 }
 
 const TAB_CLASS =
-	'-mb-px inline-block whitespace-nowrap border-b-2 border-transparent px-2.5 py-[7px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+	'-mb-px inline-flex h-11 items-center whitespace-nowrap border-b-2 border-transparent px-3 text-[14px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
 
 const AUDIT_LINKS = [
 	{ slug: 'activite', label: 'Activité' },
@@ -21,7 +21,7 @@ export function AgentTabBar({ agentId, active }: Props) {
 	return (
 		<nav
 			aria-label="Sections de l'agent"
-			className="mb-3.5 flex gap-0.5 overflow-x-auto border-b"
+			className="mt-8 flex gap-1 overflow-x-auto border-b"
 		>
 			{AGENT_TABS.map((tab) => {
 				const props = {
@@ -43,13 +43,13 @@ export function AgentTabBar({ agentId, active }: Props) {
 					</Link>
 				)
 			})}
-			<span className="min-w-3 flex-1" />
+			<span className="min-w-6 flex-1" />
 			{AUDIT_LINKS.map((link) => (
 				<Link
 					key={link.slug}
 					to="/audit/{-$tab}"
 					params={{ tab: link.slug }}
-					className={TAB_CLASS}
+					className={cn(TAB_CLASS, 'font-normal')}
 				>
 					{link.label}
 				</Link>

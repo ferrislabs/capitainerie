@@ -82,7 +82,7 @@ describe('agent detail page', () => {
 				.getByRole('link', { name: 'Exécutions' })
 				.getAttribute('href'),
 		).toBe('/audit/runs')
-		for (const label of ['Assigner une tâche', 'Pause', 'Archiver'])
+		for (const label of ['Assigner une tâche', 'Pause', "Plus d'actions"])
 			expect(screen.getByRole('button', { name: label })).toBeTruthy()
 		for (const label of ['Définir comme principal', 'Lancer'])
 			expect(screen.queryByRole('button', { name: label })).toBeNull()
@@ -142,10 +142,28 @@ describe('agent detail page', () => {
 		expect(await screen.findByText('Corriger le build')).toBeTruthy()
 		expect(await screen.findByText(/Run du build · étape 2\/3/)).toBeTruthy()
 		expect(
+			screen.getByRole('heading', { name: 'Dernière exécution' }),
+		).toBeTruthy()
+		expect(screen.getByText('Étape 2 sur 3')).toBeTruthy()
+		expect(
 			fetchMock.mock.calls.some(([url]) =>
 				String(url).includes('assignee_agent_id=a-dev'),
 			),
 		).toBe(true)
+	})
+
+	it('counts the tasks beyond the six most recent', async () => {
+		const items = Array.from({ length: 8 }, (_, i) =>
+			card(`c0ffee00-0000-4000-8000-00000000001${i}`, {
+				title: `Tâche ${i}`,
+				assignee_agent_id: 'a-dev',
+			}),
+		)
+		await open({ agentId: 'a-dev' }, { 'GET /api/v1/cards': { items } })
+		expect(await screen.findByText('+2 autres tâches')).toBeTruthy()
+		expect(
+			screen.queryByRole('heading', { name: 'Dernière exécution' }),
+		).toBeNull()
 	})
 
 	it('shows an empty task list on the overview', async () => {
@@ -233,7 +251,10 @@ describe('agent detail page', () => {
 		it('archives the agent', async () => {
 			const user = userEvent.setup()
 			const fetchMock = await open({ agentId: 'a-dev' })
-			await user.click(screen.getByRole('button', { name: 'Archiver' }))
+			await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+			await user.click(
+				await screen.findByRole('menuitem', { name: 'Archiver' }),
+			)
 			expect(await screen.findByText('Dev archivé')).toBeTruthy()
 			expect(patches(fetchMock)).toEqual([
 				{

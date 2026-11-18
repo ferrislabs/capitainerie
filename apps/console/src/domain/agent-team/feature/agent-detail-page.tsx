@@ -82,6 +82,8 @@ const SAVE_TABS: ReadonlyArray<AgentTabId> = [
 	'perms',
 ]
 const RECENT = 6
+const SHELL =
+	'mx-auto max-w-[1160px] px-4 pt-8 pb-16 text-[14px] leading-normal sm:px-8'
 
 const byRecent = (a: Task, b: Task) =>
 	Date.parse(b.card.updated_at) - Date.parse(a.card.updated_at)
@@ -274,7 +276,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 		(tab !== 'instructions' || mode === 'editer')
 
 	return (
-		<Page>
+		<Page className={SHELL}>
 			<AgentHeader
 				agent={agent}
 				adapter={form.adapter}
@@ -293,102 +295,105 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 				onToggleArchive={toggleArchive}
 			/>
 			<AgentTabBar agentId={agent.id} active={tab} />
-			<Notice message={message} />
-			{tab === 'overview' ? (
-				<OverviewTab
-					agent={agent}
-					form={form}
-					subCount={subs.length}
-					reportsTo={parent?.name ?? DIRECTION}
-					tasks={ownTasks.slice(0, RECENT)}
-					tasksLoading={agentCards.isPending}
-					tasksError={agentCards.isError}
-					activeRuns={runs}
-				/>
-			) : null}
-			{tab === 'instructions' ? (
-				<InstructionsTab
-					agentId={agent.id}
-					mode={mode}
-					instr={form.instr}
-					onChange={(instr) => patch({ instr })}
-				/>
-			) : null}
-			{tab === 'skills' ? (
-				<SkillsTab
-					skills={agent.skills}
-					catalog={skillCatalog}
-					busy={update.isPending}
-					onAdd={(skill) =>
-						setSkills([...agent.skills, skill], `${skill} activée`)
-					}
-					onRemove={(skill) =>
-						setSkills(
-							agent.skills.filter((s) => s !== skill),
-							`${skill} désactivée`,
-						)
-					}
-				/>
-			) : null}
-			{tab === 'sources' ? <SourcesTab agentId={agent.id} /> : null}
-			{tab === 'team' ? (
-				<DelegationTab
-					agent={agent}
-					ancestors={ancestors}
-					subs={subs.map((sub) => ({
-						agent: sub,
-						openTasks: openTasks(sub.id),
-					}))}
-					candidates={pool.filter(
-						(a) =>
-							a.id !== agent.id &&
-							!subs.some((sub) => sub.id === a.id) &&
-							!ancestors.some((anc) => anc.id === a.id),
-					)}
-					recent={recent}
-					form={form}
-					onChange={patch}
-					onRemove={removeSub}
-					onAssign={(sub) => setAssignTo(sub.id)}
-					onAdd={(id) =>
-						send(
-							{ reports_to: agent.id, change_summary: 'hiérarchie' },
-							id,
-							'Sous-agent ajouté',
-						)
-					}
-				/>
-			) : null}
-			{tab === 'connectors' ? (
-				<ConnectorsTab
-					connectors={connectors.data?.items ?? []}
-					loading={connectors.isPending}
-					error={connectors.isError}
-					granted={granted}
-					form={form}
-					onToggle={toggleConnector}
-					onChange={patch}
-					repositories={repositories}
-					repositoryGrants={repositoryGrants}
-					busy={update.isPending}
-					onAddRepository={addRepository}
-					onRemoveRepository={removeRepository}
-				/>
-			) : null}
-			{tab === 'runtime' ? (
-				<RuntimeTab form={form} reportsOptions={others} onChange={patch} />
-			) : null}
-			{tab === 'perms' ? <PermsTab form={form} onChange={patch} /> : null}
-			{tab === 'rev' ? (
-				<RevisionsTab
-					current={agent.revision}
-					revisions={revisions.data?.items ?? []}
-					loading={revisions.isPending}
-					error={revisions.isError}
-					restoring={restore.isPending}
-					onRestore={restoreRevision}
-				/>
-			) : null}
+			<Notice message={message} className={message ? 'mt-6' : undefined} />
+			<div className="mt-10 flex min-w-0 flex-col gap-10">
+				{tab === 'overview' ? (
+					<OverviewTab
+						agent={agent}
+						form={form}
+						subCount={subs.length}
+						reportsTo={parent?.name ?? DIRECTION}
+						tasks={ownTasks.slice(0, RECENT)}
+						taskCount={ownTasks.length}
+						tasksLoading={agentCards.isPending}
+						tasksError={agentCards.isError}
+						activeRuns={runs}
+					/>
+				) : null}
+				{tab === 'instructions' ? (
+					<InstructionsTab
+						agentId={agent.id}
+						mode={mode}
+						instr={form.instr}
+						onChange={(instr) => patch({ instr })}
+					/>
+				) : null}
+				{tab === 'skills' ? (
+					<SkillsTab
+						skills={agent.skills}
+						catalog={skillCatalog}
+						busy={update.isPending}
+						onAdd={(skill) =>
+							setSkills([...agent.skills, skill], `${skill} activée`)
+						}
+						onRemove={(skill) =>
+							setSkills(
+								agent.skills.filter((s) => s !== skill),
+								`${skill} désactivée`,
+							)
+						}
+					/>
+				) : null}
+				{tab === 'sources' ? <SourcesTab agentId={agent.id} /> : null}
+				{tab === 'team' ? (
+					<DelegationTab
+						agent={agent}
+						ancestors={ancestors}
+						subs={subs.map((sub) => ({
+							agent: sub,
+							openTasks: openTasks(sub.id),
+						}))}
+						candidates={pool.filter(
+							(a) =>
+								a.id !== agent.id &&
+								!subs.some((sub) => sub.id === a.id) &&
+								!ancestors.some((anc) => anc.id === a.id),
+						)}
+						recent={recent}
+						form={form}
+						onChange={patch}
+						onRemove={removeSub}
+						onAssign={(sub) => setAssignTo(sub.id)}
+						onAdd={(id) =>
+							send(
+								{ reports_to: agent.id, change_summary: 'hiérarchie' },
+								id,
+								'Sous-agent ajouté',
+							)
+						}
+					/>
+				) : null}
+				{tab === 'connectors' ? (
+					<ConnectorsTab
+						connectors={connectors.data?.items ?? []}
+						loading={connectors.isPending}
+						error={connectors.isError}
+						granted={granted}
+						form={form}
+						onToggle={toggleConnector}
+						onChange={patch}
+						repositories={repositories}
+						repositoryGrants={repositoryGrants}
+						busy={update.isPending}
+						onAddRepository={addRepository}
+						onRemoveRepository={removeRepository}
+					/>
+				) : null}
+				{tab === 'runtime' ? (
+					<RuntimeTab form={form} reportsOptions={others} onChange={patch} />
+				) : null}
+				{tab === 'perms' ? <PermsTab form={form} onChange={patch} /> : null}
+				{tab === 'rev' ? (
+					<RevisionsTab
+						current={agent.revision}
+						revisions={revisions.data?.items ?? []}
+						loading={revisions.isPending}
+						error={revisions.isError}
+						restoring={restore.isPending}
+						onRestore={restoreRevision}
+					/>
+				) : null}
+			</div>
 
 			{showBar ? (
 				<SaveBar
@@ -412,7 +417,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 }
 
 function Placeholder({ children }: { children: ReactNode }) {
-	return <Page>{children}</Page>
+	return <Page className={SHELL}>{children}</Page>
 }
 
 export function AgentDetailPage({ agentId, tab, mode = 'lire' }: Props) {

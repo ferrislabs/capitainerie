@@ -4,6 +4,10 @@ import { cn } from '#/lib/utils'
 export const ROW =
 	'flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 text-left first:border-t-0 hover:bg-secondary'
 
+/** Ligne de la fiche agent : plus haute, marges alignées sur les cartes. */
+export const DETAIL_ROW =
+	'flex min-h-14 w-full min-w-0 items-center gap-3.5 border-t px-6 py-3 text-left first:border-t-0 hover:bg-secondary/60'
+
 export function Rows({ children }: { children: ReactNode }) {
 	return <div>{children}</div>
 }
@@ -69,10 +73,7 @@ export function Empty({
 }) {
 	return (
 		<div
-			className={cn(
-				'px-4 py-[26px] text-center text-muted-foreground',
-				className,
-			)}
+			className={cn('px-6 py-10 text-center text-muted-foreground', className)}
 		>
 			{icon}
 			{title ? (
@@ -86,11 +87,7 @@ export function Empty({
 }
 
 export function ChipList({ children }: { children: ReactNode }) {
-	return (
-		<ul className="m-0 flex list-none flex-wrap gap-[5px] px-3 py-2.5">
-			{children}
-		</ul>
-	)
+	return <ul className="m-0 flex list-none flex-wrap gap-2 p-0">{children}</ul>
 }
 
 export function Chip({
@@ -103,7 +100,7 @@ export function Chip({
 	return (
 		<li
 			title={title}
-			className="rounded-md bg-secondary px-2 py-0.5 font-mono text-[11.5px] font-medium text-muted-foreground"
+			className="rounded-full border bg-secondary px-3 py-1 text-[13px] font-medium text-foreground"
 		>
 			{children}
 		</li>

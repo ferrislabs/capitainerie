@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
-import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import { Combobox } from '#/components/ui/combobox'
-import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
+import { DETAIL_ROW, Empty, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import type { RepositoriesState } from '#/domain/integrations/hooks/use-github'
 
@@ -33,18 +33,18 @@ export function RepositoryGrantsSection({
 	const full = granted.length >= MAX_REPOSITORY_GRANTS
 
 	return (
-		<SectionCard
+		<DetailSection
 			title="Dépôts GitHub"
 			flush
 			actions={<Link to="/settings/integrations/github">Gérer GitHub</Link>}
 		>
-			<p className="m-0 px-3 pt-3 text-muted-foreground">
+			<p className="m-0 border-b px-6 py-5 text-muted-foreground">
 				L'agent ne peut travailler que sur les dépôts listés ici. Sans
 				écritures, il les audite en lecture seule ; avec, il pousse une branche
 				et ouvre une pull request brouillon.
 			</p>
 			{state.kind === 'not_connected' ? (
-				<p className="m-0 p-3 text-muted-foreground">
+				<p className="m-0 px-6 py-5 text-muted-foreground">
 					GitHub n'est pas connecté à l'organisation.{' '}
 					<Link to="/settings/integrations/github" className="text-primary">
 						Connecter GitHub
@@ -52,7 +52,7 @@ export function RepositoryGrantsSection({
 				</p>
 			) : null}
 			{state.kind === 'error' ? (
-				<p role="alert" className="m-0 p-3 text-signal-danger">
+				<p role="alert" className="m-0 px-6 py-5 text-signal-danger">
 					Impossible de charger les dépôts GitHub.
 				</p>
 			) : null}
@@ -67,7 +67,7 @@ export function RepositoryGrantsSection({
 							const known = reachable.find((r) => same(r.full_name, name))
 							const unreachable = state.kind === 'ready' && known === undefined
 							return (
-								<li key={name} className={ROW}>
+								<li key={name} className={DETAIL_ROW}>
 									<Ttl
 										title={name}
 										titleMono
@@ -97,7 +97,7 @@ export function RepositoryGrantsSection({
 				</Rows>
 			)}
 			{state.kind === 'ready' || state.kind === 'loading' ? (
-				<div className="border-t p-3">
+				<div className="border-t px-6 py-5">
 					<Combobox
 						aria-label="Ajouter un dépôt"
 						className="font-mono text-xs"
@@ -124,6 +124,6 @@ export function RepositoryGrantsSection({
 					/>
 				</div>
 			) : null}
-		</SectionCard>
+		</DetailSection>
 	)
 }

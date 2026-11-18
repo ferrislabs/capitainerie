@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import {
 	ADAPTERS,
@@ -15,6 +14,7 @@ import {
 } from '#/domain/agent-team/model-id'
 import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
 import { type OptionItem, Options } from '#/domain/agent-team/ui/options'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 
 interface Props {
@@ -103,7 +103,7 @@ export function RuntimeTab({
 }: Props): ReactNode {
 	return (
 		<>
-			<SectionCard title="Identité de l'agent" flush>
+			<DetailSection title="Identité de l'agent" flush>
 				<Text
 					label="Nom"
 					value={form.name}
@@ -131,16 +131,16 @@ export function RuntimeTab({
 					values={[{ value: DIRECTION, label: DIRECTION }, ...reportsOptions]}
 					onChange={(reports) => onChange({ reports })}
 				/>
-			</SectionCard>
-			<SectionCard title="Adaptateur" flush>
+			</DetailSection>
+			<DetailSection title="Adaptateur" flush>
 				<Select
 					label="Type d'adaptateur"
 					value={form.adapter}
 					values={ADAPTERS.map((a) => a.name)}
 					onChange={(adapter) => onChange({ adapter })}
 				/>
-			</SectionCard>
-			<SectionCard title="Modèle" flush>
+			</DetailSection>
+			<DetailSection title="Modèle" flush>
 				<Text
 					label="Modèle"
 					placeholder={MODEL_ID_PLACEHOLDER}
@@ -148,11 +148,11 @@ export function RuntimeTab({
 					onChange={(model) => onChange({ model })}
 				/>
 				{isValidModelId(form.model) ? null : (
-					<p role="alert" className="m-0 px-3 pb-2 text-signal-danger">
+					<p role="alert" className="m-0 px-6 pb-4 text-signal-danger">
 						{MODEL_ID_ERROR}
 					</p>
 				)}
-				<p className="m-0 border-t px-3 py-2 text-muted-foreground">
+				<p className="m-0 border-t px-6 py-4 text-muted-foreground">
 					Le modèle utilisé est celui de votre fournisseur par défaut, sauf si
 					vous renseignez un identifiant de modèle valide ici.{' '}
 					<Link to="/providers" className="text-primary underline">
@@ -165,8 +165,8 @@ export function RuntimeTab({
 					values={EFFORTS}
 					onChange={(effort) => onChange({ effort })}
 				/>
-			</SectionCard>
-			<SectionCard title="Configuration" flush>
+			</DetailSection>
+			<DetailSection title="Configuration" flush>
 				<Select
 					label="Moteur d'exécution"
 					hint="ACP par défaut"
@@ -193,8 +193,8 @@ export function RuntimeTab({
 					value={form.turns}
 					onChange={(turns) => onChange({ turns })}
 				/>
-			</SectionCard>
-			<SectionCard title="Politique d'exécution" flush>
+			</DetailSection>
+			<DetailSection title="Politique d'exécution" flush>
 				<Switched
 					label="Réveil sur intervalle"
 					hint="Heartbeat planifié"
@@ -207,7 +207,7 @@ export function RuntimeTab({
 					values={['15 min', '1 h', '6 h', '24 h']}
 					onChange={(interval) => onChange({ interval })}
 				/>
-			</SectionCard>
+			</DetailSection>
 		</>
 	)
 }
