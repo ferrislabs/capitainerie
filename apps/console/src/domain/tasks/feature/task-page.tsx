@@ -6,11 +6,13 @@ import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
+import { Markdown } from '#/components/markdown'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { TaskArtifactsPanel } from '#/domain/artifacts/feature/task-artifacts-panel'
 import { relativeAge } from '#/domain/dashboard/format'
+import { useMe } from '#/domain/identity/hooks/use-me'
 import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
 import { RunStatusPanel } from '#/domain/tasks/feature/run-status-panel'
 import { SubtasksPanel } from '#/domain/tasks/feature/subtasks-panel'
@@ -121,6 +123,7 @@ export function TaskPage({ pathId }: Props) {
 	const move = useMoveCard()
 	const update = useUpdateCard()
 	const team = useTeamAgents().data?.items
+	const me = useMe().data
 	const comment = useCommentCard()
 	const agentOf = useAgentOf()
 	const [message, notify] = useNotice()
@@ -281,9 +284,9 @@ export function TaskPage({ pathId }: Props) {
 								{comments.map((c) => (
 									<li key={c.id} className={BUBBLE}>
 										<small className="mb-0.5 block text-[0.83em] opacity-75">
-											{c.author_actor ?? c.author_subject}
+											{commentAuthor(c, team, me)}
 										</small>
-										<p className="m-0 whitespace-pre-wrap">{c.body}</p>
+										<Markdown source={c.body} />
 										<small className="mt-1 block text-right text-[0.83em] opacity-75">
 											{relativeAge(c.created_at)}
 										</small>
@@ -376,4 +379,27 @@ export function TaskPage({ pathId }: Props) {
 			<Toast message={message} />
 		</>
 	)
+}
+
+function commentAuthor(
+	comment: { author_actor?: string | null; author_subject: string },
+	team: ReadonlyArray<{ slug: string; name: string }> | undefined,
+	me:
+		| {
+				subject: string
+				display_name?: string | null
+				username?: string | null
+		  }
+		| undefined,
+): string {
+	const actor = comment.author_actor
+	if (actor?.startsWith('agent:')) {
+		const slug = actor.slice('agent:'.length)
+		return team?.find((a) => a.slug === slug)?.name ?? slug
+	}
+	if (actor) return actor
+	if (me && comment.author_subject === me.subject) {
+		return me.display_name || me.username || 'Moi'
+	}
+	return 'Membre'
 }

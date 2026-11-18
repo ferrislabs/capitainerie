@@ -5,6 +5,7 @@ import { renderAtPath } from '#/components/layout/test-router'
 import { DashboardPage } from '#/domain/dashboard/feature/dashboard-page'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { CHIEF, LEGAL } from '#/test-utils/team-agents'
 
 const EXTRA = [
 	'/agents/$agentId/{-$tab}',
@@ -98,24 +99,7 @@ const FULL = {
 	},
 	'GET /api/v1/approvals': { items: [], pending: 3 },
 	'GET /api/v1/inbox': { items: [], total: 12, unread: 4 },
-	'GET /api/v1/agents': [
-		{
-			agent: 'Iris',
-			runs: 3,
-			last_seen: ago(1),
-			input_tokens: 10,
-			output_tokens: 5,
-			cost_micros: 100,
-		},
-		{
-			agent: 'Hippolyte',
-			runs: 1,
-			last_seen: ago(9),
-			input_tokens: 1,
-			output_tokens: 1,
-			cost_micros: 1,
-		},
-	],
+	'GET /api/v1/team/agents': { items: [CHIEF, LEGAL] },
 }
 
 afterEach(() => {
@@ -206,7 +190,7 @@ describe('DashboardPage', () => {
 			'GET /api/v1/cards': { items: [] },
 			'GET /api/v1/approvals': { items: [], pending: 0 },
 			'GET /api/v1/inbox': { items: [], total: 0, unread: 0 },
-			'GET /api/v1/agents': [],
+			'GET /api/v1/team/agents': { items: [] },
 		})
 		expect(
 			await screen.findByText("Aucun agent en cours d'exécution."),
@@ -232,7 +216,7 @@ describe('DashboardPage', () => {
 			'GET /api/v1/cards': failure,
 			'GET /api/v1/approvals': failure,
 			'GET /api/v1/inbox': failure,
-			'GET /api/v1/agents': failure,
+			'GET /api/v1/team/agents': failure,
 		})
 		expect(
 			await screen.findByText('Impossible de charger les exécutions en cours.'),
