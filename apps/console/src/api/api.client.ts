@@ -55,6 +55,25 @@ export namespace Schemas {
     runs: number;
   };
   export type ApiErrorResponse = { code: string; message: string; status: number };
+  export type ApprovalDecisionDto = "approve" | "reject";
+  export type ApprovalId = string;
+  export type ApprovalKindDto = "tool_call" | "agent_action";
+  export type ApprovalStatusDto = "pending" | "approved" | "rejected" | "expired";
+  export type ApprovalResponse = {
+    card_id?: (null | CardId) | undefined;
+    created_at: string;
+    decided_at?: (string | null) | undefined;
+    decided_by?: (string | null) | undefined;
+    decision_note?: (string | null) | undefined;
+    detail: Record<string, unknown>;
+    id: ApprovalId;
+    kind: ApprovalKindDto;
+    requested_by_agent_id?: (null | AgentId) | undefined;
+    run_id?: (null | RunId) | undefined;
+    status: ApprovalStatusDto;
+    title: string;
+  };
+  export type ApprovalListResponse = { items: Array<ApprovalResponse>; pending: number };
   export type AuthorizeMcpConnectorResponse = { authorization_url: string };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
   export type CardCommentId = string;
@@ -241,6 +260,13 @@ export namespace Schemas {
     name: string;
     repository?: (string | null) | undefined;
   };
+  export type CreateSkillRequest = {
+    content?: (string | null) | undefined;
+    description?: (string | null) | undefined;
+    name: string;
+    slug: string;
+    source?: (string | null) | undefined;
+  };
   export type CreateTeamAgentRequest = {
     connector_grants?: (Array<string> | null) | undefined;
     description?: (string | null) | undefined;
@@ -254,6 +280,7 @@ export namespace Schemas {
   };
   export type CreateTranscriptionRequest = { file: string };
   export type CreatedConversationResponse = { id: ConversationId };
+  export type DecideApprovalRequest = { decision: ApprovalDecisionDto; note?: (string | null) | undefined };
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -482,6 +509,21 @@ export namespace Schemas {
     totals: UsageTotals;
   };
   export type SendMessageRequest = Partial<{ message: string | null }>;
+  export type SkillId = string;
+  export type SkillResponse = {
+    archived: boolean;
+    content: string;
+    created_at: string;
+    created_by: string;
+    description: string;
+    id: SkillId;
+    name: string;
+    slug: string;
+    source: string;
+    updated_at: string;
+    used_by: number;
+  };
+  export type SkillListResponse = { items: Array<SkillResponse> };
   export type SubmitTranscriptRequest = {
     body: string;
     client_id?: (null | ClientId) | undefined;
@@ -545,6 +587,14 @@ export namespace Schemas {
     name: string | null;
     repository: string | null;
   }>;
+  export type UpdateSkillRequest = Partial<{
+    archived: boolean | null;
+    content: string | null;
+    description: string | null;
+    name: string | null;
+    slug: string | null;
+    source: string | null;
+  }>;
   export type UpdateTeamAgentRequest = Partial<{
     archived: boolean | null;
     change_summary: string | null;
@@ -606,6 +656,52 @@ export namespace Endpoints {
       200: Schemas.CostsResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListApprovals = {
+    method: "GET";
+    path: "/api/v1/approvals";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ status: "pending" | "approved" | "rejected" | "expired" }>;
+    };
+    responses: {
+      200: Schemas.ApprovalListResponse;
+      400: Schemas.ApiErrorResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetApproval = {
+    method: "GET";
+    path: "/api/v1/approvals/{approval_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { approval_id: string };
+    };
+    responses: {
+      200: Schemas.ApprovalResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_DecideApproval = {
+    method: "POST";
+    path: "/api/v1/approvals/{approval_id}/decide";
+    requestFormat: "json";
+    parameters: {
+      path: { approval_id: string };
+
+      body: Schemas.DecideApprovalRequest;
+    };
+    responses: {
+      200: Schemas.ApprovalResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
     };
   };
@@ -1521,6 +1617,76 @@ export namespace Endpoints {
     };
     responses: { 200: Schemas.RunTimelineResponse; 401: Schemas.ApiErrorResponse; 404: Schemas.ApiErrorResponse };
   };
+  export type get_ListSkills = {
+    method: "GET";
+    path: "/api/v1/skills";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+    };
+    responses: { 200: Schemas.SkillListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateSkill = {
+    method: "POST";
+    path: "/api/v1/skills";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateSkillRequest;
+    };
+    responses: {
+      201: Schemas.SkillResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetSkill = {
+    method: "GET";
+    path: "/api/v1/skills/{skill_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { skill_id: string };
+    };
+    responses: {
+      200: Schemas.SkillResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateSkill = {
+    method: "PATCH";
+    path: "/api/v1/skills/{skill_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { skill_id: string };
+
+      body: Schemas.UpdateSkillRequest;
+    };
+    responses: {
+      200: Schemas.SkillResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_ArchiveSkill = {
+    method: "POST";
+    path: "/api/v1/skills/{skill_id}/archive";
+    requestFormat: "json";
+    parameters: {
+      path: { skill_id: string };
+    };
+    responses: {
+      200: Schemas.SkillResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListTeamAgents = {
     method: "GET";
     path: "/api/v1/team/agents";
@@ -1662,6 +1828,8 @@ export type EndpointByMethod = {
   get: {
     "/api/v1/agents": Endpoints.get_ListAgents;
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
+    "/api/v1/approvals": Endpoints.get_ListApprovals;
+    "/api/v1/approvals/{approval_id}": Endpoints.get_GetApproval;
     "/api/v1/cards": Endpoints.get_ListCards;
     "/api/v1/cards/{card_id}": Endpoints.get_GetCard;
     "/api/v1/cards/{card_id}/integration-actions": Endpoints.get_ListCardIntegrationActions;
@@ -1690,6 +1858,8 @@ export type EndpointByMethod = {
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
     "/api/v1/runs/{run_id}/integration-actions": Endpoints.get_ListRunIntegrationActions;
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
+    "/api/v1/skills": Endpoints.get_ListSkills;
+    "/api/v1/skills/{skill_id}": Endpoints.get_GetSkill;
     "/api/v1/team/agents": Endpoints.get_ListTeamAgents;
     "/api/v1/team/agents/{agent_id}": Endpoints.get_GetTeamAgent;
     "/api/v1/team/agents/{agent_id}/revisions": Endpoints.get_ListTeamAgentRevisions;
@@ -1697,6 +1867,7 @@ export type EndpointByMethod = {
     "/health/ready": Endpoints.get_GetReadiness;
   };
   post: {
+    "/api/v1/approvals/{approval_id}/decide": Endpoints.post_DecideApproval;
     "/api/v1/cards": Endpoints.post_CreateCard;
     "/api/v1/cards/{card_id}/agent-runs": Endpoints.post_RunCardAgent;
     "/api/v1/cards/{card_id}/comments": Endpoints.post_CommentCard;
@@ -1721,6 +1892,8 @@ export type EndpointByMethod = {
     "/api/v1/projects": Endpoints.post_CreateProject;
     "/api/v1/projects/{project_id}/worksites": Endpoints.post_LaunchWorksites;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
+    "/api/v1/skills": Endpoints.post_CreateSkill;
+    "/api/v1/skills/{skill_id}/archive": Endpoints.post_ArchiveSkill;
     "/api/v1/team/agents": Endpoints.post_CreateTeamAgent;
     "/api/v1/team/agents/{agent_id}/revisions/{revision}/restore": Endpoints.post_RestoreTeamAgentRevision;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
@@ -1733,6 +1906,7 @@ export type EndpointByMethod = {
     "/api/v1/integration-instances/{id}": Endpoints.patch_UpdateIntegrationInstance;
     "/api/v1/mcp-connectors/{connector_id}": Endpoints.patch_UpdateMcpConnector;
     "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
+    "/api/v1/skills/{skill_id}": Endpoints.patch_UpdateSkill;
     "/api/v1/team/agents/{agent_id}": Endpoints.patch_UpdateTeamAgent;
   };
   delete: {

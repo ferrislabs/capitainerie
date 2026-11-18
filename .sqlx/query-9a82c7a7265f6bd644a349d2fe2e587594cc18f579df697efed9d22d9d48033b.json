@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE skills\n            SET slug = $3, name = $4, description = $5, content = $6, source = $7,\n                archived = $8, updated_at = $9\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a82c7a7265f6bd644a349d2fe2e587594cc18f579df697efed9d22d9d48033b"
+}

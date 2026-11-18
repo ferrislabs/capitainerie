@@ -5,6 +5,7 @@
 use crate::infrastructure::postgres::SharedTx;
 
 pub mod domain {
+    pub struct Approval;
     pub struct Card;
     pub struct CardComment;
     pub struct Client;
@@ -20,6 +21,7 @@ pub mod domain {
     pub struct Organization;
     pub struct Project;
     pub struct Run;
+    pub struct Skill;
     pub struct Step;
     pub struct TaskGrant;
     pub struct Transcript;

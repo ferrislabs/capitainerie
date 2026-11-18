@@ -1,6 +1,7 @@
 //! The event envelope every component exchanges through the bus, and the
 //! catalogue of event kinds. Depends on nothing in `capitainerie-core`.
 
+pub mod approval;
 pub mod card;
 pub mod run;
 
@@ -13,15 +14,17 @@ use uuid::Uuid;
 pub enum Topic {
     Runs,
     Cards,
+    Approvals,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 2] = [Topic::Runs, Topic::Cards];
+    pub const ALL: [Topic; 3] = [Topic::Runs, Topic::Cards, Topic::Approvals];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Runs => "runs",
             Self::Cards => "cards",
+            Self::Approvals => "approvals",
         }
     }
 }

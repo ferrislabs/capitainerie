@@ -65,6 +65,10 @@ pub enum Action {
     McpConnect,
     AgentRun,
     McpCall { initiated: bool, granted: bool },
+    SkillRead,
+    SkillManage,
+    ApprovalRead,
+    ApprovalDecide,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +97,8 @@ pub enum ResourceKind {
     IntegrationInstance,
     Agent,
     McpConnector,
+    Skill,
+    Approval,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +107,7 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 7] = [
+pub const READ_ACTIONS: [&str; 9] = [
     "run.read",
     "card.read",
     "provider.read",
@@ -109,6 +115,8 @@ pub const READ_ACTIONS: [&str; 7] = [
     "github.read",
     "integration.read",
     "agent.read",
+    "skill.read",
+    "approval.read",
 ];
 
 impl Action {
@@ -150,6 +158,10 @@ impl Action {
             Self::McpConnect => "mcp_connector.connect",
             Self::AgentRun => "agent.run",
             Self::McpCall { .. } => "mcp.call",
+            Self::SkillRead => "skill.read",
+            Self::SkillManage => "skill.manage",
+            Self::ApprovalRead => "approval.read",
+            Self::ApprovalDecide => "approval.decide",
         }
     }
 }
@@ -174,6 +186,8 @@ impl ResourceKind {
             Self::IntegrationInstance => "integration_instance",
             Self::Agent => "agent",
             Self::McpConnector => "mcp_connector",
+            Self::Skill => "skill",
+            Self::Approval => "approval",
         }
     }
 }

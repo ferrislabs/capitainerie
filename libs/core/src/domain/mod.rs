@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod agent_task;
+pub mod approval;
 pub mod authorization;
 pub mod card;
 pub mod client;
@@ -18,6 +19,7 @@ pub mod project;
 pub mod provider;
 pub mod run;
 pub mod similarity;
+pub mod skill;
 pub mod transcript;
 pub mod transcription;
 pub mod user_provider;

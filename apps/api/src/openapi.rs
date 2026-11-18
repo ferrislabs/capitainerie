@@ -4,6 +4,11 @@ use capitainerie_handlers_analytics::{
     agents::AgentResponse,
     costs::{CostDimensionParam, CostRowResponse, CostTotals, CostsResponse},
 };
+use capitainerie_handlers_approvals::{
+    self as approvals,
+    decide_approval::{ApprovalDecisionDto, DecideApprovalRequest},
+    response::{ApprovalKindDto, ApprovalListResponse, ApprovalResponse, ApprovalStatusDto},
+};
 use capitainerie_handlers_cards::{
     self as cards,
     comment_card::CommentCardRequest,
@@ -93,6 +98,12 @@ use capitainerie_handlers_runs::{
         UsageTotals,
     },
 };
+use capitainerie_handlers_skills::{
+    self as skills,
+    create_skill::CreateSkillRequest,
+    response::{SkillListResponse, SkillResponse},
+    update_skill::UpdateSkillRequest,
+};
 use capitainerie_handlers_team::{
     self as team,
     create_agent::CreateTeamAgentRequest,
@@ -150,6 +161,14 @@ use utoipa::{
         team::update_agent::handler,
         team::agent_revisions::list_handler,
         team::agent_revisions::restore_handler,
+        skills::list_skills::handler,
+        skills::create_skill::handler,
+        skills::get_skill::handler,
+        skills::update_skill::handler,
+        skills::archive_skill::handler,
+        approvals::list_approvals::handler,
+        approvals::get_approval::handler,
+        approvals::decide_approval::handler,
         mcp::list_connectors::handler,
         mcp::create_connector::handler,
         mcp::get_connector::handler,
@@ -280,6 +299,16 @@ use utoipa::{
         UpdateTeamAgentRequest,
         TeamAgentRevisionResponse,
         TeamAgentRevisionListResponse,
+        SkillResponse,
+        SkillListResponse,
+        CreateSkillRequest,
+        UpdateSkillRequest,
+        ApprovalResponse,
+        ApprovalListResponse,
+        ApprovalKindDto,
+        ApprovalStatusDto,
+        ApprovalDecisionDto,
+        DecideApprovalRequest,
         CreateTranscriptionRequest,
         TranscriptionResponse,
         ReadDocumentRequest,
@@ -345,6 +374,8 @@ use utoipa::{
         (name = cards::TAG, description = "The Kanban board and its human validation"),
         (name = clients::TAG, description = "The clients the team works for, their projects, and the link of a card to them"),
         (name = team::TAG, description = "The registry of the team's agents: their role, model, instructions, connector grants and reporting line"),
+        (name = skills::TAG, description = "The organization's catalog of skills: instructions added to the system prompt of the agents whose skills list names them"),
+        (name = approvals::TAG, description = "Decisions agents ask the team to take, such as a write a run was not allowed to make"),
         (name = mcp::TAG, description = "MCP servers the organization connects to, each user authorizing with their own OAuth2 session (authorization code, PKCE S256, dynamic client registration)"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
@@ -482,6 +513,25 @@ mod tests {
         for field in ["client", "projects", "cards"] {
             assert!(detail[field].is_object(), "{field}");
         }
+    }
+
+    #[test]
+    fn the_skills_and_approvals_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/skills"]["get"].is_object());
+        assert!(paths["/api/v1/skills"]["post"].is_object());
+        assert!(paths["/api/v1/skills/{skill_id}"]["get"].is_object());
+        assert!(paths["/api/v1/skills/{skill_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/skills/{skill_id}"]["delete"].is_null());
+        assert!(paths["/api/v1/skills/{skill_id}/archive"]["post"].is_object());
+        assert!(paths["/api/v1/approvals"]["get"].is_object());
+        assert!(paths["/api/v1/approvals/{approval_id}"]["get"].is_object());
+        assert!(paths["/api/v1/approvals/{approval_id}/decide"]["post"].is_object());
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["SkillResponse"]["properties"]["used_by"].is_object());
+        assert!(schemas["ApprovalListResponse"]["properties"]["pending"].is_object());
+        assert!(schemas["DecideApprovalRequest"]["properties"]["decision"].is_object());
     }
 
     #[test]

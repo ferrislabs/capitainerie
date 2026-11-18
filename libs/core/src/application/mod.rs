@@ -1,5 +1,6 @@
 mod agent_run;
 mod agent_task_pipeline;
+mod approval;
 mod card;
 mod client;
 mod conversation;
@@ -18,6 +19,7 @@ mod organization;
 mod pipeline;
 mod provider;
 mod run;
+mod skill;
 mod transcription;
 mod user_provider;
 mod worksite;

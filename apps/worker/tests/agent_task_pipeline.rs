@@ -15,6 +15,7 @@ use capitainerie_core::{
         card::{Card, edit::EditCard, service::CreateCard},
         client::links::Change,
         conversation::ToolRecord,
+        crew::service::UpdateAgent,
         integration::intervention::{
             IntegratorReport, IntegratorRequest, IntegratorTools, ToolAnswer,
         },
@@ -24,6 +25,7 @@ use capitainerie_core::{
             service::CreateConnector,
         },
         provider::{ModelAssignments, ProviderKind, service::PutProvider},
+        skill::service::CreateSkill,
         user_provider::service::PutUserProvider,
     },
     infrastructure::{crypto::SecretCipher, postgres},
@@ -549,7 +551,7 @@ async fn a_read_only_run_calls_the_connector_with_the_users_token_and_comments_t
 }
 
 #[tokio::test]
-async fn a_write_is_refused_and_recorded_when_writes_are_not_allowed() {
+async fn a_write_is_refused_and_an_approval_requested_when_writes_are_not_allowed() {
     let oauth = OAuth::new(3600, true);
     let Some(world) = world(Options::default(), &oauth).await else {
         return;
@@ -569,14 +571,130 @@ async fn a_write_is_refused_and_recorded_when_writes_are_not_allowed() {
     let answers = script.seen.answers.lock().unwrap().clone();
     assert!(!answers[0].succeeded);
     assert!(answers[0].text.starts_with("Refused"));
+    assert!(answers[0].text.contains("approval request"));
     assert_eq!(run_row(&world).await.0, "succeeded");
     let (_, _, _, output) = step(&world).await;
     assert_eq!(output["tool_calls"][0]["succeeded"], false);
     assert_eq!(
         output["tool_calls"][0]["summary"],
-        "mestier__create_order: write refused"
+        "mestier__create_order: write refused, approval requested"
     );
     assert_eq!(decisions(&world).await.len(), 1);
+
+    let (approval_id, kind, status, title, detail, card_id, agent_id): (
+        Uuid,
+        String,
+        String,
+        String,
+        Value,
+        Option<Uuid>,
+        Option<Uuid>,
+    ) = sqlx::query_as(
+        "SELECT id, kind, status, title, detail, card_id, requested_by_agent_id FROM approvals WHERE run_id = $1",
+    )
+    .bind(world.run_id.0)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!((kind.as_str(), status.as_str()), ("tool_call", "pending"));
+    assert_eq!(
+        title,
+        "Écriture demandée par Darnold : mestier__create_order"
+    );
+    assert_eq!(
+        detail,
+        json!({"tool": "mestier__create_order", "arguments": {"q": "x"}})
+    );
+    assert_eq!(card_id, Some(world.card.id.0));
+    assert_eq!(
+        agent_id,
+        world.card.attributes.assignee_agent_id.map(|id| id.0)
+    );
+    let announced: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'approval.requested'",
+    )
+    .bind(approval_id)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(announced, 1);
+}
+
+#[tokio::test]
+async fn the_agents_active_skills_join_its_system_prompt_in_its_order() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let subject = human(world.organization_id);
+    for (slug, content) in [
+        ("review", "Relis chaque montant deux fois."),
+        ("tone", "Reste courtois."),
+        ("retired", "Jamais lu."),
+    ] {
+        world
+            .usecase
+            .create_skill(
+                subject.clone(),
+                CreateSkill {
+                    slug: slug.into(),
+                    name: slug.into(),
+                    description: String::new(),
+                    content: content.into(),
+                    source: String::new(),
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let retired = world
+        .usecase
+        .list_skills(subject.clone(), None)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.skill.slug.as_str() == "retired")
+        .unwrap();
+    world
+        .usecase
+        .archive_skill(subject.clone(), retired.skill.id)
+        .await
+        .unwrap();
+    world
+        .usecase
+        .update_crew_agent(
+            subject,
+            world.card.attributes.assignee_agent_id.unwrap(),
+            UpdateAgent {
+                skills: Some(vec![
+                    "tone".into(),
+                    "missing".into(),
+                    "retired".into(),
+                    "review".into(),
+                ]),
+                ..UpdateAgent::default()
+            },
+        )
+        .await
+        .unwrap();
+    let gateway = Gateway::default();
+    let script = script(vec![], "Rien à signaler.");
+
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    let system = script.seen.system.lock().unwrap().clone();
+    assert!(system.starts_with("Tu es Darnold, comptable méticuleux."));
+    let tone = system.find("## tone (tone)\nReste courtois.").unwrap();
+    let review = system
+        .find("## review (review)\nRelis chaque montant deux fois.")
+        .unwrap();
+    assert!(tone < review);
+    assert!(!system.contains("Jamais lu."));
+    assert!(!system.contains("missing"));
+    assert!(system.find("données non fiables").unwrap() > review);
 }
 
 #[tokio::test]
