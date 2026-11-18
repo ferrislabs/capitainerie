@@ -1,6 +1,7 @@
 use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId};
 use capitainerie_macros::transactional;
 use chrono::{SubsecRound, Utc};
+use serde_json::Value;
 
 use super::{CapitainerieUseCase, execution::COMMENT_ID_FIELD};
 use crate::{
@@ -8,6 +9,9 @@ use crate::{
         agent_task::{
             AgentRunError, AgentRunRefusal, AgentTask, StartAgentRun, actor_of,
             ports::AgentTaskRepository,
+        },
+        approval::{
+            Approval, ApprovedCall, ToolGrant, ports::ApprovalRepository, service::ApprovalService,
         },
         authorization::{AccessRequest, Action, Decision, ResourceKind, Subject, require},
         card::{
@@ -21,6 +25,7 @@ use crate::{
             McpConnector,
             ports::{McpConnectionRepository, McpConnectorRepository},
         },
+        member::ports::MemberRepository,
         provider::{
             ModelRef,
             ports::{ModelAssignmentRepository, ProviderRepository},
@@ -53,7 +58,12 @@ pub struct AgentTaskSource {
     pub connectors: Vec<McpConnector>,
     /// The agent's active skills, in the order it lists them.
     pub skills: Vec<Skill>,
+    /// The approved call this run was started to carry out, if any.
+    pub approved_call: Option<ApprovedCall>,
 }
+
+/// What a member is called in text the system writes.
+pub(super) const UNNAMED_MEMBER: &str = "un membre";
 
 type Stored<T> = Result<Result<T, AgentRunRefusal>, CoreError>;
 
@@ -64,15 +74,44 @@ impl CapitainerieUseCase {
         card_id: CardId,
         command: StartAgentRun,
     ) -> Result<StartedAgentRun, AgentRunError> {
-        Ok(self.store_agent_run(subject, card_id, command).await??)
+        Ok(self
+            .store_agent_run(subject, card_id, command, None)
+            .await??)
     }
 
-    #[transactional(card, run, model_assignment, emitter, authz, crew_agent, mcp_connector)]
+    /// Starts a run of the card's agent for `subject`, the approved call of
+    /// `resume` granted once; the card version is not checked.
+    pub(super) async fn start_resumed_agent_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        resume: Approval,
+    ) -> Result<StartedAgentRun, AgentRunError> {
+        let command = StartAgentRun {
+            expected_version: 0,
+            allow_writes: false,
+        };
+        Ok(self
+            .store_agent_run(subject, card_id, command, Some(resume))
+            .await??)
+    }
+
+    #[transactional(
+        card,
+        run,
+        model_assignment,
+        emitter,
+        authz,
+        crew_agent,
+        mcp_connector,
+        approval
+    )]
     async fn store_agent_run(
         &self,
         subject: Subject,
         card_id: CardId,
         command: StartAgentRun,
+        resume: Option<Approval>,
     ) -> Stored<StartedAgentRun> {
         let mut card_repository = card_repository;
         let mut run_repository = run_repository;
@@ -94,7 +133,9 @@ impl CapitainerieUseCase {
             .find(organization_id, card_id)
             .await?
             .ok_or(CoreError::NotFound)?;
-        card.ensure_version(command.expected_version)?;
+        if resume.is_none() {
+            card.ensure_version(command.expected_version)?;
+        }
         let Some(agent_id) = card.attributes.assignee_agent_id else {
             return Ok(Err(AgentRunRefusal::NoAssignee));
         };
@@ -106,6 +147,9 @@ impl CapitainerieUseCase {
         };
         if agent.archived {
             return Ok(Err(AgentRunRefusal::AgentArchived));
+        }
+        if agent.paused {
+            return Ok(Err(AgentRunRefusal::AgentPaused));
         }
         let own = PgUserProviderRepository::new(&tx, self.secrets.as_deref())
             .list(organization_id, &subject.id)
@@ -162,10 +206,15 @@ impl CapitainerieUseCase {
                 agent_id: agent.id,
                 allow_writes: command.allow_writes,
                 model: None,
-                created_by: subject.id,
+                created_by: subject.id.clone(),
                 created_at: now,
             })
             .await?;
+        if let Some(approval) = resume {
+            ApprovalService::new(approval_repository, emitter, authz)
+                .link_resumed(&approval, run.id, subject.id, now)
+                .await?;
+        }
         Ok(Ok(StartedAgentRun { run_id: run.id }))
     }
 
@@ -190,7 +239,7 @@ impl CapitainerieUseCase {
             .map_err(|error| CoreError::Database(error.to_string()))
     }
 
-    #[transactional(card, card_comment, crew_agent, mcp_connector, skill)]
+    #[transactional(card, card_comment, crew_agent, mcp_connector, skill, approval, member)]
     pub async fn agent_task_source(
         &self,
         organization_id: OrganizationId,
@@ -201,6 +250,8 @@ impl CapitainerieUseCase {
         let mut crew_agent_repository = crew_agent_repository;
         let mut mcp_connector_repository = mcp_connector_repository;
         let mut skill_repository = skill_repository;
+        let mut approval_repository = approval_repository;
+        let mut member_repository = member_repository;
         let Some(task) = PgAgentTaskRepository::new(&tx)
             .find(organization_id, run_id)
             .await?
@@ -242,6 +293,29 @@ impl CapitainerieUseCase {
                 skills.push(found.swap_remove(index));
             }
         }
+        let mut approved_call = None;
+        if let Some(grant) = approval_repository
+            .grant_for_run(organization_id, run_id)
+            .await?
+            && let Some(approval) = approval_repository
+                .find(organization_id, grant.approval_id)
+                .await?
+        {
+            let decided_by = match approval.decided_by.as_deref() {
+                Some(subject) => member_repository
+                    .find(organization_id, subject)
+                    .await?
+                    .map(|member| member.name)
+                    .filter(|name| !name.trim().is_empty()),
+                None => None,
+            };
+            approved_call = Some(ApprovedCall {
+                arguments: approval.shown_arguments(),
+                decided_by: decided_by.unwrap_or_else(|| UNNAMED_MEMBER.to_owned()),
+                note: approval.decision_note,
+                grant,
+            });
+        }
         Ok(Some(AgentTaskSource {
             task,
             card,
@@ -249,7 +323,37 @@ impl CapitainerieUseCase {
             agent,
             connectors,
             skills,
+            approved_call,
         }))
+    }
+
+    /// Spends the run's grant when it covers this call.
+    #[transactional(approval, emitter, authz)]
+    pub(super) async fn use_tool_grant(
+        &self,
+        organization_id: OrganizationId,
+        grant: &ToolGrant,
+        tool: &str,
+        arguments: &Value,
+    ) -> Result<bool, CoreError> {
+        ApprovalService::new(approval_repository, emitter, authz)
+            .use_grant(organization_id, grant, tool, arguments, Utc::now())
+            .await
+    }
+
+    /// The display name of a member, if known.
+    #[transactional(member)]
+    pub(super) async fn member_name(
+        &self,
+        organization_id: OrganizationId,
+        subject: &str,
+    ) -> Result<Option<String>, CoreError> {
+        let mut member_repository = member_repository;
+        Ok(member_repository
+            .find(organization_id, subject)
+            .await?
+            .map(|member| member.name)
+            .filter(|name| !name.trim().is_empty()))
     }
 
     pub async fn authorize_mcp_call(

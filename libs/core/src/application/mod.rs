@@ -42,6 +42,7 @@ use crate::infrastructure::{
 
 pub use agent_run::{AgentTaskSource, StartedAgentRun};
 pub use agent_task_pipeline::{AgentTaskConfig, AgentTaskPipeline};
+pub use approval::DecidedApproval;
 pub use client::RunCardLinks;
 pub use document::PreparedDocumentReading;
 pub use execute_pipeline::{ExecuteConfig, ExecutePipeline, ExecutionContext, Executor};

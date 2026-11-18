@@ -11,6 +11,7 @@ use capitainerie_core::{
     domain::{
         agent::{SecretToken, Usage},
         agent_task::{AgentRunError, AgentRunRefusal, ports::TaskRuntime},
+        approval::Verdict,
         authorization::Subject,
         card::{Card, edit::EditCard, service::CreateCard},
         client::links::Change,
@@ -1226,4 +1227,323 @@ async fn an_agent_comment_on_a_card_someone_else_created_reaches_its_creator() {
         Some(world.run_id.0),
     )));
     assert_eq!(items.len(), 2, "{items:?}");
+}
+
+fn decider(organization_id: OrganizationId) -> Subject {
+    Subject {
+        id: "user-2".into(),
+        ..human(organization_id)
+    }
+}
+
+async fn approvals_of(world: &World, run_id: RunId) -> Vec<(Uuid, String, Value)> {
+    sqlx::query_as("SELECT id, status, detail FROM approvals WHERE run_id = $1 ORDER BY created_at")
+        .bind(run_id.0)
+        .fetch_all(&world.pool)
+        .await
+        .unwrap()
+}
+
+async fn refused_write(world: &World, oauth: &OAuth, calls: Vec<(&'static str, Value)>) -> Uuid {
+    let gateway = Gateway::default();
+    let script = script(calls, "En attente de validation.");
+    pipeline(world, &script, oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+    assert!(gateway.calls().is_empty());
+    let filed = approvals_of(world, world.run_id).await;
+    assert_eq!(filed.len(), 1, "{filed:?}");
+    filed[0].0
+}
+
+#[tokio::test]
+async fn the_same_pending_write_is_requested_once() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let gateway = Gateway::default();
+    let script = script(
+        vec![
+            ("mestier__create_order", json!({"q": "x", "n": 1})),
+            ("mestier__create_order", json!({"n": 1.0, "q": "x"})),
+        ],
+        "En attente.",
+    );
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    let answers = script.seen.answers.lock().unwrap().clone();
+    assert_eq!(answers.len(), 2);
+    assert_eq!(answers[0].text, answers[1].text);
+    assert!(answers[1].text.contains("approval request"));
+    let filed = approvals_of(&world, world.run_id).await;
+    assert_eq!(filed.len(), 1);
+    let announced: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'approval.requested'",
+    )
+    .bind(filed[0].0)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(announced, 1);
+}
+
+#[tokio::test]
+async fn an_approved_write_resumes_the_agent_which_makes_exactly_that_call_once() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let order = json!({"q": "commande 42", "token": "s3cr3t"});
+    let approval_id = refused_write(
+        &world,
+        &oauth,
+        vec![("mestier__create_order", order.clone())],
+    )
+    .await;
+    sqlx::query(
+        "INSERT INTO members (organization_id, subject, name, last_seen_at) VALUES ($1, 'user-2', 'Alice Martin', now())",
+    )
+    .bind(world.organization_id.0)
+    .execute(&world.pool)
+    .await
+    .unwrap();
+
+    let decided = world
+        .usecase
+        .decide_approval(
+            decider(world.organization_id),
+            capitainerie_common::ApprovalId(approval_id),
+            Verdict::Approve,
+            Some("ok, une seule fois".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(decided.resume_error, None);
+    let resumed = decided.approval.resumed_run_id.unwrap();
+    assert_ne!(resumed, world.run_id);
+    let (initiated_by, linked): (String, Option<Uuid>) = sqlx::query_as(
+        "SELECT r.initiated_by, a.resumed_run_id FROM runs r JOIN approvals a ON a.id = $2 WHERE r.id = $1",
+    )
+    .bind(resumed.0)
+    .bind(approval_id)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(initiated_by, USER);
+    assert_eq!(linked, Some(resumed.0));
+    let allow_writes: bool =
+        sqlx::query_scalar("SELECT allow_writes FROM agent_tasks WHERE run_id = $1")
+            .bind(resumed.0)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert!(!allow_writes);
+    let announced: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE partition_key = $1 AND kind = 'approval.resumed'",
+    )
+    .bind(approval_id)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert_eq!(announced, 1);
+
+    let gateway = Gateway::default();
+    let script = script(
+        vec![
+            (
+                "mestier__create_order",
+                json!({"token": "s3cr3t", "q": "commande 42"}),
+            ),
+            ("mestier__create_order", order.clone()),
+            ("mestier__create_order", json!({"q": "commande 43"})),
+            ("mestier__list_orders", json!({})),
+        ],
+        "Commande créée.",
+    );
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(resumed, None)
+        .await
+        .unwrap();
+
+    let calls = gateway.calls();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert_eq!(calls[0].2, "create_order");
+    assert_eq!(calls[0].3, order);
+    assert_eq!(calls[1].2, "list_orders");
+    let answers = script.seen.answers.lock().unwrap().clone();
+    assert!(answers[0].succeeded);
+    assert!(!answers[1].succeeded && answers[1].text.contains("approval request"));
+    assert!(!answers[2].succeeded && answers[2].text.contains("approval request"));
+    let prompt = script.seen.prompt.lock().unwrap().clone();
+    assert!(prompt.contains("Reprise après validation"));
+    assert!(prompt.contains("`mestier__create_order`"));
+    assert!(prompt.contains("Alice Martin l'a approuvé"));
+    assert!(prompt.contains("ok, une seule fois"));
+    assert!(prompt.contains("\"q\": \"commande 42\""));
+    assert!(!prompt.contains("s3cr3t"));
+    let system = script.seen.system.lock().unwrap().clone();
+    assert!(system.contains("l'appel déjà approuvé"));
+    assert!(!system.contains("Alice"));
+
+    let (status, failure): (String, Option<String>) =
+        sqlx::query_as("SELECT status, failure FROM runs WHERE id = $1")
+            .bind(resumed.0)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_str(), failure), ("succeeded", None));
+    let used: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT used_at FROM approval_grants WHERE approval_id = $1")
+            .bind(approval_id)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert!(used.is_some());
+    let filed = approvals_of(&world, resumed).await;
+    assert_eq!(filed.len(), 2, "{filed:?}");
+    assert!(filed.iter().all(|(_, status, _)| status == "pending"));
+    assert_eq!(filed[1].2["arguments"], json!({"q": "commande 43"}));
+}
+
+#[tokio::test]
+async fn a_rejected_write_is_noted_on_the_card_and_resumes_nothing() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let approval_id = refused_write(
+        &world,
+        &oauth,
+        vec![("mestier__create_order", json!({"q": "x"}))],
+    )
+    .await;
+
+    let decided = world
+        .usecase
+        .decide_approval(
+            decider(world.organization_id),
+            capitainerie_common::ApprovalId(approval_id),
+            Verdict::Reject,
+            Some("pas ce client".into()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(decided.approval.resumed_run_id, None);
+    assert_eq!(decided.resume_error, None);
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runs WHERE card_id = $1")
+        .bind(world.card.id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(runs, 1);
+    let last = comments(&world).await.pop().unwrap();
+    assert_eq!(last.0, "user-2");
+    assert_eq!(last.1.as_deref(), Some("Capitainerie"));
+    assert!(
+        last.2.starts_with(
+            "**Demande refusée** : un membre a refusé l'appel `mestier__create_order`"
+        )
+    );
+    assert!(last.2.ends_with("Note : pas ce client"));
+}
+
+#[tokio::test]
+async fn an_approval_that_cannot_resume_still_stands_and_says_why() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let approval_id = refused_write(
+        &world,
+        &oauth,
+        vec![("mestier__create_order", json!({"q": "x"}))],
+    )
+    .await;
+    world
+        .usecase
+        .update_crew_agent(
+            human(world.organization_id),
+            world.card.attributes.assignee_agent_id.unwrap(),
+            UpdateAgent {
+                paused: Some(true),
+                ..UpdateAgent::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let decided = world
+        .usecase
+        .decide_approval(
+            decider(world.organization_id),
+            capitainerie_common::ApprovalId(approval_id),
+            Verdict::Approve,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        decided.approval.status,
+        capitainerie_core::domain::approval::ApprovalStatus::Approved
+    );
+    assert_eq!(decided.approval.resumed_run_id, None);
+    assert_eq!(
+        decided.resume_error.as_deref(),
+        Some(AgentRunRefusal::AgentPaused.to_string().as_str())
+    );
+    let grants: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM approval_grants WHERE approval_id = $1")
+            .bind(approval_id)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert_eq!(grants, 0);
+}
+
+#[tokio::test]
+async fn a_paused_agent_is_not_started() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let agent_id = world.card.attributes.assignee_agent_id.unwrap();
+    world
+        .usecase
+        .update_crew_agent(
+            human(world.organization_id),
+            agent_id,
+            UpdateAgent {
+                paused: Some(true),
+                ..UpdateAgent::default()
+            },
+        )
+        .await
+        .unwrap();
+    let version: i32 = sqlx::query_scalar("SELECT version FROM cards WHERE id = $1")
+        .bind(world.card.id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    let refused = world
+        .usecase
+        .start_agent_run(
+            human(world.organization_id),
+            world.card.id,
+            capitainerie_core::domain::agent_task::StartAgentRun {
+                expected_version: version,
+                allow_writes: false,
+            },
+        )
+        .await;
+    assert!(matches!(
+        refused,
+        Err(AgentRunError::Refused(AgentRunRefusal::AgentPaused))
+    ));
 }

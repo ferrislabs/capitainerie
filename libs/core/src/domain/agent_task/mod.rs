@@ -54,6 +54,8 @@ pub enum AgentRunRefusal {
     NoAssignee,
     #[error("l'agent assigné est archivé")]
     AgentArchived,
+    #[error("l'agent assigné est en pause : reprenez-le avant de le lancer")]
+    AgentPaused,
     #[error("l'agent n'a aucun connecteur actif")]
     NoConnector,
     #[error("le connecteur {0} n'est pas connecté")]
@@ -67,6 +69,7 @@ impl AgentRunRefusal {
         match self {
             Self::NoAssignee => "card_without_agent",
             Self::AgentArchived => "agent_archived",
+            Self::AgentPaused => "agent_paused",
             Self::NoConnector => "agent_without_connector",
             Self::NotConnected(_) => "not_connected",
             Self::NoProvider => "no_provider",
@@ -97,6 +100,7 @@ mod tests {
     fn refusals_have_stable_codes() {
         assert_eq!(AgentRunRefusal::NoAssignee.code(), "card_without_agent");
         assert_eq!(AgentRunRefusal::AgentArchived.code(), "agent_archived");
+        assert_eq!(AgentRunRefusal::AgentPaused.code(), "agent_paused");
         assert_eq!(
             AgentRunRefusal::NoConnector.code(),
             "agent_without_connector"

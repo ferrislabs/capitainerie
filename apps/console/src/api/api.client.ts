@@ -92,6 +92,7 @@ export namespace Schemas {
     id: ApprovalId;
     kind: ApprovalKindDto;
     requested_by_agent_id?: (null | AgentId) | undefined;
+    resumed_run_id?: (null | RunId) | undefined;
     run_id?: (null | RunId) | undefined;
     status: ApprovalStatusDto;
     title: string;
@@ -390,6 +391,7 @@ export namespace Schemas {
   export type CreateTranscriptionRequest = { file: string };
   export type CreatedConversationResponse = { id: ConversationId };
   export type DecideApprovalRequest = { decision: ApprovalDecisionDto; note?: (string | null) | undefined };
+  export type DecideApprovalResponse = ApprovalResponse & Partial<{ resume_error: string | null }>;
   export type DecisionResponse = {
     action: string;
     actor?: (string | null) | undefined;
@@ -957,7 +959,7 @@ export namespace Endpoints {
       body: Schemas.DecideApprovalRequest;
     };
     responses: {
-      200: Schemas.ApprovalResponse;
+      200: Schemas.DecideApprovalResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;

@@ -71,6 +71,10 @@ export function describeRunError(error: unknown): RunErrorInfo {
 				return info("Cette tâche n'a pas d'agent assigné.")
 			case 'agent_archived':
 				return info("L'agent assigné est archivé : assigne-en un autre.")
+			case 'agent_paused':
+				return info(
+					"L'agent assigné est en pause : reprends-le depuis l'équipe avant de le lancer.",
+				)
 			case 'agent_without_connector':
 				return info(
 					"L'agent n'a aucun connecteur autorisé : accorde-lui en un.",

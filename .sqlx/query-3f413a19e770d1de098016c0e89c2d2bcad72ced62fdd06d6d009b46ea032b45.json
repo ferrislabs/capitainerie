@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE approvals\n            SET resumed_run_id = $3\n            WHERE organization_id = $1 AND id = $2 AND status = 'approved'\n              AND resumed_run_id IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3f413a19e770d1de098016c0e89c2d2bcad72ced62fdd06d6d009b46ea032b45"
+}

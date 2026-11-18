@@ -3,6 +3,8 @@ import type { SevTone } from '#/domain/audit/ui/sev'
 
 export type Approval = Schemas.ApprovalResponse
 export type ApprovalStatus = Schemas.ApprovalStatusDto
+export type DecidedApproval = Schemas.DecideApprovalResponse
+export type Decision = 'approve' | 'reject'
 
 export const APPROVAL_TABS: ReadonlyArray<{
 	status: ApprovalStatus
@@ -68,4 +70,43 @@ export function describeDecideError(error: unknown): string {
 	if (status === 403) return "Tu n'as pas le droit de décider de cette demande."
 	if (status === 404) return "Cette demande n'existe plus."
 	return 'La décision a échoué. Réessaie.'
+}
+
+export interface DecisionOutcome {
+	tone: 'success' | 'info'
+	message: string
+	/** La tâche concernée, pour un lien ; `null` sans carte. */
+	cardId: string | null
+}
+
+/** Ce que la console dit après une décision, relance comprise. */
+export function decisionOutcome(
+	decision: Decision,
+	decided: Pick<
+		DecidedApproval,
+		'kind' | 'card_id' | 'resumed_run_id' | 'resume_error'
+	>,
+): DecisionOutcome {
+	const cardId = decided.card_id ?? null
+	const onCard = decided.kind === 'tool_call' && cardId !== null
+	if (decision === 'reject') {
+		return onCard
+			? {
+					tone: 'success',
+					message: 'Demande refusée. Le refus est noté sur la tâche.',
+					cardId,
+				}
+			: { tone: 'success', message: 'Demande refusée.', cardId }
+	}
+	if (decided.resumed_run_id) {
+		return { tone: 'success', message: 'Exécution relancée.', cardId }
+	}
+	if (decided.resume_error) {
+		return {
+			tone: 'info',
+			message: `Approbation accordée, mais l'exécution n'a pas été relancée : ${decided.resume_error}`,
+			cardId,
+		}
+	}
+	return { tone: 'success', message: 'Approbation accordée.', cardId }
 }

@@ -24,6 +24,21 @@ pub struct ApprovalDecided {
     pub run_id: Option<Uuid>,
 }
 
+/// An approved tool call was handed to a new run of the card's agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalResumed {
+    pub approval_id: Uuid,
+    pub organization_id: Uuid,
+    pub card_id: Option<Uuid>,
+    /// The run that asked.
+    pub run_id: Option<Uuid>,
+    pub resumed_run_id: Uuid,
+    pub decided_by: String,
+    /// The member the new run acts for: the initiator of the run that asked.
+    pub initiated_by: String,
+    pub tool: String,
+}
+
 macro_rules! approval_event {
     ($event:ty, $kind:literal) => {
         impl DomainEvent for $event {
@@ -43,3 +58,4 @@ macro_rules! approval_event {
 
 approval_event!(ApprovalRequested, "approval.requested");
 approval_event!(ApprovalDecided, "approval.decided");
+approval_event!(ApprovalResumed, "approval.resumed");

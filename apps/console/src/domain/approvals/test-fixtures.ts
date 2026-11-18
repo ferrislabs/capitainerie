@@ -14,6 +14,7 @@ export function approval(id: string, extra: Partial<Approval> = {}): Approval {
 		decided_at: null,
 		decision_note: null,
 		created_at: '2026-11-18T09:00:00Z',
+		resumed_run_id: null,
 		...extra,
 	}
 }

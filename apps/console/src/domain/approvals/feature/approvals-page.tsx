@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNotice } from '#/components/layout/notice'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import {
 	useApprovals,
@@ -7,6 +6,8 @@ import {
 } from '#/domain/approvals/hooks/use-approvals'
 import {
 	type ApprovalStatus,
+	type DecisionOutcome,
+	decisionOutcome,
 	describeDecideError,
 } from '#/domain/approvals/model'
 import { ApprovalsView } from '#/domain/approvals/ui/approvals-view'
@@ -15,7 +16,7 @@ import { shortName } from '#/lib/agent-name'
 export function ApprovalsPage() {
 	const [status, setStatus] = useState<ApprovalStatus>('pending')
 	const [decideError, setDecideError] = useState<string | null>(null)
-	const [notice, notify] = useNotice()
+	const [outcome, setOutcome] = useState<DecisionOutcome | null>(null)
 	const query = useApprovals(status)
 	const agents = useTeamAgents(false).data?.items
 	const decide = useDecideApproval()
@@ -27,7 +28,7 @@ export function ApprovalsPage() {
 			pendingCount={query.data?.pending ?? 0}
 			loading={query.isPending}
 			error={query.isError}
-			notice={notice}
+			outcome={outcome}
 			decideError={decideError}
 			busyId={
 				decide.isPending ? (decide.variables?.path.approval_id ?? null) : null
@@ -38,11 +39,13 @@ export function ApprovalsPage() {
 			}}
 			onStatusChange={(next) => {
 				setDecideError(null)
+				setOutcome(null)
 				setStatus(next)
 			}}
 			onRetry={() => void query.refetch()}
 			onDecide={(id, decision, note) => {
 				setDecideError(null)
+				setOutcome(null)
 				const trimmed = note.trim()
 				decide.mutate(
 					{
@@ -50,12 +53,8 @@ export function ApprovalsPage() {
 						body: { decision, ...(trimmed ? { note: trimmed } : {}) },
 					},
 					{
-						onSuccess: () =>
-							notify(
-								decision === 'approve'
-									? 'Approbation accordée'
-									: 'Approbation refusée',
-							),
+						onSuccess: (decided) =>
+							setOutcome(decisionOutcome(decision, decided)),
 						onError: (error) => setDecideError(describeDecideError(error)),
 					},
 				)

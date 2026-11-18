@@ -162,7 +162,7 @@ pub fn actor_of(kind: &str, payload: &Value) -> ActorRef {
     match kind {
         "run.queued" => text(payload, "initiated_by")
             .map_or(ActorRef::System, |subject| ActorRef::Member(subject.into())),
-        "approval.decided" => text(payload, "decided_by")
+        "approval.decided" | "approval.resumed" => text(payload, "decided_by")
             .map_or(ActorRef::System, |subject| ActorRef::Member(subject.into())),
         "approval.requested" => {
             uuid_in(payload, "requested_by_agent_id").map_or(ActorRef::System, ActorRef::AgentId)
@@ -271,6 +271,7 @@ pub fn summary(kind: &str, payload: &Value, card_title: Option<&str>) -> String 
             Some("rejected") => format!("a refusé une demande{on_card}"),
             _ => format!("a tranché une demande{on_card}"),
         },
+        "approval.resumed" => format!("a relancé l'agent après validation{on_card}"),
         "source.event_received" => "a reçu un événement de source".into(),
         "source.event_processed" => match status {
             Some("card_created") => format!("a créé une carte depuis une source{on_card}"),

@@ -7,7 +7,10 @@ use capitainerie_handlers_analytics::{
 use capitainerie_handlers_approvals::{
     self as approvals,
     decide_approval::{ApprovalDecisionDto, DecideApprovalRequest},
-    response::{ApprovalKindDto, ApprovalListResponse, ApprovalResponse, ApprovalStatusDto},
+    response::{
+        ApprovalKindDto, ApprovalListResponse, ApprovalResponse, ApprovalStatusDto,
+        DecideApprovalResponse,
+    },
 };
 use capitainerie_handlers_artifacts as artifacts;
 use capitainerie_handlers_audit as audit;
@@ -357,6 +360,7 @@ use utoipa::{
         UpdateSkillRequest,
         ApprovalResponse,
         ApprovalListResponse,
+        DecideApprovalResponse,
         ApprovalKindDto,
         ApprovalStatusDto,
         ApprovalDecisionDto,
@@ -667,6 +671,8 @@ mod tests {
         assert!(schemas["SkillResponse"]["properties"]["used_by"].is_object());
         assert!(schemas["ApprovalListResponse"]["properties"]["pending"].is_object());
         assert!(schemas["DecideApprovalRequest"]["properties"]["decision"].is_object());
+        assert!(schemas["ApprovalResponse"]["properties"]["resumed_run_id"].is_object());
+        assert!(schemas["DecideApprovalResponse"].is_object());
     }
 
     #[test]

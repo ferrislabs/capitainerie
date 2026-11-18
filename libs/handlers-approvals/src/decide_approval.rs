@@ -6,7 +6,7 @@ use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::response::ApprovalResponse;
+use crate::response::DecideApprovalResponse;
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/api/v1/approvals/{approval_id}/decide")]
@@ -36,7 +36,7 @@ pub struct DecideApprovalRequest {
     params(("approval_id" = ApprovalId, Path, description = "Approval identifier")),
     request_body = DecideApprovalRequest,
     responses(
-        (status = 200, description = "The decided approval. Nothing resumes on its own: an approved tool call is run again by starting the agent with writes allowed", body = ApprovalResponse),
+        (status = 200, description = "The decided approval. An approved tool call on a card starts a new run of the card's agent, for the initiator of the run that asked, allowed to make exactly that call once (`resumed_run_id`), or says why it could not (`resume_error`); a rejected one is noted on the card", body = DecideApprovalResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the decision; agents never decide", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such approval in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
@@ -50,14 +50,17 @@ pub async fn handler(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
     Json(request): Json<DecideApprovalRequest>,
-) -> Result<Json<ApprovalResponse>, ApiError> {
+) -> Result<Json<DecideApprovalResponse>, ApiError> {
     let verdict = match request.decision {
         ApprovalDecisionDto::Approve => Verdict::Approve,
         ApprovalDecisionDto::Reject => Verdict::Reject,
     };
-    let approval = state
+    let decided = state
         .usecase
         .decide_approval(caller.subject(), approval_id, verdict, request.note)
         .await?;
-    Ok(Json(approval.into()))
+    Ok(Json(DecideApprovalResponse {
+        approval: decided.approval.into(),
+        resume_error: decided.resume_error,
+    }))
 }
