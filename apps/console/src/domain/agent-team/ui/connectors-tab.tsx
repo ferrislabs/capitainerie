@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import type { Schemas } from '#/api/api.client'
-import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
 import { HumanAvatar } from '#/domain/agent-team/ui/human-avatar'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
 import { RepositoryGrantsSection } from '#/domain/agent-team/ui/repository-grants-section'
-import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { DETAIL_ROW, Empty, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 import { hostOf } from '#/domain/connectors/model'
@@ -45,22 +45,18 @@ export function ConnectorsTab({
 	)
 	return (
 		<>
-			<p className="mb-2.5 mt-0 text-muted-foreground">
-				Refus par défaut : cet agent n'a accès qu'aux connecteurs que tu
-				autorises ci-dessous. Le prompt peut restreindre cette liste, jamais
-				l'étendre.
-			</p>
-			<SectionCard
+			<DetailSection
 				title="Connecteurs de l'agent"
 				flush
+				description="Refus par défaut : cet agent n'a accès qu'aux connecteurs que tu autorises ci-dessous. Le prompt peut restreindre cette liste, jamais l'étendre."
 				actions={<Link to="/connectors/{-$tab}">Gérer les connecteurs</Link>}
 			>
 				{error ? (
-					<p role="alert" className="m-0 p-3 text-signal-danger">
+					<p role="alert" className="m-0 px-6 py-5 text-signal-danger">
 						Impossible de charger les connecteurs.
 					</p>
 				) : loading ? (
-					<output className="m-0 block p-3 text-muted-foreground">
+					<output className="m-0 block px-6 py-5 text-muted-foreground">
 						Chargement des connecteurs…
 					</output>
 				) : connectors.length === 0 && orphans.length === 0 ? (
@@ -70,7 +66,7 @@ export function ConnectorsTab({
 				) : (
 					<Rows>
 						{connectors.map((connector) => (
-							<div key={connector.id} className={ROW}>
+							<div key={connector.id} className={DETAIL_ROW}>
 								<HumanAvatar initials={connector.name[0] ?? ''} size={28} />
 								<Ttl
 									title={
@@ -93,7 +89,7 @@ export function ConnectorsTab({
 							</div>
 						))}
 						{orphans.map((slug) => (
-							<div key={slug} className={ROW}>
+							<div key={slug} className={DETAIL_ROW}>
 								<HumanAvatar initials={slug[0] ?? ''} size={28} />
 								<Ttl title={slug} sub="Connecteur introuvable ou archivé" />
 								<Toggle
@@ -106,13 +102,13 @@ export function ConnectorsTab({
 					</Rows>
 				)}
 				{connectors.some((c) => !c.connected && granted.includes(c.slug)) ? (
-					<p className="m-0 px-3 pb-3 text-muted-foreground">
+					<p className="m-0 border-t px-6 py-4 text-muted-foreground">
 						Tu n'as pas connecté ton compte à certains connecteurs autorisés :
 						l'agent ne pourra pas s'en servir en ton nom tant que tu ne t'y es
 						pas connecté.
 					</p>
 				) : null}
-			</SectionCard>
+			</DetailSection>
 
 			<RepositoryGrantsSection
 				granted={repositoryGrants}
@@ -122,7 +118,7 @@ export function ConnectorsTab({
 				onRemove={onRemoveRepository}
 			/>
 
-			<SectionCard title="Identité GitHub" flush>
+			<DetailSection title="Identité GitHub" flush>
 				<FieldRow label="Compte utilisé" hint="Au démarrage du run">
 					<select
 						aria-label="Compte GitHub utilisé"
@@ -136,7 +132,7 @@ export function ConnectorsTab({
 						<option value="own">Compte dédié</option>
 					</select>
 				</FieldRow>
-			</SectionCard>
+			</DetailSection>
 		</>
 	)
 }

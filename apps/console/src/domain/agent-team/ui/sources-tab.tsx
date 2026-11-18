@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Cable } from 'lucide-react'
-import { SectionCard } from '#/components/layout/section-card'
-import { Empty, ROW, Ttl } from '#/domain/agent-team/ui/rows'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
+import { DETAIL_ROW, Empty, Ttl } from '#/domain/agent-team/ui/rows'
 import { relativeAge } from '#/domain/dashboard/format'
 import { useSources } from '#/domain/sources/hooks/use-sources'
 import { sourcesOfAgent } from '#/domain/sources/model'
@@ -14,13 +14,13 @@ export function SourcesTab({ agentId }: Props) {
 	const query = useSources()
 	const sources = sourcesOfAgent(query.data?.items ?? [], agentId)
 	return (
-		<SectionCard
+		<DetailSection
 			title="Sources écoutées"
 			flush
 			actions={<Link to="/sources/nouvelle">Nouvelle source</Link>}
 		>
 			{query.isPending ? (
-				<output className="block p-3 text-muted-foreground">
+				<output className="block px-6 py-5 text-muted-foreground">
 					Chargement des sources…
 				</output>
 			) : query.isError ? (
@@ -36,7 +36,7 @@ export function SourcesTab({ agentId }: Props) {
 			) : (
 				<ul className="m-0 list-none p-0">
 					{sources.map((source) => (
-						<li key={source.id} className={ROW}>
+						<li key={source.id} className={DETAIL_ROW}>
 							<Ttl
 								title={
 									<Link
@@ -62,6 +62,6 @@ export function SourcesTab({ agentId }: Props) {
 					))}
 				</ul>
 			)}
-		</SectionCard>
+		</DetailSection>
 	)
 }

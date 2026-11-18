@@ -1,7 +1,7 @@
-import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import { CTL, FieldRow, Note } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 export function PermsTab({ form, onChange }: Props) {
 	return (
 		<>
-			<SectionCard title="Profil de confiance" flush>
+			<DetailSection title="Profil de confiance" flush>
 				<FieldRow
 					label="Profil"
 					hint="Collaboration normale : défaut du travail courant"
@@ -32,8 +32,8 @@ export function PermsTab({ form, onChange }: Props) {
 					Les permissions avancées restent modifiables par l'extension de
 					permissions quand elle est installée.
 				</Note>
-			</SectionCard>
-			<SectionCard title="Permissions" flush>
+			</DetailSection>
+			<DetailSection title="Permissions" flush>
 				<FieldRow
 					label="Peut créer des agents"
 					hint="Accorde aussi le droit d'assigner des tâches"
@@ -64,7 +64,7 @@ export function PermsTab({ form, onChange }: Props) {
 						onChange={(pAssign) => onChange({ pAssign })}
 					/>
 				</FieldRow>
-			</SectionCard>
+			</DetailSection>
 		</>
 	)
 }

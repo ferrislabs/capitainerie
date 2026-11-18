@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
 import { CTL, FieldRow, Note } from '#/domain/agent-team/ui/field-row'
 import { Options } from '#/domain/agent-team/ui/options'
-import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
+import { DETAIL_ROW, Empty, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { TaskLine } from '#/domain/agent-team/ui/task-line'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 import type { Task } from '#/domain/tasks/model'
@@ -82,7 +82,7 @@ export function DelegationTab({
 	const parent = ancestors[0]
 	return (
 		<>
-			<SectionCard
+			<DetailSection
 				title="Place dans l'organisation"
 				flush
 				actions={<Link to="/agents/organigramme">Organigramme complet</Link>}
@@ -92,17 +92,17 @@ export function DelegationTab({
 						<Link
 							to="/agents/$agentId/{-$tab}"
 							params={{ agentId: parent.id }}
-							className={ROW}
+							className={DETAIL_ROW}
 						>
 							<AgentAvatar hue={parent.hue} size={24} />
 							<Ttl title={parent.name} sub="Rapporte à lui · agent parent" />
 						</Link>
 					) : (
-						<div className={ROW}>
+						<div className={DETAIL_ROW}>
 							<Ttl title="Aucun agent parent" sub="Direction" />
 						</div>
 					)}
-					<div className={ROW} style={{ paddingLeft: 34 }}>
+					<div className={DETAIL_ROW} style={{ paddingLeft: 48 }}>
 						<span aria-hidden="true" className="text-faint">
 							↳
 						</span>
@@ -114,8 +114,8 @@ export function DelegationTab({
 							key={sub.id}
 							to="/agents/$agentId/{-$tab}"
 							params={{ agentId: sub.id }}
-							className={ROW}
-							style={{ paddingLeft: 56 }}
+							className={DETAIL_ROW}
+							style={{ paddingLeft: 72 }}
 						>
 							<span aria-hidden="true" className="text-faint">
 								↳
@@ -125,9 +125,9 @@ export function DelegationTab({
 						</Link>
 					))}
 				</Rows>
-			</SectionCard>
+			</DetailSection>
 
-			<SectionCard
+			<DetailSection
 				title="Sous-agents"
 				flush
 				actions={<Link to="/agents/nouveau">Créer un sous-agent</Link>}
@@ -140,7 +140,7 @@ export function DelegationTab({
 				) : (
 					<Rows>
 						{subs.map(({ agent: sub, openTasks }) => (
-							<div key={sub.id} className={ROW}>
+							<div key={sub.id} className={DETAIL_ROW}>
 								<AgentAvatar hue={sub.hue} size={28} />
 								<Ttl
 									title={
@@ -179,11 +179,11 @@ export function DelegationTab({
 						))}
 					</Rows>
 				)}
-			</SectionCard>
+			</DetailSection>
 
 			{candidates.length > 0 ? (
-				<SectionCard title="Ajouter un sous-agent" flush>
-					<div className="flex gap-1.5 px-3 pt-3 pb-3">
+				<DetailSection title="Ajouter un sous-agent" flush>
+					<div className="flex gap-2 px-6 py-5">
 						<select
 							aria-label="Agent à ajouter"
 							className={CTL}
@@ -207,10 +207,10 @@ export function DelegationTab({
 					<Note>
 						Il rapportera à cet agent à la place de son parent actuel.
 					</Note>
-				</SectionCard>
+				</DetailSection>
 			) : null}
 
-			<SectionCard title="Règles de délégation" flush>
+			<DetailSection title="Règles de délégation" flush>
 				<FieldRow
 					label="Peut déléguer"
 					hint="Crée des sous-tâches pour ses sous-agents"
@@ -272,9 +272,9 @@ export function DelegationTab({
 					sous-agent n'hérite d'aucun connecteur de son parent : chaque accès
 					s'autorise séparément.
 				</Note>
-			</SectionCard>
+			</DetailSection>
 
-			<SectionCard title="Sous-tâches déléguées récemment" flush>
+			<DetailSection title="Sous-tâches déléguées récemment" flush>
 				{recent.length === 0 ? (
 					<Empty title="Aucune délégation" />
 				) : (
@@ -294,7 +294,7 @@ export function DelegationTab({
 						))}
 					</Rows>
 				)}
-			</SectionCard>
+			</DetailSection>
 		</>
 	)
 }

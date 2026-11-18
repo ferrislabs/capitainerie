@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AgentAvatar } from '#/domain/agent-team/ui/agent-avatar'
-import { ROW, Tag, Ttl } from '#/domain/agent-team/ui/rows'
+import { DETAIL_ROW, Tag, Ttl } from '#/domain/agent-team/ui/rows'
 import type { Task } from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { StatusIcon } from '#/domain/tasks/ui/status-icon'
@@ -19,7 +19,7 @@ export function TaskLine({ task, assignee, sub, showName = true }: Props) {
 		<Link
 			to="/tasks/$taskId"
 			params={{ taskId: taskPathId(task.id) }}
-			className={ROW}
+			className={DETAIL_ROW}
 		>
 			<StatusIcon status={task.status} />
 			<Tag>{task.shortId}</Tag>

@@ -1,7 +1,7 @@
 import type { Schemas } from '#/api/api.client'
-import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import { Empty, ROW, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
+import { DETAIL_ROW, Empty, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import { relativeAge } from '#/domain/dashboard/format'
 
@@ -23,13 +23,13 @@ export function RevisionsTab({
 	onRestore,
 }: Props) {
 	return (
-		<SectionCard title="Révisions" flush>
+		<DetailSection title="Révisions" flush>
 			{error ? (
-				<p role="alert" className="m-0 p-3 text-signal-danger">
+				<p role="alert" className="m-0 px-6 py-5 text-signal-danger">
 					Impossible de charger les révisions.
 				</p>
 			) : loading ? (
-				<output className="m-0 block p-3 text-muted-foreground">
+				<output className="m-0 block px-6 py-5 text-muted-foreground">
 					Chargement des révisions…
 				</output>
 			) : revisions.length === 0 ? (
@@ -39,7 +39,7 @@ export function RevisionsTab({
 			) : (
 				<Rows>
 					{revisions.map((revision) => (
-						<div key={revision.revision} className={ROW}>
+						<div key={revision.revision} className={DETAIL_ROW}>
 							<span className="w-[54px]">
 								<Tag>Rév. {revision.revision}</Tag>
 							</span>
@@ -65,6 +65,6 @@ export function RevisionsTab({
 					))}
 				</Rows>
 			)}
-		</SectionCard>
+		</DetailSection>
 	)
 }

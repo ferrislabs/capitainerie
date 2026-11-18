@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { FileText } from 'lucide-react'
-import { SectionCard } from '#/components/layout/section-card'
 import { CTL } from '#/domain/agent-team/ui/field-row'
+import { DetailSection } from '#/domain/agent-team/ui/panel'
 import { cn } from '#/lib/utils'
 
 export type InstructionsMode = 'lire' | 'editer' | 'brut'
@@ -20,14 +20,14 @@ interface Props {
 }
 
 const DOC =
-	'm-0 whitespace-pre-wrap px-3.5 py-3 font-[inherit] leading-[1.4] [overflow-wrap:anywhere]'
+	'm-0 max-w-[80ch] whitespace-pre-wrap px-6 py-5 font-[inherit] text-[15px] leading-relaxed [overflow-wrap:anywhere]'
 
 export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 	return (
-		<div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-2.5">
-			<SectionCard title="Fichiers" flush>
-				<div className="grid content-start gap-0.5 p-2">
-					<div className="flex h-7 items-center gap-[7px] rounded-md bg-secondary px-2 text-left">
+		<div className="grid items-start gap-x-6 gap-y-10 min-[900px]:grid-cols-[220px_minmax(0,1fr)]">
+			<DetailSection title="Fichiers" flush>
+				<div className="grid content-start gap-0.5 p-3">
+					<div className="flex h-9 items-center gap-2 rounded-md bg-secondary px-2.5 text-left">
 						<FileText aria-hidden="true" className="size-4" />
 						AGENTS.md
 						<span className="ml-auto rounded-lg bg-secondary px-1.5 text-[11px] leading-4 tabular-nums">
@@ -35,8 +35,8 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 						</span>
 					</div>
 				</div>
-			</SectionCard>
-			<SectionCard
+			</DetailSection>
+			<DetailSection
 				title="AGENTS.md"
 				flush
 				actions={
@@ -63,7 +63,7 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 				}
 			>
 				{mode === 'editer' ? (
-					<div className="p-2.5">
+					<div className="p-5">
 						<textarea
 							aria-label="Instructions"
 							className={cn(CTL, 'font-mono text-[11.5px]')}
@@ -77,7 +77,7 @@ export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 				) : (
 					<div className={DOC}>{instr}</div>
 				)}
-			</SectionCard>
+			</DetailSection>
 		</div>
 	)
 }
