@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO routine_triggers (\n                id, organization_id, routine_id, kind, enabled, frequency, every_hours,\n                at_time, weekdays, cron, next_run_at, webhook_token_hash, webhook_token_hint,\n                created_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bool",
+        "Text",
+        "Int2",
+        "Text",
+        "TextArray",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fbf962b4b88f3a39bd8c2888ce9eca3c3c4ab32e9b4baa8a6cec6f7caf21846e"
+}

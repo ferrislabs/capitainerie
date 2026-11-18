@@ -3,6 +3,7 @@
 
 pub mod approval;
 pub mod card;
+pub mod routine;
 pub mod run;
 pub mod source;
 
@@ -17,10 +18,17 @@ pub enum Topic {
     Cards,
     Approvals,
     Sources,
+    Routines,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 4] = [Topic::Runs, Topic::Cards, Topic::Approvals, Topic::Sources];
+    pub const ALL: [Topic; 5] = [
+        Topic::Runs,
+        Topic::Cards,
+        Topic::Approvals,
+        Topic::Sources,
+        Topic::Routines,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -28,6 +36,7 @@ impl Topic {
             Self::Cards => "cards",
             Self::Approvals => "approvals",
             Self::Sources => "sources",
+            Self::Routines => "routines",
         }
     }
 }

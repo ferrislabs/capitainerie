@@ -17,6 +17,7 @@ pub mod postgres;
 pub mod project;
 pub mod provider;
 pub mod registry;
+pub mod routine;
 pub mod run;
 pub mod skill;
 pub mod source;

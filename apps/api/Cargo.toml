@@ -28,6 +28,7 @@ capitainerie-handlers-realtime.workspace = true
 capitainerie-handlers-runs.workspace = true
 capitainerie-handlers-team.workspace = true
 capitainerie-handlers-skills.workspace = true
+capitainerie-handlers-routines.workspace = true
 capitainerie-handlers-sources.workspace = true
 capitainerie-handlers-approvals.workspace = true
 capitainerie-handlers-transcriptions.workspace = true

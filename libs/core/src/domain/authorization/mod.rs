@@ -71,6 +71,8 @@ pub enum Action {
     ApprovalDecide,
     SourceRead,
     SourceManage,
+    RoutineRead,
+    RoutineManage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +104,7 @@ pub enum ResourceKind {
     Skill,
     Approval,
     Source,
+    Routine,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,7 +113,7 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 10] = [
+pub const READ_ACTIONS: [&str; 11] = [
     "run.read",
     "card.read",
     "provider.read",
@@ -121,6 +124,7 @@ pub const READ_ACTIONS: [&str; 10] = [
     "skill.read",
     "approval.read",
     "source.read",
+    "routine.read",
 ];
 
 impl Action {
@@ -168,6 +172,8 @@ impl Action {
             Self::ApprovalDecide => "approval.decide",
             Self::SourceRead => "source.read",
             Self::SourceManage => "source.manage",
+            Self::RoutineRead => "routine.read",
+            Self::RoutineManage => "routine.manage",
         }
     }
 }
@@ -195,6 +201,7 @@ impl ResourceKind {
             Self::Skill => "skill",
             Self::Approval => "approval",
             Self::Source => "source",
+            Self::Routine => "routine",
         }
     }
 }

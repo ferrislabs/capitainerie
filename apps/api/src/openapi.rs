@@ -87,6 +87,17 @@ use capitainerie_handlers_providers::{
     test_provider::TestProviderResponse,
     test_user_provider::TestUserProviderResponse,
 };
+use capitainerie_handlers_routines::{
+    self as routines,
+    response::{
+        AgentRunStatusDto, CardColumnDto, FrequencyDto, IfMissedDto, IfOpenDto,
+        IssuedTriggerResponse, RoutineListResponse, RoutineResponse, RoutineRunListResponse,
+        RoutineRunResponse, RoutineRunStatusDto, RunCountsResponse, RunOriginDto, ScheduleDto,
+        TriggerKindDto, TriggerResponse,
+    },
+    routines::{CreateRoutineRequest, UpdateRoutineRequest},
+    triggers::{AddTriggerRequest, UpdateTriggerRequest},
+};
 use capitainerie_handlers_runs::{
     self as runs,
     list_active_runs::{ActiveRunListResponse, ActiveRunResponse, ActiveStepResponse},
@@ -188,6 +199,18 @@ use utoipa::{
         sources::list_events::handler,
         sources::test_source::handler,
         sources::hook::handler,
+        routines::routines::list_routines,
+        routines::routines::create_routine,
+        routines::routines::get_routine,
+        routines::routines::update_routine,
+        routines::routines::archive_routine,
+        routines::runs::launch_routine,
+        routines::runs::list_routine_runs,
+        routines::triggers::add_trigger,
+        routines::triggers::update_trigger,
+        routines::triggers::remove_trigger,
+        routines::triggers::rotate_trigger_token,
+        routines::hook::trigger_routine,
         mcp::list_connectors::handler,
         mcp::create_connector::handler,
         mcp::get_connector::handler,
@@ -338,6 +361,26 @@ use utoipa::{
         CreateSourceRequest,
         UpdateSourceRequest,
         HookResponse,
+        RoutineResponse,
+        RoutineListResponse,
+        RoutineRunResponse,
+        RoutineRunListResponse,
+        RunCountsResponse,
+        TriggerResponse,
+        IssuedTriggerResponse,
+        ScheduleDto,
+        FrequencyDto,
+        TriggerKindDto,
+        IfOpenDto,
+        IfMissedDto,
+        RunOriginDto,
+        RoutineRunStatusDto,
+        CardColumnDto,
+        AgentRunStatusDto,
+        CreateRoutineRequest,
+        UpdateRoutineRequest,
+        AddTriggerRequest,
+        UpdateTriggerRequest,
         CreateTranscriptionRequest,
         TranscriptionResponse,
         ReadDocumentRequest,
@@ -406,6 +449,7 @@ use utoipa::{
         (name = skills::TAG, description = "The organization's catalog of skills: instructions added to the system prompt of the agents whose skills list names them"),
         (name = approvals::TAG, description = "Decisions agents ask the team to take, such as a write a run was not allowed to make"),
         (name = sources::TAG, description = "External inputs whose events become cards handled by an agent: each source has a secret webhook URL, and the API keeps only a hash of its token"),
+        (name = routines::TAG, description = "Recurring work an agent does: on a planning or a webhook, each passage creates a card assigned to the agent and starts its run on behalf of the routine's creator"),
         (name = mcp::TAG, description = "MCP servers the organization connects to, each user authorizing with their own OAuth2 session (authorization code, PKCE S256, dynamic client registration)"),
         (name = analytics::TAG, description = "Costs and activity of the agents"),
         (name = providers::TAG, description = "Model providers, their catalogs and the model of each agent role"),
@@ -564,6 +608,33 @@ mod tests {
         assert!(schemas["IssuedSourceResponse"]["properties"]["webhook_url"].is_object());
         assert!(schemas["SourceResponse"]["properties"]["token"].is_null());
         assert!(schemas["SourceResponse"]["properties"]["events_last_24h"].is_object());
+    }
+
+    #[test]
+    fn the_routines_and_their_public_hook_are_documented() {
+        let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = &spec["paths"];
+        assert!(paths["/api/v1/routines"]["get"].is_object());
+        assert!(paths["/api/v1/routines"]["post"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}"]["get"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}"]["patch"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}/archive"]["post"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}/launch"]["post"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}/runs"]["get"].is_object());
+        assert!(paths["/api/v1/routines/{routine_id}/triggers"]["post"].is_object());
+        let trigger = &paths["/api/v1/routines/{routine_id}/triggers/{trigger_id}"];
+        assert!(trigger["patch"].is_object());
+        assert!(trigger["delete"].is_object());
+        assert!(
+            paths["/api/v1/routines/{routine_id}/triggers/{trigger_id}/rotate-token"]["post"]
+                .is_object()
+        );
+        let hook = &paths["/hooks/routines/{token}"]["post"];
+        assert!(hook.is_object());
+        assert!(hook["security"].is_null());
+        let schemas = &spec["components"]["schemas"];
+        assert!(schemas["RoutineResponse"]["properties"]["next_run_at"].is_object());
+        assert!(schemas["IssuedTriggerResponse"]["properties"]["webhook_url"].is_object());
     }
 
     #[test]

@@ -1,0 +1,109 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT rr.id, rr.organization_id, rr.routine_id, rr.trigger_id, rr.origin,\n                   rr.scheduled_for, rr.started_at, rr.status, rr.card_id, rr.run_id, rr.reason,\n                   c.\"column\" AS \"card_column?\", r.status AS \"run_status?\",\n                   r.started_at AS run_started_at, r.finished_at AS run_finished_at\n            FROM routine_runs rr\n            LEFT JOIN cards c ON c.id = rr.card_id\n            LEFT JOIN runs r ON r.id = rr.run_id\n            WHERE rr.organization_id = $1 AND rr.routine_id = $2\n            ORDER BY rr.started_at DESC, rr.id DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "routine_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "trigger_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "origin",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "scheduled_for",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "run_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "card_column?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "run_status?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "run_started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "run_finished_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "c29c9f9997300e55b895210e434a51b42931c79239238f3e245a419dc3a5b8c2"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE routine_runs SET status = 'failed', reason = $2\n            WHERE status = 'pending' AND started_at < $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0843fa280bddd6683967cfc9261e7336f41a992991622cf1294534bb98704ba6"
+}

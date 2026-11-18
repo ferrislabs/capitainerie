@@ -1,0 +1,203 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT r.id, r.organization_id, r.slug, r.name, r.prompt, r.agent_id, r.project_id,\n                   r.priority, r.title_template, r.timezone, r.enabled, r.if_open, r.if_missed,\n                   r.allow_writes, r.last_run_at, r.archived, r.created_by, r.created_at,\n                   r.updated_at,\n                   t.id AS trigger_id, t.kind, t.enabled AS trigger_enabled, t.frequency,\n                   t.every_hours, t.at_time, t.weekdays, t.cron, t.next_run_at,\n                   t.webhook_token_hash, t.webhook_token_hint, t.created_at AS trigger_created_at\n            FROM routine_triggers t\n            JOIN routines r ON r.id = t.routine_id\n            WHERE t.enabled AND r.enabled AND NOT r.archived\n              AND (t.next_run_at <= $1\n                   OR EXISTS (SELECT 1 FROM routine_runs q\n                              WHERE q.trigger_id = t.id AND q.status = 'queued'))\n              -- A queued passage whose previous card is still open keeps waiting.\n              AND NOT (\n                  EXISTS (SELECT 1 FROM routine_runs q\n                          WHERE q.trigger_id = t.id AND q.status = 'queued')\n                  AND COALESCE(\n                      (SELECT c.\"column\" FROM routine_runs p\n                       JOIN cards c ON c.id = p.card_id\n                       WHERE p.routine_id = r.id\n                       ORDER BY p.started_at DESC, p.id DESC\n                       LIMIT 1),\n                      'done'\n                  ) NOT IN ('done', 'rejected')\n              )\n            ORDER BY t.next_run_at NULLS LAST, t.id\n            LIMIT $2\n            FOR UPDATE OF t, r SKIP LOCKED\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "agent_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "priority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "title_template",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "if_open",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "if_missed",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "allow_writes",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_run_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "archived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "trigger_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 20,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "trigger_enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 22,
+        "name": "frequency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 23,
+        "name": "every_hours",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 24,
+        "name": "at_time",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 25,
+        "name": "weekdays",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 26,
+        "name": "cron",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 27,
+        "name": "next_run_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 28,
+        "name": "webhook_token_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 29,
+        "name": "webhook_token_hint",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 30,
+        "name": "trigger_created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "68d83261e71ed78e7b1333996a8ff20b691551d564bc14db51d6440cdaa77eec"
+}

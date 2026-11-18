@@ -86,6 +86,9 @@ pub fn router<
         .merge(capitainerie_handlers_skills::router())
         .merge(capitainerie_handlers_approvals::router())
         .merge(capitainerie_handlers_sources::router(
+            adapters.sources.public_api_url.clone(),
+        ))
+        .merge(capitainerie_handlers_routines::router(
             adapters.sources.public_api_url,
         ))
         .merge(capitainerie_handlers_analytics::router(analytics))
@@ -122,6 +125,7 @@ pub fn router<
         .merge(protected)
         .merge(health::router())
         .merge(capitainerie_handlers_sources::hooks_router())
+        .merge(capitainerie_handlers_routines::hooks_router())
         .merge(capitainerie_handlers_realtime::router(realtime))
         .route(
             "/api-docs/openapi.json",
@@ -147,6 +151,8 @@ const SOURCE_HOOK_PREFIX: &str = "/hooks/sources/";
 fn redacted_path(path: &str) -> &str {
     if path.starts_with(SOURCE_HOOK_PREFIX) {
         "/hooks/sources/[redacted]"
+    } else if path.starts_with(capitainerie_handlers_routines::HOOK_PREFIX) {
+        "/hooks/routines/[redacted]"
     } else {
         path
     }
@@ -166,10 +172,14 @@ mod redaction_tests {
     use super::redacted_path;
 
     #[test]
-    fn source_hook_token_is_not_logged() {
+    fn hook_tokens_are_not_logged() {
         assert_eq!(
             redacted_path("/hooks/sources/src_secret"),
             "/hooks/sources/[redacted]"
+        );
+        assert_eq!(
+            redacted_path("/hooks/routines/rtn_secret"),
+            "/hooks/routines/[redacted]"
         );
         assert_eq!(redacted_path("/api/v1/cards"), "/api/v1/cards");
     }

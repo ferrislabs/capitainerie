@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE routine_triggers\n            SET enabled = $3, frequency = $4, every_hours = $5, at_time = $6, weekdays = $7,\n                cron = $8, next_run_at = $9, webhook_token_hash = $10, webhook_token_hint = $11\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Text",
+        "Int2",
+        "Text",
+        "TextArray",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "641469ecfe58f26f13338e1623bb40d54d667912dfdc020df6dcb2e605763a47"
+}

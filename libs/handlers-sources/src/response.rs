@@ -1,4 +1,4 @@
-use axum::http::{HeaderMap, header::HOST};
+use axum::http::HeaderMap;
 use capitainerie_common::{AgentId, CardId, ProjectId, RunId, SourceEventId, SourceId};
 use capitainerie_core::domain::source::{
     IssuedSource, SourceEvent, SourceEventStatus, SourceKind, SourceListing,
@@ -113,30 +113,11 @@ impl IssuedSourceResponse {
     pub fn new(issued: IssuedSource, base: &PublicBaseUrl, headers: &HeaderMap) -> Self {
         let token = issued.token.expose().to_owned();
         Self {
-            webhook_url: format!("{}/hooks/sources/{token}", base_url(base, headers)),
+            webhook_url: format!("{}/hooks/sources/{token}", base.resolve(headers)),
             source: issued.listing.into(),
             token,
         }
     }
-}
-
-fn base_url(base: &PublicBaseUrl, headers: &HeaderMap) -> String {
-    if let Some(configured) = &base.0 {
-        return configured.trim_end_matches('/').to_owned();
-    }
-    let header = |name: &str| {
-        headers
-            .get(name)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.split(',').next())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-    };
-    let Some(host) = header("x-forwarded-host").or_else(|| header(HOST.as_str())) else {
-        return String::new();
-    };
-    let scheme = header("x-forwarded-proto").unwrap_or("http");
-    format!("{scheme}://{host}")
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -172,28 +153,4 @@ impl From<SourceEvent> for SourceEventResponse {
 pub struct SourceEventListResponse {
     pub items: Vec<SourceEventResponse>,
     pub total: i64,
-}
-
-#[cfg(test)]
-mod tests {
-    use axum::http::HeaderValue;
-
-    use super::*;
-
-    #[test]
-    fn the_base_is_the_configured_url_else_the_forwarded_or_host_headers() {
-        let mut headers = HeaderMap::new();
-        headers.insert(HOST, HeaderValue::from_static("api.internal:8080"));
-        let configured = PublicBaseUrl(Some("https://api.example.com/".into()));
-        assert_eq!(base_url(&configured, &headers), "https://api.example.com");
-        let derived = PublicBaseUrl(None);
-        assert_eq!(base_url(&derived, &headers), "http://api.internal:8080");
-        headers.insert(
-            "x-forwarded-host",
-            HeaderValue::from_static("api.example.com"),
-        );
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https, http"));
-        assert_eq!(base_url(&derived, &headers), "https://api.example.com");
-        assert_eq!(base_url(&derived, &HeaderMap::new()), "");
-    }
 }

@@ -16,10 +16,7 @@ use capitainerie_handlers::AppState;
 
 pub const TAG: &str = "sources";
 
-/// Where the hooks are reachable from outside, e.g. `https://api.example.com`.
-/// `None` derives it from the request's `X-Forwarded-*` or `Host` headers.
-#[derive(Debug, Clone, Default)]
-pub struct PublicBaseUrl(pub Option<String>);
+pub use capitainerie_handlers::PublicBaseUrl;
 
 /// The authenticated management routes.
 pub fn router(public_base_url: Option<String>) -> Router<AppState> {
