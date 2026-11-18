@@ -66,5 +66,5 @@ export async function renderAtPath(
 		history: createMemoryHistory({ initialEntries: [path] }),
 	})
 	await router.load()
-	return render(<RouterProvider router={router} />)
+	return Object.assign(render(<RouterProvider router={router} />), { router })
 }

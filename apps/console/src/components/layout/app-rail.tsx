@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, PanelLeft, Search, SquarePen, Users } from 'lucide-react'
+import { PanelLeft, Search, SquarePen, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { NavItem, NavSection } from '#/components/layout/nav-items'
 import { moveFocusBetweenLinks } from '#/components/layout/roving-focus'
@@ -29,7 +29,8 @@ interface Props {
 	badges?: RailBadges
 	onSearch?: () => void
 	onNewTask?: () => void
-	onOrganization?: () => void
+	organization?: string
+	liveCount?: number
 	liveAgents?: ReadonlyArray<RailAgent>
 }
 
@@ -58,12 +59,15 @@ function RailLink({
 	item,
 	expanded,
 	count,
+	liveCount,
 }: {
 	item: NavItem
 	expanded: boolean
 	count: number | undefined
+	liveCount: number
 }) {
 	const Icon = item.icon
+	const live = item.live === true && liveCount > 0
 	const shown = count !== undefined && count >= 100 ? '100+' : count
 	const link = (
 		<Link
@@ -76,14 +80,14 @@ function RailLink({
 			{expanded ? (
 				<>
 					<span className="flex-1 truncate">{item.label}</span>
-					{item.live ? <LiveLabel /> : null}
+					{live ? <LiveLabel>{`${liveCount} en direct`}</LiveLabel> : null}
 					{shown !== undefined ? (
 						<span className="figures rounded-lg bg-secondary px-1.5 text-[11px] leading-4 text-foreground group-aria-[current=page]:bg-border">
 							{shown}
 						</span>
 					) : null}
 				</>
-			) : item.live || (count !== undefined && count > 0) ? (
+			) : live || (count !== undefined && count > 0) ? (
 				<Dot />
 			) : null}
 		</Link>
@@ -132,7 +136,8 @@ export function AppRail({
 	badges,
 	onSearch,
 	onNewTask,
-	onOrganization,
+	organization,
+	liveCount = 0,
 	liveAgents,
 }: Props) {
 	const isExpanded = expanded && canExpand
@@ -147,30 +152,30 @@ export function AppRail({
 				isExpanded ? 'w-[204px]' : 'w-12',
 			)}
 		>
-			<button
-				type="button"
-				onClick={onOrganization}
-				aria-label={isExpanded ? undefined : 'Natalia'}
-				title="Changer d'organisation"
-				className={cn(
-					'mb-1.5 flex h-[34px] w-full items-center gap-2 rounded-md border bg-background px-1.5 text-left',
-					!isExpanded && 'justify-center px-0',
-					FOCUS,
-				)}
-			>
-				<span
-					aria-hidden="true"
-					className="grid size-5 shrink-0 place-items-center rounded-[5px] bg-linear-to-br from-brand-from to-brand-to text-[11px] font-bold text-white"
+			{organization ? (
+				<div
+					title={organization}
+					className={cn(
+						'mb-1.5 flex h-[34px] w-full items-center gap-2 rounded-md border bg-background px-1.5',
+						!isExpanded && 'justify-center px-0',
+					)}
 				>
-					N
-				</span>
-				{isExpanded ? (
-					<>
-						<b className="flex-1 font-semibold whitespace-nowrap">Natalia</b>
-						<ChevronDown aria-hidden="true" className="size-4 shrink-0" />
-					</>
-				) : null}
-			</button>
+					<span
+						aria-hidden="true"
+						className="grid size-5 shrink-0 place-items-center rounded-[5px] bg-linear-to-br from-brand-from to-brand-to text-[11px] font-bold text-white"
+					>
+						{organization.charAt(0).toUpperCase()}
+					</span>
+					<b
+						className={cn(
+							'flex-1 truncate font-semibold whitespace-nowrap',
+							!isExpanded && 'sr-only',
+						)}
+					>
+						{organization}
+					</b>
+				</div>
+			) : null}
 			{onNewTask ? (
 				<ActionButton
 					label="Nouvelle tâche"
@@ -224,6 +229,7 @@ export function AppRail({
 											item={item}
 											expanded={isExpanded}
 											count={badges?.[item.to]}
+											liveCount={liveCount}
 										/>
 									</li>
 								))}
@@ -256,7 +262,7 @@ export function AppRail({
 									{isExpanded ? (
 										<>
 											<span className="flex-1 truncate">{agent.name}</span>
-											<LiveLabel />
+											<LiveLabel>en direct</LiveLabel>
 										</>
 									) : null}
 								</Link>

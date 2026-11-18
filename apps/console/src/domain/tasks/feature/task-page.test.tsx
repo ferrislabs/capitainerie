@@ -165,6 +165,67 @@ describe('TaskPage', () => {
 		expect(screen.getByRole('combobox', { name: 'Statut' })).toBeTruthy()
 	})
 
+	it('changes the assignee through the card update', async () => {
+		const fetchMock = mockApi({
+			...BASE,
+			[`PATCH /api/v1/cards/${ROOT}`]: {
+				...root,
+				assignee_agent_id: AGENT_SUB,
+				version: 8,
+			},
+		})
+		await open(ROOT)
+		const select = await screen.findByRole('combobox', { name: 'Assigné à' })
+		await waitFor(() =>
+			expect(
+				within(select)
+					.getAllByRole('option')
+					.map((o) => o.textContent),
+			).toEqual(['Personne', 'Veille légale', 'Registre']),
+		)
+		expect((select as HTMLSelectElement).value).toBe(AGENT_LEAD)
+		fireEvent.change(select, { target: { value: AGENT_SUB } })
+		await waitFor(() =>
+			expect(jsonBody(fetchMock, 'PATCH', `/api/v1/cards/${ROOT}`)).toEqual({
+				assignee_agent_id: AGENT_SUB,
+				expected_version: 7,
+			}),
+		)
+		expect(await screen.findByText('Assignée à Registre')).toBeTruthy()
+		await waitFor(() =>
+			expect(
+				fetchMock.mock.calls.filter(
+					([input]) =>
+						new URL(String(input)).pathname === `/api/v1/cards/${ROOT}`,
+				).length,
+			).toBeGreaterThan(2),
+		)
+	})
+
+	it('unassigns and reports a conflict', async () => {
+		const fetchMock = mockApi({
+			...BASE,
+			[`PATCH /api/v1/cards/${ROOT}`]: {
+				status: 409,
+				body: { code: 'conflict', message: 'x', status: 409 },
+			},
+		})
+		await open(ROOT)
+		fireEvent.change(
+			await screen.findByRole('combobox', { name: 'Assigné à' }),
+			{ target: { value: '' } },
+		)
+		await waitFor(() =>
+			expect(jsonBody(fetchMock, 'PATCH', `/api/v1/cards/${ROOT}`)).toEqual({
+				assignee_agent_id: null,
+				expected_version: 7,
+			}),
+		)
+		expect(
+			await screen.findByText('Cette tâche a changé entre-temps, réessaie'),
+		).toBeTruthy()
+	})
+
 	it('reports a version conflict', async () => {
 		mockApi({
 			...BASE,
@@ -233,7 +294,12 @@ describe('TaskPage', () => {
 			{ target: { value: 'Vérifier le SIREN' } },
 		)
 		await waitFor(() =>
-			expect(screen.getByRole('option', { name: 'Registre' })).toBeTruthy(),
+			expect(
+				within(screen.getByRole('combobox', { name: 'Sous-agent' })).getByRole(
+					'option',
+					{ name: 'Registre' },
+				),
+			).toBeTruthy(),
 		)
 		fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
 		await waitFor(() =>

@@ -8,6 +8,5 @@ export const Route = createFileRoute('/_app/tasks/')({
 })
 
 function TasksRoute() {
-	const { vue, q } = Route.useSearch()
-	return <TasksPage view={vue} query={q} />
+	return <TasksPage search={Route.useSearch()} />
 }

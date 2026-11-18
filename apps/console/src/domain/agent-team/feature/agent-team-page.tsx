@@ -3,10 +3,6 @@ import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { Skeleton } from '#/components/ui/skeleton'
 import {
-	getAgentConfig,
-	useConfigVersion,
-} from '#/domain/agent-team/agent-config-store'
-import {
 	AGENT_FILTERS,
 	type AgentFilter,
 } from '#/domain/agent-team/agent-filters'
@@ -25,14 +21,12 @@ interface Props {
 function visible(agents: ReadonlyArray<TeamAgent>, filter: AgentFilter) {
 	if (filter === 'tous' || filter === 'archives') return agents
 	if (filter === 'actifs') return agents.filter((a) => a.status === 'running')
-	if (filter === 'pause')
-		return agents.filter((a) => getAgentConfig(a.id, a).paused)
+	if (filter === 'pause') return agents.filter((a) => a.paused)
 	return []
 }
 
 export function AgentTeamPage({ filter = 'tous' }: Props) {
 	const query = useTeamAgents(filter === 'archives')
-	useConfigVersion()
 	const list = visible(query.data?.items ?? [], filter)
 	const label = AGENT_FILTERS.find((f) => f.id === filter)?.label ?? ''
 	return (

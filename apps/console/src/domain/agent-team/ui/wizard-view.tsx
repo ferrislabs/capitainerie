@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import { Play } from 'lucide-react'
 import { cloneElement, type ReactElement, type ReactNode, useId } from 'react'
 import { Button } from '#/components/ui/button'
 import {
@@ -54,8 +53,8 @@ const CHOICE_ON =
 interface Props {
 	state: WizardState
 	reportsOptions: ReadonlyArray<OptionItem>
-	sources: ReadonlyArray<{ id: string; name: string }>
-	connectors: ReadonlyArray<string>
+	connectors: ReadonlyArray<{ slug: string; name: string }>
+	connectorsLoading: boolean
 	canAdvance: boolean
 	onChange: (patch: Partial<WizardState>) => void
 	onBack: () => void
@@ -116,9 +115,9 @@ function Field({
 
 function Recap({
 	state,
-	sources,
+	connectors,
 	reportsOptions,
-}: Pick<Props, 'state' | 'sources' | 'reportsOptions'>) {
+}: Pick<Props, 'state' | 'connectors' | 'reportsOptions'>) {
 	const rows: ReadonlyArray<readonly [string, string]> = [
 		['Nom', state.name.trim()],
 		['Adaptateur', state.adapter],
@@ -140,18 +139,13 @@ function Recap({
 		],
 		['Compétences', `${state.skills.length} activées`],
 		[
-			'Sources',
-			state.sources.length
-				? sources
-						.filter((s) => state.sources.includes(s.id))
-						.map((s) => s.name)
-						.join(', ')
-				: 'Aucune',
-		],
-		[
 			'Connecteurs',
 			state.connectors.length
-				? state.connectors.join(', ')
+				? state.connectors
+						.map(
+							(slug) => connectors.find((c) => c.slug === slug)?.name ?? slug,
+						)
+						.join(', ')
 				: 'Aucun (accès refusé)',
 		],
 	]
@@ -181,8 +175,8 @@ function Footer({ children }: { children: ReactNode }) {
 export function WizardView({
 	state,
 	reportsOptions,
-	sources,
 	connectors,
+	connectorsLoading,
 	canAdvance,
 	onChange,
 	onBack,
@@ -365,17 +359,10 @@ export function WizardView({
 							))}
 						</div>
 						{state.conn === 'sub' ? (
-							<>
-								<p className="m-0 text-muted-foreground">
-									Une page de connexion s'ouvre dans ton navigateur. Reviens ici
-									ensuite, la connexion est détectée toute seule.
-								</p>
-								<p className="mt-2 mb-0">
-									<button type="button" className="text-xs text-primary">
-										Relancer la connexion
-									</button>
-								</p>
-							</>
+							<p className="m-0 text-muted-foreground">
+								Une page de connexion s'ouvre dans ton navigateur. Reviens ici
+								ensuite, la connexion est détectée toute seule.
+							</p>
 						) : state.conn === 'key' ? (
 							<Field label="Clé API">
 								<input
@@ -496,36 +483,31 @@ export function WizardView({
 								))}
 							</Pills>
 							<Pills
-								legend="Sources à écouter (optionnel)"
-								hint="L'agent se réveille à chaque événement reçu. Les sources se créent depuis la page Sources."
-							>
-								{sources.map((source) => (
-									<Pill
-										key={source.id}
-										label={source.name}
-										checked={state.sources.includes(source.id)}
-										onChange={() =>
-											onChange({ sources: toggled(state.sources, source.id) })
-										}
-									/>
-								))}
-							</Pills>
-							<Pills
 								legend="Connecteurs autorisés (aucun par défaut)"
 								hint="Sans autorisation explicite, l'agent n'a accès à aucun connecteur. Tu pourras en ajouter ensuite."
 							>
-								{connectors.map((connector) => (
-									<Pill
-										key={connector}
-										label={connector}
-										checked={state.connectors.includes(connector)}
-										onChange={() =>
-											onChange({
-												connectors: toggled(state.connectors, connector),
-											})
-										}
-									/>
-								))}
+								{connectorsLoading ? (
+									<span className="font-normal">
+										Chargement des connecteurs…
+									</span>
+								) : connectors.length === 0 ? (
+									<span className="font-normal">
+										Aucun connecteur MCP déclaré pour l'instant.
+									</span>
+								) : (
+									connectors.map((connector) => (
+										<Pill
+											key={connector.slug}
+											label={connector.name}
+											checked={state.connectors.includes(connector.slug)}
+											onChange={() =>
+												onChange({
+													connectors: toggled(state.connectors, connector.slug),
+												})
+											}
+										/>
+									))
+								)}
 							</Pills>
 						</div>
 					</>
@@ -538,24 +520,9 @@ export function WizardView({
 						</h1>
 						<Recap
 							state={state}
-							sources={sources}
+							connectors={connectors}
 							reportsOptions={reportsOptions}
 						/>
-						{state.tested ? (
-							<div className="mt-2.5 rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success">
-								Test réussi : l'agent a répondu en 2,4 s.
-							</div>
-						) : null}
-						<p className="mt-2.5 mb-0">
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => onChange({ tested: true })}
-							>
-								<Play aria-hidden="true" />
-								Tester l'agent
-							</Button>
-						</p>
 					</>
 				) : null}
 				{footer}

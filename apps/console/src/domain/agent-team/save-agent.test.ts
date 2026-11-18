@@ -1,23 +1,27 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { buildDefaultConfig, buildForm } from '#/domain/agent-team/agent-config'
-import {
-	getAgentConfig,
-	resetAgentConfigs,
-} from '#/domain/agent-team/agent-config-store'
-import { agentPatch, recordRevision } from '#/domain/agent-team/save-agent'
+import { describe, expect, it } from 'vitest'
+import { buildForm } from '#/domain/agent-team/agent-config'
+import { agentPatch, changeSummary } from '#/domain/agent-team/save-agent'
 import { DEV } from '#/test-utils/team-agents'
 
-const base = () => buildForm(DEV, buildDefaultConfig(DEV))
+const base = () => buildForm(DEV)
 
 describe('agentPatch', () => {
-	it('is empty when nothing changed or only local fields changed', () => {
-		expect(agentPatch(base(), base())).toEqual({})
-		expect(agentPatch(base(), { ...base(), effort: 'Élevé' })).toEqual({})
+	it('is empty when nothing changed', () => {
+		expect(agentPatch(DEV, base(), base())).toEqual({})
+	})
+
+	it('sends the whole config with a change summary when a config field changed', () => {
+		const agent = { ...DEV, config: { legacy: 1 } }
+		const patch = agentPatch(agent, base(), { ...base(), effort: 'Élevé' })
+		expect(patch.change_summary).toBe('effort de réflexion')
+		expect(patch.config).toMatchObject({ legacy: 1, effort: 'Élevé' })
+		expect(patch.config).not.toHaveProperty('name')
+		expect(patch).not.toHaveProperty('name')
 	})
 
 	it('maps the form to API fields', () => {
 		expect(
-			agentPatch(base(), {
+			agentPatch(DEV, base(), {
 				...base(),
 				name: ' Dev 2 ',
 				description: 'd',
@@ -33,30 +37,23 @@ describe('agentPatch', () => {
 			model: 'claude-haiku-5-5',
 			instructions: 'nouvelles',
 			reports_to: 'a-legal',
+			change_summary:
+				'nom, description, rôle, hiérarchie, modèle, instructions',
 		})
 	})
 
 	it('keeps the current name when it is emptied', () => {
-		expect(agentPatch(base(), { ...base(), name: '  ' })).toEqual({})
+		expect(agentPatch(DEV, base(), { ...base(), name: '  ' })).toEqual({})
 	})
 
 	it('sends a null parent for the direction', () => {
 		expect(
-			agentPatch(base(), { ...base(), reports: 'Aucun (direction)' }),
-		).toEqual({ reports_to: null })
+			agentPatch(DEV, base(), { ...base(), reports: 'Aucun (direction)' }),
+		).toEqual({ reports_to: null, change_summary: 'hiérarchie' })
 	})
-})
 
-describe('recordRevision', () => {
-	beforeEach(resetAgentConfigs)
-
-	it('bumps the revision, lists changed fields and keeps local fields', () => {
-		const next = { ...base(), model: 'claude-haiku-5-5', effort: 'Élevé' }
-		expect(recordRevision(DEV, base(), next)).toBe(1)
-		const config = getAgentConfig(DEV.id)
-		expect(config.rev).toBe(1)
-		expect(config.revs[0]?.changed).toBe('modèle, effort de réflexion')
-		expect(config.fields.effort).toBe('Élevé')
-		expect(recordRevision(DEV, next, { ...next, chrome: true })).toBe(2)
+	it('caps the change summary at 2000 characters', () => {
+		expect(changeSummary('x'.repeat(2500))).toHaveLength(2000)
+		expect(changeSummary('court')).toBe('court')
 	})
 })

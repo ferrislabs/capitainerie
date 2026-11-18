@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { UserX } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import type { Schemas } from '#/api/api.client'
-import { DemoBanner } from '#/components/layout/demo-banner'
 import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Notice, useNotice } from '#/components/layout/notice'
@@ -15,22 +14,22 @@ import {
 	diffForm,
 } from '#/domain/agent-team/agent-config'
 import {
-	updateAgentConfig,
-	useAgentConfig,
-} from '#/domain/agent-team/agent-config-store'
-import {
 	type AgentTabId,
 	resolveAgentTab,
 } from '#/domain/agent-team/agent-tabs'
 import { DIRECTION } from '#/domain/agent-team/constants'
 import {
+	useActiveRuns,
+	useAgentCards,
+	useRestoreTeamAgentRevision,
 	useTeamAgent,
+	useTeamAgentRevisions,
 	useTeamAgents,
 	useUpdateTeamAgent,
 } from '#/domain/agent-team/hooks/use-team-agents'
 import { isValidModelId, MODEL_ID_ERROR } from '#/domain/agent-team/model-id'
 import { ancestorsOf, subAgents } from '#/domain/agent-team/org-tree'
-import { agentPatch, recordRevision } from '#/domain/agent-team/save-agent'
+import { agentPatch } from '#/domain/agent-team/save-agent'
 import {
 	describeAgentError,
 	type TeamAgent,
@@ -53,14 +52,11 @@ import { RuntimeTab } from '#/domain/agent-team/ui/runtime-tab'
 import { SaveBar } from '#/domain/agent-team/ui/save-bar'
 import { SkillsTab } from '#/domain/agent-team/ui/skills-tab'
 import { SourcesTab } from '#/domain/agent-team/ui/sources-tab'
-import { toggled } from '#/domain/agent-team/wizard'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
-import {
-	attachSource,
-	detachSource,
-	shortName,
-	useDemoState,
-} from '#/domain/demo'
+import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
+import { useCards } from '#/domain/tasks/hooks/use-tasks'
+import { type Task, toTask } from '#/domain/tasks/model'
+import { shortName } from '#/lib/agent-name'
 
 interface Props {
 	agentId: string
@@ -83,17 +79,24 @@ const SAVE_TABS: ReadonlyArray<AgentTabId> = [
 	'runtime',
 	'perms',
 ]
+const RECENT = 6
+
+const byRecent = (a: Task, b: Task) =>
+	Date.parse(b.card.updated_at) - Date.parse(a.card.updated_at)
 
 function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
-	const state = useDemoState((s) => s)
-	const config = useAgentConfig(agent.id, agent)
 	const update = useUpdateTeamAgent()
+	const restore = useRestoreTeamAgentRevision()
+	const revisions = useTeamAgentRevisions(agent.id, tab === 'rev')
+	const agentCards = useAgentCards(agent.id)
+	const allCards = useCards()
+	const activeRuns = useActiveRuns()
 	const [draft, setDraft] = useState<AgentForm | null>(null)
+	const [assignTo, setAssignTo] = useState<string | null>(null)
 	const [message, setMessage] = useNotice()
 	const connectors = useMcpConnectors(false)
-	const [testResult, setTestResult] = useState<string>()
 
-	const base = buildForm(agent, config)
+	const base = buildForm(agent)
 	const form = draft ?? base
 	const dirty = diffForm(base, form).length > 0
 	const patch = (change: Partial<AgentForm>) => setDraft({ ...form, ...change })
@@ -107,19 +110,25 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const parent = pool.find((a) => a.id === agent.reports_to)
 	const granted = agent.connector_grants
 
+	const now = Date.now()
+	const ownTasks = (agentCards.data?.items ?? [])
+		.map((card) => toTask(card, now))
+		.sort(byRecent)
+	const ownIds = new Set(ownTasks.map((t) => t.id))
+	const allTasks = (allCards.data?.items ?? []).map((card) => toTask(card, now))
+	const runs = (activeRuns.data?.items ?? []).filter(
+		(r) => r.run.card_id && ownIds.has(r.run.card_id),
+	)
+
 	const send = (
 		body: Schemas.UpdateTeamAgentRequest,
 		target: string,
 		success: string,
-		onDone?: () => void,
 	) =>
 		update.mutate(
 			{ path: { agent_id: target }, body },
 			{
-				onSuccess: () => {
-					onDone?.()
-					setMessage(success)
-				},
+				onSuccess: () => setMessage(success),
 				onError: (error) => setMessage(describeAgentError(error)),
 			},
 		)
@@ -129,20 +138,18 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 			setMessage(MODEL_ID_ERROR)
 			return
 		}
-		const body = agentPatch(base, form)
-		const done = () => {
-			const rev = recordRevision(agent, base, form)
-			setDraft(null)
-			setMessage(`Enregistré · révision ${rev} créée`)
-		}
+		const body = agentPatch(agent, base, form)
 		if (Object.keys(body).length === 0) {
-			done()
+			setDraft(null)
 			return
 		}
 		update.mutate(
 			{ path: { agent_id: agent.id }, body },
 			{
-				onSuccess: done,
+				onSuccess: (saved) => {
+					setDraft(null)
+					setMessage(`Enregistré · révision ${saved.revision} créée`)
+				},
 				onError: (error) => setMessage(describeAgentError(error)),
 			},
 		)
@@ -151,7 +158,10 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const toggleConnector = (slug: string, allowed: boolean) => {
 		if (!allowed) {
 			send(
-				{ connector_grants: granted.filter((c) => c !== slug) },
+				{
+					connector_grants: granted.filter((c) => c !== slug),
+					change_summary: 'connecteurs',
+				},
 				agent.id,
 				`Accès retiré à ${short}`,
 			)
@@ -161,30 +171,65 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 		const label =
 			connectors.data?.items.find((c) => c.slug === slug)?.name ?? slug
 		send(
-			{ connector_grants: [...granted, slug] },
+			{ connector_grants: [...granted, slug], change_summary: 'connecteurs' },
 			agent.id,
 			`${short} peut utiliser ${label}`,
 		)
 	}
 
+	const setSkills = (skills: ReadonlyArray<string>, success: string) =>
+		send(
+			{ skills: [...skills], change_summary: 'compétences' },
+			agent.id,
+			success,
+		)
+
 	const toggleArchive = () =>
 		send(
-			{ archived: !agent.archived },
+			{
+				archived: !agent.archived,
+				change_summary: agent.archived ? 'restauration' : 'archivage',
+			},
 			agent.id,
 			agent.archived ? `${short} restauré` : `${short} archivé`,
 		)
 
+	const togglePause = () =>
+		send(
+			{
+				paused: !agent.paused,
+				change_summary: agent.paused ? 'reprise' : 'pause',
+			},
+			agent.id,
+			agent.paused ? 'Agent relancé' : 'Agent mis en pause',
+		)
+
 	const removeSub = (subId: string) =>
 		send(
-			{ reports_to: parent?.id ?? null },
+			{ reports_to: parent?.id ?? null, change_summary: 'hiérarchie' },
 			subId,
 			'Sous-agent rattaché au parent de cet agent',
 		)
 
-	const taskOf = (id: string) => state.tasks.find((t) => t.id === id)
-	const recent: DelegatedTask[] = state.tasks
-		.filter((t) => t.parentId && taskOf(t.parentId)?.agentId === agent.id)
-		.slice(0, 6)
+	const restoreRevision = (revision: number) =>
+		restore.mutate(
+			{ path: { agent_id: agent.id, revision } },
+			{
+				onSuccess: (restored) => {
+					setDraft(null)
+					setMessage(
+						`Révision ${revision} restaurée (révision ${restored.revision} créée)`,
+					)
+				},
+				onError: (error) => setMessage(describeAgentError(error)),
+			},
+		)
+
+	const taskById = new Map(allTasks.map((t) => [t.id, t]))
+	const recent: DelegatedTask[] = allTasks
+		.filter((t) => t.parentId && taskById.get(t.parentId)?.agentId === agent.id)
+		.sort(byRecent)
+		.slice(0, RECENT)
 		.map((task) => ({
 			task,
 			assignee: pool.find((a) => a.id === task.agentId),
@@ -195,7 +240,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 		.map((a) => ({ value: a.id, label: a.name }))
 
 	const openTasks = (id: string) =>
-		state.tasks.filter((t) => t.agentId === id && !CLOSED.has(t.status)).length
+		allTasks.filter((t) => t.agentId === id && !CLOSED.has(t.status)).length
 
 	const showBar =
 		dirty &&
@@ -208,32 +253,24 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 				agent={agent}
 				adapter={form.adapter}
 				title={form.title}
-				paused={config.paused}
+				paused={agent.paused}
 				busy={update.isPending}
-				onMakePrimary={() =>
-					setMessage(`${short} est maintenant ton agent principal`)
-				}
-				onAssign={() => setMessage(`Nouvelle tâche pour ${short}`)}
-				onRun={() => setMessage(`Exécution lancée pour ${short}`)}
-				onTogglePause={() => {
-					updateAgentConfig(agent.id, { paused: !config.paused })
-					setMessage(config.paused ? 'Agent relancé' : 'Agent mis en pause')
-				}}
+				onAssign={() => setAssignTo(agent.id)}
+				onTogglePause={togglePause}
 				onToggleArchive={toggleArchive}
 			/>
-			<DemoBanner />
 			<AgentTabBar agentId={agent.id} active={tab} />
 			<Notice message={message} />
 			{tab === 'overview' ? (
 				<OverviewTab
 					agent={agent}
 					form={form}
-					skills={config.skills}
-					paused={config.paused}
 					subCount={subs.length}
 					reportsTo={parent?.name ?? DIRECTION}
-					tasks={state.tasks.filter((t) => t.agentId === agent.id).slice(0, 6)}
-					onCopyKey={() => setMessage('Copié')}
+					tasks={ownTasks.slice(0, RECENT)}
+					tasksLoading={agentCards.isPending}
+					tasksError={agentCards.isError}
+					activeRuns={runs}
 				/>
 			) : null}
 			{tab === 'instructions' ? (
@@ -242,31 +279,24 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					mode={mode}
 					instr={form.instr}
 					onChange={(instr) => patch({ instr })}
-					onNotify={setMessage}
 				/>
 			) : null}
 			{tab === 'skills' ? (
 				<SkillsTab
-					skills={config.skills}
-					onToggle={(skill) => {
-						const on = !config.skills.includes(skill)
-						updateAgentConfig(agent.id, {
-							skills: toggled(config.skills, skill),
-						})
-						setMessage(on ? `${skill} activée` : `${skill} désactivée`)
-					}}
+					skills={agent.skills}
+					busy={update.isPending}
+					onAdd={(skill) =>
+						setSkills([...agent.skills, skill], `${skill} activée`)
+					}
+					onRemove={(skill) =>
+						setSkills(
+							agent.skills.filter((s) => s !== skill),
+							`${skill} désactivée`,
+						)
+					}
 				/>
 			) : null}
-			{tab === 'sources' ? (
-				<SourcesTab
-					listened={state.sources.filter((s) => s.agentIds.includes(agent.id))}
-					available={state.sources.filter(
-						(s) => !s.agentIds.includes(agent.id),
-					)}
-					onDetach={(id) => detachSource(id, agent.id)}
-					onAttach={(id) => attachSource(id, agent.id)}
-				/>
-			) : null}
+			{tab === 'sources' ? <SourcesTab /> : null}
 			{tab === 'team' ? (
 				<DelegationTab
 					agent={agent}
@@ -285,11 +315,13 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					form={form}
 					onChange={patch}
 					onRemove={removeSub}
-					onAssign={(sub) =>
-						setMessage(`Nouvelle tâche pour ${shortName(sub.name)}`)
-					}
+					onAssign={(sub) => setAssignTo(sub.id)}
 					onAdd={(id) =>
-						send({ reports_to: agent.id }, id, 'Sous-agent ajouté')
+						send(
+							{ reports_to: agent.id, change_summary: 'hiérarchie' },
+							id,
+							'Sous-agent ajouté',
+						)
 					}
 				/>
 			) : null}
@@ -305,46 +337,43 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 				/>
 			) : null}
 			{tab === 'runtime' ? (
-				<RuntimeTab
-					form={form}
-					reportsOptions={others}
-					testResult={testResult}
-					onChange={patch}
-					onTest={() =>
-						setTestResult(
-							`Test réussi : l'agent a répondu « OK » en 2,4 s (${form.model.trim() || 'modèle par défaut'}, ${form.engine}).`,
-						)
-					}
-					onChooseConnection={() => setMessage("Choix d'une connexion gérée")}
-					onAdvanced={() =>
-						setMessage('Coupe-circuit, fenêtres horaires, concurrence')
-					}
-				/>
+				<RuntimeTab form={form} reportsOptions={others} onChange={patch} />
 			) : null}
 			{tab === 'perms' ? <PermsTab form={form} onChange={patch} /> : null}
 			{tab === 'rev' ? (
 				<RevisionsTab
-					revisions={config.revs}
-					onRestore={(label) =>
-						setMessage(`${label} restaurée (nouvelle révision créée)`)
-					}
+					current={agent.revision}
+					revisions={revisions.data?.items ?? []}
+					loading={revisions.isPending}
+					error={revisions.isError}
+					restoring={restore.isPending}
+					onRestore={restoreRevision}
 				/>
 			) : null}
 
 			{showBar ? (
-				<SaveBar onCancel={() => setDraft(null)} onSave={save} />
+				<SaveBar
+					busy={update.isPending}
+					onCancel={() => setDraft(null)}
+					onSave={save}
+				/>
+			) : null}
+			{assignTo !== null ? (
+				<NewTaskDialog
+					key={assignTo}
+					open
+					defaultAgentId={assignTo}
+					onOpenChange={(open) => {
+						if (!open) setAssignTo(null)
+					}}
+				/>
 			) : null}
 		</Page>
 	)
 }
 
 function Placeholder({ children }: { children: ReactNode }) {
-	return (
-		<Page>
-			<DemoBanner />
-			{children}
-		</Page>
-	)
+	return <Page>{children}</Page>
 }
 
 export function AgentDetailPage({ agentId, tab, mode = 'lire' }: Props) {

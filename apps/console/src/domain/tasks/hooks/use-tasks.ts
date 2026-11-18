@@ -42,6 +42,14 @@ export function useCreateCard() {
 	})
 }
 
+export function useUpdateCard() {
+	const client = useQueryClient()
+	return useMutation({
+		...tanstackApi.mutation('patch', '/api/v1/cards/{card_id}').mutationOptions,
+		onSettled: () => invalidateCards(client),
+	})
+}
+
 export function useMoveCard() {
 	const client = useQueryClient()
 	return useMutation({

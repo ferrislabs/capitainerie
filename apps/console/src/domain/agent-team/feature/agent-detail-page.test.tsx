@@ -1,16 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Schemas } from '#/api/api.client'
 import { renderAtPath } from '#/components/layout/test-router'
-import {
-	getAgentConfig,
-	resetAgentConfigs,
-	seedAgentConfig,
-} from '#/domain/agent-team/agent-config-store'
 import { AGENT_TABS } from '#/domain/agent-team/agent-tabs'
 import { AgentDetailPage } from '#/domain/agent-team/feature/agent-detail-page'
-import { demoStore, resetDemoState } from '#/domain/demo'
+import { card } from '#/domain/tasks/test-fixtures'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 import {
@@ -38,7 +33,9 @@ type Routes = Parameters<typeof mockApi>[0]
 async function open(props: Page, extra: Routes = {}, agent = DEV) {
 	const fetchMock = mockApi({
 		...teamRoutes(agent),
-		[`PATCH /api/v1/team/agents/${agent.id}`]: agent,
+		[`PATCH /api/v1/team/agents/${agent.id}`]: { ...agent, revision: 2 },
+		'GET /api/v1/cards': { items: [] },
+		'GET /api/v1/runs/active': { items: [] },
 		...extra,
 	})
 	await renderAtPath(
@@ -50,20 +47,16 @@ async function open(props: Page, extra: Routes = {}, agent = DEV) {
 	return fetchMock
 }
 
-function patches(fetchMock: ReturnType<typeof mockApi>) {
+function patches(fetchMock: ReturnType<typeof mockApi>, method = 'PATCH') {
 	return fetchMock.mock.calls
-		.filter(([, init]) => init?.method === 'PATCH')
+		.filter(([, init]) => init?.method === method)
 		.map(([url, init]) => ({
 			path: new URL(String(url)).pathname,
-			body: JSON.parse(String(init?.body)),
+			body: init?.body ? JSON.parse(String(init.body)) : undefined,
 		}))
 }
 
 describe('agent detail page', () => {
-	beforeEach(() => {
-		resetDemoState()
-		resetAgentConfigs()
-	})
 	afterEach(() => {
 		vi.unstubAllGlobals()
 		clearAuth()
@@ -87,19 +80,17 @@ describe('agent detail page', () => {
 				.getByRole('link', { name: 'Exécutions' })
 				.getAttribute('href'),
 		).toBe('/audit/runs')
-		for (const label of [
-			'Définir comme principal',
-			'Assigner une tâche',
-			'Lancer',
-			'Pause',
-			'Archiver',
-		])
+		for (const label of ['Assigner une tâche', 'Pause', 'Archiver'])
 			expect(screen.getByRole('button', { name: label })).toBeTruthy()
+		for (const label of ['Définir comme principal', 'Lancer'])
+			expect(screen.queryByRole('button', { name: label })).toBeNull()
+		expect(screen.queryByText(/Données de démonstration/)).toBeNull()
 	})
 
 	it('falls back to overview and shows the real identity', async () => {
 		await open({ agentId: 'a-dev', tab: 'bogus' })
 		expect(screen.getByText('Harness / Runtime')).toBeTruthy()
+		expect(screen.queryByText('Clé publique')).toBeNull()
 		expect(screen.getByText('Description Dev (cycle autonome)')).toBeTruthy()
 		expect(screen.getByText('Chief of Staff')).toBeTruthy()
 		expect(
@@ -114,13 +105,91 @@ describe('agent detail page', () => {
 		expect(screen.getByText("Connecteurs de l'agent")).toBeTruthy()
 	})
 
-	it('toggles pause and shows a message when launching', async () => {
+	it('lists the cards assigned to the agent and its active run', async () => {
+		const own = card('c0ffee00-0000-4000-8000-000000000001', {
+			title: 'Corriger le build',
+			column: 'in_progress',
+			assignee_agent_id: 'a-dev',
+		})
+		const fetchMock = await open(
+			{ agentId: 'a-dev' },
+			{
+				'GET /api/v1/cards': { items: [own] },
+				'GET /api/v1/runs/active': {
+					items: [
+						{
+							cost_micros: 0,
+							input_tokens: 0,
+							output_tokens: 0,
+							steps_done: 1,
+							steps_total: 3,
+							run: {
+								id: 'r-1',
+								card_id: own.id,
+								title: 'Run du build',
+								created_at: new Date().toISOString(),
+								initiated_by: 'u',
+								pipeline: [],
+								status: 'running',
+							},
+						},
+					],
+				},
+			},
+		)
+		expect(await screen.findByText('Corriger le build')).toBeTruthy()
+		expect(await screen.findByText(/Run du build · étape 2\/3/)).toBeTruthy()
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).includes('assignee_agent_id=a-dev'),
+			),
+		).toBe(true)
+	})
+
+	it('shows an empty task list on the overview', async () => {
+		await open({ agentId: 'a-dev' })
+		expect(
+			await screen.findByText('Aucune tâche assignée à cet agent.'),
+		).toBeTruthy()
+		expect(screen.getByText('Aucun run en cours')).toBeTruthy()
+	})
+
+	it('pauses and resumes through the API', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open({ agentId: 'a-dev' })
+		await user.click(screen.getByRole('button', { name: 'Pause' }))
+		expect(await screen.findByText('Agent mis en pause')).toBeTruthy()
+		expect(patches(fetchMock)[0]).toEqual({
+			path: '/api/v1/team/agents/a-dev',
+			body: { paused: true, change_summary: 'pause' },
+		})
+	})
+
+	it('shows the resume button for a paused agent', async () => {
+		const user = userEvent.setup()
+		const paused = { ...DEV, paused: true }
+		const fetchMock = await open({ agentId: 'a-dev' }, {}, paused)
+		expect(screen.getByText('en pause')).toBeTruthy()
+		await user.click(screen.getByRole('button', { name: 'Reprendre' }))
+		await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
+		expect(patches(fetchMock)[0]?.body).toEqual({
+			paused: false,
+			change_summary: 'reprise',
+		})
+	})
+
+	it('opens the new task dialog with the agent preselected', async () => {
 		const user = userEvent.setup()
 		await open({ agentId: 'a-dev' })
-		await user.click(screen.getByRole('button', { name: 'Pause' }))
-		expect(screen.getByRole('button', { name: 'Reprendre' })).toBeTruthy()
-		await user.click(screen.getByRole('button', { name: 'Lancer' }))
-		expect(screen.getByText('Exécution lancée pour Dev')).toBeTruthy()
+		await user.click(screen.getByRole('button', { name: 'Assigner une tâche' }))
+		const dialog = await screen.findByRole('dialog')
+		expect(within(dialog).getByText('Nouvelle tâche')).toBeTruthy()
+		await waitFor(() =>
+			expect(
+				(within(dialog).getByLabelText('Assigner à') as HTMLSelectElement)
+					.value,
+			).toBe('a-dev'),
+		)
 	})
 
 	it('shows a loading state, then not-found on 404', async () => {
@@ -165,7 +234,10 @@ describe('agent detail page', () => {
 			await user.click(screen.getByRole('button', { name: 'Archiver' }))
 			expect(await screen.findByText('Dev archivé')).toBeTruthy()
 			expect(patches(fetchMock)).toEqual([
-				{ path: '/api/v1/team/agents/a-dev', body: { archived: true } },
+				{
+					path: '/api/v1/team/agents/a-dev',
+					body: { archived: true, change_summary: 'archivage' },
+				},
 			])
 		})
 
@@ -178,7 +250,10 @@ describe('agent detail page', () => {
 			expect(screen.getByText('Archivé')).toBeTruthy()
 			await user.click(screen.getByRole('button', { name: 'Restaurer' }))
 			expect(await screen.findByText('Dev restauré')).toBeTruthy()
-			expect(patches(fetchMock)[0]?.body).toEqual({ archived: false })
+			expect(patches(fetchMock)[0]?.body).toEqual({
+				archived: false,
+				change_summary: 'restauration',
+			})
 		})
 	})
 
@@ -203,15 +278,17 @@ describe('agent detail page', () => {
 			expect(screen.getByText('Modifications non enregistrées')).toBeTruthy()
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 			expect(
-				await screen.findByText('Enregistré · révision 1 créée'),
+				await screen.findByText('Enregistré · révision 2 créée'),
 			).toBeTruthy()
 			expect(patches(fetchMock)).toEqual([
 				{
 					path: '/api/v1/team/agents/a-dev',
-					body: { instructions: '# Dev · Natalia plus' },
+					body: {
+						instructions: '# Dev · Natalia plus',
+						change_summary: 'instructions',
+					},
 				},
 			])
-			expect(getAgentConfig('a-dev').revs[0]?.changed).toBe('instructions')
 		})
 
 		it('cancels an edit without calling the API', async () => {
@@ -247,21 +324,72 @@ describe('agent detail page', () => {
 		})
 	})
 
-	it('shows the empty revisions state, then local revisions', async () => {
-		const user = userEvent.setup()
-		await open({ agentId: 'a-dev', tab: 'rev' })
-		expect(screen.getByText('Aucune révision')).toBeTruthy()
-		seedAgentConfig('a-dev', {
-			...getAgentConfig('a-dev'),
-			rev: 2,
-			revs: [
-				{ label: 'Rév. 2', author: 'A', when: 'x', changed: 'modèle' },
-				{ label: 'Rév. 1', author: 'A', when: 'y', changed: 'nom' },
-			],
+	describe('revisions', () => {
+		it('shows the empty revisions state', async () => {
+			await open(
+				{ agentId: 'a-dev', tab: 'rev' },
+				{ 'GET /api/v1/team/agents/a-dev/revisions': { items: [] } },
+			)
+			expect(await screen.findByText('Aucune révision')).toBeTruthy()
 		})
-		expect(await screen.findByText('Actuelle')).toBeTruthy()
-		await user.click(screen.getByRole('button', { name: 'Restaurer Rév. 1' }))
-		expect(screen.getByText(/Rév. 1 restaurée/)).toBeTruthy()
+
+		it('lists revisions from the API and restores one', async () => {
+			const user = userEvent.setup()
+			const current = { ...DEV, revision: 2 }
+			const fetchMock = await open(
+				{ agentId: 'a-dev', tab: 'rev' },
+				{
+					'GET /api/v1/team/agents/a-dev/revisions': {
+						items: [
+							{
+								revision: 2,
+								changed: 'modèle',
+								author: 'Baptiste',
+								created_at: new Date().toISOString(),
+							},
+							{
+								revision: 1,
+								changed: 'création',
+								author: 'Nathael',
+								created_at: '2026-11-01T00:00:00Z',
+							},
+						],
+					},
+					'POST /api/v1/team/agents/a-dev/revisions/1/restore': {
+						...current,
+						revision: 3,
+					},
+				},
+				current,
+			)
+			expect(await screen.findByText('Modifié : modèle')).toBeTruthy()
+			expect(screen.getByText(/Baptiste · à l'instant/)).toBeTruthy()
+			expect(screen.getByText('Actuelle')).toBeTruthy()
+			await user.click(
+				screen.getByRole('button', { name: 'Restaurer la révision 1' }),
+			)
+			expect(
+				await screen.findByText('Révision 1 restaurée (révision 3 créée)'),
+			).toBeTruthy()
+			expect(patches(fetchMock, 'POST')[0]?.path).toBe(
+				'/api/v1/team/agents/a-dev/revisions/1/restore',
+			)
+		})
+
+		it('shows an error when revisions fail to load', async () => {
+			await open(
+				{ agentId: 'a-dev', tab: 'rev' },
+				{
+					'GET /api/v1/team/agents/a-dev/revisions': {
+						status: 500,
+						body: { code: 'internal', message: 'boom', status: 500 },
+					},
+				},
+			)
+			expect(
+				await screen.findByText('Impossible de charger les révisions.'),
+			).toBeTruthy()
+		})
 	})
 
 	describe('runtime', () => {
@@ -280,13 +408,14 @@ describe('agent detail page', () => {
 			await user.type(screen.getByLabelText('Modèle'), 'claude-haiku-5-5')
 			await user.selectOptions(screen.getByLabelText('Rapporte à'), 'a-legal')
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(await screen.findByText(/Enregistré · révision 1/)).toBeTruthy()
+			expect(await screen.findByText(/Enregistré · révision 2/)).toBeTruthy()
 			expect(patches(fetchMock)[0]?.body).toEqual({
 				name: 'Dev 2',
 				description: 'Nouvelle',
 				role: 'DevOps',
 				model: 'claude-haiku-5-5',
 				reports_to: 'a-legal',
+				change_summary: 'nom, description, rôle, hiérarchie, modèle',
 			})
 		})
 
@@ -312,8 +441,11 @@ describe('agent detail page', () => {
 			expect(patches(fetchMock)).toEqual([])
 			await user.clear(model)
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(await screen.findByText(/Enregistré · révision 1/)).toBeTruthy()
-			expect(patches(fetchMock)[0]?.body).toEqual({ model: '' })
+			expect(await screen.findByText(/Enregistré · révision 2/)).toBeTruthy()
+			expect(patches(fetchMock)[0]?.body).toEqual({
+				model: '',
+				change_summary: 'modèle',
+			})
 		})
 
 		it('moves an agent back to the direction with a null parent', async () => {
@@ -325,7 +457,10 @@ describe('agent detail page', () => {
 			)
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 			await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
-			expect(patches(fetchMock)[0]?.body).toEqual({ reports_to: null })
+			expect(patches(fetchMock)[0]?.body).toEqual({
+				reports_to: null,
+				change_summary: 'hiérarchie',
+			})
 		})
 
 		it('explains a hierarchy cycle rejected by the API', async () => {
@@ -347,73 +482,123 @@ describe('agent detail page', () => {
 			expect(screen.getByText('Modifications non enregistrées')).toBeTruthy()
 		})
 
-		it('keeps local-only changes off the network', async () => {
+		it('stores runtime settings in the agent config', async () => {
 			const user = userEvent.setup()
 			const fetchMock = await open({ agentId: 'a-dev', tab: 'runtime' })
+			expect(
+				screen.queryByRole('button', { name: 'Lancer le test' }),
+			).toBeNull()
 			await user.selectOptions(
 				screen.getByLabelText('Effort de réflexion'),
 				'Élevé',
 			)
 			await user.click(screen.getByRole('switch', { name: 'Activer Chrome' }))
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(getAgentConfig('a-dev').revs[0]?.changed).toBe(
-				'effort de réflexion, Chrome',
+			expect(
+				await screen.findByText('Enregistré · révision 2 créée'),
+			).toBeTruthy()
+			const [patch] = patches(fetchMock)
+			expect(patch?.body.change_summary).toBe('effort de réflexion, Chrome')
+			expect(patch?.body.config).toMatchObject({
+				effort: 'Élevé',
+				chrome: true,
+			})
+			expect(patch?.body).not.toHaveProperty('name')
+		})
+
+		it('reads runtime settings from the agent config', async () => {
+			await open(
+				{ agentId: 'a-dev', tab: 'runtime' },
+				{},
+				{ ...DEV, config: { effort: 'Moyen', chrome: 'oui' } },
 			)
-			expect(screen.getByText('Enregistré · révision 1 créée')).toBeTruthy()
-			expect(patches(fetchMock)).toEqual([])
-			await user.click(screen.getByRole('button', { name: 'Lancer le test' }))
-			expect(screen.getByText(/Test réussi/)).toBeTruthy()
+			expect(
+				(screen.getByLabelText('Effort de réflexion') as HTMLSelectElement)
+					.value,
+			).toBe('Moyen')
+			expect(
+				screen
+					.getByRole('switch', { name: 'Activer Chrome' })
+					.getAttribute('aria-checked'),
+			).toBe('false')
 		})
 	})
 
-	it('permissions tab saves locally with a revision', async () => {
+	it('permissions tab saves into the config', async () => {
 		const user = userEvent.setup()
-		await open({ agentId: 'a-dev', tab: 'perms' })
+		const fetchMock = await open({ agentId: 'a-dev', tab: 'perms' })
 		await user.click(screen.getByRole('switch', { name: 'Créer des agents' }))
 		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-		expect(getAgentConfig('a-dev').fields.pCreate).toBe(true)
-		expect(getAgentConfig('a-dev').revs[0]?.changed).toBe(
-			'droit de créer des agents',
-		)
+		await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
+		expect(patches(fetchMock)[0]?.body).toMatchObject({
+			config: { pCreate: true },
+			change_summary: 'droit de créer des agents',
+		})
 	})
 
-	it('skills: switches, count and autosave message', async () => {
-		const user = userEvent.setup()
-		await open({ agentId: 'a-dev', tab: 'skills' })
-		expect(screen.getByText('8 sur 86')).toBeTruthy()
-		await user.click(screen.getByRole('switch', { name: 'Activer ui-ux' }))
-		expect(screen.getByText('9 sur 86')).toBeTruthy()
-		expect(screen.getByText('ui-ux activée')).toBeTruthy()
-	})
-
-	it('sources: attach and detach through the demo store, keyed by uuid', async () => {
-		const user = userEvent.setup()
-		await open({ agentId: 'a-legal', tab: 'sources' }, {}, LEGAL)
-		expect(screen.getByText("Cet agent n'écoute aucune source")).toBeTruthy()
-		await user.selectOptions(
-			screen.getByLabelText('Source'),
-			'nouveaux-sous-domaines-sensibles',
-		)
-		await user.click(screen.getByRole('button', { name: 'Écouter' }))
-		const source = () =>
-			demoStore.state.sources.find(
-				(s) => s.id === 'nouveaux-sous-domaines-sensibles',
+	describe('skills', () => {
+		it('lists the agent skills and removes one', async () => {
+			const user = userEvent.setup()
+			const fetchMock = await open(
+				{ agentId: 'a-dev', tab: 'skills' },
+				{},
+				{ ...DEV, skills: ['humanizer', 'fix'] },
 			)
-		expect(source()?.agentIds).toContain('a-legal')
-		await user.click(screen.getByRole('button', { name: /Arrêter d'écouter/ }))
-		expect(source()?.agentIds).not.toContain('a-legal')
+			expect(screen.getByText('2 activées')).toBeTruthy()
+			expect(screen.queryByText(/sur 86/)).toBeNull()
+			await user.click(screen.getByRole('button', { name: 'Retirer fix' }))
+			expect(await screen.findByText('fix désactivée')).toBeTruthy()
+			expect(patches(fetchMock)[0]?.body).toEqual({
+				skills: ['humanizer'],
+				change_summary: 'compétences',
+			})
+		})
+
+		it('adds a free-text skill and a suggestion', async () => {
+			const user = userEvent.setup()
+			const fetchMock = await open({ agentId: 'a-dev', tab: 'skills' })
+			expect(screen.getByText('Aucune compétence')).toBeTruthy()
+			await user.type(
+				screen.getByLabelText('Nom de la compétence'),
+				'mon-skill',
+			)
+			await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+			expect(await screen.findByText('mon-skill activée')).toBeTruthy()
+			expect(patches(fetchMock)[0]?.body.skills).toEqual(['mon-skill'])
+			await user.click(screen.getByRole('button', { name: 'Ajouter ui-ux' }))
+			await waitFor(() => expect(patches(fetchMock)).toHaveLength(2))
+			expect(patches(fetchMock)[1]?.body.skills).toEqual(['ui-ux'])
+		})
+	})
+
+	it('sources: shows an honest empty state', async () => {
+		await open({ agentId: 'a-legal', tab: 'sources' }, {}, LEGAL)
+		expect(screen.getByText('Aucune source branchée')).toBeTruthy()
+		expect(screen.queryByRole('button', { name: 'Écouter' })).toBeNull()
 	})
 
 	describe('delegation', () => {
 		it('shows the parent and the sub-agents from reports_to', async () => {
-			await open({ agentId: 'a-legal', tab: 'team' }, {}, LEGAL)
+			await open(
+				{ agentId: 'a-legal', tab: 'team' },
+				{
+					'GET /api/v1/cards': {
+						items: [
+							card('c0ffee00-0000-4000-8000-000000000002', {
+								assignee_agent_id: 'a-registre',
+							}),
+						],
+					},
+				},
+				LEGAL,
+			)
 			expect(
 				(await screen.findAllByRole('link', { name: /Registre/ })).length,
 			).toBeGreaterThan(0)
 			expect(
 				screen.getAllByRole('link', { name: /Chief of Staff/ }).length,
 			).toBeGreaterThan(0)
-			expect(screen.getAllByText(/ouverte/).length).toBeGreaterThan(0)
+			expect(await screen.findByText('1 ouverte')).toBeTruthy()
 			expect(screen.getByText(/n'hérite d'aucun connecteur/)).toBeTruthy()
 		})
 
@@ -430,7 +615,7 @@ describe('agent detail page', () => {
 			await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
 			expect(patches(fetchMock)[0]).toEqual({
 				path: '/api/v1/team/agents/a-registre',
-				body: { reports_to: 'a-chief' },
+				body: { reports_to: 'a-chief', change_summary: 'hiérarchie' },
 			})
 		})
 
@@ -452,7 +637,7 @@ describe('agent detail page', () => {
 			await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
 			expect(patches(fetchMock)[0]).toEqual({
 				path: '/api/v1/team/agents/a-dev',
-				body: { reports_to: 'a-legal' },
+				body: { reports_to: 'a-legal', change_summary: 'hiérarchie' },
 			})
 		})
 
@@ -476,18 +661,44 @@ describe('agent detail page', () => {
 			expect(await screen.findByText(/ne peut pas dépendre/)).toBeTruthy()
 		})
 
-		it('rules form saves with a local revision', async () => {
+		it('lists delegated sub-tasks from the cards', async () => {
+			const parentCard = card('c0ffee00-0000-4000-8000-000000000003', {
+				assignee_agent_id: 'a-legal',
+			})
+			await open(
+				{ agentId: 'a-legal', tab: 'team' },
+				{
+					'GET /api/v1/cards': {
+						items: [
+							parentCard,
+							card('c0ffee00-0000-4000-8000-000000000004', {
+								title: 'Sous-tâche registre',
+								parent_id: parentCard.id,
+								assignee_agent_id: 'a-registre',
+							}),
+						],
+					},
+				},
+				LEGAL,
+			)
+			expect(await screen.findByText('Sous-tâche registre')).toBeTruthy()
+			expect(screen.getByText('Parent c0ffee00')).toBeTruthy()
+		})
+
+		it('rules form saves into the config', async () => {
 			const user = userEvent.setup()
-			await open({ agentId: 'a-dev', tab: 'team' })
+			const fetchMock = await open({ agentId: 'a-dev', tab: 'team' })
 			await user.click(screen.getByRole('switch', { name: 'Peut déléguer' }))
 			await user.selectOptions(
 				screen.getByLabelText('Profondeur maximale'),
 				'3',
 			)
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(getAgentConfig('a-dev').revs[0]?.changed).toBe(
-				'droit de déléguer, profondeur de délégation',
-			)
+			await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
+			expect(patches(fetchMock)[0]?.body).toMatchObject({
+				config: { canDeleg: true, dDepth: '3' },
+				change_summary: 'droit de déléguer, profondeur de délégation',
+			})
 		})
 	})
 
@@ -531,6 +742,7 @@ describe('agent detail page', () => {
 			expect(await screen.findByText('Dev peut utiliser Mestier')).toBeTruthy()
 			expect(patches(fetchMock)[0]?.body).toEqual({
 				connector_grants: ['mestier'],
+				change_summary: 'connecteurs',
 			})
 		})
 
@@ -550,7 +762,10 @@ describe('agent detail page', () => {
 			expect(toggle.getAttribute('aria-checked')).toBe('true')
 			await user.click(toggle)
 			expect(await screen.findByText('Accès retiré à Dev')).toBeTruthy()
-			expect(patches(fetchMock)[0]?.body).toEqual({ connector_grants: [] })
+			expect(patches(fetchMock)[0]?.body).toEqual({
+				connector_grants: [],
+				change_summary: 'connecteurs',
+			})
 		})
 
 		it('flags a connector the user is not connected to', async () => {
@@ -562,6 +777,7 @@ describe('agent detail page', () => {
 			expect(await screen.findByText('Dev peut utiliser Slack')).toBeTruthy()
 			expect(patches(fetchMock)[0]?.body).toEqual({
 				connector_grants: ['slack'],
+				change_summary: 'connecteurs',
 			})
 			expect(screen.getAllByText('Non connecté').length).toBeGreaterThan(0)
 			expect(screen.getByLabelText('Compte GitHub utilisé')).toBeTruthy()

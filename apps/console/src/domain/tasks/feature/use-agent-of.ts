@@ -1,6 +1,6 @@
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
-import { shortName } from '#/domain/demo'
 import type { AgentView } from '#/domain/tasks/ui/tasks-view'
+import { shortName } from '#/lib/agent-name'
 
 const UNASSIGNED: AgentView = {
 	name: 'Non assignée',

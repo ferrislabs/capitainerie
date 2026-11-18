@@ -1,8 +1,5 @@
 import type { Schemas } from '#/api/api.client'
-import {
-	type AgentConfig,
-	buildDefaultConfig,
-} from '#/domain/agent-team/agent-config'
+import { buildDefaultConfig } from '#/domain/agent-team/agent-config'
 import { hueOf } from '#/domain/agent-team/agent-identity'
 import { DIRECTION } from '#/domain/agent-team/constants'
 import { isValidModelId } from '#/domain/agent-team/model-id'
@@ -24,9 +21,7 @@ export interface WizardState {
 	interval: string
 	instr: string
 	skills: ReadonlyArray<string>
-	sources: ReadonlyArray<string>
 	connectors: ReadonlyArray<string>
-	tested: boolean
 }
 
 export const WIZARD_LAST_STEP = 4
@@ -46,9 +41,7 @@ export function initialWizard(): WizardState {
 		interval: '1 h',
 		instr: '',
 		skills: ['paperclip', 'para-memory-files'],
-		sources: [],
 		connectors: [],
-		tested: false,
 	}
 }
 
@@ -84,31 +77,22 @@ export function buildCreateRequest(
 	}
 }
 
-export function buildWizardConfig(
+export function buildWizardPatch(
 	w: WizardState,
 	agent: TeamAgent,
-): AgentConfig {
-	const base = buildDefaultConfig(agent, {
-		title: w.title || `${w.role} · Natalia`,
-		adapter: w.adapter,
-		effort: w.effort,
-		hb: w.interval !== 'Manuelle',
-		interval: w.interval === 'Manuelle' ? '1 h' : w.interval,
-		canDeleg: false,
-		pCreate: false,
-		skills: w.skills,
-		...(w.instr.trim() ? { instr: w.instr } : {}),
-	})
+): Schemas.UpdateTeamAgentRequest {
 	return {
-		...base,
-		rev: 1,
-		revs: [
-			{
-				label: 'Rév. 1',
-				author: 'Baptiste Parmantier',
-				when: "à l'instant",
-				changed: 'création',
-			},
-		],
+		config: {
+			...agent.config,
+			...buildDefaultConfig(agent, {
+				title: w.title.trim() || w.role,
+				adapter: w.adapter,
+				effort: w.effort,
+				hb: w.interval !== 'Manuelle',
+				interval: w.interval === 'Manuelle' ? '1 h' : w.interval,
+			}),
+		},
+		skills: [...w.skills],
+		change_summary: 'configuration initiale',
 	}
 }

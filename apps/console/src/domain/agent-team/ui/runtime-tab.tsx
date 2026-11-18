@@ -1,8 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Play } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Button } from '#/components/ui/button'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import {
 	ADAPTERS,
@@ -22,11 +20,7 @@ import { Toggle } from '#/domain/agent-team/ui/toggle'
 interface Props {
 	form: AgentForm
 	reportsOptions: ReadonlyArray<OptionItem>
-	testResult: string | undefined
 	onChange: (patch: Partial<AgentForm>) => void
-	onTest: () => void
-	onChooseConnection: () => void
-	onAdvanced: () => void
 }
 
 function Select({
@@ -105,11 +99,7 @@ function Switched({
 export function RuntimeTab({
 	form,
 	reportsOptions,
-	testResult,
 	onChange,
-	onTest,
-	onChooseConnection,
-	onAdvanced,
 }: Props): ReactNode {
 	return (
 		<>
@@ -149,26 +139,6 @@ export function RuntimeTab({
 					values={ADAPTERS.map((a) => a.name)}
 					onChange={(adapter) => onChange({ adapter })}
 				/>
-				<div className="border-t px-3 py-2">
-					<b className="font-semibold">
-						Authentification existante, non gérée par les connexions
-					</b>
-					<div className="text-muted-foreground">
-						Cet agent garde son authentification actuelle jusqu'à ce que tu
-						choisisses et testes une connexion gérée. Confirme le compte et les
-						personnes autorisées avant de l'adopter.
-					</div>
-					<p className="mt-2 mb-0">
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={onChooseConnection}
-						>
-							Choisir une connexion gérée
-						</Button>
-					</p>
-				</div>
 			</SectionCard>
 			<SectionCard title="Modèle" flush>
 				<Text
@@ -237,31 +207,6 @@ export function RuntimeTab({
 					values={['15 min', '1 h', '6 h', '24 h']}
 					onChange={(interval) => onChange({ interval })}
 				/>
-				<FieldRow label="Avancé">
-					<button
-						type="button"
-						className="text-xs text-primary"
-						onClick={onAdvanced}
-					>
-						Politique d'exécution avancée
-					</button>
-				</FieldRow>
-			</SectionCard>
-			<SectionCard title="Tester l'agent" flush>
-				<div className="grid grid-cols-[1fr_auto] items-center gap-2.5 px-3 py-2">
-					<span className="text-muted-foreground">
-						Vérifie que le runtime et le modèle répondent.
-					</span>
-					<Button type="button" variant="outline" onClick={onTest}>
-						<Play aria-hidden="true" />
-						Lancer le test
-					</Button>
-				</div>
-				{testResult ? (
-					<output className="mx-3 mb-3 block rounded-[7px] border border-signal-success/45 bg-signal-success/10 px-2.5 py-2 text-signal-success">
-						{testResult}
-					</output>
-				) : null}
 			</SectionCard>
 		</>
 	)

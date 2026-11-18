@@ -1,20 +1,16 @@
 import type { Schemas } from '#/api/api.client'
 import { relativeAge } from '#/domain/dashboard/format'
-import type { DemoTaskStatus } from '#/domain/demo'
 import { shortTaskId } from '#/domain/tasks/task-ids'
 
-export type TaskStatus = Extract<
-	DemoTaskStatus,
-	'backlog' | 'todo' | 'progress' | 'done' | 'cancelled'
->
-
-const STATUS_OF_COLUMN: Record<Schemas.ColumnDto, TaskStatus> = {
+const STATUS_OF_COLUMN = {
 	proposed: 'backlog',
 	todo: 'todo',
 	in_progress: 'progress',
 	done: 'done',
 	rejected: 'cancelled',
-}
+} as const satisfies Record<Schemas.ColumnDto, string>
+
+export type TaskStatus = (typeof STATUS_OF_COLUMN)[Schemas.ColumnDto]
 
 const COLUMN_OF_STATUS: Record<TaskStatus, Schemas.ColumnDto> = {
 	backlog: 'proposed',

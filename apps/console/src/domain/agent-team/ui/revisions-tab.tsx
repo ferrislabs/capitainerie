@@ -1,48 +1,70 @@
+import type { Schemas } from '#/api/api.client'
 import { SectionCard } from '#/components/layout/section-card'
 import { Button } from '#/components/ui/button'
-import type { Revision } from '#/domain/agent-team/agent-config'
 import { Empty, ROW, Rows, Tag, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
+import { relativeAge } from '#/domain/dashboard/format'
 
 interface Props {
-	revisions: ReadonlyArray<Revision>
-	onRestore: (label: string) => void
+	current: number
+	revisions: ReadonlyArray<Schemas.TeamAgentRevisionResponse>
+	loading: boolean
+	error: boolean
+	restoring: boolean
+	onRestore: (revision: number) => void
 }
 
-export function RevisionsTab({ revisions, onRestore }: Props) {
+export function RevisionsTab({
+	current,
+	revisions,
+	loading,
+	error,
+	restoring,
+	onRestore,
+}: Props) {
 	return (
 		<SectionCard title="Révisions" flush>
-			{revisions.length === 0 ? (
+			{error ? (
+				<p role="alert" className="m-0 p-3 text-signal-danger">
+					Impossible de charger les révisions.
+				</p>
+			) : loading ? (
+				<output className="m-0 block p-3 text-muted-foreground">
+					Chargement des révisions…
+				</output>
+			) : revisions.length === 0 ? (
 				<Empty title="Aucune révision">
-					Les modifications enregistrées dans cette session apparaissent ici.
+					Chaque enregistrement de cet agent crée une révision.
 				</Empty>
-			) : null}
-			<Rows>
-				{revisions.map((revision, index) => (
-					<div key={revision.label} className={ROW}>
-						<span className="w-[54px]">
-							<Tag>{revision.label}</Tag>
-						</span>
-						<Ttl
-							title={`Modifié : ${revision.changed}`}
-							sub={`${revision.author} · ${revision.when}`}
-						/>
-						{index === 0 ? (
-							<Sev tone="ok">Actuelle</Sev>
-						) : (
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								aria-label={`Restaurer ${revision.label}`}
-								onClick={() => onRestore(revision.label)}
-							>
-								Restaurer
-							</Button>
-						)}
-					</div>
-				))}
-			</Rows>
+			) : (
+				<Rows>
+					{revisions.map((revision) => (
+						<div key={revision.revision} className={ROW}>
+							<span className="w-[54px]">
+								<Tag>Rév. {revision.revision}</Tag>
+							</span>
+							<Ttl
+								title={`Modifié : ${revision.changed || '—'}`}
+								sub={`${revision.author} · ${relativeAge(revision.created_at)}`}
+							/>
+							{revision.revision === current ? (
+								<Sev tone="ok">Actuelle</Sev>
+							) : (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={restoring}
+									aria-label={`Restaurer la révision ${revision.revision}`}
+									onClick={() => onRestore(revision.revision)}
+								>
+									Restaurer
+								</Button>
+							)}
+						</div>
+					))}
+				</Rows>
+			)}
 		</SectionCard>
 	)
 }

@@ -3,8 +3,11 @@ use axum::{
     extract::{Query, State},
 };
 use axum_extra::routing::TypedPath;
-use capitainerie_common::{ClientId, ProjectId};
-use capitainerie_core::domain::card::attributes::{CardFilter, Priority};
+use capitainerie_common::{AgentId, ClientId, CoreError, ProjectId};
+use capitainerie_core::domain::card::{
+    Column,
+    attributes::{CardFilter, Priority},
+};
 use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -26,6 +29,12 @@ pub struct ListCardsQuery {
     pub assignee: Option<String>,
     /// One label, matched regardless of case.
     pub label: Option<String>,
+    /// The board column: `proposed`, `todo`, `in_progress`, `done` or `rejected`.
+    pub column: Option<String>,
+    /// Alias of `column`, the column being the card's status; both must agree when given together.
+    pub status: Option<String>,
+    /// The agent the card is assigned to.
+    pub assignee_agent_id: Option<AgentId>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -42,7 +51,7 @@ pub struct CardListResponse {
     responses(
         (status = 200, description = "The organization's board, most recently changed first; every filter given must match", body = CardListResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "An unknown priority", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "An unknown priority or column, or a status that contradicts the column", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -52,6 +61,16 @@ pub async fn handler(
     Extension(caller): Extension<Caller>,
     Query(query): Query<ListCardsQuery>,
 ) -> Result<Json<CardListResponse>, ApiError> {
+    let column = query.column.as_deref().map(Column::try_from).transpose()?;
+    let status = query.status.as_deref().map(Column::try_from).transpose()?;
+    let column = match (column, status) {
+        (Some(column), Some(status)) if column != status => {
+            return Err(
+                CoreError::Invalid("the status and the column filters disagree".into()).into(),
+            );
+        }
+        (column, status) => column.or(status),
+    };
     let filter = CardFilter {
         client_id: query.client_id,
         project_id: query.project_id,
@@ -62,6 +81,8 @@ pub async fn handler(
             .transpose()?,
         assignee: query.assignee,
         label: query.label,
+        column,
+        assignee_agent_id: query.assignee_agent_id,
     };
     let cards = state.usecase.list_cards(caller.subject(), filter).await?;
     Ok(Json(CardListResponse {

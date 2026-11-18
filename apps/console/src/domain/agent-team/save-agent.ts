@@ -1,18 +1,31 @@
 import type { Schemas } from '#/api/api.client'
 import {
 	type AgentForm,
-	type ConfigFields,
+	configOf,
 	describeChanges,
 	diffForm,
+	type StoreField,
 } from '#/domain/agent-team/agent-config'
-import {
-	getAgentConfig,
-	updateAgentConfig,
-} from '#/domain/agent-team/agent-config-store'
 import { DIRECTION } from '#/domain/agent-team/constants'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 
+const SUMMARY_MAX = 2000
+
+const STORE_FIELDS: ReadonlySet<keyof AgentForm> = new Set<StoreField>([
+	'name',
+	'description',
+	'role',
+	'model',
+	'reports',
+	'instr',
+])
+
+export function changeSummary(text: string): string {
+	return text.length > SUMMARY_MAX ? text.slice(0, SUMMARY_MAX) : text
+}
+
 export function agentPatch(
+	agent: Pick<TeamAgent, 'config'>,
 	base: AgentForm,
 	next: AgentForm,
 ): Schemas.UpdateTeamAgentRequest {
@@ -26,35 +39,10 @@ export function agentPatch(
 	if (next.instr !== base.instr) patch.instructions = next.instr
 	if (next.reports !== base.reports)
 		patch.reports_to = next.reports === DIRECTION ? null : next.reports
-	return patch
-}
-
-export function recordRevision(
-	agent: TeamAgent,
-	base: AgentForm,
-	next: AgentForm,
-): number {
 	const changed = diffForm(base, next)
-	const config = getAgentConfig(agent.id, agent)
-	const fields = Object.fromEntries(
-		Object.keys(config.fields).map((key) => [
-			key,
-			next[key as keyof AgentForm],
-		]),
-	) as ConfigFields
-	const rev = config.rev + 1
-	updateAgentConfig(agent.id, {
-		fields,
-		rev,
-		revs: [
-			{
-				label: `Rév. ${rev}`,
-				author: 'Baptiste Parmantier',
-				when: "à l'instant",
-				changed: describeChanges(changed),
-			},
-			...config.revs,
-		],
-	})
-	return rev
+	if (changed.some((key) => !STORE_FIELDS.has(key)))
+		patch.config = { ...agent.config, ...configOf(next) }
+	if (Object.keys(patch).length > 0)
+		patch.change_summary = changeSummary(describeChanges(changed))
+	return patch
 }

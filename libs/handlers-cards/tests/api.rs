@@ -1124,6 +1124,7 @@ async fn the_board_filters_by_client_project_priority_assignee_and_label() {
     fixture.member("claire").await;
     let acme = fixture.client_in(org, "Acme").await;
     let site = fixture.project_in(org, "Site", Some(&acme)).await;
+    let agent = fixture.agent_in(org, "dev").await;
     let first = fixture.proposed_card().await;
     let second = fixture.proposed_card().await;
     fixture
@@ -1135,6 +1136,7 @@ async fn the_board_filters_by_client_project_priority_assignee_and_label() {
                 "priority": "high",
                 "assignee_subject": "claire",
                 "labels": ["Infra"],
+                "assignee_agent_id": agent.id.0,
             }),
         )
         .await;
@@ -1157,6 +1159,8 @@ async fn the_board_filters_by_client_project_priority_assignee_and_label() {
         "?assignee=claire".to_owned(),
         "?label=infra".to_owned(),
         format!("?priority=high&label=INFRA&project_id={}", site.id.0),
+        format!("?assignee_agent_id={}", agent.id.0),
+        format!("?column=proposed&assignee_agent_id={}", agent.id.0),
     ] {
         assert_eq!(
             ids(fixture.board(&query).await),
@@ -1164,14 +1168,34 @@ async fn the_board_filters_by_client_project_priority_assignee_and_label() {
             "{query}"
         );
     }
-    for query in ["?priority=low", "?assignee=personne", "?label=autre"] {
-        assert!(ids(fixture.board(query).await).is_empty(), "{query}");
+    for query in [
+        "?priority=low".to_owned(),
+        "?assignee=personne".to_owned(),
+        "?label=autre".to_owned(),
+        "?column=todo".to_owned(),
+        "?status=done".to_owned(),
+        format!("?assignee_agent_id={}", Uuid::now_v7()),
+    ] {
+        assert!(ids(fixture.board(&query).await).is_empty(), "{query}");
+    }
+    for query in [
+        "?column=proposed",
+        "?status=proposed",
+        "?status=proposed&column=proposed",
+    ] {
+        assert_eq!(ids(fixture.board(query).await).len(), 2, "{query}");
     }
     assert!(second.id.0.to_string() != first_id);
-    let response = reqwest::get(format!("{}/api/v1/cards?priority=critique", fixture.base))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 422);
+    for query in [
+        "?priority=critique",
+        "?column=nulle-part",
+        "?column=todo&status=done",
+    ] {
+        let response = reqwest::get(format!("{}/api/v1/cards{query}", fixture.base))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 422, "{query}");
+    }
 }
 
 impl Fixture {

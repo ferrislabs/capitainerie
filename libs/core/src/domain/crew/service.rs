@@ -1,9 +1,12 @@
 use capitainerie_common::{AgentId, CoreError};
 use chrono::Utc;
+use serde_json::Value;
+use uuid::Uuid;
 
 use super::{
-    AgentStatus, ConnectorGrants, CrewAgent, DESCRIPTION_MAX_CHARS, Hue, INSTRUCTIONS_MAX_CHARS,
-    MODEL_MAX_CHARS, ROLE_MAX_CHARS, Slug, closes_a_loop, ports::CrewRepository,
+    AgentConfig, AgentRevision, AgentSnapshot, AgentStatus, CHANGED_MAX_CHARS, ConnectorGrants,
+    CrewAgent, DESCRIPTION_MAX_CHARS, Hue, INSTRUCTIONS_MAX_CHARS, MODEL_MAX_CHARS, ROLE_MAX_CHARS,
+    Skills, Slug, closes_a_loop, ports::CrewRepository,
 };
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
@@ -37,6 +40,13 @@ pub struct UpdateAgent {
     pub archived: Option<bool>,
     pub instructions: Option<String>,
     pub connector_grants: Option<Vec<String>>,
+    /// Replaces the whole object.
+    pub config: Option<Value>,
+    /// Replaces the whole list.
+    pub skills: Option<Vec<String>>,
+    pub paused: Option<bool>,
+    /// What the change is about, kept in the history; empty when absent.
+    pub change_summary: Option<String>,
 }
 
 impl Default for UpdateAgent {
@@ -52,6 +62,10 @@ impl Default for UpdateAgent {
             archived: None,
             instructions: None,
             connector_grants: None,
+            config: None,
+            skills: None,
+            paused: None,
+            change_summary: None,
         }
     }
 }
@@ -68,6 +82,9 @@ impl UpdateAgent {
             && self.archived.is_none()
             && self.instructions.is_none()
             && self.connector_grants.is_none()
+            && self.config.is_none()
+            && self.skills.is_none()
+            && self.paused.is_none()
     }
 }
 
@@ -145,11 +162,22 @@ where
                 true,
             )?,
             connector_grants: ConnectorGrants::try_from(command.connector_grants)?,
+            config: AgentConfig::default(),
+            skills: Skills::default(),
+            paused: false,
+            revision: 1,
             created_by: subject.id,
             created_at: now,
             updated_at: now,
         };
         self.agents.insert(&agent).await?;
+        self.agents
+            .insert_revision(&revision_of(
+                &agent,
+                CREATED.to_owned(),
+                agent.created_by.clone(),
+            ))
+            .await?;
         Ok(agent)
     }
 
@@ -160,6 +188,7 @@ where
         command: UpdateAgent,
     ) -> Result<CrewAgent, CoreError> {
         let organization_id = subject.organization_id;
+        let author = subject.id.clone();
         self.require(subject, Action::AgentManage, Some(id)).await?;
         let mut agent = self
             .agents
@@ -200,6 +229,21 @@ where
         if let Some(archived) = command.archived {
             agent.archived = archived;
         }
+        if let Some(config) = command.config {
+            agent.config = AgentConfig::try_from(config)?;
+        }
+        if let Some(skills) = command.skills {
+            agent.skills = Skills::try_from(skills)?;
+        }
+        if let Some(paused) = command.paused {
+            agent.paused = paused;
+        }
+        let changed = bounded_text(
+            command.change_summary.unwrap_or_default().trim().to_owned(),
+            CHANGED_MAX_CHARS,
+            "change summary",
+            true,
+        )?;
         match command.reports_to {
             Change::Keep => {}
             Change::Clear => agent.reports_to = None,
@@ -216,9 +260,101 @@ where
                 agent.reports_to = Some(manager);
             }
         }
-        agent.updated_at = Utc::now();
-        self.agents.update(&agent).await?;
+        self.record(&mut agent, changed, author).await?;
         Ok(agent)
+    }
+
+    pub async fn revisions(
+        mut self,
+        subject: Subject,
+        id: AgentId,
+    ) -> Result<Vec<AgentRevision>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require(subject, Action::AgentRead, Some(id)).await?;
+        self.agents
+            .find(organization_id, id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        self.agents.list_revisions(organization_id, id).await
+    }
+
+    /// Brings back the state an older revision recorded, as a new revision.
+    pub async fn restore(
+        mut self,
+        subject: Subject,
+        id: AgentId,
+        revision: i32,
+    ) -> Result<CrewAgent, CoreError> {
+        let organization_id = subject.organization_id;
+        let author = subject.id.clone();
+        self.require(subject, Action::AgentManage, Some(id)).await?;
+        let mut agent = self
+            .agents
+            .find(organization_id, id)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        let snapshot = self
+            .agents
+            .find_revision(organization_id, id, revision)
+            .await?
+            .ok_or(CoreError::NotFound)?
+            .snapshot;
+        agent.name = Name::try_from(snapshot.name)?.as_str().to_owned();
+        agent.role = trimmed(snapshot.role, ROLE_MAX_CHARS, "role")?;
+        agent.description = bounded_text(
+            snapshot.description,
+            DESCRIPTION_MAX_CHARS,
+            "description",
+            true,
+        )?;
+        agent.model = trimmed(snapshot.model, MODEL_MAX_CHARS, "model")?;
+        agent.instructions = bounded_text(
+            snapshot.instructions,
+            INSTRUCTIONS_MAX_CHARS,
+            "instructions",
+            true,
+        )?;
+        agent.connector_grants = ConnectorGrants::try_from(snapshot.connector_grants)?;
+        agent.config = AgentConfig::try_from(snapshot.config)?;
+        agent.skills = Skills::try_from(snapshot.skills)?;
+        agent.paused = snapshot.paused;
+        agent.reports_to = match snapshot.reports_to {
+            None => None,
+            Some(manager) => {
+                let all = self.agents.list(organization_id, None).await?;
+                if !all.iter().any(|candidate| candidate.id == manager) {
+                    None
+                } else if closes_a_loop(&all, id, manager) {
+                    return Err(CoreError::Invalid(
+                        "restoring this revision would make the agent report to one of its own reports"
+                            .into(),
+                    ));
+                } else {
+                    Some(manager)
+                }
+            }
+        };
+        self.record(
+            &mut agent,
+            format!("Restauration de la révision {revision}"),
+            author,
+        )
+        .await?;
+        Ok(agent)
+    }
+
+    async fn record(
+        &mut self,
+        agent: &mut CrewAgent,
+        changed: String,
+        author: String,
+    ) -> Result<(), CoreError> {
+        agent.revision += 1;
+        agent.updated_at = Utc::now();
+        self.agents.update(agent).await?;
+        self.agents
+            .insert_revision(&revision_of(agent, changed, author))
+            .await
     }
 
     async fn require(
@@ -232,6 +368,21 @@ where
             AccessRequest::new(subject, action, ResourceKind::Agent, id.map(|id| id.0)),
         )
         .await
+    }
+}
+
+const CREATED: &str = "Création";
+
+fn revision_of(agent: &CrewAgent, changed: String, author: String) -> AgentRevision {
+    AgentRevision {
+        id: Uuid::now_v7(),
+        agent_id: agent.id,
+        organization_id: agent.organization_id,
+        revision: agent.revision,
+        snapshot: AgentSnapshot::from(agent),
+        changed,
+        author,
+        created_at: agent.updated_at,
     }
 }
 
@@ -299,6 +450,9 @@ mod tests {
             .expect_update()
             .returning(|_| Box::pin(async { Ok(()) }));
         repository
+            .expect_insert_revision()
+            .returning(|_| Box::pin(async { Ok(()) }));
+        repository
     }
 
     #[tokio::test]
@@ -307,6 +461,11 @@ mod tests {
         repository
             .expect_insert()
             .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        repository
+            .expect_insert_revision()
+            .times(1)
+            .withf(|revision| revision.revision == 1 && revision.changed == "Création")
             .returning(|_| Box::pin(async { Ok(()) }));
         let authorizer = allow();
         let organization_id = OrganizationId::new();
@@ -322,6 +481,78 @@ mod tests {
         assert!(!created.archived);
         assert_eq!(created.organization_id, organization_id);
         assert_eq!(created.created_by, "user-1");
+        assert_eq!(created.revision, 1);
+    }
+
+    #[tokio::test]
+    async fn an_update_records_a_revision_with_its_summary() {
+        let organization_id = OrganizationId::new();
+        let dev = agent(organization_id, "dev");
+        let mut repository = MockCrewRepository::new();
+        let found = dev.clone();
+        repository.expect_find().returning(move |_, _| {
+            let found = found.clone();
+            Box::pin(async move { Ok(Some(found)) })
+        });
+        repository
+            .expect_update()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        repository
+            .expect_insert_revision()
+            .times(1)
+            .withf(|revision| {
+                revision.revision == 2
+                    && revision.changed == "effort"
+                    && revision.author == "user-1"
+                    && revision.snapshot.paused
+                    && revision.snapshot.config["effort"] == "Max"
+                    && revision.snapshot.skills == ["review"]
+            })
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let authorizer = allow();
+
+        let updated = CrewService::new(repository, &authorizer)
+            .update(
+                human(organization_id),
+                dev.id,
+                UpdateAgent {
+                    config: Some(serde_json::json!({"effort": "Max"})),
+                    skills: Some(vec!["review".into()]),
+                    paused: Some(true),
+                    change_summary: Some(" effort ".into()),
+                    ..UpdateAgent::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.revision, 2);
+        assert_eq!(updated.config.as_map()["effort"], "Max");
+    }
+
+    #[tokio::test]
+    async fn a_config_that_is_not_an_object_is_refused() {
+        let organization_id = OrganizationId::new();
+        let dev = agent(organization_id, "dev");
+        let authorizer = allow();
+        let mut repository = MockCrewRepository::new();
+        let found = dev.clone();
+        repository.expect_find().returning(move |_, _| {
+            let found = found.clone();
+            Box::pin(async move { Ok(Some(found)) })
+        });
+        let error = CrewService::new(repository, &authorizer)
+            .update(
+                human(organization_id),
+                dev.id,
+                UpdateAgent {
+                    config: Some(serde_json::json!(["not", "an", "object"])),
+                    ..UpdateAgent::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(error, CoreError::Invalid(_)));
     }
 
     #[tokio::test]

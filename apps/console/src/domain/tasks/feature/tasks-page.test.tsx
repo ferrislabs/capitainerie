@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
 import { TasksPage } from '#/domain/tasks/feature/tasks-page'
+import type { TasksSearch } from '#/domain/tasks/task-search'
 import {
 	AGENT_LEAD,
 	AGENTS_ROUTE,
@@ -55,9 +56,9 @@ afterEach(() => {
 	clearAuth()
 })
 
-const render = (view: 'liste' | 'tableau' = 'liste') =>
+const render = (search: Partial<TasksSearch> = {}) =>
 	renderAtPath(
-		withQueryClient(<TasksPage view={view} query="" />),
+		withQueryClient(<TasksPage search={{ vue: 'liste', q: '', ...search }} />),
 		'/tasks',
 		EXTRA,
 	)
@@ -84,7 +85,7 @@ describe('TasksPage', () => {
 
 	it('renders the board with the four real columns', async () => {
 		mockApi(BASE)
-		await render('tableau')
+		await render({ vue: 'tableau' })
 		await screen.findByText('Alpha')
 		expect(screen.getByRole('region', { name: 'Proposé' })).toBeTruthy()
 		expect(screen.getByRole('region', { name: 'Terminé' })).toBeTruthy()
@@ -106,6 +107,75 @@ describe('TasksPage', () => {
 		)
 		expect(screen.queryByText('Alpha')).toBeNull()
 		expect(screen.getByText('Beta')).toBeTruthy()
+	})
+
+	it('applies the status, agent and project filters from the URL', async () => {
+		mockApi(BASE)
+		await render({ statut: 'progress' })
+		expect(await screen.findByText('Alpha')).toBeTruthy()
+		expect(screen.queryByText('Beta')).toBeNull()
+		expect(screen.queryByText('Gamma')).toBeNull()
+	})
+
+	it('keeps the unassigned and project filters', async () => {
+		mockApi(BASE)
+		const { unmount } = await render({ agent: 'aucun' })
+		expect(await screen.findByText('Beta')).toBeTruthy()
+		expect(screen.queryByText('Alpha')).toBeNull()
+		unmount()
+		await render({ projet: 'p1' })
+		expect(await screen.findByText('Alpha')).toBeTruthy()
+		expect(screen.queryByText('Beta')).toBeNull()
+	})
+
+	it('writes the chosen filter, sort and grouping to the URL', async () => {
+		mockApi(BASE)
+		const { router } = await render()
+		await screen.findByText('Alpha')
+		fireEvent.click(screen.getByRole('button', { name: 'Filtrer' }))
+		fireEvent.change(screen.getByLabelText('Statut'), {
+			target: { value: 'done' },
+		})
+		await waitFor(() =>
+			expect(router.state.location.search).toMatchObject({ statut: 'done' }),
+		)
+		fireEvent.click(screen.getByRole('button', { name: 'Trier' }))
+		fireEvent.change(screen.getByLabelText('Trier par'), {
+			target: { value: 'titre' },
+		})
+		await waitFor(() =>
+			expect(router.state.location.search).toMatchObject({ tri: 'titre' }),
+		)
+		fireEvent.click(screen.getByRole('button', { name: 'Grouper' }))
+		fireEvent.change(screen.getByLabelText('Grouper par'), {
+			target: { value: 'agent' },
+		})
+		await waitFor(() =>
+			expect(router.state.location.search).toMatchObject({ groupe: 'agent' }),
+		)
+	})
+
+	it('groups by agent and by project', async () => {
+		mockApi(BASE)
+		const { unmount } = await render({ groupe: 'agent' })
+		expect(
+			await screen.findByRole('region', { name: 'Veille légale' }),
+		).toBeTruthy()
+		expect(screen.getByRole('region', { name: 'Non assignée' })).toBeTruthy()
+		unmount()
+		await render({ groupe: 'projet' })
+		expect(
+			await screen.findByRole('region', { name: 'Site vitrine' }),
+		).toBeTruthy()
+		expect(screen.getByRole('region', { name: 'Sans projet' })).toBeTruthy()
+	})
+
+	it('sorts by title', async () => {
+		mockApi(BASE)
+		await render({ groupe: 'projet', tri: 'titre' })
+		const region = await screen.findByRole('region', { name: 'Sans projet' })
+		const text = region.textContent ?? ''
+		expect(text.indexOf('Beta')).toBeLessThan(text.indexOf('Gamma'))
 	})
 
 	it('shows an empty state', async () => {

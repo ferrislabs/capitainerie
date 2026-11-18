@@ -122,64 +122,6 @@ export function subAgentIds(state: DemoState, agentId: string): string[] {
 		.map((a) => a.id)
 }
 
-/** Chaîne hiérarchique au-dessus de `agentId`, du parent direct vers la direction. */
-export function ancestorIds(state: DemoState, agentId: string): string[] {
-	const chain: string[] = []
-	let name = state.reportsTo[agentId] ?? null
-	while (name && chain.length < 16) {
-		const parent = state.agents.find((a) => shortName(a.name) === name)
-		if (!parent || parent.id === agentId || chain.includes(parent.id)) break
-		chain.push(parent.id)
-		name = state.reportsTo[parent.id] ?? null
-	}
-	return chain
-}
-
-export function agentsWithGrant(state: DemoState, connector: string): string[] {
-	return state.agents
-		.filter((a) => (state.grants[a.id] ?? []).includes(connector))
-		.map((a) => a.id)
-}
-
-export function addTask(task: DemoTask): void {
-	demoStore.setState((state) => ({ ...state, tasks: [task, ...state.tasks] }))
-}
-
-export function updateTask(
-	id: string,
-	patch: Partial<Omit<DemoTask, 'id'>>,
-): void {
-	demoStore.setState((state) => ({
-		...state,
-		tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-	}))
-}
-
-/** Identifiant suivant, au format `NAT-<n>`, sans collision avec une tâche existante. */
-export function nextTaskId(state: DemoState): string {
-	const max = state.tasks.reduce((highest, task) => {
-		const n = Number(task.id.replace(/^NAT-/, ''))
-		return Number.isFinite(n) ? Math.max(highest, n) : highest
-	}, 0)
-	return `NAT-${max + 1}`
-}
-
-export function childTasks(state: DemoState, taskId: string): DemoTask[] {
-	return state.tasks.filter((t) => t.parentId === taskId)
-}
-
-/** Nombre d'ancêtres d'une tâche : 0 pour une tâche sans parent. */
-export function taskDepth(state: DemoState, taskId: string): number {
-	let depth = 0
-	let current = state.tasks.find((t) => t.id === taskId)
-	while (current?.parentId && depth < 16) {
-		depth++
-		const parentId: string = current.parentId
-		current = state.tasks.find((t) => t.id === parentId)
-	}
-	return depth
-}
-
 export function addApproval(approval: DemoApproval): void {
 	demoStore.setState((state) => ({
 		...state,

@@ -13,6 +13,7 @@ import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
 interface Props {
 	open: boolean
 	onOpenChange: (open: boolean) => void
+	defaultAgentId?: string
 }
 
 const NONE = ''
@@ -37,7 +38,11 @@ function createError(error: unknown): string {
 	return 'La création a échoué. Réessaie.'
 }
 
-export function NewTaskDialog({ open, onOpenChange }: Props) {
+export function NewTaskDialog({
+	open,
+	onOpenChange,
+	defaultAgentId = NONE,
+}: Props) {
 	const agents = useTeamAgents().data?.items ?? []
 	const projects = useProjects(false).data?.items ?? []
 	const cards = useCards().data?.items
@@ -45,7 +50,7 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 	const navigate = useNavigate()
 	const [title, setTitle] = useState('')
 	const [description, setDescription] = useState('')
-	const [agentId, setAgentId] = useState(NONE)
+	const [agentId, setAgentId] = useState(defaultAgentId)
 	const [projectId, setProjectId] = useState(NONE)
 	const [priority, setPriority] = useState<Schemas.PriorityDto>('normal')
 	const [parentId, setParentId] = useState(NONE)
@@ -63,7 +68,7 @@ export function NewTaskDialog({ open, onOpenChange }: Props) {
 	const close = () => {
 		setTitle('')
 		setDescription('')
-		setAgentId(NONE)
+		setAgentId(defaultAgentId)
 		setProjectId(NONE)
 		setPriority('normal')
 		setParentId(NONE)

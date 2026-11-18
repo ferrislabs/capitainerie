@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { FileText, Plus } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { SectionCard } from '#/components/layout/section-card'
 import { CTL } from '#/domain/agent-team/ui/field-row'
 import { cn } from '#/lib/utils'
@@ -17,35 +17,15 @@ interface Props {
 	mode: InstructionsMode
 	instr: string
 	onChange: (instr: string) => void
-	onNotify: (message: string) => void
 }
 
 const DOC =
 	'm-0 whitespace-pre-wrap px-3.5 py-3 font-[inherit] leading-[1.4] [overflow-wrap:anywhere]'
 
-export function InstructionsTab({
-	agentId,
-	mode,
-	instr,
-	onChange,
-	onNotify,
-}: Props) {
+export function InstructionsTab({ agentId, mode, instr, onChange }: Props) {
 	return (
 		<div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-2.5">
-			<SectionCard
-				title="Fichiers"
-				flush
-				actions={
-					<button
-						type="button"
-						aria-label="Ajouter"
-						onClick={() => onNotify("Nouveau fichier d'instructions")}
-						className="grid size-[22px] place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-					>
-						<Plus aria-hidden="true" className="size-4" />
-					</button>
-				}
-			>
+			<SectionCard title="Fichiers" flush>
 				<div className="grid content-start gap-0.5 p-2">
 					<div className="flex h-7 items-center gap-[7px] rounded-md bg-secondary px-2 text-left">
 						<FileText aria-hidden="true" className="size-4" />

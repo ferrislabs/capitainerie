@@ -5,7 +5,7 @@ use super::CapitainerieUseCase;
 use crate::domain::{
     authorization::Subject,
     crew::{
-        CrewAgent,
+        AgentRevision, CrewAgent,
         service::{CreateAgent, CrewService, UpdateAgent},
     },
 };
@@ -53,6 +53,29 @@ impl CapitainerieUseCase {
     ) -> Result<CrewAgent, CoreError> {
         CrewService::new(crew_agent_repository, authz)
             .update(subject, id, command)
+            .await
+    }
+
+    #[transactional(crew_agent, authz)]
+    pub async fn list_crew_agent_revisions(
+        &self,
+        subject: Subject,
+        id: AgentId,
+    ) -> Result<Vec<AgentRevision>, CoreError> {
+        CrewService::new(crew_agent_repository, authz)
+            .revisions(subject, id)
+            .await
+    }
+
+    #[transactional(crew_agent, authz)]
+    pub async fn restore_crew_agent_revision(
+        &self,
+        subject: Subject,
+        id: AgentId,
+        revision: i32,
+    ) -> Result<CrewAgent, CoreError> {
+        CrewService::new(crew_agent_repository, authz)
+            .restore(subject, id, revision)
             .await
     }
 }

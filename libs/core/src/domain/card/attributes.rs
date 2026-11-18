@@ -232,6 +232,8 @@ pub struct CardFilter {
     pub priority: Option<Priority>,
     pub assignee: Option<String>,
     pub label: Option<String>,
+    pub column: Option<super::Column>,
+    pub assignee_agent_id: Option<AgentId>,
 }
 
 #[cfg(test)]

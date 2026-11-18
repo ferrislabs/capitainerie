@@ -8,15 +8,23 @@ import {
 } from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { STATUS_LABEL, STATUS_ORDER } from '#/domain/tasks/task-list'
-import { AgentChip } from '#/domain/tasks/ui/agent-chip'
+import { AgentAvatar } from '#/domain/tasks/ui/agent-chip'
 import type { AgentView } from '#/domain/tasks/ui/tasks-view'
+
+export interface AssigneeOption {
+	id: string
+	name: string
+}
 
 interface Props {
 	task: Task
 	agent: AgentView
+	agents: ReadonlyArray<AssigneeOption>
 	subtasks: ReadonlyArray<Task>
 	busy?: boolean
+	assigning?: boolean
 	onStatus: (status: TaskStatus) => void
+	onAssign: (agentId: string | null) => void
 	onClose: () => void
 }
 
@@ -55,11 +63,15 @@ const formatDate = (iso: string): string => {
 export function PropertiesPanel({
 	task,
 	agent,
+	agents,
 	subtasks,
 	busy = false,
+	assigning = false,
 	onStatus,
+	onAssign,
 	onClose,
 }: Props) {
+	const known = agents.some((a) => a.id === task.agentId)
 	const card = task.card
 	return (
 		<aside
@@ -94,21 +106,39 @@ export function PropertiesPanel({
 					</select>
 				</Row>
 				<Row label="Assigné à">
-					{task.agentId ? (
-						<Link
-							to="/agents/$agentId/{-$tab}"
-							params={{ agentId: task.agentId }}
-							className="text-foreground"
+					<span className="flex min-w-0 items-center gap-1.5">
+						{task.agentId ? <AgentAvatar hue={agent.hue} size={16} /> : null}
+						<select
+							aria-label="Assigné à"
+							value={task.agentId ?? ''}
+							disabled={assigning}
+							onChange={(event) => onAssign(event.target.value || null)}
+							className="min-w-0 max-w-full flex-1 border-0 bg-transparent py-0.5"
 						>
-							<AgentChip
-								name={agent.name}
-								hue={agent.hue}
-								className="text-foreground"
-							/>
-						</Link>
-					) : (
-						'Personne'
-					)}
+							<option value="" className="bg-card">
+								Personne
+							</option>
+							{task.agentId && !known ? (
+								<option value={task.agentId} className="bg-card">
+									{agent.name}
+								</option>
+							) : null}
+							{agents.map((a) => (
+								<option key={a.id} value={a.id} className="bg-card">
+									{a.name}
+								</option>
+							))}
+						</select>
+						{task.agentId ? (
+							<Link
+								to="/agents/$agentId/{-$tab}"
+								params={{ agentId: task.agentId }}
+								className={LINK}
+							>
+								Profil
+							</Link>
+						) : null}
+					</span>
 				</Row>
 				<Row label="Priorité">{PRIORITY_LABEL[card.priority]}</Row>
 				<Row label="Projet">{task.project || 'Aucun'}</Row>

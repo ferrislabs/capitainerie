@@ -341,3 +341,144 @@ async fn an_agent_caller_cannot_read_or_manage_the_registry() {
         .unwrap();
     assert_eq!(stored, 0);
 }
+
+#[tokio::test]
+async fn every_change_is_a_revision_and_an_old_one_can_be_restored() {
+    let Some(fixture) = fixture(None).await else {
+        return;
+    };
+    let (status, created) = fixture
+        .post(
+            "/api/v1/team/agents",
+            json!({"slug": "dev", "name": "Dev", "role": "Développeur"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["revision"], 1);
+    assert_eq!(created["config"], json!({}));
+    assert_eq!(created["skills"], json!([]));
+    assert_eq!(created["paused"], false);
+    let path = format!("/api/v1/team/agents/{}", created["id"].as_str().unwrap());
+
+    let (status, configured) = fixture
+        .patch(
+            &path,
+            json!({
+                "config": {"effort": "Max", "turns": "12", "chrome": true},
+                "skills": ["review", "review", "deploy"],
+                "paused": true,
+                "change_summary": "effort de réflexion, tours max",
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{configured}");
+    assert_eq!(configured["revision"], 2);
+    assert_eq!(configured["config"]["effort"], "Max");
+    assert_eq!(configured["skills"], json!(["review", "deploy"]));
+    assert_eq!(configured["paused"], true);
+
+    let (status, renamed) = fixture.patch(&path, json!({"name": "Dév"})).await;
+    assert_eq!(status, StatusCode::OK, "{renamed}");
+    assert_eq!(renamed["revision"], 3);
+    let (_, detail) = fixture.get(&path).await;
+    assert_eq!(detail["revision"], 3);
+    assert_eq!(detail["config"]["chrome"], true);
+
+    let (status, history) = fixture.get(&format!("{path}/revisions")).await;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let items = history["items"].as_array().unwrap();
+    let numbers: Vec<i64> = items
+        .iter()
+        .map(|item| item["revision"].as_i64().unwrap())
+        .collect();
+    assert_eq!(numbers, [3, 2, 1]);
+    assert_eq!(items[0]["changed"], "");
+    assert_eq!(items[1]["changed"], "effort de réflexion, tours max");
+    assert_eq!(items[2]["changed"], "Création");
+    assert!(items.iter().all(|item| item["author"] == "user-1"));
+
+    let (status, restored) = fixture
+        .post(&format!("{path}/revisions/1/restore"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{restored}");
+    assert_eq!(restored["revision"], 4);
+    assert_eq!(restored["name"], "Dev");
+    assert_eq!(restored["config"], json!({}));
+    assert_eq!(restored["skills"], json!([]));
+    assert_eq!(restored["paused"], false);
+    assert_eq!(restored["role"], "Développeur");
+    let (_, history) = fixture.get(&format!("{path}/revisions")).await;
+    assert_eq!(history["items"][0]["revision"], 4);
+    assert_eq!(
+        history["items"][0]["changed"],
+        "Restauration de la révision 1"
+    );
+
+    let (status, back) = fixture
+        .post(&format!("{path}/revisions/2/restore"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{back}");
+    assert_eq!(back["revision"], 5);
+    assert_eq!(back["name"], "Dev");
+    assert_eq!(back["config"]["effort"], "Max");
+    assert_eq!(back["paused"], true);
+
+    let (status, _) = fixture
+        .post(&format!("{path}/revisions/99/restore"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM agent_revisions WHERE organization_id = $1")
+            .bind(fixture.organization.id.0)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, 5);
+}
+
+#[tokio::test]
+async fn an_invalid_config_is_refused_and_records_nothing() {
+    let Some(mine) = fixture(None).await else {
+        return;
+    };
+    let (_, created) = mine
+        .post("/api/v1/team/agents", json!({"slug": "dev", "name": "Dev"}))
+        .await;
+    let path = format!("/api/v1/team/agents/{}", created["id"].as_str().unwrap());
+    for body in [
+        json!({"config": [1, 2]}),
+        json!({"config": "x"}),
+        json!({"config": {"blob": "a".repeat(70_000)}}),
+        json!({"skills": ["a,b"]}),
+        json!({"name": "x", "change_summary": "a".repeat(2_001)}),
+    ] {
+        let (status, _) = mine.patch(&path, body).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    let (_, history) = mine.get(&format!("{path}/revisions")).await;
+    assert_eq!(history["items"].as_array().unwrap().len(), 1);
+
+    let Some(other) = fixture(None).await else {
+        return;
+    };
+    let (status, _) = other.get(&format!("{path}/revisions")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = other
+        .post(&format!("{path}/revisions/1/restore"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn an_agent_caller_cannot_read_or_restore_the_history() {
+    let Some(fixture) = fixture(Some("capitainerie-agent-writer")).await else {
+        return;
+    };
+    let path = format!("/api/v1/team/agents/{}", Uuid::now_v7());
+    let (status, _) = fixture.get(&format!("{path}/revisions")).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = fixture
+        .post(&format!("{path}/revisions/1/restore"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}

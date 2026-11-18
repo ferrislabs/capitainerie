@@ -35,6 +35,34 @@ export function useTeamAgent(agentId: string) {
 	})
 }
 
+export function useTeamAgentRevisions(agentId: string, enabled = true) {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/team/agents/{agent_id}/revisions', {
+			path: { agent_id: agentId },
+		}).queryOptions,
+		enabled: Boolean(accessToken) && enabled,
+	})
+}
+
+export function useAgentCards(agentId: string) {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/cards', {
+			query: { assignee_agent_id: agentId },
+		}).queryOptions,
+		enabled: Boolean(accessToken),
+	})
+}
+
+export function useActiveRuns() {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/runs/active').queryOptions,
+		enabled: Boolean(accessToken),
+	})
+}
+
 export function useCreateTeamAgent() {
 	const client = useQueryClient()
 	return useMutation({
@@ -48,6 +76,17 @@ export function useUpdateTeamAgent() {
 	return useMutation({
 		...tanstackApi.mutation('patch', '/api/v1/team/agents/{agent_id}')
 			.mutationOptions,
+		onSuccess: () => invalidatePath(client, '/api/v1/team/agents'),
+	})
+}
+
+export function useRestoreTeamAgentRevision() {
+	const client = useQueryClient()
+	return useMutation({
+		...tanstackApi.mutation(
+			'post',
+			'/api/v1/team/agents/{agent_id}/revisions/{revision}/restore',
+		).mutationOptions,
 		onSuccess: () => invalidatePath(client, '/api/v1/team/agents'),
 	})
 }
