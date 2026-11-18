@@ -45,6 +45,20 @@ export namespace Schemas {
     steps_total: number;
   };
   export type ActiveRunListResponse = { items: Array<ActiveRunResponse> };
+  export type TriggerKindDto = "planning" | "webhook";
+  export type FrequencyDto = "every_hours" | "daily" | "weekly" | "monthly" | "cron";
+  export type ScheduleDto = {
+    cron?: (string | null) | undefined;
+    days?: Array<string> | undefined;
+    frequency: FrequencyDto;
+    hours?: (number | null) | undefined;
+    time?: (string | null) | undefined;
+  };
+  export type AddTriggerRequest = {
+    enabled?: (boolean | null) | undefined;
+    kind: TriggerKindDto;
+    schedule?: (null | ScheduleDto) | undefined;
+  };
   export type AgentId = string;
   export type AgentResponse = {
     agent: string;
@@ -54,6 +68,7 @@ export namespace Schemas {
     output_tokens: number;
     runs: number;
   };
+  export type AgentRunStatusDto = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type ApprovalDecisionDto = "approve" | "reject";
   export type ApprovalId = string;
@@ -76,6 +91,7 @@ export namespace Schemas {
   export type ApprovalListResponse = { items: Array<ApprovalResponse>; pending: number };
   export type AuthorizeMcpConnectorResponse = { authorization_url: string };
   export type CapabilitiesResponse = { chat: boolean; embeddings: boolean; ocr: boolean; transcription: boolean };
+  export type CardColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
   export type CardCommentId = string;
   export type CriterionDto = { done: boolean; text: string };
   export type ColumnDto = "proposed" | "todo" | "in_progress" | "done" | "rejected";
@@ -260,6 +276,23 @@ export namespace Schemas {
     name: string;
     repository?: (string | null) | undefined;
   };
+  export type IfMissedDto = "skip" | "run_once" | "run_all";
+  export type IfOpenDto = "skip" | "queue" | "always";
+  export type CreateRoutineRequest = {
+    agent_id: AgentId;
+    allow_writes?: boolean | undefined;
+    enabled?: (boolean | null) | undefined;
+    if_missed?: (null | IfMissedDto) | undefined;
+    if_open?: (null | IfOpenDto) | undefined;
+    name: string;
+    priority?: (null | PriorityDto) | undefined;
+    project_id?: (null | ProjectId) | undefined;
+    prompt: string;
+    schedule?: (null | ScheduleDto) | undefined;
+    slug?: (string | null) | undefined;
+    timezone?: (string | null) | undefined;
+    title_template?: (string | null) | undefined;
+  };
   export type CreateSkillRequest = {
     content?: (string | null) | undefined;
     description?: (string | null) | undefined;
@@ -402,6 +435,66 @@ export namespace Schemas {
     updated_at: string;
   };
   export type IssuedSourceResponse = { source: SourceResponse; token: string; webhook_url: string };
+  export type RunCountsResponse = { created: number; failed: number; skipped: number };
+  export type RoutineId = string;
+  export type RoutineRunId = string;
+  export type RunOriginDto = "planning" | "manual" | "webhook";
+  export type RoutineRunStatusDto = "pending" | "queued" | "created" | "skipped" | "failed";
+  export type RoutineTriggerId = string;
+  export type RoutineRunResponse = {
+    card_column?: (null | CardColumnDto) | undefined;
+    card_id?: (null | CardId) | undefined;
+    id: RoutineRunId;
+    origin: RunOriginDto;
+    reason?: (string | null) | undefined;
+    routine_id: RoutineId;
+    run_finished_at?: (string | null) | undefined;
+    run_id?: (null | RunId) | undefined;
+    run_started_at?: (string | null) | undefined;
+    run_status?: (null | AgentRunStatusDto) | undefined;
+    scheduled_for: string;
+    started_at: string;
+    status: RoutineRunStatusDto;
+    trigger_id?: (null | RoutineTriggerId) | undefined;
+  };
+  export type TriggerResponse = {
+    enabled: boolean;
+    id: RoutineTriggerId;
+    kind: TriggerKindDto;
+    next_run_at?: (string | null) | undefined;
+    schedule?: (null | ScheduleDto) | undefined;
+    token_hint?: (string | null) | undefined;
+  };
+  export type RoutineResponse = {
+    agent_id: AgentId;
+    allow_writes: boolean;
+    archived: boolean;
+    counts: RunCountsResponse;
+    created_at: string;
+    created_by: string;
+    enabled: boolean;
+    id: RoutineId;
+    if_missed: IfMissedDto;
+    if_open: IfOpenDto;
+    last_run?: (null | RoutineRunResponse) | undefined;
+    last_run_at?: (string | null) | undefined;
+    name: string;
+    next_run_at?: (string | null) | undefined;
+    priority: PriorityDto;
+    project_id?: (null | ProjectId) | undefined;
+    prompt: string;
+    slug: string;
+    timezone: string;
+    title_template: string;
+    triggers: Array<TriggerResponse>;
+    updated_at: string;
+  };
+  export type IssuedTriggerResponse = {
+    routine: RoutineResponse;
+    token?: (string | null) | undefined;
+    trigger_id: RoutineTriggerId;
+    webhook_url?: (string | null) | undefined;
+  };
   export type LaunchWorksitesRequest = {
     issues?: Array<number> | undefined;
     prompts?: Array<string> | undefined;
@@ -515,6 +608,8 @@ export namespace Schemas {
   };
   export type RepositoryListResponse = { repositories: Array<RepositoryResponse> };
   export type RevertIntegrationActionRequest = Partial<{ confirm_production: boolean }>;
+  export type RoutineListResponse = { items: Array<RoutineResponse> };
+  export type RoutineRunListResponse = { items: Array<RoutineRunResponse>; total: number };
   export type RunAgentRequest = { allow_writes?: boolean | undefined; expected_version: number };
   export type RunAgentResponse = { run_id: RunId };
   export type RunListResponse = { items: Array<RunResponse>; total: number };
@@ -636,6 +731,21 @@ export namespace Schemas {
     name: string | null;
     repository: string | null;
   }>;
+  export type UpdateRoutineRequest = Partial<{
+    agent_id: null | AgentId;
+    allow_writes: boolean | null;
+    archived: boolean | null;
+    enabled: boolean | null;
+    if_missed: null | IfMissedDto;
+    if_open: null | IfOpenDto;
+    name: string | null;
+    priority: null | PriorityDto;
+    project_id: null | ProjectId;
+    prompt: string | null;
+    slug: string | null;
+    timezone: string | null;
+    title_template: string | null;
+  }>;
   export type UpdateSkillRequest = Partial<{
     archived: boolean | null;
     content: string | null;
@@ -672,6 +782,7 @@ export namespace Schemas {
     skills: Array<string> | null;
     slug: string | null;
   }>;
+  export type UpdateTriggerRequest = Partial<{ enabled: boolean | null; schedule: null | ScheduleDto }>;
   export type UserProviderResponse = {
     base_url?: (string | null) | undefined;
     default_model: string;
@@ -1630,6 +1741,169 @@ export namespace Endpoints {
       404: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListRoutines = {
+    method: "GET";
+    path: "/api/v1/routines";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+    };
+    responses: { 200: Schemas.RoutineListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateRoutine = {
+    method: "POST";
+    path: "/api/v1/routines";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateRoutineRequest;
+    };
+    responses: {
+      201: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetRoutine = {
+    method: "GET";
+    path: "/api/v1/routines/{routine_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string };
+    };
+    responses: {
+      200: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateRoutine = {
+    method: "PATCH";
+    path: "/api/v1/routines/{routine_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string };
+
+      body: Schemas.UpdateRoutineRequest;
+    };
+    responses: {
+      200: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_ArchiveRoutine = {
+    method: "POST";
+    path: "/api/v1/routines/{routine_id}/archive";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string };
+    };
+    responses: {
+      200: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_LaunchRoutine = {
+    method: "POST";
+    path: "/api/v1/routines/{routine_id}/launch";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string };
+    };
+    responses: {
+      202: Schemas.RoutineRunResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListRoutineRuns = {
+    method: "GET";
+    path: "/api/v1/routines/{routine_id}/runs";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ limit: number; offset: number }>;
+      path: { routine_id: string };
+    };
+    responses: {
+      200: Schemas.RoutineRunListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_AddRoutineTrigger = {
+    method: "POST";
+    path: "/api/v1/routines/{routine_id}/triggers";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string };
+
+      body: Schemas.AddTriggerRequest;
+    };
+    responses: {
+      201: Schemas.IssuedTriggerResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type delete_RemoveRoutineTrigger = {
+    method: "DELETE";
+    path: "/api/v1/routines/{routine_id}/triggers/{trigger_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string; trigger_id: string };
+    };
+    responses: {
+      200: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateRoutineTrigger = {
+    method: "PATCH";
+    path: "/api/v1/routines/{routine_id}/triggers/{trigger_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string; trigger_id: string };
+
+      body: Schemas.UpdateTriggerRequest;
+    };
+    responses: {
+      200: Schemas.RoutineResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_RotateRoutineTriggerToken = {
+    method: "POST";
+    path: "/api/v1/routines/{routine_id}/triggers/{trigger_id}/rotate-token";
+    requestFormat: "json";
+    parameters: {
+      path: { routine_id: string; trigger_id: string };
+    };
+    responses: {
+      200: Schemas.IssuedTriggerResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListRuns = {
     method: "GET";
     path: "/api/v1/runs";
@@ -1995,6 +2269,15 @@ export namespace Endpoints {
     parameters: never;
     responses: { 204: unknown; 503: Schemas.ApiErrorResponse };
   };
+  export type post_TriggerRoutine = {
+    method: "POST";
+    path: "/hooks/routines/{token}";
+    requestFormat: "json";
+    parameters: {
+      path: { token: string };
+    };
+    responses: { 202: Schemas.RoutineRunResponse; 404: Schemas.ApiErrorResponse };
+  };
   export type post_ReceiveSourceEvent = {
     method: "POST";
     path: "/hooks/sources/{token}";
@@ -2046,6 +2329,9 @@ export type EndpointByMethod = {
     "/api/v1/projects/{project_id}": Endpoints.get_GetProject;
     "/api/v1/projects/{project_id}/worksites": Endpoints.get_ListWorksites;
     "/api/v1/providers": Endpoints.get_ListProviders;
+    "/api/v1/routines": Endpoints.get_ListRoutines;
+    "/api/v1/routines/{routine_id}": Endpoints.get_GetRoutine;
+    "/api/v1/routines/{routine_id}/runs": Endpoints.get_ListRoutineRuns;
     "/api/v1/runs": Endpoints.get_ListRuns;
     "/api/v1/runs/active": Endpoints.get_ListActiveRuns;
     "/api/v1/runs/{run_id}": Endpoints.get_GetRun;
@@ -2088,6 +2374,11 @@ export type EndpointByMethod = {
     "/api/v1/projects": Endpoints.post_CreateProject;
     "/api/v1/projects/{project_id}/worksites": Endpoints.post_LaunchWorksites;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
+    "/api/v1/routines": Endpoints.post_CreateRoutine;
+    "/api/v1/routines/{routine_id}/archive": Endpoints.post_ArchiveRoutine;
+    "/api/v1/routines/{routine_id}/launch": Endpoints.post_LaunchRoutine;
+    "/api/v1/routines/{routine_id}/triggers": Endpoints.post_AddRoutineTrigger;
+    "/api/v1/routines/{routine_id}/triggers/{trigger_id}/rotate-token": Endpoints.post_RotateRoutineTriggerToken;
     "/api/v1/skills": Endpoints.post_CreateSkill;
     "/api/v1/skills/{skill_id}/archive": Endpoints.post_ArchiveSkill;
     "/api/v1/sources": Endpoints.post_CreateSource;
@@ -2098,6 +2389,7 @@ export type EndpointByMethod = {
     "/api/v1/team/agents/{agent_id}/revisions/{revision}/restore": Endpoints.post_RestoreTeamAgentRevision;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
+    "/hooks/routines/{token}": Endpoints.post_TriggerRoutine;
     "/hooks/sources/{token}": Endpoints.post_ReceiveSourceEvent;
   };
   patch: {
@@ -2107,6 +2399,8 @@ export type EndpointByMethod = {
     "/api/v1/integration-instances/{id}": Endpoints.patch_UpdateIntegrationInstance;
     "/api/v1/mcp-connectors/{connector_id}": Endpoints.patch_UpdateMcpConnector;
     "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
+    "/api/v1/routines/{routine_id}": Endpoints.patch_UpdateRoutine;
+    "/api/v1/routines/{routine_id}/triggers/{trigger_id}": Endpoints.patch_UpdateRoutineTrigger;
     "/api/v1/skills/{skill_id}": Endpoints.patch_UpdateSkill;
     "/api/v1/sources/{source_id}": Endpoints.patch_UpdateSource;
     "/api/v1/team/agents/{agent_id}": Endpoints.patch_UpdateTeamAgent;
@@ -2118,6 +2412,7 @@ export type EndpointByMethod = {
     "/api/v1/mcp-connectors/{connector_id}/connection": Endpoints.delete_DisconnectMcpConnector;
     "/api/v1/me/providers/{kind}": Endpoints.delete_DeleteMyProvider;
     "/api/v1/providers/{kind}": Endpoints.delete_DeleteProvider;
+    "/api/v1/routines/{routine_id}/triggers/{trigger_id}": Endpoints.delete_RemoveRoutineTrigger;
   };
   put: {
     "/api/v1/me/providers/{kind}": Endpoints.put_PutMyProvider;

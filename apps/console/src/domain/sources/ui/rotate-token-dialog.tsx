@@ -11,14 +11,14 @@ import {
 
 interface Props {
 	open: boolean
-	sourceName: string
+	name: string
 	onOpenChange: (open: boolean) => void
 	onConfirm: () => void
 }
 
 export function RotateTokenDialog({
 	open,
-	sourceName,
+	name,
 	onOpenChange,
 	onConfirm,
 }: Props) {
@@ -28,9 +28,9 @@ export function RotateTokenDialog({
 				<AlertDialogHeader>
 					<AlertDialogTitle>Régénérer le token ?</AlertDialogTitle>
 					<AlertDialogDescription>
-						L'URL actuelle de « {sourceName} » cessera de fonctionner
-						immédiatement. Il faudra mettre la nouvelle URL dans l'outil qui
-						appelle ce webhook.
+						L'URL actuelle de « {name} » cessera de fonctionner immédiatement.
+						Il faudra mettre la nouvelle URL dans l'outil qui appelle ce
+						webhook.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

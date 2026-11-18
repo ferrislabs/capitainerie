@@ -7,6 +7,7 @@ const NAMES: EntityNames = {
 	task: (id) => (id === TASK ? 'Revue sécurité quotidienne' : undefined),
 	agent: (id) => (id === 'dev' ? 'Dev (cycle autonome)' : undefined),
 	source: (id) => (id === 's-1' ? 'Pièces Chatwoot' : undefined),
+	routine: (id) => (id === 'r-1' ? 'Revue hebdomadaire' : undefined),
 }
 
 describe('breadcrumbs', () => {
@@ -30,7 +31,7 @@ describe('breadcrumbs', () => {
 		).toEqual({ label: '99999999', tag: '99999999' })
 	})
 
-	it('names agents and sources from the lookup, routines by id', () => {
+	it('names agents, sources and routines from the lookup', () => {
 		expect(breadcrumbs('/agents/dev/skills', NAMES)).toEqual([
 			{ label: 'Agents', to: '/agents' },
 			{ label: 'Dev (cycle autonome)' },
@@ -40,7 +41,11 @@ describe('breadcrumbs', () => {
 			{ label: 'Pièces Chatwoot' },
 		])
 		expect(breadcrumbs('/sources/s-2', NAMES)[1]?.label).toBe('s-2')
-		expect(breadcrumbs('/routines/analyse', NAMES)[1]?.label).toBe('analyse')
+		expect(breadcrumbs('/routines/r-1/executions', NAMES)).toEqual([
+			{ label: 'Routines', to: '/routines' },
+			{ label: 'Revue hebdomadaire' },
+		])
+		expect(breadcrumbs('/routines/r-2', NAMES)[1]?.label).toBe('r-2')
 	})
 
 	it('names the creation pages', () => {

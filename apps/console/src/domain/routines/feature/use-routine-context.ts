@@ -1,43 +1,39 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNotice } from '#/components/layout/notice'
-import { DEMO_PROJECTS, useDemoState } from '#/domain/demo'
-import {
-	notify,
-	useRoutinesState,
-} from '#/domain/routines/feature/routines-store'
-import { agentOptions } from '#/domain/routines/routine-view'
-import { NO_PROJECT } from '#/domain/routines/types'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { useProjects } from '#/domain/projects/hooks/use-projects'
 
-export function useNow(): Date {
-	const [now] = useState(() => new Date())
+const TICK_MS = 60_000
+
+/** Horloge à la minute : les dates relatives (« dans 3 h ») restent justes. */
+export function useNow(): number {
+	const [now, setNow] = useState(() => Date.now())
+	useEffect(() => {
+		const timer = setInterval(() => setNow(Date.now()), TICK_MS)
+		return () => clearInterval(timer)
+	}, [])
 	return now
 }
 
-export function useRoutineNotice(): string | null {
-	const stored = useRoutinesState((s) => s.notice)
-	const [message, show] = useNotice()
-	useEffect(() => {
-		if (!stored) return
-		show(stored)
-		notify(null)
-	}, [stored, show])
-	return message
+export interface AgentOption {
+	id: string
+	name: string
+	hue: number
 }
 
-export function useFormOptions(agent: string) {
-	const team = useDemoState((s) => s.agents)
-	const grants = useDemoState((s) => s.grants)
-	const routines = useRoutinesState((s) => s.routines)
-	return useMemo(() => {
-		const known = team.find((a) => a.name === agent)
-		return {
-			agents: agentOptions(
-				team.map((a) => a.name),
-				routines.map((r) => r.agent),
+/** Agents et projets actifs proposés dans le formulaire d'une routine. */
+export function useRoutineFormOptions() {
+	const agents = useTeamAgents().data?.items
+	const projects = useProjects(false).data?.items
+	return useMemo(
+		() => ({
+			agents: (agents ?? []).map(
+				(a): AgentOption => ({ id: a.id, name: a.name, hue: a.hue }),
 			),
-			projects: [NO_PROJECT, ...DEMO_PROJECTS.map((p) => p.name)],
-			connectors: known ? (grants[known.id] ?? []) : [],
-			agentId: known?.id,
-		}
-	}, [team, grants, routines, agent])
+			projects: (projects ?? []).map(({ project }) => ({
+				id: project.id,
+				name: project.name,
+			})),
+		}),
+		[agents, projects],
+	)
 }

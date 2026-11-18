@@ -267,7 +267,7 @@ function SourceDetail({ source, tab }: { source: Source; tab?: string }) {
 			) : null}
 			<RotateTokenDialog
 				open={confirmRotate}
-				sourceName={source.name}
+				name={source.name}
 				onOpenChange={setConfirmRotate}
 				onConfirm={() => {
 					setConfirmRotate(false)

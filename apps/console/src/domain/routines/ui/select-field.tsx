@@ -1,15 +1,28 @@
-import { useId } from 'react'
+import { type ReactNode, useId } from 'react'
 import { CTL, Fr } from '#/domain/sources/ui/mockup'
 
-interface Props {
+export interface SelectOption<T extends string = string> {
+	value: T
 	label: string
-	value: string
-	options: ReadonlyArray<string>
-	onChange: (value: string) => void
-	hint?: string
 }
 
-export function SelectField({ label, value, options, onChange, hint }: Props) {
+interface Props<T extends string> {
+	label: string
+	value: T
+	options: ReadonlyArray<SelectOption<T>>
+	onChange: (value: T) => void
+	hint?: ReactNode
+	disabled?: boolean
+}
+
+export function SelectField<T extends string>({
+	label,
+	value,
+	options,
+	onChange,
+	hint,
+	disabled,
+}: Props<T>) {
 	const id = useId()
 	return (
 		<Fr label={<label htmlFor={id}>{label}</label>} hint={hint}>
@@ -17,11 +30,15 @@ export function SelectField({ label, value, options, onChange, hint }: Props) {
 				id={id}
 				className={CTL}
 				value={value}
-				onChange={(event) => onChange(event.target.value)}
+				disabled={disabled}
+				onChange={(event) => {
+					const next = options.find((o) => o.value === event.target.value)
+					if (next) onChange(next.value)
+				}}
 			>
 				{options.map((option) => (
-					<option key={option} value={option}>
-						{option}
+					<option key={option.value} value={option.value}>
+						{option.label}
 					</option>
 				))}
 			</select>

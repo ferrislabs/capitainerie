@@ -1,6 +1,2 @@
 export * from '#/domain/demo/agents'
-export * from '#/domain/demo/connectors'
-export * from '#/domain/demo/projects'
-export * from '#/domain/demo/store'
-export * from '#/domain/demo/tasks'
 export * from '#/domain/demo/types'

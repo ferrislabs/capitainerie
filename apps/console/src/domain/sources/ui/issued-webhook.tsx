@@ -1,4 +1,5 @@
 import { Check, Copy, TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '#/components/ui/button'
 import type { IssuedSource } from '#/domain/sources/model'
 import { useCopyToClipboard } from '#/hooks/use-copy-to-clipboard'
@@ -6,7 +7,18 @@ import { useCopyToClipboard } from '#/hooks/use-copy-to-clipboard'
 interface Props {
 	issued: Pick<IssuedSource, 'token' | 'webhook_url'>
 	onDismiss?: () => void
+	/** Mode d'emploi sous les champs ; par défaut celui d'une source. */
+	hint?: ReactNode
 }
+
+const SOURCE_HINT = (
+	<>
+		Envoie un POST JSON sur cette URL. Le titre de la tâche vient du champ{' '}
+		<code className="font-mono">title</code>, sinon{' '}
+		<code className="font-mono">subject</code>, sinon de la première ligne de{' '}
+		<code className="font-mono">text</code>.
+	</>
+)
 
 function CopyField({ label, value }: { label: string; value: string }) {
 	const { copied, copy } = useCopyToClipboard()
@@ -35,8 +47,12 @@ function CopyField({ label, value }: { label: string; value: string }) {
 	)
 }
 
-/** URL et token d'une source, rendus une seule fois par l'API. */
-export function IssuedWebhook({ issued, onDismiss }: Props) {
+/** URL et token d'un webhook, rendus une seule fois par l'API. */
+export function IssuedWebhook({
+	issued,
+	onDismiss,
+	hint = SOURCE_HINT,
+}: Props) {
 	return (
 		<section
 			aria-label="Accès au webhook"
@@ -49,12 +65,7 @@ export function IssuedWebhook({ issued, onDismiss }: Props) {
 			</p>
 			<CopyField label="URL du webhook" value={issued.webhook_url} />
 			<CopyField label="Token" value={issued.token} />
-			<p className="m-0 text-xs text-muted-foreground">
-				Envoie un POST JSON sur cette URL. Le titre de la tâche vient du champ{' '}
-				<code className="font-mono">title</code>, sinon{' '}
-				<code className="font-mono">subject</code>, sinon de la première ligne
-				de <code className="font-mono">text</code>.
-			</p>
+			<p className="m-0 text-xs text-muted-foreground">{hint}</p>
 			{onDismiss ? (
 				<div>
 					<Button type="button" variant="outline" onClick={onDismiss}>

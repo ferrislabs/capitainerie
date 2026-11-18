@@ -1,9 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
 import { DashboardPage } from '#/domain/dashboard/feature/dashboard-page'
-import { resetDemoState } from '#/domain/demo'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 
@@ -117,7 +116,6 @@ const FULL = {
 	],
 }
 
-beforeEach(() => resetDemoState())
 afterEach(() => {
 	vi.unstubAllGlobals()
 	clearAuth()
