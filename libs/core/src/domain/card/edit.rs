@@ -1,4 +1,4 @@
-use capitainerie_common::{CardId, ClientId, CoreError, ProjectId};
+use capitainerie_common::{AgentId, CardId, ClientId, CoreError, ProjectId};
 use capitainerie_events::card::{CardAuthor, CardUpdated};
 use chrono::{NaiveDate, Utc};
 
@@ -8,10 +8,12 @@ use super::{
     bounded_text,
     link::resolve_links,
     ports::CardRepository,
+    relations::{check_agent, check_parent},
 };
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     client::{links::Change, ports::ClientRepository},
+    crew::ports::CrewRepository,
     event::ports::EventEmitter,
     member::ports::MemberRepository,
     project::ports::ProjectRepository,
@@ -32,6 +34,8 @@ pub struct EditCard {
     pub estimate: Change<Estimate>,
     pub client: Change<ClientId>,
     pub project: Change<ProjectId>,
+    pub assignee_agent: Change<AgentId>,
+    pub parent: Change<CardId>,
 }
 
 impl EditCard {
@@ -48,6 +52,8 @@ impl EditCard {
             estimate: Change::Keep,
             client: Change::Keep,
             project: Change::Keep,
+            assignee_agent: Change::Keep,
+            parent: Change::Keep,
         }
     }
 
@@ -62,24 +68,28 @@ impl EditCard {
             && self.estimate == Change::Keep
             && self.client == Change::Keep
             && self.project == Change::Keep
+            && self.assignee_agent == Change::Keep
+            && self.parent == Change::Keep
     }
 }
 
-pub struct CardEditService<'a, C, K, P, M, E, A> {
+pub struct CardEditService<'a, C, K, P, M, R, E, A> {
     cards: C,
     clients: K,
     projects: P,
     members: M,
+    crew: R,
     emitter: &'a E,
     authorizer: &'a A,
 }
 
-impl<'a, C, K, P, M, E, A> CardEditService<'a, C, K, P, M, E, A>
+impl<'a, C, K, P, M, R, E, A> CardEditService<'a, C, K, P, M, R, E, A>
 where
     C: CardRepository,
     K: ClientRepository,
     P: ProjectRepository,
     M: MemberRepository,
+    R: CrewRepository,
     E: EventEmitter,
     A: Authorizer,
 {
@@ -88,6 +98,7 @@ where
         clients: K,
         projects: P,
         members: M,
+        crew: R,
         emitter: &'a E,
         authorizer: &'a A,
     ) -> Self {
@@ -96,6 +107,7 @@ where
             clients,
             projects,
             members,
+            crew,
             emitter,
             authorizer,
         }
@@ -212,6 +224,22 @@ where
                 card.attributes.assignee_subject = Some(assignee);
             }
         }
+        match command.assignee_agent {
+            Change::Keep => {}
+            Change::Clear => card.attributes.assignee_agent_id = None,
+            Change::Set(agent) => {
+                check_agent(&mut self.crew, card.organization_id, agent).await?;
+                card.attributes.assignee_agent_id = Some(agent);
+            }
+        }
+        match command.parent {
+            Change::Keep => {}
+            Change::Clear => card.attributes.parent_id = None,
+            Change::Set(parent) => {
+                check_parent(&mut self.cards, card.organization_id, Some(card.id), parent).await?;
+                card.attributes.parent_id = Some(parent);
+            }
+        }
         if command.client != Change::Keep || command.project != Change::Keep {
             card.links = resolve_links(
                 &mut self.clients,
@@ -238,6 +266,7 @@ mod tests {
         authorization::{Decision, ports::MockAuthorizer},
         card::{Column, ports::MockCardRepository},
         client::ports::MockClientRepository,
+        crew::ports::MockCrewRepository,
         member::{Member, ports::MockMemberRepository},
         project::ports::MockProjectRepository,
     };
@@ -338,6 +367,7 @@ mod tests {
             MockClientRepository::new(),
             MockProjectRepository::new(),
             members,
+            MockCrewRepository::new(),
             &emitter,
             &authorizer,
         )
@@ -501,6 +531,7 @@ mod tests {
             MockClientRepository::new(),
             MockProjectRepository::new(),
             MockMemberRepository::new(),
+            MockCrewRepository::new(),
             &emitter,
             &authorizer,
         )

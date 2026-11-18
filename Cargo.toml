@@ -20,9 +20,11 @@ members = [
     "libs/handlers-conversations",
     "libs/handlers-identity",
     "libs/handlers-integrations",
+    "libs/handlers-mcp",
     "libs/handlers-providers",
     "libs/handlers-realtime",
     "libs/handlers-runs",
+    "libs/handlers-team",
     "libs/handlers-transcriptions",
     "libs/integrations",
     "libs/macros",
@@ -81,6 +83,7 @@ tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 utoipa = { version = "5.4.0", features = ["chrono", "uuid"] }
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
+url = "2.5"
 uuid = { version = "1.19.0", features = ["serde", "v4", "v7"] }
 
 # Arrow stack, shared by LanceDB and DataFusion: lancedb 0.40 pins arrow 58 and
@@ -106,9 +109,11 @@ capitainerie-handlers-clients = { path = "libs/handlers-clients" }
 capitainerie-handlers-conversations = { path = "libs/handlers-conversations" }
 capitainerie-handlers-identity = { path = "libs/handlers-identity" }
 capitainerie-handlers-integrations = { path = "libs/handlers-integrations" }
+capitainerie-handlers-mcp = { path = "libs/handlers-mcp" }
 capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
+capitainerie-handlers-team = { path = "libs/handlers-team" }
 capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }
 capitainerie-integrations = { path = "libs/integrations" }
 capitainerie-macros = { path = "libs/macros" }

@@ -727,10 +727,7 @@ async fn the_intervention_reports_on_the_card_and_leaves_it_in_progress() {
     assert!(body.contains("J'ai corrigé le partenaire, prévenir @\u{200B}octocat."));
     assert!(!body.contains("@octocat"));
     assert!(body.contains("1 lecture, 1 écriture, 1 refus"), "{body}");
-    assert!(body.contains(&format!(
-        "https://console.test/kanban?card={}",
-        world.card.id.0
-    )));
+    assert!(body.contains(&format!("https://console.test/tasks/{}", world.card.id.0)));
     assert!(body.contains("$0.001234"));
     assert!(!body.contains("Arrêt"));
     assert!(!body.contains(KEY));

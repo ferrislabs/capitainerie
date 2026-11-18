@@ -1,6 +1,6 @@
 use axum::{Extension, Json, extract::State};
 use axum_extra::routing::TypedPath;
-use capitainerie_common::{CardId, ClientId, ProjectId};
+use capitainerie_common::{AgentId, CardId, ClientId, ProjectId};
 use capitainerie_core::domain::{card::edit::EditCard, client::links::Change};
 use capitainerie_handlers::{ApiError, AppState, Caller, Patch};
 use chrono::NaiveDate;
@@ -48,6 +48,12 @@ pub struct PatchCardRequest {
     #[serde(default)]
     #[schema(value_type = Option<ProjectId>)]
     pub project_id: Patch<ProjectId>,
+    #[serde(default)]
+    #[schema(value_type = Option<AgentId>)]
+    pub assignee_agent_id: Patch<AgentId>,
+    #[serde(default)]
+    #[schema(value_type = Option<CardId>)]
+    pub parent_id: Patch<CardId>,
 }
 
 #[utoipa::path(
@@ -63,7 +69,7 @@ pub struct PatchCardRequest {
         (status = 403, description = "The policy refused the change; agents may never edit a card through this route", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 409, description = "The card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "An invalid value (criteria, labels, title), an assignee who is not a member, an unknown or archived client or project, one of another organization, or a client that is not the project's", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "An invalid value (criteria, labels, title), an assignee who is not a member, an unknown or archived client or project, one of another organization, a client that is not the project's, an unknown or archived agent, or a parent that would make a loop, is not in the organization or nests over three levels", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -96,6 +102,8 @@ pub async fn handler(
                 estimate: map_change(request.estimate.change()),
                 client: request.client_id.change(),
                 project: request.project_id.change(),
+                assignee_agent: request.assignee_agent_id.change(),
+                parent: request.parent_id.change(),
             },
         )
         .await?;

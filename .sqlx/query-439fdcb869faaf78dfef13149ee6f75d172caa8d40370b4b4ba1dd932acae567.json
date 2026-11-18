@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE user_provider_credentials SET is_default = FALSE\n            WHERE organization_id = $1 AND subject = $2 AND kind <> $3 AND is_default\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "439fdcb869faaf78dfef13149ee6f75d172caa8d40370b4b4ba1dd932acae567"
+}

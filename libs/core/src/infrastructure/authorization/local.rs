@@ -1,6 +1,7 @@
 use capitainerie_common::CoreError;
 
 use crate::domain::{
+    agent_task::is_agent_actor,
     authorization::{AccessRequest, Action, Decision, Subject, ports::Authorizer},
     card::Column,
     conversation::CAPTAIN_AGENT,
@@ -27,6 +28,7 @@ fn decide(request: &AccessRequest) -> Decision {
         None => decide_for_human(&request.subject, request.action),
         Some(actor) if actor == CAPTAIN_AGENT => decide_for_captain(request.action),
         Some(actor) if actor == INTEGRATOR_AGENT => decide_for_integrator(request.action),
+        Some(actor) if is_agent_actor(actor) => decide_for_registry_agent(actor, request.action),
         Some(actor) => decide_for_agent(actor, request.action),
     }
 }
@@ -41,7 +43,26 @@ fn decide_for_human(subject: &Subject, action: Action) -> Decision {
         {
             deny("only an organization admin may do this")
         }
+        Action::McpCall { initiated, granted } => decide_mcp_call(initiated, granted),
         _ => Decision::Allow,
+    }
+}
+
+fn decide_mcp_call(initiated: bool, granted: bool) -> Decision {
+    match (initiated, granted) {
+        (true, true) => Decision::Allow,
+        (false, _) => deny("the run was not started by the user it calls a connector for"),
+        (_, false) => deny("the agent is not granted this connector"),
+    }
+}
+
+/// A crew agent run for a human reads and comments on its card and calls the
+/// connectors it is granted, with the token of the human who started the run.
+fn decide_for_registry_agent(actor: &str, action: Action) -> Decision {
+    match action {
+        Action::CardRead | Action::CardComment => Decision::Allow,
+        Action::McpCall { initiated, granted } => decide_mcp_call(initiated, granted),
+        other => deny(&format!("agent {actor} may not {}", other.as_str())),
     }
 }
 
@@ -576,6 +597,142 @@ mod tests {
                 decide(&request(action, None, false)),
                 Decision::Deny { .. }
             ));
+        }
+    }
+
+    const CREW: Option<&str> = Some("agent:darnold");
+
+    #[test]
+    fn a_crew_agent_reads_and_comments_but_never_edits_or_moves() {
+        assert!(allowed(Action::CardRead, CREW));
+        assert!(allowed(Action::CardComment, CREW));
+        for action in [
+            Action::CardCreate,
+            Action::CardEdit,
+            Action::CardExecute,
+            Action::CardIntervene,
+            Action::AgentRun,
+            Action::McpConnect,
+            Action::McpConnectorManage,
+            Action::CardMove {
+                from: Column::Todo,
+                to: Column::Done,
+            },
+        ] {
+            assert!(!allowed(action, CREW), "{action:?}");
+        }
+    }
+
+    #[test]
+    fn an_mcp_call_needs_the_initiator_and_the_grant() {
+        for actor in [CREW, None] {
+            assert!(allowed(
+                Action::McpCall {
+                    initiated: true,
+                    granted: true
+                },
+                actor
+            ));
+            for (initiated, granted) in [(false, true), (true, false), (false, false)] {
+                assert!(
+                    !allowed(Action::McpCall { initiated, granted }, actor),
+                    "{actor:?} {initiated} {granted}"
+                );
+            }
+            assert!(matches!(
+                decide(&request(
+                    Action::McpCall {
+                        initiated: true,
+                        granted: true
+                    },
+                    actor,
+                    false
+                )),
+                Decision::Deny { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn no_other_agent_calls_mcp_tools() {
+        let call = Action::McpCall {
+            initiated: true,
+            granted: true,
+        };
+        for actor in [
+            CAPTAIN,
+            AGENT,
+            INTEGRATOR,
+            Some(crate::domain::execution::EXECUTOR_AGENT),
+        ] {
+            assert!(!allowed(call, actor), "{actor:?}");
+        }
+    }
+
+    #[test]
+    fn humans_run_agents_and_agents_never_do() {
+        assert!(allowed(Action::AgentRun, None));
+        for actor in [CAPTAIN, AGENT, INTEGRATOR, CREW] {
+            assert!(!allowed(Action::AgentRun, actor), "{actor:?}");
+        }
+    }
+
+    #[test]
+    fn humans_use_mcp_connectors_in_their_organization_only() {
+        for action in [Action::McpConnectorManage, Action::McpConnect] {
+            assert!(allowed(action, None), "{action:?}");
+            assert!(matches!(
+                decide(&request(action, None, false)),
+                Decision::Deny { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn a_member_manages_their_own_providers_and_no_agent_does() {
+        assert!(allowed(Action::UserProviderManage, None));
+        assert!(matches!(
+            decide(&request(Action::UserProviderManage, None, false)),
+            Decision::Deny { .. }
+        ));
+        for actor in [
+            CAPTAIN,
+            AGENT,
+            INTEGRATOR,
+            CREW,
+            Some(crate::domain::execution::EXECUTOR_AGENT),
+        ] {
+            for admin in [false, true] {
+                assert!(
+                    matches!(
+                        decide(&admin_request(Action::UserProviderManage, actor, admin)),
+                        Decision::Deny { .. }
+                    ),
+                    "{actor:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_agent_touches_mcp_connectors() {
+        for actor in [
+            CAPTAIN,
+            AGENT,
+            INTEGRATOR,
+            Some(crate::domain::execution::EXECUTOR_AGENT),
+        ] {
+            for action in [Action::McpConnectorManage, Action::McpConnect] {
+                for admin in [false, true] {
+                    assert!(
+                        matches!(
+                            decide(&admin_request(action, actor, admin)),
+                            Decision::Deny { .. }
+                        ),
+                        "{actor:?} {action:?}"
+                    );
+                }
+            }
         }
     }
 }

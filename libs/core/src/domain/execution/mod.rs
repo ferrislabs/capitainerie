@@ -80,6 +80,24 @@ impl fmt::Display for RepositoryRef {
     }
 }
 
+/// A repository as the code host lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryListing {
+    pub repository: RepositoryRef,
+    pub private: bool,
+    pub html_url: String,
+}
+
+/// An open issue of a repository, as the code host lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryIssue {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub html_url: String,
+    pub labels: Vec<String>,
+}
+
 /// The model Claude Code runs on: always an Anthropic model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

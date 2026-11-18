@@ -1,5 +1,6 @@
 mod attachment;
 mod guard;
+mod mcp;
 mod n8n;
 mod odoo;
 mod odoo_json2;
@@ -13,6 +14,8 @@ use capitainerie_core::domain::integration::{
     ports::IntegrationConnector,
 };
 use serde_json::Value;
+
+pub use mcp::McpHttp;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NetworkPolicy {

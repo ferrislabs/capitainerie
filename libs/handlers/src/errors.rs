@@ -44,6 +44,9 @@ pub enum ApiError {
     #[error("unavailable: {0}")]
     Unavailable(String),
 
+    #[error("not configured: {0}")]
+    NotConfigured(String),
+
     #[error("internal error")]
     Internal(String),
 }
@@ -66,7 +69,9 @@ impl ApiError {
             Self::UnsupportedMediaType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
-            Self::Unavailable(_) | Self::Busy(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Unavailable(_) | Self::Busy(_) | Self::NotConfigured(_) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -83,6 +88,7 @@ impl ApiError {
             Self::BadGateway(_) => "bad_gateway",
             Self::Forbidden(_) => "forbidden",
             Self::Unavailable(_) => "unavailable",
+            Self::NotConfigured(_) => "not_configured",
             Self::Busy(_) => "busy",
             Self::Internal(_) => "internal",
         }
@@ -97,6 +103,7 @@ impl ApiError {
             | Self::UnsupportedMediaType(message)
             | Self::BadGateway(message)
             | Self::Busy(message)
+            | Self::NotConfigured(message)
             | Self::ConflictCode { message, .. } => message.clone(),
             Self::Forbidden(Some(reason)) => reason.clone(),
             Self::Unavailable(_) => "unavailable".to_owned(),
@@ -216,6 +223,17 @@ mod tests {
             assert_eq!(error.code(), code);
             assert_eq!(error.into_response().status(), status);
         }
+    }
+
+    #[test]
+    fn a_missing_server_setting_is_a_503_that_names_it() {
+        let error = ApiError::NotConfigured("SECRETS_KEY is unset".into());
+        assert_eq!(error.code(), "not_configured");
+        assert_eq!(error.public_message(), "SECRETS_KEY is unset");
+        assert_eq!(
+            error.into_response().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]

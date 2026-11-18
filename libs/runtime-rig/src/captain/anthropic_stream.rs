@@ -175,6 +175,7 @@ impl Assembly {
                 id: pending.id,
                 name: pending.name,
                 input,
+                signature: None,
             });
         }
         self.reply.usage.model = model.to_owned();
@@ -286,6 +287,7 @@ mod tests {
                 id: "toolu_1".into(),
                 name: "search_cards".into(),
                 input: json!({"query": "acme"}),
+                signature: None,
             }]
         );
         assert_eq!(
@@ -335,6 +337,7 @@ mod tests {
                     id: "t1".into(),
                     name: "search_cards".into(),
                     input: json!({"query": "a"}),
+                    signature: None,
                 }],
             },
             Msg::Results(vec![ToolResult {

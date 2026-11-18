@@ -20,14 +20,50 @@ use crate::{anthropic::http_failure, usage::truncate_chars};
 const DONE: &str = "[DONE]";
 const ERROR_MAX_CHARS: usize = 300;
 
+const GOOGLE_HOST: &str = "generativelanguage.googleapis.com";
+const SKIP_SIGNATURE: &str = "skip_thought_signature_validator";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReplayDialect {
+    Standard,
+    Google,
+}
+
+impl ReplayDialect {
+    pub(crate) fn of(url: &str) -> Self {
+        match reqwest::Url::parse(url) {
+            Ok(url) if url.host_str() == Some(GOOGLE_HOST) => Self::Google,
+            _ => Self::Standard,
+        }
+    }
+}
+
 pub(crate) struct OpenAiStream {
     pub http: reqwest::Client,
     pub url: String,
     pub key: SecretToken,
     pub model: String,
+    pub dialect: ReplayDialect,
 }
 
-pub(crate) fn body(model: &str, request: &ModelRequest<'_>) -> Value {
+fn replayed(call: &Call, dialect: ReplayDialect) -> Value {
+    let mut entry = json!({
+        "id": call.id,
+        "type": "function",
+        "function": { "name": call.name, "arguments": call.input.to_string() },
+    });
+    let signature = match (&call.signature, dialect) {
+        (Some(signature), _) => Some(signature.as_str()),
+        (None, ReplayDialect::Google) => Some(SKIP_SIGNATURE),
+        (None, ReplayDialect::Standard) => None,
+    };
+    if let Some(signature) = signature {
+        entry["extra_content"] = json!({ "google": { "thought_signature": signature } });
+    }
+    entry
+}
+
+pub(crate) fn body(model: &str, request: &ModelRequest<'_>, dialect: ReplayDialect) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": request.system })];
     for message in request.messages {
         match message {
@@ -41,11 +77,7 @@ pub(crate) fn body(model: &str, request: &ModelRequest<'_>) -> Value {
                     entry["tool_calls"] = json!(
                         calls
                             .iter()
-                            .map(|call| json!({
-                                "id": call.id,
-                                "type": "function",
-                                "function": { "name": call.name, "arguments": call.input.to_string() },
-                            }))
+                            .map(|call| replayed(call, dialect))
                             .collect::<Vec<_>>()
                     );
                 }
@@ -92,6 +124,7 @@ struct Pending {
     id: String,
     name: String,
     arguments: String,
+    signature: Option<String>,
 }
 
 #[derive(Default)]
@@ -141,6 +174,11 @@ impl Assembly {
                 if let Some(id) = call["id"].as_str() {
                     pending.id = id.to_owned();
                 }
+                if let Some(signature) =
+                    call["extra_content"]["google"]["thought_signature"].as_str()
+                {
+                    pending.signature = Some(signature.to_owned());
+                }
                 if let Some(name) = call["function"]["name"].as_str() {
                     pending.name.push_str(name);
                 }
@@ -175,6 +213,7 @@ impl Assembly {
                 id,
                 name: pending.name,
                 input,
+                signature: pending.signature,
             });
         }
         self.reply.usage = Usage {
@@ -191,7 +230,10 @@ impl Provider for OpenAiStream {
         request: &ModelRequest<'_>,
         deltas: &mut D,
     ) -> Result<ModelReply, CoreError> {
-        let mut call = self.http.post(&self.url).json(&body(&self.model, request));
+        let mut call = self
+            .http
+            .post(&self.url)
+            .json(&body(&self.model, request, self.dialect));
         if !self.key.expose().is_empty() {
             call = call.bearer_auth(self.key.expose());
         }
@@ -277,6 +319,7 @@ mod tests {
                 id: "call_a".into(),
                 name: "search_cards".into(),
                 input: json!({"query": "acme"}),
+                signature: None,
             }]
         );
         assert_eq!(
@@ -311,6 +354,7 @@ mod tests {
                     id: "c1".into(),
                     name: "search_cards".into(),
                     input: json!({"query": "a"}),
+                    signature: None,
                 }],
             },
             Msg::Results(vec![ToolResult {
@@ -332,6 +376,7 @@ mod tests {
                 tools: &tools,
                 max_tokens: 50,
             },
+            ReplayDialect::Standard,
         );
         assert_eq!(body["messages"][0]["role"], "system");
         assert_eq!(body["messages"][2]["content"], Value::Null);
@@ -343,6 +388,83 @@ mod tests {
         assert_eq!(body["messages"][3]["tool_call_id"], "c1");
         assert_eq!(body["tools"][0]["function"]["name"], "search_cards");
         assert_eq!(body["stream_options"]["include_usage"], true);
+        assert!(body["messages"][2]["tool_calls"][0]["extra_content"].is_null());
+    }
+
+    fn replay_body(signature: Option<&str>, dialect: ReplayDialect) -> Value {
+        let messages = [Msg::Assistant {
+            text: String::new(),
+            calls: vec![Call {
+                id: "c1".into(),
+                name: "n".into(),
+                input: json!({}),
+                signature: signature.map(str::to_owned),
+            }],
+        }];
+        body(
+            "m",
+            &ModelRequest {
+                system: "s",
+                messages: &messages,
+                tools: &[],
+                max_tokens: 1,
+            },
+            dialect,
+        )
+    }
+
+    #[test]
+    fn google_replays_the_dummy_signature_when_none_was_captured() {
+        let body = replay_body(None, ReplayDialect::Google);
+        assert_eq!(
+            body["messages"][1]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+            SKIP_SIGNATURE
+        );
+    }
+
+    #[test]
+    fn a_captured_signature_is_replayed_verbatim_on_any_endpoint() {
+        for dialect in [ReplayDialect::Google, ReplayDialect::Standard] {
+            let body = replay_body(Some("sig=="), dialect);
+            assert_eq!(
+                body["messages"][1]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+                "sig=="
+            );
+        }
+    }
+
+    #[test]
+    fn other_endpoints_get_no_signature_without_a_captured_one() {
+        let body = replay_body(None, ReplayDialect::Standard);
+        assert!(body["messages"][1]["tool_calls"][0]["extra_content"].is_null());
+    }
+
+    #[test]
+    fn only_the_google_host_selects_the_google_dialect() {
+        assert_eq!(
+            ReplayDialect::of(
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+            ),
+            ReplayDialect::Google
+        );
+        assert_eq!(
+            ReplayDialect::of("https://api.openai.com/v1/chat/completions"),
+            ReplayDialect::Standard
+        );
+        assert_eq!(
+            ReplayDialect::of("https://evil.test/generativelanguage.googleapis.com"),
+            ReplayDialect::Standard
+        );
+    }
+
+    #[tokio::test]
+    async fn a_streamed_signature_is_captured_on_its_call() {
+        let mut sink = Collect(String::new());
+        let mut assembly = Assembly::default();
+        let event = json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c", "function": {"name": "n", "arguments": "{}"}, "extra_content": {"google": {"thought_signature": "abc"}}}]}}]});
+        assembly.on_event(&event.to_string(), &mut sink).await;
+        let reply = assembly.finish("m").unwrap();
+        assert_eq!(reply.calls[0].signature.as_deref(), Some("abc"));
     }
 
     #[tokio::test]

@@ -37,7 +37,7 @@ pub async fn handler(
     let repositories = state
         .github
         .apps
-        .repositories(subject.organization_id, installation.installation_id)
+        .repository_listing(subject.organization_id, installation.installation_id)
         .await?;
     Ok(Json(RepositoryListResponse {
         repositories: repositories.iter().map(Into::into).collect(),

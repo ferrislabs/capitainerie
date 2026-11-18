@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE agent_tasks\n            SET provider = COALESCE(provider, $3), model = COALESCE(model, $4)\n            WHERE organization_id = $1 AND run_id = $2\n            RETURNING provider AS \"provider!\", model AS \"model!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "model!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "5d50f709e5c49a57772cfbbd3341df4044ea9912698fddc470dba51b08938b60"
+}

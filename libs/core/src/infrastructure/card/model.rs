@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use capitainerie_common::{ClientId, ProjectId};
+use capitainerie_common::{AgentId, ClientId, ProjectId};
 
 use crate::domain::{
     card::{
@@ -42,6 +42,8 @@ pub(super) struct CardRow {
     pub assignee_subject: Option<String>,
     pub labels: Vec<String>,
     pub estimate: Option<String>,
+    pub assignee_agent_id: Option<Uuid>,
+    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +89,8 @@ fn stored_attributes(row: &CardRow) -> Result<Attributes, CoreError> {
             .map(Estimate::try_from)
             .transpose()
             .map_err(|error| stored("estimate", error))?,
+        assignee_agent_id: row.assignee_agent_id.map(AgentId),
+        parent_id: row.parent_id.map(CardId),
     })
 }
 

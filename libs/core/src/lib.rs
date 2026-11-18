@@ -5,9 +5,9 @@ pub mod domain;
 pub mod infrastructure;
 
 pub use application::{
-    AgentDelegation, CapitainerieUseCase, ExecuteConfig, ExecutePipeline, ExecutionContext,
-    Executor, InterventionConfig, InterventionPipeline, MeetingPipeline, PipelineConfig,
-    RunCardLinks, RunContext, RunTimeline, StartedExecution, StartedIntervention,
-    SubmittedTranscript,
+    AgentDelegation, AgentTaskConfig, AgentTaskPipeline, AgentTaskSource, CapitainerieUseCase,
+    ExecuteConfig, ExecutePipeline, ExecutionContext, Executor, InterventionConfig,
+    InterventionPipeline, MeetingPipeline, PipelineConfig, RunCardLinks, RunContext, RunTimeline,
+    StartedAgentRun, StartedExecution, StartedIntervention, SubmittedTranscript,
 };
 pub use domain::organization::{Organization, OrganizationSlug};

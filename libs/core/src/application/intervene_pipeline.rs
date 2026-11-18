@@ -248,7 +248,7 @@ struct StepOutput<'a> {
     report: &'a str,
 }
 
-fn output_of(
+pub(super) fn output_of(
     records: &[ToolRecord],
     stopped: Option<&str>,
     report: &str,
@@ -261,18 +261,18 @@ fn output_of(
     .map_err(|error| CoreError::Internal(format!("encoding the intervention report: {error}")))
 }
 
-fn reason_of(error: &CoreError) -> String {
+pub(super) fn reason_of(error: &CoreError) -> String {
     match error {
         CoreError::Internal(message) | CoreError::Invalid(message) => message.clone(),
         other => other.to_string(),
     }
 }
 
-fn is_interruption(error: &CoreError) -> bool {
+pub(super) fn is_interruption(error: &CoreError) -> bool {
     matches!(error, CoreError::Database(_))
 }
 
-fn carried_calls(step: Option<&Step>) -> Vec<ToolRecord> {
+pub(super) fn carried_calls(step: Option<&Step>) -> Vec<ToolRecord> {
     step.and_then(|step| step.output.as_ref())
         .and_then(|output| Vec::<ToolRecord>::deserialize(&output["tool_calls"]).ok())
         .unwrap_or_default()
@@ -626,7 +626,7 @@ fn listed<'a>(grants: &[Grant], instances: &'a [IntegrationInstance]) -> Vec<Lis
         .collect()
 }
 
-fn fenced(tag: &str, content: &str) -> String {
+pub(super) fn fenced(tag: &str, content: &str) -> String {
     let escaped = content
         .replace(&format!("</{tag}"), &format!("<\\/{tag}"))
         .replace(&format!("<{tag}"), &format!("<\\{tag}"));
@@ -688,11 +688,11 @@ fn build_prompt(card: &Card, instructions: &str, listed: &[Listed<'_>]) -> Strin
     prompt
 }
 
-fn card_link(console_url: Option<&str>, card_id: CardId) -> Option<String> {
-    console_url.map(|base| format!("{}/kanban?card={}", base.trim_end_matches('/'), card_id.0))
+pub(super) fn card_link(console_url: Option<&str>, card_id: CardId) -> Option<String> {
+    console_url.map(|base| format!("{}/tasks/{}", base.trim_end_matches('/'), card_id.0))
 }
 
-fn format_cost(micros: i64) -> String {
+pub(super) fn format_cost(micros: i64) -> String {
     format!("${}.{:06}", micros / 1_000_000, micros % 1_000_000)
 }
 
@@ -1131,7 +1131,7 @@ mod tests {
         assert!(body.contains("- Journal : 3 lectures, 1 écriture, 2 refus"));
         assert!(body.contains("- Arrêt : deadline reached"));
         assert!(body.contains(&format!(
-            "- Journal détaillé : https://console.test/kanban?card={}",
+            "- Journal détaillé : https://console.test/tasks/{}",
             card_id.0
         )));
         assert!(body.contains("- Coût : $0.012500"));
@@ -1165,11 +1165,11 @@ mod tests {
             stopped: None,
             cost_micros: 1,
             counts: counts(1, 0, 0),
-            card_link: Some("https://console.test/kanban?card=x".into()),
+            card_link: Some("https://console.test/tasks/x".into()),
         });
 
         assert!(body.chars().count() < crate::domain::card::COMMENT_MAX_CHARS);
-        assert!(body.contains("- Journal détaillé : https://console.test/kanban?card=x"));
+        assert!(body.contains("- Journal détaillé : https://console.test/tasks/x"));
         assert!(body.ends_with("- Coût : $0.000001"));
     }
 

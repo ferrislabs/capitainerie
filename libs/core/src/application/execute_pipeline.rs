@@ -141,7 +141,7 @@ impl CapitainerieUseCase {
 
     pub async fn is_intervention_run(&self, id: RunId) -> Result<bool, CoreError> {
         sqlx::query_scalar::<_, bool>(
-            "SELECT card_id IS NOT NULL AND repository IS NULL FROM runs WHERE id = $1",
+            "SELECT card_id IS NOT NULL AND repository IS NULL AND NOT ('agent_task' = ANY(pipeline)) FROM runs WHERE id = $1",
         )
         .bind(id.0)
         .fetch_optional(&self.pool)

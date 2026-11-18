@@ -19,7 +19,7 @@ use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Delegation};
 use capitainerie_handlers_integrations::{GithubIntegration, signer::StateSigner};
 use capitainerie_handlers_realtime::{Gateway, Hub, consumer};
-use capitainerie_integrations::{HttpConnector, NetworkPolicy};
+use capitainerie_integrations::{HttpConnector, McpHttp, NetworkPolicy};
 use capitainerie_runtime_rig::{LlmArgs, RigCaptain};
 use clap::Parser;
 use std::sync::Arc;
@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         None => tracing::warn!(
-            "SECRETS_KEY is unset: provider API keys cannot be stored; runs use the worker's default endpoint"
+            "SECRETS_KEY is unset: provider API keys and MCP connections cannot be stored; runs use the worker's default endpoint"
         ),
     }
     let delegation = match (&args.delegation.key, &args.exchange.client_id) {
@@ -114,6 +114,8 @@ async fn main() -> anyhow::Result<()> {
         usecase.clone(),
     )?;
     let connector = integrations_connector(&args.integrations)?;
+    let mcp_http = McpHttp::new(network_policy(&args.integrations))
+        .context("building the MCP connectors client")?;
     let state = AppState {
         usecase,
         verifier: verifier(args.auth),
@@ -144,6 +146,10 @@ async fn main() -> anyhow::Result<()> {
                 exchanger: captain_exchanger,
             },
             integrations: router::IntegrationAdapters { connector },
+            mcp: router::McpAdapters {
+                http: mcp_http,
+                console_url: args.console_url.clone(),
+            },
         },
         github,
         &args.server.allowed_origins,
@@ -211,11 +217,14 @@ fn integrations_connector(args: &IntegrationsArgs) -> anyhow::Result<HttpConnect
             "INTEGRATIONS_ALLOW_PRIVATE_NETWORKS is on: instances may be reached on private, loopback and link-local addresses"
         );
     }
-    HttpConnector::new(NetworkPolicy {
+    HttpConnector::new(network_policy(args)).context("building the integrations connector")
+}
+
+fn network_policy(args: &IntegrationsArgs) -> NetworkPolicy {
+    NetworkPolicy {
         allow_insecure_http: args.allow_insecure_http,
         allow_private_networks: args.allow_private_networks,
-    })
-    .context("building the integrations connector")
+    }
 }
 
 fn ensure_captain_credentials(exchanger: &FerrisKeyTokenExchange) -> anyhow::Result<()> {

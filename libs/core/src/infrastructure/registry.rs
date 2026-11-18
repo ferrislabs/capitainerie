@@ -9,10 +9,12 @@ pub mod domain {
     pub struct CardComment;
     pub struct Client;
     pub struct Conversation;
+    pub struct CrewAgent;
     pub struct ConversationMessage;
     pub struct DecisionLog;
     pub struct GithubApp;
     pub struct GithubInstallation;
+    pub struct McpConnector;
     pub struct Member;
     pub struct ModelAssignment;
     pub struct Organization;
@@ -21,6 +23,7 @@ pub mod domain {
     pub struct Step;
     pub struct TaskGrant;
     pub struct Transcript;
+    pub struct Worksite;
 }
 
 pub mod backend {

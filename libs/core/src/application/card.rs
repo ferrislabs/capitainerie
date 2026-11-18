@@ -2,16 +2,25 @@ use capitainerie_common::{CardId, CoreError, RunId};
 use capitainerie_macros::transactional;
 
 use super::CapitainerieUseCase;
-use crate::domain::{
-    authorization::Subject,
-    card::{
-        Card, CardComment,
-        attributes::CardFilter,
-        detail::{CardDetail, CardDetailService},
-        edit::{CardEditService, EditCard},
-        service::{CardService, CreateCard, MoveCard, UpdateCard},
+use crate::{
+    domain::{
+        authorization::Subject,
+        card::{
+            Card, CardComment, Column,
+            attributes::{Attributes, CardFilter},
+            detail::{CardDetail, CardDetailService},
+            edit::{CardEditService, EditCard},
+            link::{CardLinkService, LinkCard},
+            relations::{check_agent, check_parent},
+            service::{CardService, CreateCard, CreateTask, MoveCard, UpdateCard},
+        },
+        client::links::Change,
+        member::{Member, service::MemberService},
     },
-    member::{Member, service::MemberService},
+    infrastructure::{
+        card::postgres::{PgCardCommentRepository, PgCardRepository},
+        transcript::postgres::PgTranscriptRepository,
+    },
 };
 
 impl CapitainerieUseCase {
@@ -118,7 +127,7 @@ impl CapitainerieUseCase {
 }
 
 impl CapitainerieUseCase {
-    #[transactional(card, client, project, member, emitter, authz)]
+    #[transactional(card, client, project, member, crew_agent, emitter, authz)]
     pub async fn edit_card(
         &self,
         subject: Subject,
@@ -130,10 +139,105 @@ impl CapitainerieUseCase {
             client_repository,
             project_repository,
             member_repository,
+            crew_agent_repository,
             emitter,
             authz,
         )
         .edit(subject, id, command)
+        .await
+    }
+
+    /// Creates a card by hand, straight in `todo`: a human has no proposal to
+    /// validate. The parent, the agent and the links are all checked in the
+    /// same transaction, so a wrong id creates nothing.
+    #[transactional(
+        card,
+        card_comment,
+        transcript,
+        client,
+        project,
+        crew_agent,
+        emitter,
+        authz
+    )]
+    pub async fn create_task(
+        &self,
+        subject: Subject,
+        command: CreateTask,
+    ) -> Result<Card, CoreError> {
+        let mut card_repository = card_repository;
+        let mut crew_agent_repository = crew_agent_repository;
+        if subject.actor.is_some() {
+            return Err(CoreError::Forbidden {
+                reason: Some("only a human can create a card by hand".into()),
+            });
+        }
+        let organization_id = subject.organization_id;
+        if let Some(parent) = command.parent {
+            check_parent(&mut card_repository, organization_id, None, parent).await?;
+        }
+        if let Some(agent) = command.assignee_agent {
+            check_agent(&mut crew_agent_repository, organization_id, agent).await?;
+        }
+        let card = CardService::new(
+            card_repository,
+            card_comment_repository,
+            transcript_repository,
+            emitter,
+            authz,
+        )
+        .create(
+            subject.clone(),
+            CreateCard {
+                title: command.title,
+                description: command.description,
+                attributes: Attributes {
+                    priority: command.priority,
+                    assignee_agent_id: command.assignee_agent,
+                    parent_id: command.parent,
+                    ..Attributes::default()
+                },
+                ..CreateCard::default()
+            },
+        )
+        .await?;
+        let card = if command.client.is_none() && command.project.is_none() {
+            card
+        } else {
+            CardLinkService::new(
+                PgCardRepository::new(&tx),
+                client_repository,
+                project_repository,
+                emitter,
+                authz,
+            )
+            .link(
+                subject.clone(),
+                card.id,
+                LinkCard {
+                    expected_version: card.version,
+                    client: command.client.map_or(Change::Keep, Change::Set),
+                    project: command.project.map_or(Change::Keep, Change::Set),
+                },
+            )
+            .await?
+        };
+        CardService::new(
+            PgCardRepository::new(&tx),
+            PgCardCommentRepository::new(&tx),
+            PgTranscriptRepository::new(&tx),
+            emitter,
+            authz,
+        )
+        .move_card(
+            subject,
+            card.id,
+            MoveCard {
+                to: Column::Todo,
+                expected_version: card.version,
+                run_id: None,
+            },
+        )
         .await
     }
 

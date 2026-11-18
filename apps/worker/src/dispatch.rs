@@ -1,11 +1,13 @@
 use capitainerie_common::{CoreError, RunId};
 use capitainerie_core::{
-    CapitainerieUseCase, ExecutePipeline, InterventionPipeline, MeetingPipeline,
+    AgentTaskPipeline, CapitainerieUseCase, ExecutePipeline, InterventionPipeline, MeetingPipeline,
     domain::{
         agent::ports::AgentRuntime,
+        agent_task::ports::TaskRuntime,
         delegation::ports::TokenExchanger,
         execution::ports::{CodeHost, TaskRunner},
         integration::{intervention::IntegratorRuntime, ports::IntegrationConnector},
+        mcp::ports::{McpGateway, McpOAuth},
         similarity::ports::{Embedder, VectorStore},
     },
 };
@@ -96,23 +98,50 @@ where
     }
 }
 
-pub struct Dispatcher<M, E, I> {
+impl<R, O, G> RunPipelines for AgentTaskPipeline<R, O, G>
+where
+    R: TaskRuntime + 'static,
+    O: McpOAuth + 'static,
+    G: McpGateway + 'static,
+{
+    fn usecase(&self) -> &CapitainerieUseCase {
+        AgentTaskPipeline::usecase(self)
+    }
+
+    fn stale_before(&self) -> DateTime<Utc> {
+        AgentTaskPipeline::stale_before(self)
+    }
+
+    fn execute(
+        &self,
+        run_id: RunId,
+        traceparent: Option<&str>,
+    ) -> impl Future<Output = Result<(), CoreError>> + Send {
+        AgentTaskPipeline::execute(self, run_id, traceparent)
+    }
+}
+
+pub struct Dispatcher<M, E, I, A> {
     meeting: M,
     execution: E,
     intervention: I,
+    agent_task: A,
 }
 
-impl<M, E, I> Dispatcher<M, E, I> {
-    pub fn new(meeting: M, execution: E, intervention: I) -> Self {
+impl<M, E, I, A> Dispatcher<M, E, I, A> {
+    pub fn new(meeting: M, execution: E, intervention: I, agent_task: A) -> Self {
         Self {
             meeting,
             execution,
             intervention,
+            agent_task,
         }
     }
 }
 
-impl<M: RunPipelines, E: RunPipelines, I: RunPipelines> RunPipelines for Dispatcher<M, E, I> {
+impl<M: RunPipelines, E: RunPipelines, I: RunPipelines, A: RunPipelines> RunPipelines
+    for Dispatcher<M, E, I, A>
+{
     fn usecase(&self) -> &CapitainerieUseCase {
         self.meeting.usecase()
     }
@@ -122,11 +151,14 @@ impl<M: RunPipelines, E: RunPipelines, I: RunPipelines> RunPipelines for Dispatc
             .stale_before()
             .min(self.execution.stale_before())
             .min(self.intervention.stale_before())
+            .min(self.agent_task.stale_before())
     }
 
     async fn execute(&self, run_id: RunId, traceparent: Option<&str>) -> Result<(), CoreError> {
         let usecase = self.meeting.usecase();
-        if usecase.is_intervention_run(run_id).await? {
+        if usecase.is_agent_task_run(run_id).await? {
+            self.agent_task.execute(run_id, traceparent).await
+        } else if usecase.is_intervention_run(run_id).await? {
             self.intervention.execute(run_id, traceparent).await
         } else if usecase.is_execution_run(run_id).await? {
             self.execution.execute(run_id, traceparent).await

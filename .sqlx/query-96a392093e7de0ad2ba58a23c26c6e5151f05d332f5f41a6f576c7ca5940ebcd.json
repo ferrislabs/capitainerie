@@ -1,0 +1,114 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, organization_id, slug, name, role, description, model, status, hue,\n                   reports_to, archived, instructions, connector_grants, created_by, created_at, updated_at\n            FROM agents\n            WHERE organization_id = $1 AND ($2::bool IS NULL OR archived = $2)\n            ORDER BY lower(name), id\n            LIMIT $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "hue",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 9,
+        "name": "reports_to",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "archived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "instructions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "connector_grants",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "96a392093e7de0ad2ba58a23c26c6e5151f05d332f5f41a6f576c7ca5940ebcd"
+}

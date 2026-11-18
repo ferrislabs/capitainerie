@@ -26,6 +26,7 @@ pub enum StepKind {
     Write,
     Execute,
     Intervene,
+    AgentTask,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +38,9 @@ pub enum RunSubject {
         base_branch: String,
     },
     Intervention {
+        card_id: CardId,
+    },
+    AgentTask {
         card_id: CardId,
     },
 }
@@ -129,6 +133,23 @@ impl Run {
         )
     }
 
+    pub const AGENT_TASK_PIPELINE: [StepKind; 1] = [StepKind::AgentTask];
+
+    pub fn queue_agent_task(
+        organization_id: OrganizationId,
+        card_id: CardId,
+        initiated_by: String,
+        now: DateTime<Utc>,
+    ) -> (Self, RunQueued) {
+        Self::queued(
+            organization_id,
+            RunSubject::AgentTask { card_id },
+            initiated_by,
+            Self::AGENT_TASK_PIPELINE.to_vec(),
+            now,
+        )
+    }
+
     fn queued(
         organization_id: OrganizationId,
         subject: RunSubject,
@@ -211,14 +232,16 @@ impl RunSubject {
     pub fn transcript_id(&self) -> Option<TranscriptId> {
         match self {
             Self::Transcript(id) => Some(*id),
-            Self::Card { .. } | Self::Intervention { .. } => None,
+            Self::Card { .. } | Self::Intervention { .. } | Self::AgentTask { .. } => None,
         }
     }
 
     pub fn card_id(&self) -> Option<CardId> {
         match self {
             Self::Transcript(_) => None,
-            Self::Card { card_id, .. } | Self::Intervention { card_id } => Some(*card_id),
+            Self::Card { card_id, .. }
+            | Self::Intervention { card_id }
+            | Self::AgentTask { card_id } => Some(*card_id),
         }
     }
 }
@@ -258,6 +281,7 @@ impl StepKind {
             Self::Write => "write",
             Self::Execute => "execute",
             Self::Intervene => "intervene",
+            Self::AgentTask => "agent_task",
         }
     }
 }
@@ -272,6 +296,7 @@ impl TryFrom<&str> for StepKind {
             "write" => Ok(Self::Write),
             "execute" => Ok(Self::Execute),
             "intervene" => Ok(Self::Intervene),
+            "agent_task" => Ok(Self::AgentTask),
             other => Err(CoreError::Internal(format!("unknown step kind {other}"))),
         }
     }
@@ -353,6 +378,23 @@ mod tests {
         {
             assert_eq!(StepKind::try_from(step.as_str()).unwrap(), step);
         }
+    }
+
+    #[test]
+    fn queue_agent_task_binds_the_card_and_its_own_step_kind() {
+        let card_id = CardId::new();
+        let (run, event) =
+            Run::queue_agent_task(OrganizationId::new(), card_id, "user-1".into(), Utc::now());
+        assert_eq!(run.status, RunStatus::Queued);
+        assert_eq!(run.pipeline, [StepKind::AgentTask]);
+        assert_eq!(run.subject, RunSubject::AgentTask { card_id });
+        assert_eq!(run.subject.card_id(), Some(card_id));
+        assert_eq!(event.card_id, Some(card_id.0));
+        assert_eq!(event.pipeline, ["agent_task"]);
+        assert_eq!(
+            StepKind::try_from("agent_task").unwrap(),
+            StepKind::AgentTask
+        );
     }
 
     #[test]

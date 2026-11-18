@@ -10,7 +10,7 @@ use capitainerie_handlers::{AppState, auth::authenticate, health};
 use capitainerie_handlers_conversations::ConversationsState;
 use capitainerie_handlers_integrations::GithubIntegration;
 use capitainerie_handlers_realtime::Gateway;
-use capitainerie_integrations::HttpConnector;
+use capitainerie_integrations::{HttpConnector, McpHttp};
 use tower_http::{
     cors::{AllowHeaders, AllowMethods, CorsLayer},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
@@ -35,10 +35,16 @@ pub struct IntegrationAdapters {
     pub connector: HttpConnector,
 }
 
+pub struct McpAdapters {
+    pub http: McpHttp,
+    pub console_url: Option<String>,
+}
+
 pub struct Adapters<T, D, R, X> {
     pub intake: IntakeAdapters<T, D>,
     pub captain: CaptainAdapters<R, X>,
     pub integrations: IntegrationAdapters,
+    pub mcp: McpAdapters,
 }
 
 pub fn router<
@@ -70,6 +76,7 @@ pub fn router<
         .merge(capitainerie_handlers_runs::router())
         .merge(capitainerie_handlers_cards::router(github.apps.clone()))
         .merge(capitainerie_handlers_clients::router())
+        .merge(capitainerie_handlers_team::router())
         .merge(capitainerie_handlers_analytics::router(analytics))
         .merge(capitainerie_handlers_providers::router(
             state.usecase.clone(),
@@ -92,6 +99,11 @@ pub fn router<
             state.usecase.clone(),
             github,
             adapters.integrations.connector,
+        ))
+        .merge(capitainerie_handlers_mcp::router(
+            state.usecase.clone(),
+            adapters.mcp.http,
+            adapters.mcp.console_url,
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
 

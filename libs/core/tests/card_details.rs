@@ -129,6 +129,7 @@ async fn card_details_round_trip_through_postgres() {
             assignee_subject: None,
             labels: Labels::try_from(vec!["CI".into(), "infra".into()]).unwrap(),
             estimate: Some(Estimate::L),
+            ..Default::default()
         },
     )
     .await;

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE cards\n            SET title = $3, description = $4, \"column\" = $5, version = $6, updated_at = $7,\n                client_id = $8, project_id = $9,\n                acceptance_criteria = $10, priority = $11, due_date = $12, assignee_subject = $13,\n                labels = $14, estimate = $15, assignee_agent_id = $16, parent_id = $17\n            WHERE organization_id = $1 AND id = $2 AND version = $6 - 1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Uuid",
+        "Uuid",
+        "Jsonb",
+        "Text",
+        "Date",
+        "Text",
+        "TextArray",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "449deea085d99f95c997dca92f377cf45e4bda07a06d2524aec7b10b21d00bd4"
+}

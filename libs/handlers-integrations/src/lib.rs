@@ -9,6 +9,7 @@ pub mod error;
 pub mod get_integration;
 pub mod install_url;
 pub mod instances;
+pub mod list_issues;
 pub mod list_repositories;
 mod manifest;
 pub mod signer;
@@ -36,6 +37,7 @@ pub use instances::dto::{
     IntegrationEnvironmentDto, IntegrationInstanceListResponse, IntegrationInstanceResponse,
     IntegrationKindDto, UpdateIntegrationInstanceRequest,
 };
+pub use list_issues::{IssueListResponse, IssueResponse};
 pub use state::{GithubIntegration, IntegrationsState};
 
 pub const TAG: &str = "integrations";
@@ -57,6 +59,7 @@ where
         .typed_get(install_url::handler)
         .typed_post(callback::handler)
         .typed_get(list_repositories::handler)
+        .typed_get(list_issues::handler)
         .typed_get(instances::list::handler)
         .typed_post(instances::create::handler)
         .typed_patch(instances::update::handler)

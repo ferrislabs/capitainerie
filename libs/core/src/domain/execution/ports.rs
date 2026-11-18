@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 
 use super::{
     DraftPullRequest, GithubAppCredentials, GithubAppSummary, GithubInstallation, PullRequestUrl,
-    RepositoryRef, TaskGrant, TaskLine, TaskOutcome, TaskSpec,
+    RepositoryIssue, RepositoryListing, RepositoryRef, TaskGrant, TaskLine, TaskOutcome, TaskSpec,
 };
 
 /// Runs one execution in a disposable container. Implementations must not
@@ -38,6 +38,20 @@ pub trait CodeHost: Send + Sync {
         organization_id: OrganizationId,
         installation_id: i64,
     ) -> impl Future<Output = Result<Vec<RepositoryRef>, CoreError>> + Send;
+
+    fn repository_listing(
+        &self,
+        organization_id: OrganizationId,
+        installation_id: i64,
+    ) -> impl Future<Output = Result<Vec<RepositoryListing>, CoreError>> + Send;
+
+    /// The open issues of a repository, pull requests excluded.
+    fn open_issues(
+        &self,
+        organization_id: OrganizationId,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> impl Future<Output = Result<Vec<RepositoryIssue>, CoreError>> + Send;
 
     /// The commit `refs/heads/<branch>` points to, `None` if the branch does
     /// not exist.

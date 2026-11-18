@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO mcp_oauth_states\n                (state, connector_id, subject, verifier_nonce, verifier_ciphertext, redirect_uri, expires_at)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "299e8fcc401abb208520ea030a0ad44b8a0c72ef332c612af21f75a0019b3db9"
+}

@@ -1,4 +1,4 @@
-use capitainerie_common::{CardCommentId, CardId, RunId, TranscriptId};
+use capitainerie_common::{AgentId, CardCommentId, CardId, RunId, TranscriptId};
 use capitainerie_core::domain::card::{
     Card, CardComment, Column,
     attributes::{Criterion, Estimate, Priority},
@@ -139,6 +139,10 @@ pub struct CardResponse {
     pub assignee_subject: Option<String>,
     pub labels: Vec<String>,
     pub estimate: Option<EstimateDto>,
+    /// The agent of the team registry the card is assigned to.
+    pub assignee_agent_id: Option<AgentId>,
+    /// The card this one is a subtask of.
+    pub parent_id: Option<CardId>,
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -200,6 +204,8 @@ impl From<Card> for CardResponse {
             assignee_subject: card.attributes.assignee_subject,
             labels: card.attributes.labels.as_slice().to_vec(),
             estimate: card.attributes.estimate.map(Into::into),
+            assignee_agent_id: card.attributes.assignee_agent_id,
+            parent_id: card.attributes.parent_id,
             version: card.version,
             created_at: card.created_at,
             updated_at: card.updated_at,
