@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-	type CustomRange,
-	isValidWindow,
-	periodWindow,
-} from '#/domain/metrics/model'
+import { type CustomRange, periodWindow } from '#/domain/metrics/model'
 
 const NOW = new Date('2026-11-18T12:00:00Z')
 const NO_RANGE: CustomRange = { from: '', to: '' }
@@ -38,26 +34,9 @@ describe('periodWindow', () => {
 		})
 	})
 
-	it('is null while a custom bound is missing', () => {
-		expect(
-			periodWindow('libre', NOW, { from: '2026-11-01', to: '' }),
-		).toBeNull()
-	})
-})
-
-describe('isValidWindow', () => {
-	it('requires from before to', () => {
-		expect(
-			isValidWindow({
-				from: '2026-11-01T00:00:00.000Z',
-				to: '2026-11-02T00:00:00.000Z',
-			}),
-		).toBe(true)
-		expect(
-			isValidWindow({
-				from: '2026-11-02T00:00:00.000Z',
-				to: '2026-11-01T00:00:00.000Z',
-			}),
-		).toBe(false)
+	it('falls back to 30 days while a custom bound is missing', () => {
+		expect(periodWindow('libre', NOW, { from: '2026-11-01', to: '' })).toEqual(
+			periodWindow('30j', NOW, NO_RANGE),
+		)
 	})
 })

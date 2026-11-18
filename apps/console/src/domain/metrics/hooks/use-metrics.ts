@@ -57,3 +57,13 @@ export function useUserCosts(query: MetricsQuery) {
 		enabled: Boolean(accessToken),
 	})
 }
+
+export function useDayCosts(query: MetricsQuery) {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/analytics/costs/days', {
+			query: params(query),
+		}).queryOptions,
+		enabled: Boolean(accessToken),
+	})
+}

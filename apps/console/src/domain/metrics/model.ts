@@ -34,12 +34,12 @@ function dayStart(day: string): number {
 	return Date.parse(`${day}T00:00:00Z`)
 }
 
-/** Fenêtre `[from, to[` en UTC ; `null` tant qu'une borne libre manque. */
+/** Fenêtre `[from, to[` en UTC ; une période libre incomplète retombe sur 30 jours. */
 export function periodWindow(
 	period: Period,
 	now: Date,
 	range: CustomRange,
-): Window | null {
+): Window {
 	switch (period) {
 		case '7j':
 			return rolling(now, 7)
@@ -48,15 +48,11 @@ export function periodWindow(
 		case 'mois':
 			return monthWindow(now)
 		case 'libre': {
-			if (!range.from || !range.to) return null
+			if (!range.from || !range.to) return rolling(now, 30)
 			return {
 				from: new Date(dayStart(range.from)).toISOString(),
 				to: new Date(dayStart(range.to) + DAY_MS).toISOString(),
 			}
 		}
 	}
-}
-
-export function isValidWindow(window: Window): boolean {
-	return Date.parse(window.from) < Date.parse(window.to)
 }

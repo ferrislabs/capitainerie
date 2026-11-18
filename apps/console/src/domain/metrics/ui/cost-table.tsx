@@ -18,7 +18,29 @@ interface Props {
 
 const FIGURES = 'figures font-mono text-[11.5px]'
 
-function Figures({ row, showRuns }: { row: CostRow; showRuns: boolean }) {
+function ShareBar({ ratio }: { ratio: number }) {
+	return (
+		<div
+			aria-hidden="true"
+			className="h-1.5 min-w-16 overflow-hidden rounded-full bg-secondary"
+		>
+			<div
+				className="h-full rounded-full bg-primary"
+				style={{ width: `${Math.min(Math.max(ratio, 0), 1) * 100}%` }}
+			/>
+		</div>
+	)
+}
+
+function Figures({
+	row,
+	showRuns,
+	ratio,
+}: {
+	row: CostRow
+	showRuns: boolean
+	ratio: number
+}) {
 	return (
 		<>
 			<Td className={FIGURES}>{formatTokens(row.figures.input_tokens)}</Td>
@@ -29,11 +51,15 @@ function Figures({ row, showRuns }: { row: CostRow; showRuns: boolean }) {
 				</Td>
 			) : null}
 			<Td className={FIGURES}>{formatCost(row.figures.cost_micros)}</Td>
+			<Td className="w-[18%]">
+				<ShareBar ratio={ratio} />
+			</Td>
 		</>
 	)
 }
 
 export function CostTable({ subject, rows, showRuns = false }: Props) {
+	const max = Math.max(1, ...rows.map((row) => row.figures.cost_micros))
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
 	const toggle = (key: string) =>
 		setOpen((current) => {
@@ -50,6 +76,7 @@ export function CostTable({ subject, rows, showRuns = false }: Props) {
 					<Th>Sortie</Th>
 					{showRuns ? <Th>Exécutions</Th> : null}
 					<Th>Coût</Th>
+					<Th>Part</Th>
 				</tr>
 			</thead>
 			<tbody>
@@ -85,7 +112,11 @@ export function CostTable({ subject, rows, showRuns = false }: Props) {
 										</span>
 									) : null}
 								</Td>
-								<Figures row={row} showRuns={showRuns} />
+								<Figures
+									row={row}
+									showRuns={showRuns}
+									ratio={row.figures.cost_micros / max}
+								/>
 							</Tr>
 							{expanded
 								? row.details.map((detail) => (
@@ -96,7 +127,14 @@ export function CostTable({ subject, rows, showRuns = false }: Props) {
 											<Td className="pl-9 text-xs text-muted-foreground">
 												{detail.label}
 											</Td>
-											<Figures row={detail} showRuns={showRuns} />
+											<Figures
+												row={detail}
+												showRuns={showRuns}
+												ratio={
+													detail.figures.cost_micros /
+													Math.max(1, row.figures.cost_micros)
+												}
+											/>
 										</Tr>
 									))
 								: null}
