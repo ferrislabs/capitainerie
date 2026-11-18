@@ -75,6 +75,25 @@ describe('GitHub app creation return', () => {
 		])
 	})
 
+	it('goes back to the GitHub page when the app was already saved', async () => {
+		const { router } = await mount(
+			<GithubAppCallbackPage code="c1" state="s1" />,
+			{
+				'POST /api/v1/integrations/github/app': {
+					status: 409,
+					body: { code: 'github_app_exists', message: 'exists', status: 409 },
+				},
+			},
+		)
+
+		await waitFor(() =>
+			expect(router.state.location.pathname).toBe(
+				'/settings/integrations/github',
+			),
+		)
+		expect(router.state.location.search).toEqual({ retour: 'app' })
+	})
+
 	it('explains an expired code', async () => {
 		await mount(<GithubAppCallbackPage code="c1" state="s1" />, {
 			'POST /api/v1/integrations/github/app': {
