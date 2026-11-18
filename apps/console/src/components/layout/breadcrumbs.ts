@@ -28,6 +28,7 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 	connectors: 'Connecteurs',
 	approvals: 'Approbations',
 	audit: 'Audit',
+	metrics: 'Métriques',
 }
 
 const NEW_LABELS: Readonly<Record<string, string>> = {

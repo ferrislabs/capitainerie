@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
 	Box,
+	ChartColumn,
 	CircleCheck,
 	Folder,
 	GitBranch,
@@ -33,6 +34,7 @@ export interface NavItem {
 		| '/settings/integrations/github'
 		| '/approvals'
 		| '/audit/{-$tab}'
+		| '/metrics/{-$tab}'
 		| '/providers'
 	label: string
 	icon: LucideIcon
@@ -73,6 +75,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 			{ to: '/settings/integrations/github', label: 'GitHub', icon: GitBranch },
 			{ to: '/approvals', label: 'Approbations', icon: Shield },
 			{ to: '/audit/{-$tab}', label: 'Audit', icon: History },
+			{ to: '/metrics/{-$tab}', label: 'Métriques', icon: ChartColumn },
 		],
 	},
 	{

@@ -116,6 +116,7 @@ describe('AppRail', () => {
 			'GitHub',
 			'Approbations',
 			'Audit',
+			'Métriques',
 			'Fournisseurs LLM',
 		]) {
 			expect(screen.getByRole('link', { name: label })).toBeTruthy()
@@ -191,6 +192,7 @@ describe('AppRail', () => {
 			'GitHub',
 			'Approbations',
 			'Audit',
+			'Métriques',
 			'Fournisseurs LLM',
 		]) {
 			fireEvent.keyDown(nav, { key: 'ArrowDown' })
