@@ -6,6 +6,8 @@ import { cn } from '#/lib/utils'
 
 interface Props {
 	crumbs: ReadonlyArray<Crumb>
+	organization?: string
+	liveCount?: number
 	onSearch: () => void
 	dark: boolean
 	onToggleTheme: () => void
@@ -23,6 +25,8 @@ const ICON_BUTTON = cn(
 
 export function AppTopbar({
 	crumbs,
+	organization,
+	liveCount = 0,
 	onSearch,
 	dark,
 	onToggleTheme,
@@ -35,15 +39,17 @@ export function AppTopbar({
 		<header className="flex h-[46px] shrink-0 items-center gap-2.5 border-b bg-background px-3.5">
 			<nav aria-label="Fil d'Ariane" className="min-w-0 flex-1">
 				<ol className="m-0 flex min-w-0 list-none items-center gap-1.5 overflow-hidden p-0 whitespace-nowrap text-muted-foreground">
-					<li className="flex items-center gap-1.5">
-						<span
-							aria-hidden="true"
-							className="grid size-[18px] shrink-0 place-items-center rounded-[5px] bg-linear-to-br from-brand-from to-brand-to text-[10px] font-bold text-white"
-						>
-							N
-						</span>
-						Natalia
-					</li>
+					{organization ? (
+						<li className="flex items-center gap-1.5">
+							<span
+								aria-hidden="true"
+								className="grid size-[18px] shrink-0 place-items-center rounded-[5px] bg-linear-to-br from-brand-from to-brand-to text-[10px] font-bold text-white"
+							>
+								{organization.charAt(0).toUpperCase()}
+							</span>
+							{organization}
+						</li>
+					) : null}
 					{crumbs.map((crumb, index) => {
 						const last = index === crumbs.length - 1
 						return (
@@ -51,9 +57,11 @@ export function AppTopbar({
 								key={crumb.to ?? crumb.label}
 								className="flex min-w-0 items-center gap-1.5"
 							>
-								<span aria-hidden="true" className="text-faint">
-									/
-								</span>
+								{organization || index > 0 ? (
+									<span aria-hidden="true" className="text-faint">
+										/
+									</span>
+								) : null}
 								{crumb.to && !last ? (
 									<Link
 										to={crumb.to}
@@ -82,10 +90,9 @@ export function AppTopbar({
 					})}
 				</ol>
 			</nav>
-			<span className="rounded-md border px-1.5 text-[11px] leading-[18px] text-muted-foreground">
-				Démo
-			</span>
-			<LiveLabel className="mr-0.5" />
+			{liveCount > 0 ? (
+				<LiveLabel className="mr-0.5">{`${liveCount} en direct`}</LiveLabel>
+			) : null}
 			<button
 				type="button"
 				onClick={onSearch}

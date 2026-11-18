@@ -19,4 +19,30 @@ describe('parseTasksSearch', () => {
 			q: '',
 		})
 	})
+
+	it('keeps valid filter, sort and grouping values', () => {
+		expect(
+			parseTasksSearch({
+				statut: 'done',
+				agent: 'a1',
+				projet: 'p1',
+				tri: 'priorite',
+				groupe: 'projet',
+			}),
+		).toEqual({
+			vue: 'liste',
+			q: '',
+			statut: 'done',
+			agent: 'a1',
+			projet: 'p1',
+			tri: 'priorite',
+			groupe: 'projet',
+		})
+	})
+
+	it('drops unknown filter, sort and grouping values', () => {
+		expect(
+			parseTasksSearch({ statut: 'blocked', agent: '', tri: 'x', groupe: 1 }),
+		).toEqual({ vue: 'liste', q: '' })
+	})
 })

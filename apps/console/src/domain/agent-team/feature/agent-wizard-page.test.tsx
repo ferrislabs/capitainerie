@@ -1,13 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import {
-	getAgentConfig,
-	resetAgentConfigs,
-} from '#/domain/agent-team/agent-config-store'
 import { AgentWizardPage } from '#/domain/agent-team/feature/agent-wizard-page'
-import { demoStore, resetDemoState } from '#/domain/demo'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 import { TEAM, teamAgent } from '#/test-utils/team-agents'
@@ -28,20 +23,40 @@ async function toLastStep(
 	await user.click(next())
 }
 
-function posts(fetchMock: ReturnType<typeof mockApi>) {
+const CONNECTORS = {
+	'GET /api/v1/mcp-connectors': {
+		items: [
+			{
+				id: 'c-1',
+				slug: 'chatwoot',
+				name: 'Chatwoot',
+				url: 'https://chat.example.com/mcp',
+				issuer: 'https://chat.example.com',
+				resource: 'https://chat.example.com/mcp',
+				scopes: [],
+				connected: true,
+				archived: false,
+				created_by: 'u',
+				created_at: '2026-11-01T00:00:00Z',
+				updated_at: '2026-11-01T00:00:00Z',
+			},
+		],
+	},
+}
+
+function calls(fetchMock: ReturnType<typeof mockApi>, method: string) {
 	return fetchMock.mock.calls
-		.filter(([, init]) => init?.method === 'POST')
+		.filter(([, init]) => init?.method === method)
 		.map(([url, init]) => ({
 			path: new URL(String(url)).pathname,
 			body: JSON.parse(String(init?.body)),
 		}))
 }
 
+const posts = (fetchMock: ReturnType<typeof mockApi>) =>
+	calls(fetchMock, 'POST')
+
 describe('agent wizard', () => {
-	beforeEach(() => {
-		resetDemoState()
-		resetAgentConfigs()
-	})
 	afterEach(() => {
 		vi.unstubAllGlobals()
 		clearAuth()
@@ -51,21 +66,23 @@ describe('agent wizard', () => {
 		const user = userEvent.setup()
 		const created = teamAgent('a-darnold', 'Darnold', {
 			slug: 'darnold',
-			connector_grants: ['Chatwoot'],
+			connector_grants: ['chatwoot'],
 		})
 		const fetchMock = mockApi({
+			...CONNECTORS,
 			'GET /api/v1/team/agents': { items: TEAM },
 			'POST /api/v1/team/agents': { status: 201, body: created },
+			'PATCH /api/v1/team/agents/a-darnold': { ...created, revision: 2 },
 		})
 		await renderAtPath(
 			withQueryClient(<AgentWizardPage />),
 			'/agents/nouveau',
 			EXTRA,
 		)
-		expect(await screen.findByText(/Données de démonstration/)).toBeTruthy()
+		expect(screen.queryByText(/Données de démonstration/)).toBeNull()
 
 		expect((next() as HTMLButtonElement).disabled).toBe(true)
-		await user.type(screen.getByLabelText("Nom de l'agent"), 'Darnold')
+		await user.type(await screen.findByLabelText("Nom de l'agent"), 'Darnold')
 		await user.click(next())
 
 		expect((next() as HTMLButtonElement).disabled).toBe(true)
@@ -79,26 +96,26 @@ describe('agent wizard', () => {
 		await user.click(next())
 
 		expect(
-			(screen.getByRole('checkbox', { name: 'Chatwoot' }) as HTMLInputElement)
-				.checked,
+			(
+				(await screen.findByRole('checkbox', {
+					name: 'Chatwoot',
+				})) as HTMLInputElement
+			).checked,
 		).toBe(false)
-		expect(screen.queryByRole('checkbox', { name: 'E-mail' })).toBeNull()
+		expect(screen.queryByText(/Sources à écouter/)).toBeNull()
 		await user.type(screen.getByLabelText('Titre'), 'Relais')
 		await user.selectOptions(
 			await screen.findByLabelText('Rapporte à'),
 			'a-chief',
 		)
 		await user.click(screen.getByRole('checkbox', { name: 'Chatwoot' }))
-		await user.click(
-			screen.getByRole('checkbox', { name: /Pièces reçues sur Chatwoot/ }),
-		)
+		await user.click(screen.getByRole('checkbox', { name: 'humanizer' }))
 		await user.click(next())
 
 		expect(screen.getAllByText('Darnold')).toHaveLength(2)
 		expect(screen.getByText('Chief of Staff')).toBeTruthy()
-		expect(screen.queryByText('Aucun (accès refusé)')).toBeNull()
-		await user.click(screen.getByRole('button', { name: "Tester l'agent" }))
-		expect(screen.getByText(/Test réussi/)).toBeTruthy()
+		expect(screen.getByText('Chatwoot')).toBeTruthy()
+		expect(screen.queryByRole('button', { name: "Tester l'agent" })).toBeNull()
 		await user.click(screen.getByRole('button', { name: "Créer l'agent" }))
 
 		await waitFor(() => expect(posts(fetchMock)).toHaveLength(1))
@@ -109,16 +126,21 @@ describe('agent wizard', () => {
 			name: 'Darnold',
 			description: 'Relais',
 			reports_to: 'a-chief',
-			connector_grants: ['Chatwoot'],
+			connector_grants: ['chatwoot'],
 		})
-		await waitFor(() =>
-			expect(
-				demoStore.state.sources.find(
-					(s) => s.id === 'pieces-recues-sur-chatwoot',
-				)?.agentIds,
-			).toContain('a-darnold'),
-		)
-		expect(getAgentConfig('a-darnold').fields.adapter).toBe('Codex')
+		await waitFor(() => expect(calls(fetchMock, 'PATCH')).toHaveLength(1))
+		const [configured] = calls(fetchMock, 'PATCH')
+		expect(configured?.path).toBe('/api/v1/team/agents/a-darnold')
+		expect(configured?.body.config).toMatchObject({
+			adapter: 'Codex',
+			title: 'Relais',
+		})
+		expect(configured?.body.skills).toEqual([
+			'paperclip',
+			'para-memory-files',
+			'humanizer',
+		])
+		expect(configured?.body.change_summary).toBe('configuration initiale')
 	}, 40000)
 
 	it('derives a free slug from the name', async () => {

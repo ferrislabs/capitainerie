@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE agents\n            SET slug = $3, name = $4, role = $5, description = $6, model = $7, status = $8,\n                hue = $9, reports_to = $10, archived = $11, instructions = $12,\n                connector_grants = $13, config = $14, skills = $15, paused = $16,\n                revision = $17, updated_at = $18\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int2",
+        "Uuid",
+        "Bool",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "TextArray",
+        "Bool",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "df66d4681493934c08ce03526699c5a374577b3bc04de4e8c37b07179354f71d"
+}

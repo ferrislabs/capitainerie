@@ -3,6 +3,8 @@ pub mod service;
 
 use capitainerie_common::{AgentId, CoreError, OrganizationId};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::domain::label::clean_label;
 
@@ -21,6 +23,11 @@ pub struct CrewAgent {
     pub archived: bool,
     pub instructions: String,
     pub connector_grants: ConnectorGrants,
+    pub config: AgentConfig,
+    pub skills: Skills,
+    pub paused: bool,
+    /// Incremented by every change; the latest entry of the agent's history.
+    pub revision: i32,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -145,6 +152,122 @@ impl TryFrom<Vec<String>> for ConnectorGrants {
     }
 }
 
+/// The free-form settings of an agent, edited by the console: a JSON object.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentConfig(Map<String, Value>);
+
+impl AgentConfig {
+    pub const MAX_BYTES: usize = 64 * 1024;
+
+    pub fn as_map(&self) -> &Map<String, Value> {
+        &self.0
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::Object(self.0.clone())
+    }
+}
+
+impl TryFrom<Value> for AgentConfig {
+    type Error = CoreError;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let Value::Object(map) = value else {
+            return Err(CoreError::Invalid(
+                "the config must be a JSON object".into(),
+            ));
+        };
+        let size = serde_json::to_vec(&map)
+            .map_err(|error| CoreError::Invalid(format!("the config is not valid JSON: {error}")))?
+            .len();
+        if size > Self::MAX_BYTES {
+            return Err(CoreError::Invalid(format!(
+                "the config exceeds {} bytes",
+                Self::MAX_BYTES
+            )));
+        }
+        Ok(Self(map))
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Skills(Vec<String>);
+
+impl Skills {
+    pub const MAX_COUNT: usize = 200;
+    pub const MAX_CHARS: usize = 120;
+
+    pub fn as_slice(&self) -> &[String] {
+        &self.0
+    }
+}
+
+impl TryFrom<Vec<String>> for Skills {
+    type Error = CoreError;
+
+    fn try_from(values: Vec<String>) -> Result<Self, Self::Error> {
+        let mut skills = Vec::with_capacity(values.len());
+        for value in &values {
+            let skill = clean_label(value, Self::MAX_CHARS, "a skill name")?;
+            if !skills.contains(&skill) {
+                skills.push(skill);
+            }
+        }
+        if skills.len() > Self::MAX_COUNT {
+            return Err(CoreError::Invalid(format!(
+                "there are more than {} skills",
+                Self::MAX_COUNT
+            )));
+        }
+        Ok(Self(skills))
+    }
+}
+
+/// The editable state of an agent as one entry of its history recorded it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentSnapshot {
+    pub name: String,
+    pub role: String,
+    pub description: String,
+    pub model: String,
+    pub instructions: String,
+    pub reports_to: Option<AgentId>,
+    pub connector_grants: Vec<String>,
+    pub config: Value,
+    pub skills: Vec<String>,
+    pub paused: bool,
+}
+
+impl From<&CrewAgent> for AgentSnapshot {
+    fn from(agent: &CrewAgent) -> Self {
+        Self {
+            name: agent.name.clone(),
+            role: agent.role.clone(),
+            description: agent.description.clone(),
+            model: agent.model.clone(),
+            instructions: agent.instructions.clone(),
+            reports_to: agent.reports_to,
+            connector_grants: agent.connector_grants.as_slice().to_vec(),
+            config: agent.config.to_value(),
+            skills: agent.skills.as_slice().to_vec(),
+            paused: agent.paused,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentRevision {
+    pub id: uuid::Uuid,
+    pub agent_id: AgentId,
+    pub organization_id: OrganizationId,
+    pub revision: i32,
+    pub snapshot: AgentSnapshot,
+    pub changed: String,
+    pub author: String,
+    pub created_at: DateTime<Utc>,
+}
+
+pub const CHANGED_MAX_CHARS: usize = 2_000;
 pub const ROLE_MAX_CHARS: usize = 120;
 pub const MODEL_MAX_CHARS: usize = 200;
 pub const DESCRIPTION_MAX_CHARS: usize = 5_000;
@@ -188,6 +311,10 @@ pub(crate) mod tests {
             archived: false,
             instructions: String::new(),
             connector_grants: ConnectorGrants::default(),
+            config: AgentConfig::default(),
+            skills: Skills::default(),
+            paused: false,
+            revision: 1,
             created_by: "user-1".into(),
             created_at: now,
             updated_at: now,
@@ -219,6 +346,45 @@ pub(crate) mod tests {
                 .unwrap();
         assert_eq!(grants.as_slice(), ["github", "odoo"]);
         assert!(ConnectorGrants::try_from(vec!["a,b".into()]).is_err());
+    }
+
+    #[test]
+    fn the_config_is_a_bounded_object() {
+        let config =
+            AgentConfig::try_from(serde_json::json!({"effort": "Auto", "turns": ""})).unwrap();
+        assert_eq!(config.as_map()["effort"], "Auto");
+        for not_an_object in [
+            Value::Null,
+            serde_json::json!([1, 2]),
+            serde_json::json!("x"),
+            serde_json::json!(3),
+        ] {
+            assert!(
+                AgentConfig::try_from(not_an_object.clone()).is_err(),
+                "{not_an_object}"
+            );
+        }
+        let huge = serde_json::json!({"blob": "a".repeat(AgentConfig::MAX_BYTES)});
+        assert!(AgentConfig::try_from(huge).is_err());
+    }
+
+    #[test]
+    fn skills_are_cleaned_deduplicated_and_bounded() {
+        let skills =
+            Skills::try_from(vec![" review ".into(), "review".into(), "deploy".into()]).unwrap();
+        assert_eq!(skills.as_slice(), ["review", "deploy"]);
+        assert!(Skills::try_from(vec![" ".into()]).is_err());
+        let too_many: Vec<String> = (0..=Skills::MAX_COUNT).map(|i| format!("s{i}")).collect();
+        assert!(Skills::try_from(too_many).is_err());
+    }
+
+    #[test]
+    fn a_snapshot_round_trips_through_json() {
+        let agent = agent(OrganizationId::new(), "dev");
+        let snapshot = AgentSnapshot::from(&agent);
+        let back: AgentSnapshot =
+            serde_json::from_value(serde_json::to_value(&snapshot).unwrap()).unwrap();
+        assert_eq!(back, snapshot);
     }
 
     #[test]

@@ -96,7 +96,10 @@ use capitainerie_handlers_runs::{
 use capitainerie_handlers_team::{
     self as team,
     create_agent::CreateTeamAgentRequest,
-    response::{TeamAgentListResponse, TeamAgentResponse, TeamAgentStatusDto},
+    response::{
+        TeamAgentListResponse, TeamAgentResponse, TeamAgentRevisionListResponse,
+        TeamAgentRevisionResponse, TeamAgentStatusDto,
+    },
     update_agent::UpdateTeamAgentRequest,
 };
 use capitainerie_handlers_transcriptions::{
@@ -145,6 +148,8 @@ use utoipa::{
         team::create_agent::handler,
         team::get_agent::handler,
         team::update_agent::handler,
+        team::agent_revisions::list_handler,
+        team::agent_revisions::restore_handler,
         mcp::list_connectors::handler,
         mcp::create_connector::handler,
         mcp::get_connector::handler,
@@ -273,6 +278,8 @@ use utoipa::{
         TeamAgentStatusDto,
         CreateTeamAgentRequest,
         UpdateTeamAgentRequest,
+        TeamAgentRevisionResponse,
+        TeamAgentRevisionListResponse,
         CreateTranscriptionRequest,
         TranscriptionResponse,
         ReadDocumentRequest,
@@ -486,6 +493,20 @@ mod tests {
         assert!(paths["/api/v1/team/agents/{agent_id}"]["get"].is_object());
         assert!(paths["/api/v1/team/agents/{agent_id}"]["patch"].is_object());
         assert!(paths["/api/v1/team/agents/{agent_id}"]["delete"].is_null());
+        assert!(paths["/api/v1/team/agents/{agent_id}/revisions"]["get"].is_object());
+        assert!(
+            paths["/api/v1/team/agents/{agent_id}/revisions/{revision}/restore"]["post"]
+                .is_object()
+        );
+        let card_filters: Vec<&str> = paths["/api/v1/cards"]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|parameter| parameter["name"].as_str())
+            .collect();
+        for filter in ["column", "status", "assignee_agent_id", "priority"] {
+            assert!(card_filters.contains(&filter), "{filter}");
+        }
         assert!(paths["/api/v1/agents"]["get"].is_object());
         assert!(paths["/api/v1/cards"]["post"].is_object());
         let schemas = &spec["components"]["schemas"];
@@ -497,7 +518,16 @@ mod tests {
                 );
             }
         }
-        for field in ["connector_grants", "reports_to", "instructions", "status"] {
+        for field in [
+            "connector_grants",
+            "reports_to",
+            "instructions",
+            "status",
+            "config",
+            "skills",
+            "paused",
+            "revision",
+        ] {
             assert!(
                 schemas["TeamAgentResponse"]["properties"][field].is_object(),
                 "{field}"

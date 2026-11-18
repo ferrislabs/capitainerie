@@ -495,6 +495,7 @@ export namespace Schemas {
   export type TeamAgentStatusDto = "idle" | "running";
   export type TeamAgentResponse = {
     archived: boolean;
+    config: Record<string, unknown>;
     connector_grants: Array<string>;
     created_at: string;
     created_by: string;
@@ -504,13 +505,18 @@ export namespace Schemas {
     instructions: string;
     model: string;
     name: string;
+    paused: boolean;
     reports_to?: (null | AgentId) | undefined;
+    revision: number;
     role: string;
+    skills: Array<string>;
     slug: string;
     status: TeamAgentStatusDto;
     updated_at: string;
   };
   export type TeamAgentListResponse = { items: Array<TeamAgentResponse> };
+  export type TeamAgentRevisionResponse = { author: string; changed: string; created_at: string; revision: number };
+  export type TeamAgentRevisionListResponse = { items: Array<TeamAgentRevisionResponse> };
   export type TestMcpConnectorResponse = { tools: Array<McpToolResponse> };
   export type TestProviderResponse = { error?: (string | null) | undefined; models: Array<ModelResponse>; ok: boolean };
   export type TestUserProviderResponse = { error?: (string | null) | undefined; ok: boolean };
@@ -541,14 +547,18 @@ export namespace Schemas {
   }>;
   export type UpdateTeamAgentRequest = Partial<{
     archived: boolean | null;
+    change_summary: string | null;
+    config: Record<string, unknown> | null;
     connector_grants: Array<string> | null;
     description: string | null;
     hue: number | null;
     instructions: string | null;
     model: string | null;
     name: string | null;
+    paused: boolean | null;
     reports_to: null | AgentId;
     role: string | null;
+    skills: Array<string> | null;
     slug: string | null;
   }>;
   export type UserProviderResponse = {
@@ -604,7 +614,16 @@ export namespace Endpoints {
     path: "/api/v1/cards";
     requestFormat: "json";
     parameters: {
-      query: Partial<{ client_id: string; project_id: string; priority: string; assignee: string; label: string }>;
+      query: Partial<{
+        client_id: string;
+        project_id: string;
+        priority: string;
+        assignee: string;
+        label: string;
+        column: string;
+        status: string;
+        assignee_agent_id: string;
+      }>;
     };
     responses: { 200: Schemas.CardListResponse; 401: Schemas.ApiErrorResponse; 422: Schemas.ApiErrorResponse };
   };
@@ -1558,6 +1577,35 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListTeamAgentRevisions = {
+    method: "GET";
+    path: "/api/v1/team/agents/{agent_id}/revisions";
+    requestFormat: "json";
+    parameters: {
+      path: { agent_id: string };
+    };
+    responses: {
+      200: Schemas.TeamAgentRevisionListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_RestoreTeamAgentRevision = {
+    method: "POST";
+    path: "/api/v1/team/agents/{agent_id}/revisions/{revision}/restore";
+    requestFormat: "json";
+    parameters: {
+      path: { agent_id: string; revision: number };
+    };
+    responses: {
+      200: Schemas.TeamAgentResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
   export type post_CreateTranscription = {
     method: "POST";
     path: "/api/v1/transcriptions";
@@ -1644,6 +1692,7 @@ export type EndpointByMethod = {
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/api/v1/team/agents": Endpoints.get_ListTeamAgents;
     "/api/v1/team/agents/{agent_id}": Endpoints.get_GetTeamAgent;
+    "/api/v1/team/agents/{agent_id}/revisions": Endpoints.get_ListTeamAgentRevisions;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;
   };
@@ -1673,6 +1722,7 @@ export type EndpointByMethod = {
     "/api/v1/projects/{project_id}/worksites": Endpoints.post_LaunchWorksites;
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
     "/api/v1/team/agents": Endpoints.post_CreateTeamAgent;
+    "/api/v1/team/agents/{agent_id}/revisions/{revision}/restore": Endpoints.post_RestoreTeamAgentRevision;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
   };

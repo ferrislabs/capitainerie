@@ -29,7 +29,9 @@ export function AgentList({ agents }: Props) {
 					<span className="hidden text-xs text-muted-foreground md:inline">
 						{agent.model}
 					</span>
-					{agent.status === 'running' ? (
+					{agent.paused ? (
+						<Sev tone="warn">en pause</Sev>
+					) : agent.status === 'running' ? (
 						<Live />
 					) : (
 						<Sev tone="info">inactif</Sev>

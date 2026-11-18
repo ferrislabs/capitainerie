@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { breadcrumbs, type EntityNames } from '#/components/layout/breadcrumbs'
 
+const TASK = '6f1c2a90-1111-4000-8000-000000000001'
+
 const NAMES: EntityNames = {
-	task: (id) => (id === 'NAT-611' ? 'Revue sécurité quotidienne' : undefined),
+	task: (id) => (id === TASK ? 'Revue sécurité quotidienne' : undefined),
 	agent: (id) => (id === 'dev' ? 'Dev (cycle autonome)' : undefined),
-	source: (id) => (id === 'dns' ? 'Nouveaux sous-domaines' : undefined),
-	routine: (id) => (id === 'analyse' ? 'Analyse board' : undefined),
 }
 
 describe('breadcrumbs', () => {
@@ -19,28 +19,23 @@ describe('breadcrumbs', () => {
 		expect(breadcrumbs('/agents/organigramme')).toEqual([{ label: 'Agents' }])
 	})
 
-	it('names a task with its id tag', () => {
-		expect(breadcrumbs('/tasks/nat-611', NAMES)).toEqual([
+	it('names a task with its short id tag', () => {
+		expect(breadcrumbs(`/tasks/${TASK.toUpperCase()}`, NAMES)).toEqual([
 			{ label: 'Tâches', to: '/tasks' },
-			{ label: 'Revue sécurité quotidienne', tag: 'NAT-611' },
+			{ label: 'Revue sécurité quotidienne', tag: '6f1c2a90' },
 		])
-		expect(breadcrumbs('/tasks/nat-999', NAMES)[1]).toEqual({
-			label: 'NAT-999',
-			tag: 'NAT-999',
-		})
+		expect(
+			breadcrumbs('/tasks/99999999-0000-4000-8000-000000000009', NAMES)[1],
+		).toEqual({ label: '99999999', tag: '99999999' })
 	})
 
-	it('names agents, sources and routines from the lookups', () => {
+	it('names agents from the lookup, sources and routines by id', () => {
 		expect(breadcrumbs('/agents/dev/skills', NAMES)).toEqual([
 			{ label: 'Agents', to: '/agents' },
 			{ label: 'Dev (cycle autonome)' },
 		])
-		expect(breadcrumbs('/sources/dns/pipeline', NAMES)[1]?.label).toBe(
-			'Nouveaux sous-domaines',
-		)
-		expect(breadcrumbs('/routines/analyse', NAMES)[1]?.label).toBe(
-			'Analyse board',
-		)
+		expect(breadcrumbs('/sources/dns/pipeline', NAMES)[1]?.label).toBe('dns')
+		expect(breadcrumbs('/routines/analyse', NAMES)[1]?.label).toBe('analyse')
 	})
 
 	it('names the creation pages', () => {

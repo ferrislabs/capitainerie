@@ -1,10 +1,7 @@
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { Skeleton } from '#/components/ui/skeleton'
-import {
-	getAgentConfig,
-	useConfigVersion,
-} from '#/domain/agent-team/agent-config-store'
+import { parseConfig } from '#/domain/agent-team/agent-config'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { buildOrgTree } from '#/domain/agent-team/org-tree'
 import { AgentsHeader } from '#/domain/agent-team/ui/agents-header'
@@ -18,7 +15,6 @@ import { Empty } from '#/domain/agent-team/ui/rows'
 
 export function OrgChartPage() {
 	const query = useTeamAgents(false)
-	useConfigVersion()
 	const agents = query.data?.items ?? []
 	const entries = buildOrgTree(agents).flatMap((node): OrgEntry[] => {
 		const agent = agents.find((a) => a.id === node.id)
@@ -28,7 +24,7 @@ export function OrgChartPage() {
 				agent,
 				depth: node.depth,
 				subCount: node.subCount,
-				canDelegate: getAgentConfig(agent.id, agent).fields.canDeleg,
+				canDelegate: parseConfig(agent).canDeleg,
 			},
 		]
 	})

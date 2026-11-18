@@ -177,8 +177,4 @@ export const DEMO_AGENTS: ReadonlyArray<DemoAgent> = [
 	},
 ]
 
-/** Nom court : « Security Officer (RSSI + Blue Team) » devient « Security Officer ». */
-export const shortName = (name: string): string => name.replace(/\s*\(.*\)/, '')
-
-export const demoAgent = (id: string): DemoAgent | undefined =>
-	DEMO_AGENTS.find((agent) => agent.id === id)
+export { shortName } from '#/lib/agent-name'

@@ -10,7 +10,8 @@ import { Options } from '#/domain/agent-team/ui/options'
 import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { TaskLine } from '#/domain/agent-team/ui/task-line'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
-import type { DemoTask } from '#/domain/demo'
+import type { Task } from '#/domain/tasks/model'
+import { shortTaskId } from '#/domain/tasks/task-ids'
 
 export interface SubAgentEntry {
 	agent: TeamAgent
@@ -18,7 +19,7 @@ export interface SubAgentEntry {
 }
 
 export interface DelegatedTask {
-	task: DemoTask
+	task: Task
 	assignee: TeamAgent | undefined
 }
 
@@ -283,7 +284,11 @@ export function DelegationTab({
 								key={task.id}
 								task={task}
 								assignee={assignee}
-								sub={`Parent ${task.parentId}`}
+								sub={
+									task.parentId
+										? `Parent ${shortTaskId(task.parentId)}`
+										: undefined
+								}
 								showName={false}
 							/>
 						))}

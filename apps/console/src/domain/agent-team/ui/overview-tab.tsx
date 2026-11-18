@@ -1,42 +1,61 @@
 import { Link } from '@tanstack/react-router'
+import type { Schemas } from '#/api/api.client'
 import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
-import { hueOf } from '#/domain/agent-team/agent-identity'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { FieldRow } from '#/domain/agent-team/ui/field-row'
 import { Chip, ChipList, Empty, Rows } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import { TaskLine } from '#/domain/agent-team/ui/task-line'
-import type { DemoTask } from '#/domain/demo'
+import { relativeAge } from '#/domain/dashboard/format'
+import type { Task } from '#/domain/tasks/model'
+import { taskPathId } from '#/domain/tasks/task-ids'
 
 interface Props {
 	agent: TeamAgent
 	form: AgentForm
-	skills: ReadonlyArray<string>
-	paused: boolean
 	subCount: number
 	reportsTo: string
-	tasks: ReadonlyArray<DemoTask>
-	onCopyKey: () => void
+	tasks: ReadonlyArray<Task>
+	tasksLoading: boolean
+	tasksError: boolean
+	activeRuns: ReadonlyArray<Schemas.ActiveRunResponse>
+}
+
+function RunSummary({ run }: { run: Schemas.ActiveRunResponse | undefined }) {
+	if (!run) return <>Aucun run en cours</>
+	const title = run.run.title ?? run.run.transcript_title ?? 'Run'
+	const started = run.run.started_at ?? run.run.created_at
+	const label = `${title} · étape ${Math.min(run.steps_done + 1, run.steps_total)}/${run.steps_total} · ${relativeAge(started)}`
+	if (!run.run.card_id) return <>{label}</>
+	return (
+		<Link
+			to="/tasks/$taskId"
+			params={{ taskId: taskPathId(run.run.card_id) }}
+			className="text-primary"
+		>
+			{label}
+		</Link>
+	)
 }
 
 export function OverviewTab({
 	agent,
 	form,
-	skills,
-	paused,
 	subCount,
 	reportsTo,
 	tasks,
-	onCopyKey,
+	tasksLoading,
+	tasksError,
+	activeRuns,
 }: Props) {
 	const params = { agentId: agent.id }
-	const status = paused
+	const status = agent.paused
 		? 'en pause'
 		: agent.status === 'running'
 			? 'en cours'
 			: 'inactif'
-	const tone = paused ? 'warn' : agent.status === 'running' ? 'vio' : 'ok'
+	const tone = agent.paused ? 'warn' : agent.status === 'running' ? 'vio' : 'ok'
 	return (
 		<div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-2.5">
 			<div>
@@ -46,22 +65,10 @@ export function OverviewTab({
 					</FieldRow>
 					<FieldRow label="Rôle">{agent.role}</FieldRow>
 					<FieldRow label="Description">{agent.description || '—'}</FieldRow>
-					<FieldRow label="Titre">{form.title}</FieldRow>
+					<FieldRow label="Titre">{form.title || '—'}</FieldRow>
 					<FieldRow label="Rapporte à">{reportsTo}</FieldRow>
 					<FieldRow label="Rapports directs">{subCount}</FieldRow>
-					<FieldRow label="Clé publique">
-						<span className="font-mono text-[11.5px]">
-							sha256:{(hueOf(agent.name) * 7919).toString(16).padStart(4, '0')}
-							Kf3y…
-						</span>{' '}
-						<button
-							type="button"
-							className="text-xs text-primary"
-							onClick={onCopyKey}
-						>
-							Copier
-						</button>
-					</FieldRow>
+					<FieldRow label="Révision">{agent.revision}</FieldRow>
 				</SectionCard>
 				<SectionCard
 					title="Harness / Runtime"
@@ -76,16 +83,12 @@ export function OverviewTab({
 					}
 				>
 					<FieldRow label="Adaptateur">{form.adapter}</FieldRow>
-					<FieldRow label="Modèle">{agent.model}</FieldRow>
-					<FieldRow label="Session">
-						<span className="font-mono text-[11.5px]">b2ce1171-4468-4084</span>
+					<FieldRow label="Modèle">
+						{agent.model || 'Modèle par défaut du fournisseur'}
 					</FieldRow>
-					<FieldRow label="Dernier run">scheduled_retry · il y a 4 j</FieldRow>
-				</SectionCard>
-				<SectionCard title="Capacités" flush>
-					<Empty className="p-3.5">
-						Aucun résumé de capacités. Ajoute-le dans les instructions.
-					</Empty>
+					<FieldRow label="Run en cours">
+						<RunSummary run={activeRuns[0]} />
+					</FieldRow>
 				</SectionCard>
 				<SectionCard
 					title="Compétences"
@@ -99,11 +102,15 @@ export function OverviewTab({
 						</Link>
 					}
 				>
-					<ChipList>
-						{skills.map((skill) => (
-							<Chip key={skill}>{skill}</Chip>
-						))}
-					</ChipList>
+					{agent.skills.length === 0 ? (
+						<Empty className="p-3.5">Aucune compétence activée.</Empty>
+					) : (
+						<ChipList>
+							{agent.skills.map((skill) => (
+								<Chip key={skill}>{skill}</Chip>
+							))}
+						</ChipList>
+					)}
 				</SectionCard>
 			</div>
 			<div>
@@ -116,8 +123,16 @@ export function OverviewTab({
 						</Link>
 					}
 				>
-					{tasks.length === 0 ? (
-						<Empty>Aucune tâche pour le moment.</Empty>
+					{tasksError ? (
+						<p role="alert" className="m-0 p-3 text-signal-danger">
+							Impossible de charger les tâches.
+						</p>
+					) : tasksLoading ? (
+						<output className="m-0 block p-3 text-muted-foreground">
+							Chargement des tâches…
+						</output>
+					) : tasks.length === 0 ? (
+						<Empty>Aucune tâche assignée à cet agent.</Empty>
 					) : (
 						<Rows>
 							{tasks.map((task) => (

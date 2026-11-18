@@ -250,8 +250,7 @@ impl CodeHost for GithubApps {
         installation_id: i64,
         repository: &RepositoryRef,
     ) -> Result<Vec<RepositoryIssue>, CoreError> {
-        Ok(self
-            .required(organization_id)
+        self.required(organization_id)
             .await?
             .list_open_issues(installation_id, repository)
             .await
@@ -260,7 +259,7 @@ impl CodeHost for GithubApps {
                     CoreError::Invalid("github_app_issues_permission_missing".into())
                 }
                 other => other.into(),
-            })?)
+            })
     }
 
     async fn branch_head(

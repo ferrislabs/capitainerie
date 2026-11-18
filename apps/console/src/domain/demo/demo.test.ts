@@ -5,8 +5,9 @@ import {
 	DEMO_GRANTS,
 	DEMO_PROJECTS,
 	DEMO_TASKS,
-	demoAgent,
 } from '#/domain/demo'
+
+const demoAgent = (id: string) => DEMO_AGENTS.find((agent) => agent.id === id)
 
 describe('demo fixtures', () => {
 	it('gives every agent a unique id', () => {

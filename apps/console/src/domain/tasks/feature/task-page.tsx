@@ -8,6 +8,7 @@ import { useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { relativeAge } from '#/domain/dashboard/format'
 import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
 import { RunStatusPanel } from '#/domain/tasks/feature/run-status-panel'
@@ -18,6 +19,7 @@ import {
 	useCards,
 	useCommentCard,
 	useMoveCard,
+	useUpdateCard,
 } from '#/domain/tasks/hooks/use-tasks'
 import {
 	childrenOf,
@@ -116,6 +118,8 @@ export function TaskPage({ pathId }: Props) {
 	const detail = useCard(id)
 	const cards = useCards()
 	const move = useMoveCard()
+	const update = useUpdateCard()
+	const team = useTeamAgents().data?.items
 	const comment = useCommentCard()
 	const agentOf = useAgentOf()
 	const [message, notify] = useNotice()
@@ -176,6 +180,13 @@ export function TaskPage({ pathId }: Props) {
 		)
 	}
 
+	const conflictOr = (fallback: string) => (error: unknown) =>
+		notify(
+			(error as { status?: number } | null)?.status === 409
+				? 'Cette tâche a changé entre-temps, réessaie'
+				: fallback,
+		)
+
 	const changeStatus = (status: TaskStatus) =>
 		move.mutate(
 			{
@@ -184,14 +195,24 @@ export function TaskPage({ pathId }: Props) {
 			},
 			{
 				onSuccess: () => notify(`Statut : ${STATUS_LABEL[status]}`),
-				onError: (error) => {
-					const code = (error as { status?: number } | null)?.status
+				onError: conflictOr('Le changement de statut a échoué'),
+			},
+		)
+
+	const changeAssignee = (agentId: string | null) =>
+		update.mutate(
+			{
+				path: { card_id: task.id },
+				body: { assignee_agent_id: agentId, expected_version: task.version },
+			},
+			{
+				onSuccess: () =>
 					notify(
-						code === 409
-							? 'Cette tâche a changé entre-temps, réessaie'
-							: 'Le changement de statut a échoué',
-					)
-				},
+						agentId
+							? `Assignée à ${agentOf(agentId).name}`
+							: 'Tâche désassignée',
+					),
+				onError: conflictOr("Le changement d'assignation a échoué"),
 			},
 		)
 
@@ -324,9 +345,15 @@ export function TaskPage({ pathId }: Props) {
 					<PropertiesPanel
 						task={task}
 						agent={agent}
+						agents={(team ?? []).map((a) => ({
+							id: a.id,
+							name: agentOf(a.id).name,
+						}))}
 						subtasks={kids}
 						busy={move.isPending}
+						assigning={update.isPending}
 						onStatus={changeStatus}
+						onAssign={changeAssignee}
 						onClose={() => setShowProps(false)}
 					/>
 				) : null}

@@ -1,12 +1,10 @@
-import type { DemoTaskStatus } from '#/domain/demo'
+import type { TaskStatus } from '#/domain/tasks/model'
 import { cn } from '#/lib/utils'
 
-const TONE: Record<DemoTaskStatus, string> = {
+const TONE: Record<TaskStatus, string> = {
 	todo: 'text-signal-attention-ink',
 	progress: 'text-primary',
-	review: 'text-violet',
 	done: 'text-signal-success',
-	blocked: 'text-signal-danger',
 	cancelled: 'text-faint',
 	backlog: 'text-faint',
 }
@@ -20,7 +18,7 @@ const RING = {
 	className: 'stroke-current',
 } as const
 
-function Glyph({ status }: { status: DemoTaskStatus }) {
+function Glyph({ status }: { status: TaskStatus }) {
 	switch (status) {
 		case 'todo':
 			return <circle {...RING} />
@@ -37,13 +35,6 @@ function Glyph({ status }: { status: DemoTaskStatus }) {
 					/>
 				</>
 			)
-		case 'review':
-			return (
-				<>
-					<circle {...RING} />
-					<path d="M8 2a6 6 0 0 1 0 12z" className="fill-current" />
-				</>
-			)
 		case 'done':
 			return (
 				<>
@@ -55,18 +46,6 @@ function Glyph({ status }: { status: DemoTaskStatus }) {
 						strokeLinecap="round"
 						strokeLinejoin="round"
 						className="stroke-white"
-					/>
-				</>
-			)
-		case 'blocked':
-			return (
-				<>
-					<circle {...RING} />
-					<path
-						d="M5 8h6"
-						strokeWidth="1.8"
-						strokeLinecap="round"
-						className="stroke-current"
 					/>
 				</>
 			)
@@ -88,7 +67,7 @@ function Glyph({ status }: { status: DemoTaskStatus }) {
 }
 
 interface Props {
-	status: DemoTaskStatus
+	status: TaskStatus
 	className?: string
 }
 

@@ -5,7 +5,7 @@ use super::model::{CardCommentRow, CardRow, criteria_json, stored_offset};
 use crate::{
     domain::{
         card::{
-            Card, CardComment,
+            Card, CardComment, Column,
             attributes::{CardFilter, Estimate, Priority},
             ports::{CardCommentRepository, CardRepository},
         },
@@ -275,6 +275,8 @@ impl CardRepository for PgCardRepository<'_> {
               AND ($5::text IS NULL OR c.assignee_subject = $5)
               AND ($6::text IS NULL
                    OR EXISTS (SELECT 1 FROM unnest(c.labels) AS label WHERE lower(label) = lower($6)))
+              AND ($7::text IS NULL OR c."column" = $7)
+              AND ($8::uuid IS NULL OR c.assignee_agent_id = $8)
             ORDER BY c.updated_at DESC, c.id DESC
             LIMIT 500
             "#,
@@ -284,6 +286,8 @@ impl CardRepository for PgCardRepository<'_> {
             filter.priority.map(Priority::as_str),
             filter.assignee,
             filter.label,
+            filter.column.map(Column::as_str),
+            filter.assignee_agent_id.map(|id| id.0),
         )
         .fetch_all(&mut ***tx)
         .await

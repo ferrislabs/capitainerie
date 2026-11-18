@@ -1,11 +1,11 @@
 import { cn } from '#/lib/utils'
 
 interface Props {
-	children?: string
+	children: string
 	className?: string
 }
 
-export function LiveLabel({ children = '1 en direct', className }: Props) {
+export function LiveLabel({ children, className }: Props) {
 	return (
 		<span
 			className={cn(

@@ -12,18 +12,20 @@ import { AppTopbar } from '#/components/layout/app-topbar'
 import { breadcrumbs, type EntityNames } from '#/components/layout/breadcrumbs'
 import { CommandPalette } from '#/components/layout/command-palette'
 import { NAV_SECTIONS } from '#/components/layout/nav-items'
-import { Notice, useNotice } from '#/components/layout/notice'
 import type { PaletteCommand } from '#/components/layout/palette-filter'
 import { useCommandPalette } from '#/components/layout/use-command-palette'
 import { TooltipProvider } from '#/components/ui/tooltip'
-import { shortName, useDemoState } from '#/domain/demo'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
-import { useRoutinesState } from '#/domain/routines/feature/routines-store'
+import { useMe } from '#/domain/identity/hooks/use-me'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
+import { useCards } from '#/domain/tasks/hooks/use-tasks'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { usePersistedFlag } from '#/hooks/use-persisted-flag'
 import { useRealtime } from '#/hooks/use-realtime'
 import { useTheme } from '#/hooks/use-theme'
+import { shortName } from '#/lib/agent-name'
 import { resolveTheme, systemPrefersDark } from '#/lib/theme'
 
 export const Route = createFileRoute('/_app')({ component: AppLayout })
@@ -38,36 +40,24 @@ function AppLayout() {
 	const navigate = useNavigate()
 	const { open, setOpen } = useCommandPalette()
 	const [newTaskOpen, setNewTaskOpen] = useState(false)
-	const agents = useDemoState((s) => s.agents)
-	const tasks = useDemoState((s) => s.tasks)
-	const sources = useDemoState((s) => s.sources)
-	const approvals = useDemoState((s) => s.approvals)
-	const routines = useRoutinesState((s) => s.routines)
+	const agents = useTeamAgents().data?.items
+	const cards = useCards().data?.items
+	const liveCount = useActiveRuns().data?.items.length ?? 0
+	const organization = useMe().data?.organization.name
 	const router = useRouter()
-	const [notice, notify] = useNotice()
 	const liveAgents = useMemo(
 		() =>
-			agents
+			(agents ?? [])
 				.filter((a) => a.status === 'running')
 				.map((a) => ({ id: a.id, name: shortName(a.name), hue: a.hue })),
 		[agents],
 	)
 	const names = useMemo<EntityNames>(
 		() => ({
-			task: (id) => tasks.find((t) => t.id === id)?.title,
-			agent: (id) => agents.find((a) => a.id === id)?.name,
-			source: (id) => sources.find((x) => x.id === id)?.name,
-			routine: (id) => routines.find((r) => r.id === id)?.name,
+			task: (id) => cards?.find((t) => t.id === id)?.title,
+			agent: (id) => agents?.find((a) => a.id === id)?.name,
 		}),
-		[tasks, agents, sources, routines],
-	)
-	const badges = useMemo(
-		() => ({
-			'/inbox/{-$tab}': 67,
-			'/sources': 3,
-			'/approvals': approvals.filter((a) => a.status === 'pending').length,
-		}),
-		[approvals],
+		[cards, agents],
 	)
 	const { preference, setPreference } = useTheme()
 	const dark = resolveTheme(preference, systemPrefersDark()) === 'dark'
@@ -122,15 +112,15 @@ function AppLayout() {
 						onSearch={() => setOpen(true)}
 						onNewTask={() => setNewTaskOpen(true)}
 						liveAgents={liveAgents}
-						badges={badges}
-						onOrganization={() =>
-							notify("Changement d'organisation : une seule organisation")
-						}
+						liveCount={liveCount}
+						organization={organization}
 						footer={(isExpanded) => <UserMenuFeature compact={!isExpanded} />}
 					/>
 					<div className="flex min-w-0 flex-1 flex-col">
 						<AppTopbar
 							crumbs={breadcrumbs(pathname, names)}
+							organization={organization}
+							liveCount={liveCount}
 							onSearch={() => setOpen(true)}
 							dark={dark}
 							onToggleTheme={() => setPreference(dark ? 'light' : 'dark')}
@@ -143,7 +133,6 @@ function AppLayout() {
 					</div>
 				</div>
 				<NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />
-				<Notice message={notice} className="fixed right-4 bottom-4 z-50" />
 				<CommandPalette
 					open={open}
 					onOpenChange={setOpen}

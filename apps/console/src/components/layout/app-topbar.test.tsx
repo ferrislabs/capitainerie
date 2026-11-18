@@ -14,6 +14,7 @@ async function renderBar(
 ) {
 	const props = {
 		crumbs: CRUMBS,
+		organization: 'Acme',
 		onSearch: vi.fn(),
 		dark: false,
 		onToggleTheme: vi.fn(),
@@ -26,7 +27,7 @@ async function renderBar(
 describe('AppTopbar', () => {
 	it('starts with the organization, links the parent crumbs and marks the last current', async () => {
 		await renderBar()
-		expect(screen.getByText('Natalia')).toBeTruthy()
+		expect(screen.getByText('Acme')).toBeTruthy()
 		expect(
 			screen.getByRole('link', { name: 'Tâches' }).getAttribute('href'),
 		).toBe('/tasks')
@@ -35,10 +36,15 @@ describe('AppTopbar', () => {
 		expect(screen.getByText('NAT-611')).toBeTruthy()
 	})
 
-	it('shows the demo chip and the live label', async () => {
+	it('shows the real live count and no demo chip', async () => {
+		await renderBar({ liveCount: 3 })
+		expect(screen.queryByText('Démo')).toBeNull()
+		expect(screen.getByText('3 en direct')).toBeTruthy()
+	})
+
+	it('hides the live label when nothing runs', async () => {
 		await renderBar()
-		expect(screen.getByText('Démo')).toBeTruthy()
-		expect(screen.getByText('1 en direct')).toBeTruthy()
+		expect(screen.queryByText(/en direct/)).toBeNull()
 	})
 
 	it('opens the search from the search field', async () => {

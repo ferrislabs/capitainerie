@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import type { Task } from '#/domain/tasks/model'
 import { taskPathId } from '#/domain/tasks/task-ids'
-import { STATUS_LABEL, type TaskGroup } from '#/domain/tasks/task-list'
+import type { TaskGroup } from '#/domain/tasks/task-list'
 import { AgentChip } from '#/domain/tasks/ui/agent-chip'
 import { StatusIcon } from '#/domain/tasks/ui/status-icon'
 
@@ -52,10 +52,10 @@ export function TasksList({ groups, agentOf }: Props) {
 	return (
 		<>
 			{groups.map((group) => (
-				<section key={group.status} aria-label={STATUS_LABEL[group.status]}>
+				<section key={group.key} aria-label={group.label}>
 					<div className="flex items-center gap-2 rounded-t-[7px] border bg-secondary px-3 py-1.5 text-xs font-semibold">
-						<StatusIcon status={group.status} />
-						{STATUS_LABEL[group.status]}
+						{group.status ? <StatusIcon status={group.status} /> : null}
+						{group.label}
 						<span className="text-muted-foreground tabular-nums">
 							{group.tasks.length}
 						</span>
@@ -80,13 +80,13 @@ export function TasksBoard({ groups, agentOf, onAdd }: Props) {
 		<div className="grid auto-cols-[minmax(240px,1fr)] grid-flow-col gap-2.5 overflow-x-auto pb-2">
 			{groups.map((group) => (
 				<section
-					key={group.status}
-					aria-label={STATUS_LABEL[group.status]}
+					key={group.key}
+					aria-label={group.label}
 					className="flex min-w-0 flex-col rounded-lg border bg-card"
 				>
 					<h3 className="m-0 flex items-center gap-[7px] px-2.5 py-2 text-xs font-semibold">
-						<StatusIcon status={group.status} />
-						{STATUS_LABEL[group.status]}
+						{group.status ? <StatusIcon status={group.status} /> : null}
+						{group.label}
 						<span className="text-muted-foreground tabular-nums">
 							{group.tasks.length}
 						</span>

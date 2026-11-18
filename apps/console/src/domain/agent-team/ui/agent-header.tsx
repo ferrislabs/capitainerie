@@ -1,4 +1,3 @@
-import { Play } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { AdapterChip } from '#/domain/agent-team/ui/adapter-chip'
@@ -10,9 +9,7 @@ interface Props {
 	title: string
 	paused: boolean
 	busy?: boolean
-	onMakePrimary: () => void
 	onAssign: () => void
-	onRun: () => void
 	onTogglePause: () => void
 	onToggleArchive: () => void
 }
@@ -23,9 +20,7 @@ export function AgentHeader({
 	title,
 	paused,
 	busy = false,
-	onMakePrimary,
 	onAssign,
-	onRun,
 	onTogglePause,
 	onToggleArchive,
 }: Props) {
@@ -47,17 +42,15 @@ export function AgentHeader({
 				</span>
 			</div>
 			<div className="ml-auto flex flex-wrap items-center gap-2">
-				<Button type="button" variant="outline" onClick={onMakePrimary}>
-					Définir comme principal
-				</Button>
 				<Button type="button" variant="outline" onClick={onAssign}>
 					Assigner une tâche
 				</Button>
-				<Button type="button" variant="outline" onClick={onRun}>
-					<Play aria-hidden="true" />
-					Lancer
-				</Button>
-				<Button type="button" variant="outline" onClick={onTogglePause}>
+				<Button
+					type="button"
+					variant="outline"
+					disabled={busy}
+					onClick={onTogglePause}
+				>
 					{paused ? 'Reprendre' : 'Pause'}
 				</Button>
 				<Button

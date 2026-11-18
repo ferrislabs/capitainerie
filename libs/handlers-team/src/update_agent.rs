@@ -3,6 +3,7 @@ use capitainerie_common::AgentId;
 use capitainerie_core::domain::crew::service::UpdateAgent;
 use capitainerie_handlers::{ApiError, AppState, Caller, Patch};
 use serde::Deserialize;
+use serde_json::Value;
 use utoipa::ToSchema;
 
 use crate::{get_agent::TeamAgentPath, response::TeamAgentResponse};
@@ -23,6 +24,14 @@ pub struct UpdateTeamAgentRequest {
     pub instructions: Option<String>,
     /// Replaces the whole list.
     pub connector_grants: Option<Vec<String>>,
+    /// Replaces the whole object; at most 64 KiB.
+    #[schema(value_type = Option<Object>)]
+    pub config: Option<Value>,
+    /// Replaces the whole list; at most 200.
+    pub skills: Option<Vec<String>>,
+    pub paused: Option<bool>,
+    /// What the change is about, kept in the agent's history; at most 2000 characters.
+    pub change_summary: Option<String>,
 }
 
 #[utoipa::path(
@@ -33,7 +42,7 @@ pub struct UpdateTeamAgentRequest {
     params(("agent_id" = AgentId, Path, description = "Agent identifier")),
     request_body = UpdateTeamAgentRequest,
     responses(
-        (status = 200, description = "The updated agent; absent fields are unchanged", body = TeamAgentResponse),
+        (status = 200, description = "The updated agent; absent fields are unchanged, and the change is recorded as a new revision", body = TeamAgentResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the change; agents may not manage the registry", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such agent in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
@@ -64,6 +73,10 @@ pub async fn handler(
                 archived: request.archived,
                 instructions: request.instructions,
                 connector_grants: request.connector_grants,
+                config: request.config,
+                skills: request.skills,
+                paused: request.paused,
+                change_summary: request.change_summary,
             },
         )
         .await?;

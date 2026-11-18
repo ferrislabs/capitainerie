@@ -1,16 +1,12 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import {
-	resetAgentConfigs,
-	updateAgentConfig,
-} from '#/domain/agent-team/agent-config-store'
 import { AgentTeamPage } from '#/domain/agent-team/feature/agent-team-page'
 import { OrgChartPage } from '#/domain/agent-team/feature/org-chart-page'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
-import { TEAM } from '#/test-utils/team-agents'
+import { DEV, TEAM } from '#/test-utils/team-agents'
 
 const EXTRA = [
 	'/agents',
@@ -22,7 +18,6 @@ const EXTRA = [
 const LIST = { 'GET /api/v1/team/agents': { items: TEAM } }
 
 describe('team list and org chart', () => {
-	beforeEach(resetAgentConfigs)
 	afterEach(() => {
 		vi.unstubAllGlobals()
 		clearAuth()
@@ -94,9 +89,12 @@ describe('team list and org chart', () => {
 		expect(screen.getByText(/Aucun agent erreur pour l'instant/)).toBeTruthy()
 	})
 
-	it('filters paused agents from the local pause state', async () => {
-		mockApi(LIST)
-		updateAgentConfig('a-dev', { paused: true })
+	it('filters paused agents from the API pause flag', async () => {
+		mockApi({
+			'GET /api/v1/team/agents': {
+				items: TEAM.map((a) => (a.id === DEV.id ? { ...a, paused: true } : a)),
+			},
+		})
 		await renderAtPath(
 			withQueryClient(<AgentTeamPage filter="pause" />),
 			'/agents',

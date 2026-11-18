@@ -70,17 +70,22 @@ describe('AppRail', () => {
 	})
 
 	it('labels the dashboard with the live count', async () => {
-		await renderRail('/')
+		await renderRail('/', rail({ liveCount: 2 }))
 
-		expect(screen.getByText('1 en direct')).toBeTruthy()
+		expect(screen.getByText('2 en direct')).toBeTruthy()
 	})
 
-	it('opens the organization switcher', async () => {
-		const onOrganization = vi.fn()
-		await renderRail('/', rail({ onOrganization }))
+	it('hides the live label when nothing runs', async () => {
+		await renderRail('/')
 
-		await userEvent.click(screen.getByRole('button', { name: 'Natalia' }))
-		expect(onOrganization).toHaveBeenCalledOnce()
+		expect(screen.queryByText(/en direct$/)).toBeNull()
+	})
+
+	it('shows the organization name, without a fake switcher', async () => {
+		await renderRail('/', rail({ organization: 'Acme' }))
+
+		expect(screen.getByText('Acme')).toBeTruthy()
+		expect(screen.queryByRole('button', { name: 'Acme' })).toBeNull()
 	})
 
 	it('groups the destinations by section', async () => {

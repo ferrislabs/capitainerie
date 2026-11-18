@@ -35,7 +35,7 @@ import {
 import { AgentFace } from '#/domain/dashboard/ui/avatars'
 import { ChartPanel, type PanelStatus } from '#/domain/dashboard/ui/chart-panel'
 import { StatusGlyph } from '#/domain/dashboard/ui/status-glyph'
-import type { DemoTaskStatus } from '#/domain/demo'
+import { statusOfColumn } from '#/domain/tasks/model'
 import { cn } from '#/lib/utils'
 
 interface Props {
@@ -65,14 +65,6 @@ const RUNS_LINK = {
 const TARGETS: Readonly<Record<AttentionTarget, LinkProps>> = {
 	runs: RUNS_LINK,
 	tasks: TASKS_LINK,
-}
-
-const COLUMN_STATUS: Readonly<Record<Schemas.ColumnDto, DemoTaskStatus>> = {
-	proposed: 'backlog',
-	todo: 'todo',
-	in_progress: 'progress',
-	done: 'done',
-	rejected: 'cancelled',
 }
 
 const SEVERITY: Readonly<Record<Severity, { label: string; tone: string }>> = {
@@ -481,7 +473,7 @@ export function DashboardView({
 									params={{ taskId: card.id }}
 									className={cn(ROW, HOVER)}
 								>
-									<StatusGlyph status={COLUMN_STATUS[card.column]} />
+									<StatusGlyph status={statusOfColumn(card.column)} />
 									<span className="min-w-0 flex-1">
 										<b className="block truncate font-medium">{card.title}</b>
 									</span>

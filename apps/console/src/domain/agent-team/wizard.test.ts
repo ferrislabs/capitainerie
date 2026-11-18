@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
 	buildCreateRequest,
-	buildWizardConfig,
+	buildWizardPatch,
 	canAdvance,
 	initialWizard,
 	toggled,
@@ -25,10 +25,9 @@ describe('wizard', () => {
 		expect(canAdvance({ ...w, step: 3, model: 'claude-sonnet-5-5' })).toBe(true)
 	})
 
-	it('starts with no connector, no source and no parent', () => {
+	it('starts with no connector and no parent', () => {
 		const w = initialWizard()
 		expect(w.connectors).toEqual([])
-		expect(w.sources).toEqual([])
 		expect(w.reports).toBe('Aucun (direction)')
 	})
 
@@ -70,13 +69,22 @@ describe('wizard', () => {
 		expect(body.reports_to).toBeNull()
 	})
 
-	it('builds the local config', () => {
-		const config = buildWizardConfig(
-			{ ...initialWizard(), adapter: 'Codex', interval: 'Manuelle' },
+	it('builds the configuration patch sent after creation', () => {
+		const patch = buildWizardPatch(
+			{
+				...initialWizard(),
+				adapter: 'Codex',
+				interval: 'Manuelle',
+				skills: ['humanizer'],
+			},
 			DEV,
 		)
-		expect(config.fields).toMatchObject({ adapter: 'Codex', hb: false })
-		expect(config.rev).toBe(1)
-		expect(config.revs[0]?.changed).toBe('création')
+		expect(patch.config).toMatchObject({
+			adapter: 'Codex',
+			hb: false,
+			title: 'Général',
+		})
+		expect(patch.skills).toEqual(['humanizer'])
+		expect(patch.change_summary).toBe('configuration initiale')
 	})
 })

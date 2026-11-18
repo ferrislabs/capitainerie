@@ -1,22 +1,18 @@
-import type { DemoTaskStatus } from '#/domain/demo'
+import type { TaskStatus } from '#/domain/tasks/model'
 import { cn } from '#/lib/utils'
 
-const LABELS: Readonly<Record<DemoTaskStatus, string>> = {
+const LABELS: Readonly<Record<TaskStatus, string>> = {
 	todo: 'À faire',
 	progress: 'En cours',
-	review: 'En revue',
 	done: 'Terminé',
-	blocked: 'Bloqué',
 	cancelled: 'Annulé',
 	backlog: 'Backlog',
 }
 
-const TONES: Readonly<Record<DemoTaskStatus, string>> = {
+const TONES: Readonly<Record<TaskStatus, string>> = {
 	todo: 'text-signal-attention-ink',
 	progress: 'text-primary',
-	review: 'text-violet',
 	done: 'text-signal-success',
-	blocked: 'text-signal-danger',
 	cancelled: 'text-faint',
 	backlog: 'text-faint',
 }
@@ -30,7 +26,7 @@ const RING = {
 	strokeWidth: 1.6,
 } as const
 
-function Shape({ status }: { status: DemoTaskStatus }) {
+function Shape({ status }: { status: TaskStatus }) {
 	switch (status) {
 		case 'todo':
 			return <circle {...RING} />
@@ -48,13 +44,6 @@ function Shape({ status }: { status: DemoTaskStatus }) {
 					/>
 				</>
 			)
-		case 'review':
-			return (
-				<>
-					<circle {...RING} />
-					<path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" />
-				</>
-			)
 		case 'done':
 			return (
 				<>
@@ -66,18 +55,6 @@ function Shape({ status }: { status: DemoTaskStatus }) {
 						strokeLinecap="round"
 						strokeLinejoin="round"
 						className="stroke-white"
-					/>
-				</>
-			)
-		case 'blocked':
-			return (
-				<>
-					<circle {...RING} />
-					<path
-						d="M5 8h6"
-						stroke="currentColor"
-						strokeWidth="1.8"
-						strokeLinecap="round"
 					/>
 				</>
 			)
@@ -99,7 +76,7 @@ function Shape({ status }: { status: DemoTaskStatus }) {
 }
 
 interface Props {
-	status: DemoTaskStatus
+	status: TaskStatus
 	className?: string
 }
 

@@ -1,4 +1,4 @@
-import { DIRECTION, SKILL_ALL } from '#/domain/agent-team/constants'
+import { DIRECTION } from '#/domain/agent-team/constants'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 
 export interface AgentForm {
@@ -39,21 +39,6 @@ export type StoreField =
 	| 'reports'
 	| 'instr'
 export type ConfigFields = Omit<AgentForm, StoreField>
-
-export interface Revision {
-	label: string
-	author: string
-	when: string
-	changed: string
-}
-
-export interface AgentConfig {
-	fields: ConfigFields
-	skills: ReadonlyArray<string>
-	rev: number
-	revs: ReadonlyArray<Revision>
-	paused: boolean
-}
 
 export const FIELD_LABELS: Readonly<Record<keyof AgentForm, string>> = {
 	name: 'nom',
@@ -102,44 +87,60 @@ export function describeChanges(keys: ReadonlyArray<keyof AgentForm>): string {
 
 export function buildDefaultConfig(
 	agent: Pick<TeamAgent, 'role' | 'model'>,
-	overrides: Partial<ConfigFields> & { skills?: ReadonlyArray<string> } = {},
-): AgentConfig {
-	const { skills, ...fields } = overrides
+	overrides: Partial<ConfigFields> = {},
+): ConfigFields {
 	return {
-		fields: {
-			title: `${agent.role} · Natalia`,
-			effort: 'Auto',
-			adapter: 'Claude Code',
-			engine: 'ACP',
-			chrome: false,
-			skip: false,
-			turns: '',
-			hb: agent.model !== 'Aucun modèle',
-			interval: '1 h',
-			gh: 'person',
-			trust: 'Collaboration normale',
-			pCreate: false,
-			pSkills: false,
-			pAssign: true,
-			canDeleg: false,
-			dScope: 'Équipe directe',
-			dDepth: '2',
-			dPar: '3',
-			dBudget: '5 $',
-			dReview: "L'agent parent",
-			dFail: 'Réessayer 2 fois',
-			...fields,
-		},
-		skills: skills ?? SKILL_ALL.slice(0, 8),
-		rev: 0,
-		revs: [],
-		paused: false,
+		title: agent.role,
+		effort: 'Auto',
+		adapter: 'Claude Code',
+		engine: 'ACP',
+		chrome: false,
+		skip: false,
+		turns: '',
+		hb: agent.model !== 'Aucun modèle',
+		interval: '1 h',
+		gh: 'person',
+		trust: 'Collaboration normale',
+		pCreate: false,
+		pSkills: false,
+		pAssign: true,
+		canDeleg: false,
+		dScope: 'Équipe directe',
+		dDepth: '2',
+		dPar: '3',
+		dBudget: '5 $',
+		dReview: "L'agent parent",
+		dFail: 'Réessayer 2 fois',
+		...overrides,
 	}
 }
 
-export function buildForm(agent: TeamAgent, config: AgentConfig): AgentForm {
+const CONFIG_KEYS = Object.keys(
+	buildDefaultConfig({ role: '', model: '' }),
+) as ReadonlyArray<keyof ConfigFields>
+
+export function parseConfig(
+	agent: Pick<TeamAgent, 'role' | 'model' | 'config'>,
+): ConfigFields {
+	const defaults = buildDefaultConfig(agent)
+	const raw = agent.config ?? {}
+	const parsed: Record<string, unknown> = { ...defaults }
+	for (const key of CONFIG_KEYS) {
+		const value = raw[key]
+		if (typeof value === typeof defaults[key]) parsed[key] = value
+	}
+	return parsed as unknown as ConfigFields
+}
+
+export function configOf(form: AgentForm): ConfigFields {
+	return Object.fromEntries(
+		CONFIG_KEYS.map((key) => [key, form[key]]),
+	) as unknown as ConfigFields
+}
+
+export function buildForm(agent: TeamAgent): AgentForm {
 	return {
-		...config.fields,
+		...parseConfig(agent),
 		name: agent.name,
 		description: agent.description,
 		role: agent.role,
