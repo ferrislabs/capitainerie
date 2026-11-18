@@ -19,7 +19,7 @@ import {
 	type Routine,
 } from '#/domain/routines/model'
 import { RoutinesTable } from '#/domain/routines/ui/routines-table'
-import { Empty } from '#/domain/sources/ui/mockup'
+import { Empty } from '#/domain/sources/ui/kit'
 
 function describe(routines: ReadonlyArray<Routine>, archived: boolean): string {
 	const total = routines.length

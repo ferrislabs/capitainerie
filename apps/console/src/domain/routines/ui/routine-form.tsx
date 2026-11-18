@@ -17,7 +17,7 @@ import {
 } from '#/domain/routines/model'
 import { ScheduleFields } from '#/domain/routines/ui/schedule-fields'
 import { SelectField } from '#/domain/routines/ui/select-field'
-import { CTL, Fr, Sw } from '#/domain/sources/ui/mockup'
+import { CTL, Fr, Sw } from '#/domain/sources/ui/kit'
 import { cn } from '#/lib/utils'
 
 interface Option {

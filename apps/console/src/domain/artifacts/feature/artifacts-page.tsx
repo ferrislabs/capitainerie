@@ -1,41 +1,111 @@
-import { Filter } from 'lucide-react'
-import { DemoBanner } from '#/components/layout/demo-banner'
-import { useNotice } from '#/components/layout/notice'
+import { Box } from 'lucide-react'
+import { useState } from 'react'
+import { EmptyState } from '#/components/layout/empty-state'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
-import { ARTIFACTS } from '#/domain/artifacts/mock/artifacts'
+import { NativeSelect } from '#/components/ui/native-select'
+import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { ArtifactSheet } from '#/domain/artifacts/feature/artifact-sheet'
+import { useArtifacts } from '#/domain/artifacts/hooks/use-artifacts'
+import {
+	ARTIFACT_KINDS,
+	type Artifact,
+	type ArtifactKind,
+} from '#/domain/artifacts/model'
 import { ArtifactCard } from '#/domain/artifacts/ui/artifact-card'
-import { Toast } from '#/domain/tasks/ui/toast'
+import { useAgentHue } from '#/domain/audit/hooks/use-agent-hue'
 
 export function ArtifactsPage() {
-	const [message, notify] = useNotice()
+	const [kind, setKind] = useState<ArtifactKind | ''>('')
+	const [agentId, setAgentId] = useState('')
+	const [open, setOpen] = useState<Artifact | null>(null)
+	const agents = useTeamAgents().data?.items ?? []
+	const hueOf = useAgentHue()
+	const query = useArtifacts({
+		...(kind ? { kind } : {}),
+		...(agentId ? { agent_id: agentId } : {}),
+	})
+	const artifacts = query.data?.pages.flatMap((page) => page.items) ?? []
+	const filtered = kind !== '' || agentId !== ''
+
 	return (
 		<Page className="leading-[1.4]">
-			<DemoBanner />
 			<PageHeader
 				title="Artifacts"
 				description="Livrables produits par les agents"
-				actions={
-					<Button
-						variant="outline"
-						onClick={() => notify('Filtre par type et par agent')}
-					>
-						<Filter aria-hidden="true" />
-						Filtrer
-					</Button>
-				}
 			/>
-			<div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
-				{ARTIFACTS.map((artifact) => (
-					<ArtifactCard
-						key={artifact.id}
-						artifact={artifact}
-						onOpen={(a) => notify(`Ouverture de « ${a.name} »`)}
-					/>
-				))}
+			<div className="mb-2.5 flex flex-wrap gap-2">
+				<NativeSelect
+					aria-label="Filtrer par type"
+					value={kind}
+					onChange={(e) => setKind(e.target.value as ArtifactKind | '')}
+					className="w-auto"
+				>
+					<option value="">Tous les types</option>
+					{ARTIFACT_KINDS.map((item) => (
+						<option key={item.kind} value={item.kind}>
+							{item.label}
+						</option>
+					))}
+				</NativeSelect>
+				<NativeSelect
+					aria-label="Filtrer par agent"
+					value={agentId}
+					onChange={(e) => setAgentId(e.target.value)}
+					className="w-auto"
+				>
+					<option value="">Tous les agents</option>
+					{agents.map((agent) => (
+						<option key={agent.id} value={agent.id}>
+							{agent.name}
+						</option>
+					))}
+				</NativeSelect>
 			</div>
-			<Toast message={message} />
+			{query.isPending ? (
+				<output className="block text-[13px] text-muted-foreground">
+					Chargement…
+				</output>
+			) : query.isError ? (
+				<InlineAlert tone="danger">
+					Impossible de charger les artifacts.
+				</InlineAlert>
+			) : artifacts.length === 0 ? (
+				<EmptyState
+					icon={Box}
+					title={
+						filtered ? 'Aucun artifact pour ces filtres' : 'Aucun artifact'
+					}
+					description="Les documents, données et liens produits par les agents apparaîtront ici."
+				/>
+			) : (
+				<>
+					<div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
+						{artifacts.map((artifact) => (
+							<ArtifactCard
+								key={artifact.id}
+								artifact={artifact}
+								hue={hueOf(artifact.agent_id, artifact.agent_name ?? '')}
+								onOpen={setOpen}
+							/>
+						))}
+					</div>
+					{query.hasNextPage ? (
+						<div className="mt-2.5 flex justify-center">
+							<Button
+								variant="outline"
+								disabled={query.isFetchingNextPage}
+								onClick={() => void query.fetchNextPage()}
+							>
+								{query.isFetchingNextPage ? 'Chargement…' : 'Charger plus'}
+							</Button>
+						</div>
+					) : null}
+				</>
+			)}
+			<ArtifactSheet artifact={open} onClose={() => setOpen(null)} />
 		</Page>
 	)
 }

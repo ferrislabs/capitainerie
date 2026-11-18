@@ -25,7 +25,7 @@ pub struct ClientRefResponse {
 
 /// The agent an agent task run works for.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct RunAgentResponse {
+pub struct RunAgentRef {
     pub id: AgentId,
     pub name: String,
 }
@@ -62,7 +62,7 @@ pub struct RunResponse {
     pub client: Option<ClientRefResponse>,
     pub project: Option<ProjectRefResponse>,
     /// The agent of an agent task run; null for the other runs.
-    pub agent: Option<RunAgentResponse>,
+    pub agent: Option<RunAgentRef>,
     pub initiated_by: String,
     pub pipeline: Vec<String>,
     pub failure: Option<String>,
@@ -126,7 +126,7 @@ impl From<RunOverview> for RunResponse {
             repository_hint: repository_hint.map(|hint| hint.to_string()),
             client,
             project,
-            agent: agent.map(|agent| RunAgentResponse {
+            agent: agent.map(|agent| RunAgentRef {
                 id: agent.id,
                 name: agent.name,
             }),

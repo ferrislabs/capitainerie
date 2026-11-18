@@ -1,7 +1,5 @@
 export const INBOX_TABS = [
 	{ slug: 'tous', label: 'Tous' },
-	{ slug: 'moi', label: 'Moi' },
-	{ slug: 'recent', label: 'Récent' },
 	{ slug: 'non-lus', label: 'Non lus' },
 ] as const
 

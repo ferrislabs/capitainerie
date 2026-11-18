@@ -7,7 +7,7 @@ import {
 	type Trigger,
 } from '#/domain/routines/model'
 import { scheduleText } from '#/domain/routines/schedule'
-import { Kv, Sev, Sw } from '#/domain/sources/ui/mockup'
+import { Kv, Sev, Sw } from '#/domain/sources/ui/kit'
 
 interface Props {
 	trigger: Trigger

@@ -8,7 +8,7 @@ import {
 	toggleDay,
 } from '#/domain/routines/schedule'
 import { SelectField } from '#/domain/routines/ui/select-field'
-import { CTL, Fr } from '#/domain/sources/ui/mockup'
+import { CTL, Fr } from '#/domain/sources/ui/kit'
 import { cn } from '#/lib/utils'
 
 interface Props {

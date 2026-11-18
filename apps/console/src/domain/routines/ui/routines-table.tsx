@@ -8,7 +8,7 @@ import {
 } from '#/domain/routines/model'
 import { AgentLabel } from '#/domain/routines/ui/agent-avatar'
 import { RunBadge } from '#/domain/routines/ui/run-badge'
-import { Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
+import { Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/kit'
 
 interface Props {
 	routines: ReadonlyArray<Routine>

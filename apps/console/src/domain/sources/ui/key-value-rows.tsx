@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Kv } from '#/domain/sources/ui/mockup'
+import { Kv } from '#/domain/sources/ui/kit'
 
 interface Props {
 	rows: ReadonlyArray<readonly [string, ReactNode]>

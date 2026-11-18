@@ -31,7 +31,7 @@ import {
 import { OverviewTab } from '#/domain/routines/ui/overview-tab'
 import { RoutineForm } from '#/domain/routines/ui/routine-form'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
-import { Sev } from '#/domain/sources/ui/mockup'
+import { Sev } from '#/domain/sources/ui/kit'
 
 export const ROUTINE_TABS = [
 	{ key: 'apercu', label: "Vue d'ensemble" },

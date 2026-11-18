@@ -1,5 +1,5 @@
 import { type ReactNode, useId } from 'react'
-import { CTL, Fr } from '#/domain/sources/ui/mockup'
+import { CTL, Fr } from '#/domain/sources/ui/kit'
 
 export interface SelectOption<T extends string = string> {
 	value: T

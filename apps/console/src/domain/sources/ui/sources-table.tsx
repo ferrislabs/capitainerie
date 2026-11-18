@@ -3,7 +3,7 @@ import type { Schemas } from '#/api/api.client'
 import { relativeAge } from '#/domain/dashboard/format'
 import type { Source } from '#/domain/sources/model'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
-import { Sev, Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
+import { Sev, Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/kit'
 
 interface Props {
 	sources: ReadonlyArray<Source>

@@ -1,5 +1,5 @@
 import { type RoutineRun, runOutcome } from '#/domain/routines/model'
-import { Sev } from '#/domain/sources/ui/mockup'
+import { Sev } from '#/domain/sources/ui/kit'
 
 export function RunBadge({ run }: { run: RoutineRun }) {
 	const outcome = runOutcome(run)

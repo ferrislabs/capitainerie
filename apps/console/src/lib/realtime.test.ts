@@ -268,6 +268,14 @@ describe('startRealtime', () => {
 		).toBe(true)
 	})
 
+	it('invalidates the inbox on inbox events', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'inbox.item_created' })
+		expect(invalidated(key('/api/v1/inbox'))).toBe(true)
+		expect(invalidated(key('/api/v1/inbox/read'))).toBe(true)
+		expect(invalidated(key('/api/v1/approvals'))).toBe(false)
+	})
+
 	it('invalidates everything on resync', () => {
 		start()
 		latest().receive({ op: 'resync' })

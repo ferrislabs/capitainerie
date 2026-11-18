@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { relativeAge } from '#/domain/dashboard/format'
 import { EVENT_STATUS, type SourceEvent } from '#/domain/sources/model'
-import { Sev, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
+import { Sev, Tbl, Td, Th, Tr } from '#/domain/sources/ui/kit'
 import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
 import { cn } from '#/lib/utils'
 

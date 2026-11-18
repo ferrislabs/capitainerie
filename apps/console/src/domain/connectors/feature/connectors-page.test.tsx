@@ -109,15 +109,15 @@ describe('ConnectorsPage', () => {
 			screen.getByRole('button', { name: 'Ajouter un connecteur' }),
 		)
 		const url = screen.getByLabelText('URL du serveur MCP')
-		expect(url.getAttribute('placeholder')).toBe('https://demo.mestier.fr/mcp')
-		await user.type(url, 'https://demo.mestier.fr/mcp')
+		expect(url.getAttribute('placeholder')).toBe('https://mcp.example.com/mcp')
+		await user.type(url, 'https://mcp.example.com/mcp')
 		await user.type(screen.getByLabelText(/^Nom/), 'Mestier')
 		await user.click(screen.getByRole('button', { name: 'Ajouter' }))
 		expect(
 			await screen.findByText('Connecteur « Mestier » ajouté'),
 		).toBeTruthy()
 		expect(calls(fetchMock, 'POST')[0]?.body).toEqual({
-			url: 'https://demo.mestier.fr/mcp',
+			url: 'https://mcp.example.com/mcp',
 			name: 'Mestier',
 		})
 	})
@@ -136,7 +136,7 @@ describe('ConnectorsPage', () => {
 		)
 		await user.type(
 			screen.getByLabelText('URL du serveur MCP'),
-			'https://demo.mestier.fr/mcp',
+			'https://mcp.example.com/mcp',
 		)
 		await user.click(screen.getByRole('button', { name: 'Ajouter' }))
 		expect(await screen.findByText(/utilise déjà cet identifiant/)).toBeTruthy()

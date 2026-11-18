@@ -6,7 +6,7 @@ import {
 	runDuration,
 } from '#/domain/routines/model'
 import { RunBadge } from '#/domain/routines/ui/run-badge'
-import { Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
+import { Tbl, Td, Th, Tr } from '#/domain/sources/ui/kit'
 import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
 
 interface Props {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useApprovals } from '#/domain/approvals/hooks/use-approvals'
 import {
 	useActiveRuns,
 	useAgentAnalytics,
@@ -7,6 +8,7 @@ import {
 	useRecentRuns,
 } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { DashboardView } from '#/domain/dashboard/ui/dashboard-view'
+import { useInboxUnread } from '#/domain/inbox/hooks/use-inbox'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 
 export function DashboardPage() {
@@ -16,6 +18,8 @@ export function DashboardPage() {
 	const { query: costs, days } = useDailyCosts()
 	const cards = useDashboardCards()
 	const agents = useAgentAnalytics()
+	const approvals = useApprovals('pending')
+	const inbox = useInboxUnread()
 	return (
 		<>
 			<DashboardView
@@ -25,6 +29,8 @@ export function DashboardPage() {
 				days={days}
 				cards={cards}
 				agents={agents}
+				approvals={approvals}
+				inbox={inbox}
 				onNewTask={() => setNewTaskOpen(true)}
 			/>
 			<NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />

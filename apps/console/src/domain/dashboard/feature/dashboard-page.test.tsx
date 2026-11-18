@@ -96,6 +96,8 @@ const FULL = {
 			card('c4', 'done', 'Livrer le site', 40),
 		],
 	},
+	'GET /api/v1/approvals': { items: [], pending: 3 },
+	'GET /api/v1/inbox': { items: [], total: 12, unread: 4 },
 	'GET /api/v1/agents': [
 		{
 			agent: 'Iris',
@@ -150,6 +152,10 @@ describe('DashboardPage', () => {
 		expect(
 			within(tile('Exécutions actives')).getByText('1 en file'),
 		).toBeTruthy()
+		expect(within(tile('Approbations')).getByText('3')).toBeTruthy()
+		expect(within(tile('Non lus')).getByText('4')).toBeTruthy()
+		expect(tile('Approbations').getAttribute('href')).toBe('/approvals')
+		expect(tile('Non lus').getAttribute('href')).toBe('/inbox/non-lus')
 	})
 
 	it('renders the live runs and links the card of a run', async () => {
@@ -198,6 +204,8 @@ describe('DashboardPage', () => {
 				total: { input_tokens: 0, output_tokens: 0, cost_micros: 0 },
 			},
 			'GET /api/v1/cards': { items: [] },
+			'GET /api/v1/approvals': { items: [], pending: 0 },
+			'GET /api/v1/inbox': { items: [], total: 0, unread: 0 },
 			'GET /api/v1/agents': [],
 		})
 		expect(
@@ -222,14 +230,18 @@ describe('DashboardPage', () => {
 			'GET /api/v1/runs': failure,
 			'GET /api/v1/analytics/costs': failure,
 			'GET /api/v1/cards': failure,
+			'GET /api/v1/approvals': failure,
+			'GET /api/v1/inbox': failure,
 			'GET /api/v1/agents': failure,
 		})
 		expect(
 			await screen.findByText('Impossible de charger les exécutions en cours.'),
 		).toBeTruthy()
 		expect(screen.getAllByText('Données indisponibles')).toHaveLength(3)
-		const agents = screen.getByText('Agents', { selector: 'span' }).closest('a')
-		expect(within(agents as HTMLElement).getByText('–')).toBeTruthy()
+		for (const label of ['Agents', 'Approbations', 'Non lus']) {
+			const tile = screen.getByText(label, { selector: 'span' }).closest('a')
+			expect(within(tile as HTMLElement).getByText('–')).toBeTruthy()
+		}
 	})
 
 	it('shows a loading state before the responses', async () => {

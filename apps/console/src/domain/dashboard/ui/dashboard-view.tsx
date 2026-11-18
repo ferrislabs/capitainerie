@@ -4,8 +4,10 @@ import {
 	Bot,
 	Clock,
 	DollarSign,
+	Inbox,
 	ListChecks,
 	Plus,
+	Shield,
 	TriangleAlert,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -45,6 +47,8 @@ interface Props {
 	days: ReadonlyArray<string>
 	cards: UseQueryResult<Schemas.CardListResponse>
 	agents: UseQueryResult<Schemas.AgentResponse[]>
+	approvals: UseQueryResult<Schemas.ApprovalListResponse>
+	inbox: UseQueryResult<Schemas.InboxResponse>
 	onNewTask: () => void
 }
 
@@ -167,6 +171,8 @@ export function DashboardView({
 	days,
 	cards,
 	agents,
+	approvals,
+	inbox,
 	onNewTask,
 }: Props) {
 	const activeItems = active.data?.items ?? []
@@ -258,7 +264,7 @@ export function DashboardView({
 							: 'Toutes les exécutions'}
 				</Link>
 			</div>
-			<div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+			<div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-7">
 				<Tile
 					label="Agents"
 					value={figure(agents, (list) => formatCount(list.length))}
@@ -284,6 +290,21 @@ export function DashboardView({
 					icon={TriangleAlert}
 					tone={stats.proposed > 0 ? 'warn' : 'default'}
 					link={TASKS_LINK}
+				/>
+				<Tile
+					label="Approbations"
+					value={figure(approvals, (data) => formatCount(data.pending))}
+					hint="En attente de décision"
+					icon={Shield}
+					tone={(approvals.data?.pending ?? 0) > 0 ? 'warn' : 'default'}
+					link={{ to: '/approvals' }}
+				/>
+				<Tile
+					label="Non lus"
+					value={figure(inbox, (data) => formatCount(data.unread))}
+					hint="Boîte de réception"
+					icon={Inbox}
+					link={{ to: '/inbox/{-$tab}', params: { tab: 'non-lus' } }}
 				/>
 				<Tile
 					label="Dépense sur 14 jours"

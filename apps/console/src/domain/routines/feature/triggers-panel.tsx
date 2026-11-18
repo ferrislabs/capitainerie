@@ -22,7 +22,7 @@ import { ConfirmDialog } from '#/domain/routines/ui/confirm-dialog'
 import { ScheduleEditor } from '#/domain/routines/ui/schedule-editor'
 import { TriggerCard } from '#/domain/routines/ui/trigger-card'
 import { IssuedWebhook } from '#/domain/sources/ui/issued-webhook'
-import { CTL, Empty } from '#/domain/sources/ui/mockup'
+import { CTL, Empty } from '#/domain/sources/ui/kit'
 import { RotateTokenDialog } from '#/domain/sources/ui/rotate-token-dialog'
 import { cn } from '#/lib/utils'
 
