@@ -48,7 +48,9 @@ export function useDashboardCards() {
 export function useAgentAnalytics() {
 	const accessToken = useAccessToken()
 	return useQuery({
-		...tanstackApi.get('/api/v1/agents').queryOptions,
+		...tanstackApi.get('/api/v1/team/agents', { query: { archived: false } })
+			.queryOptions,
+		select: (data) => data.items,
 		enabled: Boolean(accessToken),
 	})
 }

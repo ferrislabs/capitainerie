@@ -46,7 +46,7 @@ interface Props {
 	costs: UseQueryResult<Schemas.CostsResponse>
 	days: ReadonlyArray<string>
 	cards: UseQueryResult<Schemas.CardListResponse>
-	agents: UseQueryResult<Schemas.AgentResponse[]>
+	agents: UseQueryResult<Schemas.TeamAgentResponse[]>
 	approvals: UseQueryResult<Schemas.ApprovalListResponse>
 	inbox: UseQueryResult<Schemas.InboxResponse>
 	onNewTask: () => void
