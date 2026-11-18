@@ -1,126 +1,130 @@
-import { Link } from '@tanstack/react-router'
 import { Shield } from 'lucide-react'
-import { DemoBanner } from '#/components/layout/demo-banner'
+import { InlineAlert } from '#/components/layout/inline-alert'
 import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
 import {
-	Eyebrow,
-	Panel,
-	PanelEmpty,
-	Row,
-	Rows,
-	RowTitle,
-	When,
-} from '#/domain/audit/ui/rows'
-import { Sev } from '#/domain/audit/ui/sev'
-import type { DemoApproval } from '#/domain/demo'
-import { taskPathId } from '#/domain/tasks/task-ids'
+	APPROVAL_TABS,
+	type Approval,
+	type ApprovalStatus,
+} from '#/domain/approvals/model'
+import {
+	ApprovalCard,
+	type Decision,
+} from '#/domain/approvals/ui/approval-card'
+import { Panel, PanelEmpty } from '#/domain/audit/ui/rows'
+import { cn } from '#/lib/utils'
 
 interface Props {
-	pending: ReadonlyArray<DemoApproval>
-	decided: ReadonlyArray<DemoApproval>
-	requesterName: (agentId: string | null) => string | null
+	status: ApprovalStatus
+	approvals: ReadonlyArray<Approval>
+	pendingCount: number
+	loading: boolean
+	error: boolean
 	notice: string | null
-	onDecide: (id: string, status: 'approved' | 'rejected') => void
+	decideError: string | null
+	busyId: string | null
+	requesterName: (agentId: string | null | undefined) => string | null
+	onStatusChange: (status: ApprovalStatus) => void
+	onRetry: () => void
+	onDecide: (id: string, decision: Decision, note: string) => void
+}
+
+const EMPTY: Record<ApprovalStatus, string> = {
+	pending: 'Aucune approbation en attente',
+	approved: 'Aucune approbation accordée',
+	rejected: 'Aucune approbation refusée',
+	expired: 'Aucune approbation expirée',
 }
 
 export function ApprovalsView({
-	pending,
-	decided,
-	requesterName,
+	status,
+	approvals,
+	pendingCount,
+	loading,
+	error,
 	notice,
+	decideError,
+	busyId,
+	requesterName,
+	onStatusChange,
+	onRetry,
 	onDecide,
 }: Props) {
 	return (
 		<Page>
-			<DemoBanner />
 			<PageHeader
 				title="Approbations"
-				description="Décisions demandées au board"
+				description="Décisions demandées par les agents avant d'agir"
 			/>
-			<Notice message={notice} />
-			<Panel>
-				{pending.length === 0 ? (
-					<PanelEmpty icon={Shield} title="Aucune approbation en attente">
-						Quand un agent demande une validation (dépense, merge, envoi
-						externe), elle apparaît ici.
+			<Notice message={notice} className="mb-3" />
+			{decideError ? (
+				<InlineAlert tone="danger" className="mb-3">
+					{decideError}
+				</InlineAlert>
+			) : null}
+			<nav
+				aria-label="Statut des approbations"
+				className="mb-3.5 flex gap-0.5 overflow-x-auto border-b"
+			>
+				{APPROVAL_TABS.map((tab) => (
+					<button
+						key={tab.status}
+						type="button"
+						aria-pressed={tab.status === status}
+						onClick={() => onStatusChange(tab.status)}
+						className={cn(
+							'-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-2.5 py-[7px] font-medium text-muted-foreground hover:text-foreground',
+							'aria-pressed:border-primary aria-pressed:text-foreground',
+							'focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
+						)}
+					>
+						{tab.label}
+						{tab.status === 'pending' && pendingCount > 0 ? (
+							<span className="figures rounded-lg bg-secondary px-1.5 text-[11px] leading-4 text-foreground">
+								{pendingCount}
+							</span>
+						) : null}
+					</button>
+				))}
+			</nav>
+			{error ? (
+				<div className="grid gap-2">
+					<InlineAlert tone="danger">
+						Impossible de charger les approbations.
+					</InlineAlert>
+					<div>
+						<Button variant="outline" onClick={onRetry}>
+							Réessayer
+						</Button>
+					</div>
+				</div>
+			) : loading ? (
+				<output className="m-0 text-muted-foreground">
+					Chargement des approbations…
+				</output>
+			) : approvals.length === 0 ? (
+				<Panel>
+					<PanelEmpty icon={Shield} title={EMPTY[status]}>
+						{status === 'pending'
+							? "Quand un agent demande une validation avant d'agir (envoi externe, écriture, dépense), elle apparaît ici."
+							: null}
 					</PanelEmpty>
-				) : (
-					<Rows>
-						{pending.map((a) => {
-							const requester = requesterName(a.requestedBy)
-							return (
-								<Row key={a.id}>
-									<RowTitle title={a.title} sub={a.detail}>
-										<span className="block truncate text-xs text-faint">
-											{requester ? `Demandée par ${requester} · ` : ''}
-											{a.at}
-											{a.taskId ? (
-												<>
-													{' · '}
-													<Link
-														to="/tasks/$taskId"
-														params={{ taskId: taskPathId(a.taskId) }}
-														className="text-primary hover:underline"
-													>
-														{a.taskId}
-													</Link>
-												</>
-											) : null}
-										</span>
-									</RowTitle>
-									<Button
-										type="button"
-										size="sm"
-										aria-label={`Approuver : ${a.title}`}
-										onClick={() => onDecide(a.id, 'approved')}
-									>
-										Approuver
-									</Button>
-									<Button
-										type="button"
-										size="sm"
-										variant="outline"
-										aria-label={`Refuser : ${a.title}`}
-										onClick={() => onDecide(a.id, 'rejected')}
-									>
-										Refuser
-									</Button>
-								</Row>
-							)
-						})}
-					</Rows>
-				)}
-			</Panel>
-			<Eyebrow>Historique récent</Eyebrow>
-			<Panel>
-				<Rows>
-					{decided.map((a) => (
-						<Row key={a.id}>
-							<Sev tone={a.status === 'approved' ? 'ok' : 'crit'}>
-								{a.status === 'approved' ? 'Approuvée' : 'Refusée'}
-							</Sev>
-							<RowTitle
-								title={a.title}
-								sub={`${a.status === 'approved' ? 'Approuvée' : 'Refusée'} par ${a.decidedBy}`}
-							>
-								{a.taskId ? (
-									<Link
-										to="/tasks/$taskId"
-										params={{ taskId: taskPathId(a.taskId) }}
-										className="text-xs text-primary hover:underline"
-									>
-										{a.taskId}
-									</Link>
-								) : null}
-							</RowTitle>
-							<When>{a.at}</When>
-						</Row>
+				</Panel>
+			) : (
+				<div className="grid gap-2.5">
+					{approvals.map((a) => (
+						<ApprovalCard
+							key={a.id}
+							approval={a}
+							requester={requesterName(a.requested_by_agent_id)}
+							busy={busyId === a.id}
+							onDecide={onDecide}
+						/>
 					))}
-				</Rows>
-			</Panel>
+				</div>
+			)}
 		</Page>
 	)
 }

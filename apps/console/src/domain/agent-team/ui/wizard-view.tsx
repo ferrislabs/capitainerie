@@ -6,7 +6,6 @@ import {
 	DIRECTION,
 	EFFORTS,
 	ROLES,
-	SKILL_ALL,
 	WAKE_INTERVALS,
 } from '#/domain/agent-team/constants'
 import {
@@ -55,6 +54,8 @@ interface Props {
 	reportsOptions: ReadonlyArray<OptionItem>
 	connectors: ReadonlyArray<{ slug: string; name: string }>
 	connectorsLoading: boolean
+	/** Slugs proposés : catalogue des compétences et sélection courante. */
+	skillOptions: ReadonlyArray<string>
 	canAdvance: boolean
 	onChange: (patch: Partial<WizardState>) => void
 	onBack: () => void
@@ -177,6 +178,7 @@ export function WizardView({
 	reportsOptions,
 	connectors,
 	connectorsLoading,
+	skillOptions,
 	canAdvance,
 	onChange,
 	onBack,
@@ -471,7 +473,7 @@ export function WizardView({
 								/>
 							</label>
 							<Pills legend="Compétences">
-								{SKILL_ALL.map((skill) => (
+								{skillOptions.map((skill) => (
 									<Pill
 										key={skill}
 										label={skill}

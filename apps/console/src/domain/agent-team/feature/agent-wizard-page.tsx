@@ -18,6 +18,7 @@ import {
 	type WizardState,
 } from '#/domain/agent-team/wizard'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
+import { useSkillCatalog } from '#/domain/skills/hooks/use-skills'
 
 export function AgentWizardPage() {
 	const [state, setState] = useState<WizardState>(initialWizard)
@@ -25,12 +26,17 @@ export function AgentWizardPage() {
 	const create = useCreateTeamAgent()
 	const configure = useUpdateTeamAgent()
 	const connectorsQuery = useMcpConnectors(false)
+	const catalog = useSkillCatalog()
 	const navigate = useNavigate()
 	const agents = team.data?.items ?? []
 	const connectors = (connectorsQuery.data?.items ?? []).map((c) => ({
 		slug: c.slug,
 		name: c.name,
 	}))
+	const skillOptions = [
+		...catalog,
+		...state.skills.filter((s) => !catalog.includes(s)),
+	]
 	const pending = create.isPending || configure.isPending
 
 	const patch = (change: Partial<WizardState>) =>
@@ -80,6 +86,7 @@ export function AgentWizardPage() {
 				reportsOptions={agents.map((a) => ({ value: a.id, label: a.name }))}
 				connectors={connectors}
 				connectorsLoading={connectorsQuery.isPending}
+				skillOptions={skillOptions}
 				canAdvance={canAdvance(state) && !pending}
 				onChange={patch}
 				onBack={() => patch({ step: Math.max(0, state.step - 1) })}
