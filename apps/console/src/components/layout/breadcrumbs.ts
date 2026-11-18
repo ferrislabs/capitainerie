@@ -11,6 +11,7 @@ export interface EntityNames {
 	agent: (id: string) => string | undefined
 	source: (id: string) => string | undefined
 	routine: (id: string) => string | undefined
+	artifact: (id: string) => string | undefined
 }
 
 const SECTION_LABELS: Readonly<Record<string, string>> = {
@@ -52,6 +53,7 @@ const NO_NAMES: EntityNames = {
 	agent: () => undefined,
 	source: () => undefined,
 	routine: () => undefined,
+	artifact: () => undefined,
 }
 
 function decode(segment: string): string {
@@ -64,7 +66,8 @@ function decode(segment: string): string {
 
 /**
  * Fil d'Ariane de la barre du haut, après l'organisation : la page seule pour une
- * section, la section puis le nom de l'objet pour une fiche (tâche, agent, source, routine) ou son
+ * section, la section puis le nom de l'objet pour une fiche (tâche, agent, source, routine,
+ * artifact) ou son
  * identifiant quand l'API ne fournit pas de nom.
  */
 export function breadcrumbs(
@@ -97,6 +100,9 @@ export function breadcrumbs(
 	}
 	if (section === 'routines') {
 		return [parent, { label: names.routine(raw) ?? raw }]
+	}
+	if (section === 'artifacts') {
+		return [parent, { label: names.artifact(raw) ?? raw.slice(0, 8) }]
 	}
 	return [{ label }]
 }

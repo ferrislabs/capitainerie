@@ -8,6 +8,7 @@ const NAMES: EntityNames = {
 	agent: (id) => (id === 'dev' ? 'Dev (cycle autonome)' : undefined),
 	source: (id) => (id === 's-1' ? 'Pièces Chatwoot' : undefined),
 	routine: (id) => (id === 'r-1' ? 'Revue hebdomadaire' : undefined),
+	artifact: (id) => (id === 'art-1' ? 'Audit sécurité' : undefined),
 }
 
 describe('breadcrumbs', () => {
@@ -47,6 +48,16 @@ describe('breadcrumbs', () => {
 			{ label: 'Revue hebdomadaire' },
 		])
 		expect(breadcrumbs('/routines/r-2', NAMES)[1]?.label).toBe('r-2')
+	})
+
+	it('names an artifact by its title once loaded', () => {
+		expect(breadcrumbs('/artifacts/art-1', NAMES)).toEqual([
+			{ label: 'Artifacts', to: '/artifacts' },
+			{ label: 'Audit sécurité' },
+		])
+		expect(
+			breadcrumbs('/artifacts/0a1b2c3d-0000-4000-8000-000000000000')[1]?.label,
+		).toBe('0a1b2c3d')
 	})
 
 	it('names the creation pages', () => {

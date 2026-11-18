@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+import { Maximize2 } from 'lucide-react'
 import { useState } from 'react'
 import { SectionCard } from '#/components/layout/section-card'
 import { ArtifactSheet } from '#/domain/artifacts/feature/artifact-sheet'
@@ -24,11 +26,14 @@ export function TaskArtifactsPanel({ cardId }: { cardId: string }) {
 					{items.map((artifact) => {
 						const Icon = KIND_ICON[artifact.kind]
 						return (
-							<li key={artifact.id}>
+							<li
+								key={artifact.id}
+								className="flex min-w-0 items-stretch border-t first:border-t-0"
+							>
 								<button
 									type="button"
 									onClick={() => setOpen(artifact)}
-									className="flex min-h-9 w-full min-w-0 items-center gap-2.5 border-t px-3 py-1.5 text-left first:border-t-0 hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+									className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 px-3 py-1.5 text-left hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 								>
 									<Icon
 										aria-hidden="true"
@@ -44,6 +49,15 @@ export function TaskArtifactsPanel({ cardId }: { cardId: string }) {
 										{relativeAge(artifact.updated_at)}
 									</span>
 								</button>
+								<Link
+									to="/artifacts/$artifactId"
+									params={{ artifactId: artifact.id }}
+									aria-label={`Ouvrir en pleine page : ${artifact.title}`}
+									title="Ouvrir en pleine page"
+									className="grid w-9 shrink-0 place-items-center text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+								>
+									<Maximize2 aria-hidden="true" className="size-3.5" />
+								</Link>
 							</li>
 						)
 					})}

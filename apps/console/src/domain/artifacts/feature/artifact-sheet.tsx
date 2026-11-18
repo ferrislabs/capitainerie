@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { ExternalLink } from 'lucide-react'
+import { Maximize2 } from 'lucide-react'
 import { InlineAlert } from '#/components/layout/inline-alert'
-import { Markdown } from '#/components/markdown'
 import {
 	Sheet,
 	SheetBody,
@@ -11,33 +10,13 @@ import {
 	SheetTitle,
 } from '#/components/ui/sheet'
 import { useArtifact } from '#/domain/artifacts/hooks/use-artifacts'
-import {
-	type Artifact,
-	kindLabel,
-	prettyJson,
-	safeUrl,
-} from '#/domain/artifacts/model'
+import { type Artifact, kindLabel } from '#/domain/artifacts/model'
+import { ArtifactContent } from '#/domain/artifacts/ui/artifact-content'
 import { relativeAge } from '#/domain/dashboard/format'
 
 interface Props {
 	artifact: Artifact | null
 	onClose: () => void
-}
-
-function OpenLink({ url }: { url: string | null | undefined }) {
-	const href = safeUrl(url)
-	if (!href) return null
-	return (
-		<a
-			href={href}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="inline-flex items-center gap-1.5 text-[13px] text-primary hover:underline"
-		>
-			<ExternalLink aria-hidden="true" className="size-4" />
-			Ouvrir le lien
-		</a>
-	)
 }
 
 function Content({ artifact }: { artifact: Artifact }) {
@@ -56,34 +35,13 @@ function Content({ artifact }: { artifact: Artifact }) {
 			</InlineAlert>
 		)
 	}
-	const content = detail.data.content ?? ''
-	switch (detail.data.kind) {
-		case 'markdown':
-			return content ? (
-				<Markdown source={content} />
-			) : (
-				<p className="m-0 text-muted-foreground">Document vide.</p>
-			)
-		case 'json':
-			return (
-				<pre className="m-0 overflow-x-auto rounded-md bg-secondary p-3 font-mono text-xs">
-					<code>{prettyJson(content)}</code>
-				</pre>
-			)
-		case 'link':
-			return (
-				<div className="flex flex-col gap-2">
-					<OpenLink url={detail.data.url} />
-					{content ? <Markdown source={content} /> : null}
-				</div>
-			)
-	}
+	return <ArtifactContent artifact={detail.data} />
 }
 
 export function ArtifactSheet({ artifact, onClose }: Props) {
 	return (
 		<Sheet open={artifact !== null} onOpenChange={(open) => !open && onClose()}>
-			<SheetContent className="sm:max-w-[640px]">
+			<SheetContent className="sm:max-w-[860px]">
 				{artifact ? (
 					<>
 						<SheetHeader>
@@ -93,17 +51,27 @@ export function ArtifactSheet({ artifact, onClose }: Props) {
 								{artifact.agent_name ? ` · ${artifact.agent_name}` : ''} · mis à
 								jour {relativeAge(artifact.updated_at)}
 							</SheetDescription>
-							{artifact.card_id ? (
+							<div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs">
 								<Link
-									to="/tasks/$taskId"
-									params={{ taskId: artifact.card_id }}
-									className="truncate text-xs text-primary hover:underline"
+									to="/artifacts/$artifactId"
+									params={{ artifactId: artifact.id }}
+									className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
 								>
-									{artifact.card_title ?? 'Voir la tâche'}
+									<Maximize2 aria-hidden="true" className="size-3.5" />
+									Ouvrir en pleine page
 								</Link>
-							) : null}
+								{artifact.card_id ? (
+									<Link
+										to="/tasks/$taskId"
+										params={{ taskId: artifact.card_id }}
+										className="min-w-0 truncate text-primary hover:underline"
+									>
+										{artifact.card_title ?? 'Voir la tâche'}
+									</Link>
+								) : null}
+							</div>
 						</SheetHeader>
-						<SheetBody>
+						<SheetBody className="px-6 py-6 sm:px-8">
 							<Content artifact={artifact} />
 						</SheetBody>
 					</>
