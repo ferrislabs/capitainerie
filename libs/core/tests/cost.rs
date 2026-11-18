@@ -252,6 +252,7 @@ async fn projects_list_their_agents_and_a_projectless_row() {
     agent_run(&pool, org, c1, bob, "u", &[step("m", 50)]).await;
     agent_run(&pool, org, c2, ann, "u", &[step("m", 30)]).await;
     pipeline_run(&pool, org, None, "u", &[step("m", 7)]).await;
+    pipeline_run(&pool, org, Some(p2), "u", &[step("m", 20)]).await;
 
     let report = usecase(&pool)
         .project_costs(admin(org), period())
@@ -259,7 +260,9 @@ async fn projects_list_their_agents_and_a_projectless_row() {
         .unwrap();
 
     assert_eq!(report.rows.len(), 3);
-    assert_eq!(report.total.cost_micros, 187);
+    assert_eq!(report.total.cost_micros, 207);
+    assert_eq!(report.rows[1].project_id, Some(ProjectId(p2)));
+    assert_eq!(report.rows[1].spent.cost_micros, 50);
     assert_eq!(report.rows[0].project_id, Some(ProjectId(p1)));
     assert_eq!(report.rows[0].name.as_deref(), Some("Alpha"));
     assert_eq!(report.rows[0].agents.len(), 2);

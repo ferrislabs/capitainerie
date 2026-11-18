@@ -40,7 +40,9 @@ pub struct CostsQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct TaskCostsQuery {
+    /// Start of the window, inclusive; 30 days before `to` by default.
     pub from: Option<DateTime<Utc>>,
+    /// End of the window, exclusive; now by default.
     pub to: Option<DateTime<Utc>>,
     /// Only the tasks of this project.
     pub project_id: Option<ProjectId>,

@@ -51,12 +51,13 @@ impl CostRepository for PgCostRepository<'_> {
                    COALESCE(sum(s.output_tokens), 0)::bigint AS "output_tokens!",
                    COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
             FROM run_steps s
-            JOIN runs r ON r.id = s.run_id
-            LEFT JOIN agent_tasks t ON t.run_id = s.run_id
-            LEFT JOIN agents a ON a.id = t.agent_id
-            LEFT JOIN cards c ON c.id = r.card_id
-            LEFT JOIN transcripts tr ON tr.id = r.transcript_id
+            JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
+            LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
+            LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
+            LEFT JOIN cards c ON c.id = r.card_id AND c.organization_id = s.organization_id
+            LEFT JOIN transcripts tr ON tr.id = r.transcript_id AND tr.organization_id = s.organization_id
             LEFT JOIN projects p ON p.id = COALESCE(c.project_id, tr.project_id)
+                 AND p.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
             GROUP BY p.id, p.name, a.id, COALESCE(a.name, s.agent, 'unknown')
             ORDER BY 8 DESC, p.name, 4, a.id
@@ -94,9 +95,9 @@ impl CostRepository for PgCostRepository<'_> {
                    COALESCE(sum(s.output_tokens), 0)::bigint AS "output_tokens!",
                    COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
             FROM run_steps s
-            JOIN runs r ON r.id = s.run_id
-            LEFT JOIN agent_tasks t ON t.run_id = s.run_id
-            LEFT JOIN agents a ON a.id = t.agent_id
+            JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
+            LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
+            LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
             GROUP BY a.id, COALESCE(a.name, s.agent, 'unknown')
             ORDER BY 6 DESC, 2, a.id
@@ -134,10 +135,10 @@ impl CostRepository for PgCostRepository<'_> {
                    COALESCE(sum(s.output_tokens), 0)::bigint AS "output_tokens!",
                    COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
             FROM run_steps s
-            JOIN runs r ON r.id = s.run_id
-            LEFT JOIN agent_tasks t ON t.run_id = s.run_id
-            LEFT JOIN agents a ON a.id = t.agent_id
-            LEFT JOIN cards c ON c.id = r.card_id
+            JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
+            LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
+            LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
+            LEFT JOIN cards c ON c.id = r.card_id AND c.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
               AND r.card_id IS NOT NULL
               AND ($4::uuid IS NULL OR c.project_id = $4)
@@ -178,7 +179,7 @@ impl CostRepository for PgCostRepository<'_> {
                    COALESCE(sum(s.output_tokens), 0)::bigint AS "output_tokens!",
                    COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
             FROM run_steps s
-            JOIN runs r ON r.id = s.run_id
+            JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
             WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
             GROUP BY r.initiated_by, COALESCE(s.model, 'unknown')
             ORDER BY 5 DESC, 1, 2

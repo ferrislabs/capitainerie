@@ -46,9 +46,9 @@ pub struct Spent {
 
 impl Spent {
     pub fn add(&mut self, other: &Spent) {
-        self.input_tokens += other.input_tokens;
-        self.output_tokens += other.output_tokens;
-        self.cost_micros += other.cost_micros;
+        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
+        self.cost_micros = self.cost_micros.saturating_add(other.cost_micros);
     }
 }
 
@@ -142,6 +142,23 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
+
+    #[test]
+    fn spent_add_saturates() {
+        let mut spent = Spent {
+            input_tokens: i64::MAX,
+            output_tokens: 1,
+            cost_micros: i64::MAX - 1,
+        };
+        spent.add(&Spent {
+            input_tokens: 1,
+            output_tokens: 2,
+            cost_micros: 5,
+        });
+        assert_eq!(spent.input_tokens, i64::MAX);
+        assert_eq!(spent.output_tokens, 3);
+        assert_eq!(spent.cost_micros, i64::MAX);
+    }
 
     #[test]
     fn defaults_to_the_last_thirty_days() {

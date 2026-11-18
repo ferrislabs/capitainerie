@@ -69,7 +69,7 @@ Chaque réponse : `{rows, total, from, to}`. Tri par coût décroissant. `runs` 
 
 ## Files
 
-- `libs/core/src/domain/cost/` (`Period`, lignes, port `CostReports`)
+- `libs/core/src/domain/cost/` (`Period`, lignes, port `CostRepository`)
 - `libs/core/src/infrastructure/cost/postgres.rs` (requêtes sqlx, `.sqlx` régénéré)
 - `libs/core/tests/cost.rs` (Postgres)
 - `libs/handlers-audit/src/costs.rs` (routes)
