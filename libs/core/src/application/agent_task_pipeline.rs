@@ -30,6 +30,7 @@ use crate::domain::{
     authorization::{Decision, Subject},
     card::{Card, CardComment},
     conversation::{ToolRecord, turn::ToolSpec},
+    crew::CrewAgent,
     event::ports::EventEmitter,
     integration::intervention::{IntegratorReport, IntegratorRequest, IntegratorTools, ToolAnswer},
     mcp::{
@@ -599,10 +600,10 @@ fn connection_failure(slug: &str, error: CoreError) -> CoreError {
     }
 }
 
-fn build_system(source: &AgentTaskSource) -> String {
-    let agent = &source.agent;
+/// Who the agent is: its instructions, or its name and role without them.
+pub(super) fn agent_identity(agent: &CrewAgent) -> String {
     let instructions = agent.instructions.trim();
-    let identity = if instructions.is_empty() {
+    if instructions.is_empty() {
         let role = if agent.role.is_empty() {
             String::new()
         } else {
@@ -611,7 +612,11 @@ fn build_system(source: &AgentTaskSource) -> String {
         format!("Tu es {}{role}.", agent.name)
     } else {
         instructions.to_owned()
-    };
+    }
+}
+
+fn build_system(source: &AgentTaskSource) -> String {
+    let identity = agent_identity(&source.agent);
     let writes = if source.task.allow_writes {
         "L'écriture est autorisée pour cette exécution : tu peux utiliser les outils qui modifient des données, avec précaution."
     } else if source.approved_call.is_some() {

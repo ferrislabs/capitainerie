@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, net::IpAddr};
 
 use capitainerie_common::RunId;
-use capitainerie_core::domain::execution::TaskSpec;
+use capitainerie_core::domain::execution::{REPORT_PATH, TaskSpec};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
@@ -92,6 +92,13 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
         plain("BASE_BRANCH", &spec.base_branch),
         plain("BRANCH", &spec.branch),
         plain("MODEL", spec.model.as_str()),
+        // Claude Code asks a small model for background work; the proxy
+        // serves only the run's model, so every role points at it.
+        plain("ANTHROPIC_SMALL_FAST_MODEL", spec.model.as_str()),
+        plain("ANTHROPIC_DEFAULT_HAIKU_MODEL", spec.model.as_str()),
+        plain("CLAUDE_CODE_SUBAGENT_MODEL", spec.model.as_str()),
+        plain("CAPITAINERIE_MODE", spec.mode.as_str()),
+        plain("REPORT_PATH", REPORT_PATH),
         plain("MAX_TURNS", spec.max_turns.to_string()),
         plain("PROMPT", &spec.prompt),
         plain("HOME", "/home/executor"),
@@ -220,7 +227,7 @@ mod tests {
 
     use capitainerie_core::domain::{
         agent::SecretToken,
-        execution::{ExecutorModel, RepositoryRef},
+        execution::{ExecutionMode, ExecutorModel, RepositoryRef},
     };
 
     use super::*;
@@ -237,6 +244,7 @@ mod tests {
             model: ExecutorModel::default(),
             max_turns: 50,
             deadline: Duration::from_secs(1800),
+            mode: ExecutionMode::Change,
             task_token: SecretToken::new(TOKEN),
         }
     }
@@ -458,6 +466,49 @@ mod tests {
             Some(ExecutorModel::DEFAULT)
         );
         assert_eq!(env(&job, "PROMPT").value.as_deref(), Some("Fix the bug"));
+    }
+
+    #[test]
+    fn the_mode_and_the_report_path_reach_the_container() {
+        let change = build_job(&config(), &spec(), Some(&proxy()));
+        assert_eq!(
+            env(&change, "CAPITAINERIE_MODE").value.as_deref(),
+            Some("change")
+        );
+        let audit = TaskSpec {
+            mode: ExecutionMode::Audit,
+            ..spec()
+        };
+        let job = build_job(&config(), &audit, Some(&proxy()));
+        assert_eq!(
+            env(&job, "CAPITAINERIE_MODE").value.as_deref(),
+            Some("audit")
+        );
+        let report = env(&job, "REPORT_PATH").value.clone().unwrap();
+        assert_eq!(report, "/workspace/.capitainerie/report.md");
+        assert!(report.starts_with("/workspace/"));
+        assert!(!report.starts_with("/workspace/repo/"));
+    }
+
+    #[test]
+    fn every_model_role_of_claude_code_is_the_run_model() {
+        let spec = TaskSpec {
+            model: ExecutorModel::new("claude-opus-5").unwrap(),
+            ..spec()
+        };
+        let job = build_job(&config(), &spec, Some(&proxy()));
+        for name in [
+            "MODEL",
+            "ANTHROPIC_SMALL_FAST_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "CLAUDE_CODE_SUBAGENT_MODEL",
+        ] {
+            assert_eq!(
+                env(&job, name).value.as_deref(),
+                Some("claude-opus-5"),
+                "{name}"
+            );
+        }
     }
 
     #[test]

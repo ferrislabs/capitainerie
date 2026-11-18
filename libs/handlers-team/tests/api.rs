@@ -148,6 +148,7 @@ async fn an_agent_is_created_read_updated_and_archived() {
                 "hue": 210,
                 "instructions": "Tu codes.",
                 "connector_grants": ["github", "github", "odoo"],
+                "repository_grants": ["acme/web", "Acme/Web"],
             }),
         )
         .await;
@@ -158,6 +159,7 @@ async fn an_agent_is_created_read_updated_and_archived() {
     assert_eq!(created["archived"], false);
     assert_eq!(created["reports_to"], Value::Null);
     assert_eq!(created["connector_grants"], json!(["github", "odoo"]));
+    assert_eq!(created["repository_grants"], json!(["acme/web"]));
     assert_eq!(created["created_by"], "user-1");
     let path = format!("/api/v1/team/agents/{}", created["id"].as_str().unwrap());
 
@@ -171,10 +173,14 @@ async fn an_agent_is_created_read_updated_and_archived() {
     let (status, updated) = fixture
         .patch(
             &path,
-            json!({"name": "Développeuse", "connector_grants": [], "hue": 30}),
+            json!({"name": "Développeuse", "connector_grants": [], "hue": 30, "repository_grants": ["acme/api", "acme/web"]}),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(
+        updated["repository_grants"],
+        json!(["acme/api", "acme/web"])
+    );
     assert_eq!(updated["name"], "Développeuse");
     assert_eq!(updated["connector_grants"], json!([]));
     assert_eq!(updated["role"], "Développeur");
@@ -282,11 +288,18 @@ async fn invalid_input_a_duplicate_slug_and_an_empty_patch_are_refused() {
         json!({"slug": "ok", "name": " "}),
         json!({"slug": "ok", "name": "x", "hue": 400}),
         json!({"slug": "ok", "name": "x", "connector_grants": ["a,b"]}),
+        json!({"slug": "ok", "name": "x", "repository_grants": ["acme"]}),
+        json!({"slug": "ok", "name": "x", "repository_grants": ["acme/web/x"]}),
     ] {
         let (status, _) = fixture.post("/api/v1/team/agents", body.clone()).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     }
     let (status, _) = fixture.patch(&path, json!({})).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let too_many: Vec<String> = (0..51).map(|i| format!("acme/r{i}")).collect();
+    let (status, _) = fixture
+        .patch(&path, json!({"repository_grants": too_many}))
+        .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let (_, list) = fixture.get("/api/v1/team/agents").await;
     assert_eq!(slugs(&list), ["dev"]);
@@ -366,6 +379,7 @@ async fn every_change_is_a_revision_and_an_old_one_can_be_restored() {
             json!({
                 "config": {"effort": "Max", "turns": "12", "chrome": true},
                 "skills": ["review", "review", "deploy"],
+                "repository_grants": ["acme/web"],
                 "paused": true,
                 "change_summary": "effort de réflexion, tours max",
             }),
@@ -375,6 +389,7 @@ async fn every_change_is_a_revision_and_an_old_one_can_be_restored() {
     assert_eq!(configured["revision"], 2);
     assert_eq!(configured["config"]["effort"], "Max");
     assert_eq!(configured["skills"], json!(["review", "deploy"]));
+    assert_eq!(configured["repository_grants"], json!(["acme/web"]));
     assert_eq!(configured["paused"], true);
 
     let (status, renamed) = fixture.patch(&path, json!({"name": "Dév"})).await;
@@ -405,6 +420,7 @@ async fn every_change_is_a_revision_and_an_old_one_can_be_restored() {
     assert_eq!(restored["name"], "Dev");
     assert_eq!(restored["config"], json!({}));
     assert_eq!(restored["skills"], json!([]));
+    assert_eq!(restored["repository_grants"], json!([]));
     assert_eq!(restored["paused"], false);
     assert_eq!(restored["role"], "Développeur");
     let (_, history) = fixture.get(&format!("{path}/revisions")).await;

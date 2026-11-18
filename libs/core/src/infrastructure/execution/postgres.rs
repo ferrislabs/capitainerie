@@ -6,7 +6,8 @@ use crate::{
     domain::{
         agent::SecretToken,
         execution::{
-            GithubAppCredentials, GithubAppSummary, GithubInstallation, TaskGrant,
+            ExecutionMode, ExecutorStatus, GithubAppCredentials, GithubAppSummary,
+            GithubInstallation, TaskGrant,
             ports::{GithubAppRepository, GithubInstallationRepository, TaskGrantRepository},
         },
     },
@@ -15,6 +16,46 @@ use crate::{
         postgres::{SharedTx, map_sqlx_error},
     },
 };
+
+/// Whether the worker could start executions when it last started; `None`
+/// until a worker has started.
+pub async fn executor_status_in(tx: &SharedTx<'_>) -> Result<Option<ExecutorStatus>, CoreError> {
+    let mut tx = tx.lock().await;
+    sqlx::query!("SELECT enabled, reason FROM executor_status WHERE singleton")
+        .fetch_optional(&mut ***tx)
+        .await
+        .map(|row| {
+            row.map(|row| ExecutorStatus {
+                enabled: row.enabled,
+                reason: row.reason,
+            })
+        })
+        .map_err(map_sqlx_error)
+}
+
+pub async fn record_executor_status_in(
+    tx: &SharedTx<'_>,
+    status: &ExecutorStatus,
+    now: DateTime<Utc>,
+) -> Result<(), CoreError> {
+    let mut tx = tx.lock().await;
+    sqlx::query!(
+        r#"
+        INSERT INTO executor_status (singleton, enabled, reason, updated_at)
+        VALUES (TRUE, $1, $2, $3)
+        ON CONFLICT (singleton)
+        DO UPDATE SET enabled = EXCLUDED.enabled, reason = EXCLUDED.reason,
+                      updated_at = EXCLUDED.updated_at
+        "#,
+        status.enabled,
+        status.reason.as_deref(),
+        now,
+    )
+    .execute(&mut ***tx)
+    .await
+    .map(|_| ())
+    .map_err(map_sqlx_error)
+}
 
 #[repository(domain = TaskGrant, backend = Postgres)]
 pub struct PgTaskGrantRepository<'tx> {
@@ -32,8 +73,11 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
         let mut tx = self.tx.lock().await;
         sqlx::query!(
             r#"
-            INSERT INTO task_grants (token_sha256, run_id, organization_id, repository, branch, model, expires_at, revoked_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO task_grants (
+                token_sha256, run_id, organization_id, repository, branch, model, expires_at,
+                revoked_at, mode, initiated_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             "#,
             token_sha256.as_slice(),
             grant.run_id.0,
@@ -43,6 +87,8 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
             grant.model,
             grant.expires_at,
             grant.revoked_at,
+            grant.mode.as_str(),
+            grant.initiated_by.as_deref(),
         )
         .execute(&mut ***tx)
         .await
@@ -54,7 +100,8 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
         let mut tx = self.tx.lock().await;
         let row = sqlx::query!(
             r#"
-            SELECT run_id, organization_id, repository, branch, model, expires_at, revoked_at
+            SELECT run_id, organization_id, repository, branch, model, expires_at, revoked_at,
+                   mode, initiated_by
             FROM task_grants
             WHERE token_sha256 = $1
             "#,
@@ -70,6 +117,8 @@ impl TaskGrantRepository for PgTaskGrantRepository<'_> {
                 repository: row.repository.parse()?,
                 branch: row.branch,
                 model: row.model,
+                mode: ExecutionMode::try_from(row.mode.as_str())?,
+                initiated_by: row.initiated_by,
                 expires_at: row.expires_at,
                 revoked_at: row.revoked_at,
             })

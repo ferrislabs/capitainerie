@@ -22,6 +22,7 @@ export interface WizardState {
 	instr: string
 	skills: ReadonlyArray<string>
 	connectors: ReadonlyArray<string>
+	repositories: ReadonlyArray<string>
 }
 
 export const WIZARD_LAST_STEP = 4
@@ -42,6 +43,7 @@ export function initialWizard(): WizardState {
 		instr: '',
 		skills: [],
 		connectors: [],
+		repositories: [],
 	}
 }
 
@@ -73,6 +75,9 @@ export function buildCreateRequest(
 		hue: hueOf(name),
 		reports_to: w.reports === DIRECTION ? null : w.reports,
 		connector_grants: w.connectors.filter((c) => grantable.includes(c)),
+		...(w.repositories.length
+			? { repository_grants: [...w.repositories] }
+			: {}),
 		...(instructions ? { instructions } : {}),
 	}
 }

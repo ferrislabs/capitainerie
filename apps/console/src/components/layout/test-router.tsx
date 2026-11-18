@@ -38,6 +38,7 @@ const PATHS = [
 	'/settings/providers',
 	'/settings/models',
 	'/settings/integrations',
+	'/settings/integrations/github',
 ] as const
 
 /** Monte `ui` dans un routeur mémoire positionné sur `path`. */

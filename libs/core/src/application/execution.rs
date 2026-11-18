@@ -14,7 +14,7 @@ use crate::{
         },
         event::ports::EventEmitter,
         execution::{
-            EXECUTOR_AGENT, ExecutableCard, GithubAppCredentials, GithubAppSummary,
+            EXECUTOR_AGENT, ExecutableCard, ExecutorStatus, GithubAppCredentials, GithubAppSummary,
             GithubInstallation, RepositoryRef, TaskGrant,
             ports::{GithubAppRepository, GithubInstallationRepository, TaskGrantRepository},
         },
@@ -25,7 +25,10 @@ use crate::{
         },
     },
     infrastructure::{
-        card::postgres::PgCardRepository, execution::postgres::PgGithubAppRepository,
+        card::postgres::PgCardRepository,
+        execution::postgres::{
+            PgGithubAppRepository, executor_status_in, record_executor_status_in,
+        },
     },
 };
 
@@ -164,6 +167,7 @@ impl CapitainerieUseCase {
         &self,
         run_id: RunId,
         card_id: CardId,
+        actor: Option<String>,
         body: String,
     ) -> Result<CardCommentId, CoreError> {
         let mut run_repository = run_repository;
@@ -201,7 +205,7 @@ impl CapitainerieUseCase {
             Subject {
                 id: run.initiated_by.clone(),
                 organization_id: run.organization_id,
-                actor: Some(EXECUTOR_AGENT.to_owned()),
+                actor: Some(actor.unwrap_or_else(|| EXECUTOR_AGENT.to_owned())),
                 is_admin: false,
             },
             card_id,
@@ -427,5 +431,18 @@ impl CapitainerieUseCase {
     pub async fn revoke_task_grants(&self, run_id: RunId) -> Result<(), CoreError> {
         let mut task_grant_repository = task_grant_repository;
         task_grant_repository.revoke(run_id, Utc::now()).await
+    }
+
+    /// Recorded by the worker when it starts, so the API can refuse a run no
+    /// worker could carry out.
+    #[transactional()]
+    pub async fn record_executor_status(&self, status: &ExecutorStatus) -> Result<(), CoreError> {
+        record_executor_status_in(&tx, status, Utc::now()).await
+    }
+
+    /// `None` until a worker has started.
+    #[transactional()]
+    pub async fn executor_status(&self) -> Result<Option<ExecutorStatus>, CoreError> {
+        executor_status_in(&tx).await
     }
 }

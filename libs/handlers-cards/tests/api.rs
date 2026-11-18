@@ -1449,6 +1449,7 @@ impl Fixture {
                     reports_to: None,
                     instructions: String::new(),
                     connector_grants: vec![],
+                    repository_grants: vec![],
                 },
             )
             .await

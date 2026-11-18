@@ -6,7 +6,7 @@ use capitainerie_common::RunId;
 use capitainerie_core::domain::{
     agent::SecretToken,
     execution::{
-        ExecutorModel, RepositoryRef, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
+        ExecutionMode, ExecutorModel, RepositoryRef, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
         ports::TaskRunner,
     },
 };
@@ -37,6 +37,7 @@ fn spec(deadline: Duration) -> TaskSpec {
         model: ExecutorModel::default(),
         max_turns: 1,
         deadline,
+        mode: ExecutionMode::Change,
         task_token: SecretToken::new("tt_integration"),
     }
 }

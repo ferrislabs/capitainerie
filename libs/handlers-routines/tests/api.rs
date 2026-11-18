@@ -172,6 +172,7 @@ impl Fixture {
                     reports_to: None,
                     instructions: "Tu aides.".into(),
                     connector_grants: vec![],
+                    repository_grants: vec![],
                 },
             )
             .await

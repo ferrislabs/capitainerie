@@ -7,6 +7,40 @@ marker() {
 
 : "${GIT_REMOTE:?}" "${BASE_BRANCH:?}" "${BRANCH:?}" "${MODEL:?}" "${MAX_TURNS:?}" "${PROMPT:?}"
 : "${CAPITAINERIE_TASK_TOKEN:?}"
+mode="${CAPITAINERIE_MODE:-change}"
+case "$mode" in
+  change | audit) ;;
+  *)
+    echo "unknown CAPITAINERIE_MODE: $mode" >&2
+    exit 2
+    ;;
+esac
+
+REPORT_MAX_BYTES=1048576
+REPORT_CHUNK_CHARS=4096
+REPORT_NOTE=$'\n\n_[rapport tronque a 1 Mio]_\n'
+
+# Sends the report on stdout as base64 chunks, then its SHA-256 and size;
+# a report above REPORT_MAX_BYTES is cut and ends with a note.
+emit_report() {
+  local source="$1" sent truncated=false size keep
+  [ -s "$source" ] || return 1
+  sent="$(mktemp /tmp/report.XXXXXX)"
+  size="$(wc -c <"$source" | tr -d ' ')"
+  if [ "$size" -gt "$REPORT_MAX_BYTES" ]; then
+    keep=$((REPORT_MAX_BYTES - $(printf '%s' "$REPORT_NOTE" | LC_ALL=C wc -c | tr -d ' ')))
+    head -c "$keep" "$source" >"$sent"
+    printf '%s' "$REPORT_NOTE" >>"$sent"
+    truncated=true
+  else
+    cat "$source" >"$sent"
+  fi
+  base64 -w0 <"$sent" | fold -w "$REPORT_CHUNK_CHARS" | while IFS= read -r chunk || [ -n "$chunk" ]; do
+    marker report_chunk ",\"data\":\"$chunk\""
+  done
+  marker report_end ",\"sha256\":\"$(sha256sum "$sent" | cut -d' ' -f1)\",\"bytes\":$(wc -c <"$sent" | tr -d ' '),\"truncated\":$truncated"
+  rm -f "$sent"
+}
 
 askpass="$(mktemp /tmp/askpass.XXXXXX)"
 trap 'rm -f "$askpass"' EXIT
@@ -28,10 +62,31 @@ git clone --depth 50 --branch "$BASE_BRANCH" "$GIT_REMOTE" repo >&2
 marker cloned
 
 cd repo
-git switch -c "$BRANCH" >&2
-
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 claude_status=0
+
+if [ "$mode" = audit ]; then
+  : "${REPORT_PATH:?}"
+  mkdir -p "$(dirname "$REPORT_PATH")"
+  rm -f "$REPORT_PATH"
+  # Read-only: no Edit, and nothing is ever committed or pushed (the proxy
+  # refuses a push of this run anyway). Write is kept for the report only.
+  claude -p "$PROMPT" \
+    --output-format stream-json \
+    --verbose \
+    --model "$MODEL" \
+    --max-turns "$MAX_TURNS" \
+    --allowedTools "Read,Glob,Grep,Bash,Write" \
+    --disallowedTools "Edit,MultiEdit,NotebookEdit" || claude_status=$?
+  echo "claude exited with $claude_status" >&2
+  emit_report "$REPORT_PATH" || echo "no report at $REPORT_PATH" >&2
+  # The worker judges the audit from the report and the summary it read;
+  # a stop of Claude Code is in its stream.
+  marker audit_done
+  exit 0
+fi
+
+git switch -c "$BRANCH" >&2
 claude -p "$PROMPT" \
   --output-format stream-json \
   --verbose \

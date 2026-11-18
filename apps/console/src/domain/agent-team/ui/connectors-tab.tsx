@@ -4,10 +4,12 @@ import { SectionCard } from '#/components/layout/section-card'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
 import { HumanAvatar } from '#/domain/agent-team/ui/human-avatar'
+import { RepositoryGrantsSection } from '#/domain/agent-team/ui/repository-grants-section'
 import { Empty, ROW, Rows, Ttl } from '#/domain/agent-team/ui/rows'
 import { Sev } from '#/domain/agent-team/ui/sev'
 import { Toggle } from '#/domain/agent-team/ui/toggle'
 import { hostOf } from '#/domain/connectors/model'
+import type { RepositoriesState } from '#/domain/integrations/hooks/use-github'
 
 interface Props {
 	connectors: ReadonlyArray<Schemas.McpConnectorResponse>
@@ -17,6 +19,11 @@ interface Props {
 	form: AgentForm
 	onToggle: (slug: string, allowed: boolean) => void
 	onChange: (patch: Partial<AgentForm>) => void
+	repositories: RepositoriesState
+	repositoryGrants: ReadonlyArray<string>
+	busy: boolean
+	onAddRepository: (repository: string) => void
+	onRemoveRepository: (repository: string) => void
 }
 
 export function ConnectorsTab({
@@ -27,6 +34,11 @@ export function ConnectorsTab({
 	form,
 	onToggle,
 	onChange,
+	repositories,
+	repositoryGrants,
+	busy,
+	onAddRepository,
+	onRemoveRepository,
 }: Props) {
 	const orphans = granted.filter(
 		(slug) => !connectors.some((c) => c.slug === slug),
@@ -101,6 +113,14 @@ export function ConnectorsTab({
 					</p>
 				) : null}
 			</SectionCard>
+
+			<RepositoryGrantsSection
+				granted={repositoryGrants}
+				state={repositories}
+				busy={busy}
+				onAdd={onAddRepository}
+				onRemove={onRemoveRepository}
+			/>
 
 			<SectionCard title="Identité GitHub" flush>
 				<FieldRow label="Compte utilisé" hint="Au démarrage du run">

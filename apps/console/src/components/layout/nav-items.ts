@@ -3,6 +3,7 @@ import {
 	Box,
 	CircleCheck,
 	Folder,
+	GitBranch,
 	HardHat,
 	History,
 	House,
@@ -29,6 +30,7 @@ export interface NavItem {
 		| '/skills'
 		| '/sources'
 		| '/connectors/{-$tab}'
+		| '/settings/integrations/github'
 		| '/approvals'
 		| '/audit/{-$tab}'
 		| '/providers'
@@ -68,6 +70,7 @@ export const NAV_SECTIONS: ReadonlyArray<NavSection> = [
 			{ to: '/skills', label: 'Compétences', icon: Sparkles },
 			{ to: '/sources', label: 'Sources', icon: Radio },
 			{ to: '/connectors/{-$tab}', label: 'Connecteurs', icon: Plug },
+			{ to: '/settings/integrations/github', label: 'GitHub', icon: GitBranch },
 			{ to: '/approvals', label: 'Approbations', icon: Shield },
 			{ to: '/audit/{-$tab}', label: 'Audit', icon: History },
 		],

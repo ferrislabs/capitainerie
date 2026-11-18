@@ -28,6 +28,8 @@ pub struct TeamAgentResponse {
     pub instructions: String,
     /// Names of the connectors the agent may use.
     pub connector_grants: Vec<String>,
+    /// GitHub repositories, `owner/name`, the agent may run the executor on.
+    pub repository_grants: Vec<String>,
     /// The console's settings of the agent, a JSON object.
     #[schema(value_type = Object)]
     pub config: Value,
@@ -65,6 +67,7 @@ impl From<CrewAgent> for TeamAgentResponse {
             archived: agent.archived,
             instructions: agent.instructions,
             connector_grants: agent.connector_grants.as_slice().to_vec(),
+            repository_grants: agent.repository_grants.to_strings(),
             config: agent.config.to_value(),
             skills: agent.skills.as_slice().to_vec(),
             paused: agent.paused,

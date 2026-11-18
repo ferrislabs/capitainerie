@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { SectionCard } from '#/components/layout/section-card'
 import { TableSkeleton } from '#/components/layout/table-skeleton'
@@ -32,7 +33,10 @@ export function RepositoriesSection() {
 			<SectionCard title={TITLE}>
 				<InlineAlert tone="info">
 					GitHub n'est pas connecté à l'organisation : les chantiers ne peuvent
-					pas encore travailler sur un dépôt.
+					pas encore travailler sur un dépôt.{' '}
+					<Link to="/settings/integrations/github" className="underline">
+						Connecter GitHub
+					</Link>
 				</InlineAlert>
 			</SectionCard>
 		)

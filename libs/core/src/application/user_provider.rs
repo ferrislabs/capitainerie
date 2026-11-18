@@ -5,9 +5,9 @@ use super::CapitainerieUseCase;
 use crate::{
     domain::{
         authorization::Subject,
-        provider::{ProviderKind, ports::ModelCatalog},
+        provider::{ProviderAccess, ProviderKind, ports::ModelCatalog},
         user_provider::{
-            UserProviderCredential, UserProviderSummary,
+            UserProviderCredential, UserProviderSummary, executor_access,
             ports::UserProviderRepository,
             service::{PutUserProvider, UserProviderService},
         },
@@ -87,6 +87,23 @@ impl CapitainerieUseCase {
         UserProviderService::new(repository, authz)
             .access(subject, kind)
             .await
+    }
+
+    /// For the credentials proxy, which acts for no user: the Anthropic key an
+    /// execution started by `initiated_by` uses.
+    pub async fn executor_anthropic_access(
+        &self,
+        organization_id: OrganizationId,
+        initiated_by: Option<&str>,
+    ) -> Result<Option<ProviderAccess>, CoreError> {
+        let own = match initiated_by {
+            Some(subject) => self.user_credentials_of(organization_id, subject).await?,
+            None => Vec::new(),
+        };
+        let organization = self
+            .provider_access(organization_id, ProviderKind::Anthropic)
+            .await?;
+        Ok(executor_access(own, organization))
     }
 
     /// For the worker, which acts for no user: every key the initiator of a

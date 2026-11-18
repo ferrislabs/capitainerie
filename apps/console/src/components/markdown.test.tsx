@@ -57,6 +57,19 @@ describe('Markdown', () => {
 		expect(container.textContent).toContain('<script>alert(1)</script>')
 	})
 
+	it('links bare web addresses without their trailing punctuation', () => {
+		render(
+			<Markdown source="Claude Code a ouvert une pull request en brouillon : https://github.com/acme/web/pull/12." />,
+		)
+		const link = screen.getByRole('link', {
+			name: 'https://github.com/acme/web/pull/12',
+		})
+		expect(link.getAttribute('href')).toBe(
+			'https://github.com/acme/web/pull/12',
+		)
+		expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+	})
+
 	it('drops unsafe link targets', () => {
 		render(<Markdown source="[clic](javascript:alert(1))" />)
 		expect(screen.queryByRole('link')).toBeNull()

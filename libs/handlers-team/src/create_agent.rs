@@ -20,6 +20,8 @@ pub struct CreateTeamAgentRequest {
     pub reports_to: Option<AgentId>,
     pub instructions: Option<String>,
     pub connector_grants: Option<Vec<String>>,
+    /// GitHub repositories, `owner/name`, the agent may run the executor on; at most 50.
+    pub repository_grants: Option<Vec<String>>,
 }
 
 #[utoipa::path(
@@ -57,6 +59,7 @@ pub async fn handler(
                 reports_to: request.reports_to,
                 instructions: request.instructions.unwrap_or_default(),
                 connector_grants: request.connector_grants.unwrap_or_default(),
+                repository_grants: request.repository_grants.unwrap_or_default(),
             },
         )
         .await?;

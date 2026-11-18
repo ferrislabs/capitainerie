@@ -206,6 +206,7 @@ impl Fixture {
                     reports_to: None,
                     instructions: "Tu aides.".into(),
                     connector_grants: grants.iter().map(|grant| (*grant).to_owned()).collect(),
+                    repository_grants: vec![],
                 },
             )
             .await

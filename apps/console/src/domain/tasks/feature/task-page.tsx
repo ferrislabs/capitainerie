@@ -1,5 +1,11 @@
 import { Link } from '@tanstack/react-router'
-import { ClipboardList, Layers, PanelRight, Send } from 'lucide-react'
+import {
+	ClipboardList,
+	GitPullRequestDraft,
+	Layers,
+	PanelRight,
+	Send,
+} from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { EmptyState } from '#/components/layout/empty-state'
@@ -30,6 +36,7 @@ import {
 	type TaskStatus,
 	toTask,
 } from '#/domain/tasks/model'
+import { pullRequestLink } from '#/domain/tasks/pull-request'
 import { canRunAgent, isActiveRun } from '#/domain/tasks/run-agent'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { STATUS_LABEL } from '#/domain/tasks/task-list'
@@ -116,6 +123,26 @@ function NotFound() {
 const BUBBLE =
 	'max-w-[min(560px,90%)] self-end rounded-[12px_12px_3px_12px] bg-primary px-3 py-[9px] text-primary-foreground'
 
+/** Les liens d'un commentaire restent lisibles sur le fond de la bulle. */
+const BUBBLE_LINKS =
+	'[&_a]:text-inherit [&_a]:underline [&_a]:underline-offset-2 [&_a]:break-all'
+
+function PullRequestChip({ body }: { body: string }) {
+	const pr = pullRequestLink(body)
+	if (!pr) return null
+	return (
+		<a
+			href={pr.url}
+			target="_blank"
+			rel="noopener noreferrer"
+			className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-primary-foreground/15 px-2 py-1 text-[12px] font-medium no-underline! hover:bg-primary-foreground/25"
+		>
+			<GitPullRequestDraft aria-hidden="true" className="size-3.5" />
+			Ouvrir la pull request {pr.repository}#{pr.number}
+		</a>
+	)
+}
+
 export function TaskPage({ pathId }: Props) {
 	const id = taskPathId(pathId)
 	const detail = useCard(id)
@@ -170,6 +197,8 @@ export function TaskPage({ pathId }: Props) {
 	const shownRun = runId ?? loadedRun?.id ?? null
 	const running = runActive || Boolean(loadedRun)
 	const runnable = canRunAgent(task.card.column, task.agentId !== null)
+	const assignee = team?.find((a) => a.id === task.agentId)
+	const repositoryGrants = assignee?.repository_grants ?? []
 
 	const send = (event: React.FormEvent) => {
 		event.preventDefault()
@@ -282,11 +311,12 @@ export function TaskPage({ pathId }: Props) {
 						{comments.length ? (
 							<ul aria-label="Commentaires" className="contents">
 								{comments.map((c) => (
-									<li key={c.id} className={BUBBLE}>
+									<li key={c.id} className={cn(BUBBLE, BUBBLE_LINKS)}>
 										<small className="mb-0.5 block text-[0.83em] opacity-75">
 											{commentAuthor(c, team, me)}
 										</small>
 										<Markdown source={c.body} />
+										<PullRequestChip body={c.body} />
 										<small className="mt-1 block text-right text-[0.83em] opacity-75">
 											{relativeAge(c.created_at)}
 										</small>
@@ -363,11 +393,16 @@ export function TaskPage({ pathId }: Props) {
 					/>
 				) : null}
 			</div>
-			{runnable ? (
+			{runnable && task.agentId ? (
 				<RunAgentDialog
+					key={`${task.agentId}:${repositoryGrants.join(',')}`}
 					cardId={task.id}
 					version={task.version}
+					agentId={task.agentId}
 					agentName={agent.name}
+					repositoryGrants={repositoryGrants}
+					hasConnectors={(assignee?.connector_grants.length ?? 0) > 0}
+					taskText={`${task.title}\n${task.note ?? ''}`}
 					open={dialogOpen}
 					onOpenChange={setDialogOpen}
 					onStarted={(id) => {

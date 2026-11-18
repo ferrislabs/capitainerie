@@ -5,7 +5,10 @@ use std::str::FromStr;
 use capitainerie_common::{OrganizationId, RunId};
 use capitainerie_core::{
     CapitainerieUseCase,
-    domain::{execution::TaskGrant, provider::ProviderKind},
+    domain::{
+        execution::{ExecutionMode, TaskGrant},
+        provider::ProviderKind,
+    },
 };
 use chrono::Utc;
 use sqlx::{
@@ -73,6 +76,20 @@ async fn the_proxy_role_reads_what_the_proxy_reads_and_writes_nothing() {
     );
     assert!(
         usecase
+            .user_credentials_of(organization, "user-1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        usecase
+            .executor_anthropic_access(organization, Some("user-1"))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        usecase
             .github_installation_for(organization)
             .await
             .unwrap()
@@ -92,6 +109,8 @@ async fn the_proxy_role_reads_what_the_proxy_reads_and_writes_nothing() {
         repository: "acme/web".parse().unwrap(),
         branch: "capitainerie/x".into(),
         model: "claude-sonnet-5-5".into(),
+        mode: ExecutionMode::Change,
+        initiated_by: None,
         expires_at: Utc::now() + chrono::Duration::minutes(1),
         revoked_at: None,
     };

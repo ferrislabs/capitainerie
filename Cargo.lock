@@ -1770,6 +1770,8 @@ name = "capitainerie-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
+ "base64 0.22.1",
  "capitainerie-args",
  "capitainerie-auth",
  "capitainerie-bus-iggy",

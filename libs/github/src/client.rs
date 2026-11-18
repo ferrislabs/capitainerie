@@ -13,7 +13,7 @@ use reqwest::{
     header::{ACCEPT, AUTHORIZATION, LINK, USER_AGENT},
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
 use crate::{GithubError, jwt};
@@ -235,7 +235,32 @@ struct PullRequestListEntry {
 
 const PULL_REQUEST_EXISTS: &str = "A pull request already exists";
 
-type CacheKey = (i64, Option<RepositoryRef>);
+/// What an installation token may reach.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum TokenScope {
+    /// Every repository the installation sees, metadata only.
+    Installation,
+    /// One repository: push its branches and open pull requests.
+    Write(RepositoryRef),
+    /// One repository, read-only: fetch it.
+    Read(RepositoryRef),
+}
+
+fn token_request(scope: &TokenScope) -> Value {
+    match scope {
+        TokenScope::Installation => json!({"permissions": {"metadata": "read"}}),
+        TokenScope::Write(repository) => json!({
+            "repositories": [repository.name()],
+            "permissions": {"contents": "write", "pull_requests": "write"},
+        }),
+        TokenScope::Read(repository) => json!({
+            "repositories": [repository.name()],
+            "permissions": {"contents": "read", "metadata": "read"},
+        }),
+    }
+}
+
+type CacheKey = (i64, TokenScope);
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -321,20 +346,26 @@ impl GithubClient {
         installation_id: i64,
         repository: Option<&RepositoryRef>,
     ) -> Result<InstallationToken, GithubError> {
-        let key = (installation_id, repository.cloned());
+        let scope = match repository {
+            Some(repository) => TokenScope::Write(repository.clone()),
+            None => TokenScope::Installation,
+        };
+        self.scoped_token(installation_id, scope).await
+    }
+
+    async fn scoped_token(
+        &self,
+        installation_id: i64,
+        scope: TokenScope,
+    ) -> Result<InstallationToken, GithubError> {
+        let body = token_request(&scope);
+        let key = (installation_id, scope);
         if let Some(token) = self.cache.lock().await.get(&key)
             && token.is_fresh(Utc::now())
         {
             return Ok(token.clone());
         }
 
-        let body = match repository {
-            Some(repository) => json!({
-                "repositories": [repository.name()],
-                "permissions": {"contents": "write", "pull_requests": "write"},
-            }),
-            None => json!({"permissions": {"metadata": "read"}}),
-        };
         let jwt = jwt::sign(
             self.app.app_id,
             self.app.private_key_pem.expose(),
@@ -366,6 +397,16 @@ impl GithubClient {
         repository: &RepositoryRef,
     ) -> Result<InstallationToken, GithubError> {
         self.token_for(installation_id, Some(repository)).await
+    }
+
+    /// A token that can only fetch `repository`: what a read-only run gets.
+    pub async fn read_only_installation_token(
+        &self,
+        installation_id: i64,
+        repository: &RepositoryRef,
+    ) -> Result<InstallationToken, GithubError> {
+        self.scoped_token(installation_id, TokenScope::Read(repository.clone()))
+            .await
     }
 
     pub async fn default_branch(
@@ -1266,6 +1307,33 @@ mod tests {
         assert_eq!(headers["accept"], "application/vnd.github+json");
         assert_eq!(headers["x-github-api-version"], "2022-11-28");
         assert!(headers.contains_key("user-agent"));
+    }
+
+    #[tokio::test]
+    async fn a_read_only_token_asks_only_to_read_and_is_cached_apart() {
+        let shared = Shared::default();
+        let client = serve(Arc::clone(&shared)).await;
+        let api = repo_ref("acme/api");
+
+        let read = client.read_only_installation_token(5, &api).await.unwrap();
+        let again = client.read_only_installation_token(5, &api).await.unwrap();
+        let write = client.installation_token(5, &api).await.unwrap();
+        assert_eq!(read.token.expose(), again.token.expose());
+        assert_ne!(read.token.expose(), write.token.expose());
+
+        let recorded = shared.lock().unwrap();
+        assert_eq!(recorded.token_bodies.len(), 2);
+        assert_eq!(
+            recorded.token_bodies[0],
+            json!({
+                "repositories": ["api"],
+                "permissions": {"contents": "read", "metadata": "read"},
+            })
+        );
+        assert_eq!(
+            recorded.token_bodies[1]["permissions"],
+            json!({"contents": "write", "pull_requests": "write"})
+        );
     }
 
     #[tokio::test]

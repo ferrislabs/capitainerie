@@ -206,6 +206,11 @@ describe('WorksitesPage', () => {
 		expect(
 			await screen.findByText(/GitHub n'est pas connecté à l'organisation/),
 		).toBeTruthy()
+		expect(
+			screen
+				.getAllByRole('link', { name: 'Connecter GitHub' })[0]
+				?.getAttribute('href'),
+		).toBe('/settings/integrations/github')
 	})
 
 	it('launches a prompt on the project default repository', async () => {

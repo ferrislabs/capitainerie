@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::domain::label::clean_label;
+use crate::domain::{execution::RepositoryRef, label::clean_label};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrewAgent {
@@ -23,6 +23,8 @@ pub struct CrewAgent {
     pub archived: bool,
     pub instructions: String,
     pub connector_grants: ConnectorGrants,
+    /// The GitHub repositories the agent may work on through the executor.
+    pub repository_grants: RepositoryGrants,
     pub config: AgentConfig,
     pub skills: Skills,
     pub paused: bool,
@@ -152,6 +154,58 @@ impl TryFrom<Vec<String>> for ConnectorGrants {
     }
 }
 
+/// GitHub repositories, `owner/name`, an agent may run the executor on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepositoryGrants(Vec<RepositoryRef>);
+
+impl RepositoryGrants {
+    pub const MAX_COUNT: usize = 50;
+
+    pub fn as_slice(&self) -> &[RepositoryRef] {
+        &self.0
+    }
+
+    pub fn to_strings(&self) -> Vec<String> {
+        self.0.iter().map(ToString::to_string).collect()
+    }
+
+    /// GitHub names are case-insensitive.
+    pub fn allows(&self, repository: &RepositoryRef) -> bool {
+        self.0
+            .iter()
+            .any(|granted| same_repository(granted, repository))
+    }
+}
+
+fn same_repository(left: &RepositoryRef, right: &RepositoryRef) -> bool {
+    left.owner().eq_ignore_ascii_case(right.owner())
+        && left.name().eq_ignore_ascii_case(right.name())
+}
+
+impl TryFrom<Vec<String>> for RepositoryGrants {
+    type Error = CoreError;
+
+    fn try_from(values: Vec<String>) -> Result<Self, Self::Error> {
+        let mut grants: Vec<RepositoryRef> = Vec::with_capacity(values.len());
+        for value in &values {
+            let repository: RepositoryRef = value.trim().parse()?;
+            if !grants
+                .iter()
+                .any(|granted| same_repository(granted, &repository))
+            {
+                grants.push(repository);
+            }
+        }
+        if grants.len() > Self::MAX_COUNT {
+            return Err(CoreError::Invalid(format!(
+                "there are more than {} repository grants",
+                Self::MAX_COUNT
+            )));
+        }
+        Ok(Self(grants))
+    }
+}
+
 /// The free-form settings of an agent, edited by the console: a JSON object.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentConfig(Map<String, Value>);
@@ -233,6 +287,9 @@ pub struct AgentSnapshot {
     pub instructions: String,
     pub reports_to: Option<AgentId>,
     pub connector_grants: Vec<String>,
+    /// Absent from the revisions recorded before repositories could be granted.
+    #[serde(default)]
+    pub repository_grants: Vec<String>,
     pub config: Value,
     pub skills: Vec<String>,
     pub paused: bool,
@@ -248,6 +305,7 @@ impl From<&CrewAgent> for AgentSnapshot {
             instructions: agent.instructions.clone(),
             reports_to: agent.reports_to,
             connector_grants: agent.connector_grants.as_slice().to_vec(),
+            repository_grants: agent.repository_grants.to_strings(),
             config: agent.config.to_value(),
             skills: agent.skills.as_slice().to_vec(),
             paused: agent.paused,
@@ -311,6 +369,7 @@ pub(crate) mod tests {
             archived: false,
             instructions: String::new(),
             connector_grants: ConnectorGrants::default(),
+            repository_grants: RepositoryGrants::default(),
             config: AgentConfig::default(),
             skills: Skills::default(),
             paused: false,
@@ -346,6 +405,38 @@ pub(crate) mod tests {
                 .unwrap();
         assert_eq!(grants.as_slice(), ["github", "odoo"]);
         assert!(ConnectorGrants::try_from(vec!["a,b".into()]).is_err());
+    }
+
+    #[test]
+    fn repository_grants_are_owner_slash_name_deduplicated_and_bounded() {
+        let grants = RepositoryGrants::try_from(vec![
+            " acme/web ".into(),
+            "Acme/Web".into(),
+            "acme/api".into(),
+        ])
+        .unwrap();
+        assert_eq!(grants.to_strings(), ["acme/web", "acme/api"]);
+        assert!(grants.allows(&"ACME/web".parse().unwrap()));
+        assert!(!grants.allows(&"acme/docs".parse().unwrap()));
+        for refused in ["acme", "acme/web/x", "", "acme/..", "a b/c"] {
+            assert!(
+                RepositoryGrants::try_from(vec![refused.to_owned()]).is_err(),
+                "{refused}"
+            );
+        }
+        let too_many: Vec<String> = (0..=RepositoryGrants::MAX_COUNT)
+            .map(|i| format!("acme/r{i}"))
+            .collect();
+        assert!(RepositoryGrants::try_from(too_many).is_err());
+    }
+
+    #[test]
+    fn a_snapshot_recorded_before_repository_grants_still_reads() {
+        let agent = agent(OrganizationId::new(), "dev");
+        let mut value = serde_json::to_value(AgentSnapshot::from(&agent)).unwrap();
+        value.as_object_mut().unwrap().remove("repository_grants");
+        let back: AgentSnapshot = serde_json::from_value(value).unwrap();
+        assert!(back.repository_grants.is_empty());
     }
 
     #[test]

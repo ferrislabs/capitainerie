@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, organization_id, slug, name, role, description, model, status, hue,\n                   reports_to, archived, instructions, connector_grants, config, skills, paused, revision,\n                   created_by, created_at, updated_at\n            FROM agents\n            WHERE organization_id = $1 AND ($2::bool IS NULL OR archived = $2)\n            ORDER BY lower(name), id\n            LIMIT $3\n            ",
+  "query": "\n            SELECT id, organization_id, slug, name, role, description, model, status, hue,\n                   reports_to, archived, instructions, connector_grants, config, skills, paused, revision,\n                   created_by, created_at, updated_at, repository_grants\n            FROM agents\n            WHERE organization_id = $1 AND ($2::bool IS NULL OR archived = $2)\n            ORDER BY lower(name), id\n            LIMIT $3\n            ",
   "describe": {
     "columns": [
       {
@@ -102,6 +102,11 @@
         "ordinal": 19,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 20,
+        "name": "repository_grants",
+        "type_info": "TextArray"
       }
     ],
     "parameters": {
@@ -131,8 +136,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "6a58a9d68a535f59e15d05ea0d0ef7106595a113a9d5eb96d5949b48f25baa66"
+  "hash": "af4be550eb7d1cb2e628720118da1d1861487ae6a8361f89b57259ab0a107850"
 }

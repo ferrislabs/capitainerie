@@ -17,8 +17,8 @@ use capitainerie_core::{
         },
         delegation::DelegatedToken,
         execution::{
-            DraftPullRequest, GithubAppCredentials, PullRequestUrl, TaskGrant, TaskLine,
-            TaskMarker, TaskOutcome, execution_branch,
+            DraftPullRequest, ExecutionMode, GithubAppCredentials, PullRequestUrl, TaskGrant,
+            TaskLine, TaskMarker, TaskOutcome, execution_branch,
             ports::{MockCodeHost, MockTaskRunner},
         },
         provider::ModelAssignments,
@@ -611,6 +611,8 @@ async fn crashed_attempt(world: &World, token: &str, output: Option<serde_json::
                 repository: "acme/web".parse().unwrap(),
                 branch: execution_branch(world.run_id),
                 model: "claude-sonnet-5-5".into(),
+                mode: ExecutionMode::Change,
+                initiated_by: None,
                 expires_at,
                 revoked_at: None,
             },
@@ -784,7 +786,7 @@ async fn a_comment_posted_before_a_crash_is_not_posted_again() {
     .await;
     let already = world
         .usecase
-        .comment_card_as_executor(world.run_id, world.card.id, "déjà dit".into())
+        .comment_card_as_executor(world.run_id, world.card.id, None, "déjà dit".into())
         .await
         .unwrap();
     let mut runner = MockTaskRunner::new();

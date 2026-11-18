@@ -53,6 +53,7 @@ import { SaveBar } from '#/domain/agent-team/ui/save-bar'
 import { SkillsTab } from '#/domain/agent-team/ui/skills-tab'
 import { SourcesTab } from '#/domain/agent-team/ui/sources-tab'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
+import { useGithubRepositoryChoices } from '#/domain/integrations/hooks/use-github'
 import { useSkillCatalog } from '#/domain/skills/hooks/use-skills'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useCards } from '#/domain/tasks/hooks/use-tasks'
@@ -96,6 +97,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const [assignTo, setAssignTo] = useState<string | null>(null)
 	const [message, setMessage] = useNotice()
 	const connectors = useMcpConnectors(false)
+	const repositories = useGithubRepositoryChoices(tab === 'connectors')
 	const skillCatalog = useSkillCatalog(tab === 'skills')
 
 	const base = buildForm(agent)
@@ -178,6 +180,28 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 			`${short} peut utiliser ${label}`,
 		)
 	}
+
+	const repositoryGrants = agent.repository_grants
+	const addRepository = (repository: string) => {
+		if (repositoryGrants.includes(repository)) return
+		send(
+			{
+				repository_grants: [...repositoryGrants, repository],
+				change_summary: 'dépôts GitHub',
+			},
+			agent.id,
+			`${short} peut travailler sur ${repository}`,
+		)
+	}
+	const removeRepository = (repository: string) =>
+		send(
+			{
+				repository_grants: repositoryGrants.filter((r) => r !== repository),
+				change_summary: 'dépôts GitHub',
+			},
+			agent.id,
+			`Accès à ${repository} retiré à ${short}`,
+		)
 
 	const setSkills = (skills: ReadonlyArray<string>, success: string) =>
 		send(
@@ -337,6 +361,11 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					form={form}
 					onToggle={toggleConnector}
 					onChange={patch}
+					repositories={repositories}
+					repositoryGrants={repositoryGrants}
+					busy={update.isPending}
+					onAddRepository={addRepository}
+					onRemoveRepository={removeRepository}
 				/>
 			) : null}
 			{tab === 'runtime' ? (

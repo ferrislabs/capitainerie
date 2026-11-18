@@ -6,7 +6,11 @@ use std::time::Duration;
 use capitainerie_common::{AgentId, CardId, CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 
-use crate::domain::{conversation::turn::TurnLimits, provider::ModelRef};
+use crate::domain::{
+    conversation::turn::TurnLimits,
+    execution::{RepositoryRef, valid_branch_name},
+    provider::ModelRef,
+};
 
 pub const AGENT_ACTOR_PREFIX: &str = "agent:";
 pub const AGENT_TASK_MAX_TOOL_CALLS: usize = 30;
@@ -48,6 +52,34 @@ pub struct StartAgentRun {
     pub allow_writes: bool,
 }
 
+/// The repository an agent run works on through the executor, instead of
+/// its MCP connectors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryTarget {
+    pub repository: RepositoryRef,
+    /// `None` until the code host told the default branch.
+    pub base_branch: Option<String>,
+}
+
+impl RepositoryTarget {
+    pub fn new(repository: RepositoryRef, base_branch: Option<String>) -> Result<Self, CoreError> {
+        let base_branch = base_branch
+            .map(|branch| branch.trim().to_owned())
+            .filter(|branch| !branch.is_empty());
+        if let Some(branch) = &base_branch
+            && !valid_branch_name(branch)
+        {
+            return Err(CoreError::Invalid(format!(
+                "base_branch is not a valid branch name: {branch:?}"
+            )));
+        }
+        Ok(Self {
+            repository,
+            base_branch,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AgentRunRefusal {
     #[error("la carte n'est assignée à aucun agent")]
@@ -62,6 +94,12 @@ pub enum AgentRunRefusal {
     NotConnected(String),
     #[error("{}", crate::domain::user_provider::NO_PROVIDER_MESSAGE)]
     NoProvider,
+    #[error("l'agent n'a pas accès au dépôt {0}")]
+    RepositoryNotGranted(String),
+    #[error("GitHub n'est pas connecté pour cette organisation")]
+    GithubNotConnected,
+    #[error("les exécutions sur un dépôt sont désactivées : {0}")]
+    ExecutorDisabled(String),
 }
 
 impl AgentRunRefusal {
@@ -73,6 +111,9 @@ impl AgentRunRefusal {
             Self::NoConnector => "agent_without_connector",
             Self::NotConnected(_) => "not_connected",
             Self::NoProvider => "no_provider",
+            Self::RepositoryNotGranted(_) => "repository_not_granted",
+            Self::GithubNotConnected => "github_not_connected",
+            Self::ExecutorDisabled(_) => "executor_disabled",
         }
     }
 }
@@ -97,6 +138,16 @@ mod tests {
     }
 
     #[test]
+    fn a_repository_target_keeps_a_valid_base_branch_only() {
+        let repository: RepositoryRef = "acme/web".parse().unwrap();
+        let target = RepositoryTarget::new(repository.clone(), Some(" develop ".into())).unwrap();
+        assert_eq!(target.base_branch.as_deref(), Some("develop"));
+        let blank = RepositoryTarget::new(repository.clone(), Some("  ".into())).unwrap();
+        assert_eq!(blank.base_branch, None);
+        assert!(RepositoryTarget::new(repository, Some("--upload-pack=x".into())).is_err());
+    }
+
+    #[test]
     fn refusals_have_stable_codes() {
         assert_eq!(AgentRunRefusal::NoAssignee.code(), "card_without_agent");
         assert_eq!(AgentRunRefusal::AgentArchived.code(), "agent_archived");
@@ -109,6 +160,17 @@ mod tests {
         assert_eq!(refusal.code(), "not_connected");
         assert!(refusal.to_string().contains("mestier"));
         assert_eq!(AgentRunRefusal::NoProvider.code(), "no_provider");
+        let refusal = AgentRunRefusal::RepositoryNotGranted("acme/web".into());
+        assert_eq!(refusal.code(), "repository_not_granted");
+        assert!(refusal.to_string().contains("acme/web"));
+        assert_eq!(
+            AgentRunRefusal::GithubNotConnected.code(),
+            "github_not_connected"
+        );
+        assert_eq!(
+            AgentRunRefusal::ExecutorDisabled("x".into()).code(),
+            "executor_disabled"
+        );
         assert!(
             AgentRunRefusal::NoProvider
                 .to_string()
