@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { DECISION_LABELS, type SourceEvent } from '#/domain/sources/mock/events'
+import { relativeAge } from '#/domain/dashboard/format'
+import { EVENT_STATUS, type SourceEvent } from '#/domain/sources/model'
 import { Sev, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
-import { taskPathId } from '#/domain/tasks/task-ids'
-
-const TASK_ID = /^NAT-\d+$/
+import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
+import { cn } from '#/lib/utils'
 
 interface Props {
 	events: ReadonlyArray<SourceEvent>
@@ -15,39 +15,53 @@ export function EventsTable({ events }: Props) {
 			<thead>
 				<tr>
 					<Th>Reçu</Th>
-					<Th>Valeur</Th>
-					<Th>Motif</Th>
-					<Th>Décision</Th>
+					<Th>Résumé</Th>
+					<Th>Statut</Th>
+					<Th>Tâche</Th>
 					<Th>Détail</Th>
 				</tr>
 			</thead>
 			<tbody>
 				{events.map((event) => {
-					const decision = DECISION_LABELS[event.decision]
+					const status = EVENT_STATUS[event.status]
 					return (
-						<Tr key={`${event.receivedAt}-${event.value}`}>
+						<Tr key={event.id}>
 							<Td className="whitespace-nowrap text-muted-foreground">
-								{event.receivedAt}
+								<time
+									dateTime={event.received_at}
+									title={new Date(event.received_at).toLocaleString('fr-FR')}
+								>
+									{relativeAge(event.received_at)}
+								</time>
 							</Td>
-							<Td className="font-mono text-[11.5px]">{event.value}</Td>
-							<Td className="font-mono text-[11.5px] text-muted-foreground">
-								{event.pattern || '—'}
+							<Td className="[overflow-wrap:anywhere]">
+								{event.summary || '—'}
 							</Td>
 							<Td>
-								<Sev tone={decision.tone}>{decision.label}</Sev>
+								<Sev tone={status.tone}>{status.label}</Sev>
 							</Td>
 							<Td>
-								{TASK_ID.test(event.detail) ? (
+								{event.card_id ? (
 									<Link
 										to="/tasks/$taskId"
-										params={{ taskId: taskPathId(event.detail) }}
-										className="text-[12px] text-primary"
+										params={{ taskId: taskPathId(event.card_id) }}
+										className="font-mono text-[12px] text-primary"
 									>
-										{event.detail}
+										{shortTaskId(event.card_id)}
 									</Link>
 								) : (
-									<span className="text-muted-foreground">{event.detail}</span>
+									<span className="text-muted-foreground">—</span>
 								)}
+							</Td>
+							<Td
+								className={cn(
+									'max-w-80 text-[12px] [overflow-wrap:anywhere]',
+									event.status === 'failed'
+										? 'text-signal-danger'
+										: 'text-muted-foreground',
+								)}
+							>
+								{event.error ?? ''}
 							</Td>
 						</Tr>
 					)

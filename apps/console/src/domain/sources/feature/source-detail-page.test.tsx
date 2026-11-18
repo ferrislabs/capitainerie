@@ -1,327 +1,231 @@
-import { fireEvent, screen, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import {
-	demoStore,
-	grantConnector,
-	resetDemoState,
-	revokeConnector,
-} from '#/domain/demo'
 import { SourceDetailPage } from '#/domain/sources/feature/source-detail-page'
-import { resetPipelines } from '#/domain/sources/mock/pipeline-store'
+import { source, sourceEvent } from '#/domain/sources/test-fixtures'
+import { clearAuth } from '#/store/auth.store'
+import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { DEV } from '#/test-utils/team-agents'
 
-const ID = 'nouveaux-sous-domaines-sensibles'
+const ID = 's1'
 const ROUTE = [
 	'/sources/$sourceId/{-$tab}',
 	'/agents/$agentId/{-$tab}',
-	'/tasks',
 	'/tasks/$taskId',
 ]
-const src = () => demoStore.state.sources.find((s) => s.id === ID)
+const CARD = '6f1c2a90-1111-4000-8000-000000000001'
+const SOURCE = source(ID, {
+	name: 'Pièces Chatwoot',
+	slug: 'pieces-chatwoot',
+	description: 'Pièces jointes du support',
+	default_agent_id: DEV.id,
+	auto_run: true,
+	events_last_24h: 3,
+})
 
-async function open(tab?: string) {
+type Routes = Parameters<typeof mockApi>[0]
+
+async function open(tab?: string, routes: Routes = {}) {
+	const fetchMock = mockApi({
+		[`GET /api/v1/sources/${ID}`]: SOURCE,
+		[`GET /api/v1/sources/${ID}/events`]: {
+			items: [
+				sourceEvent('e1', {
+					status: 'card_created',
+					summary: 'Facture reçue',
+					card_id: CARD,
+				}),
+				sourceEvent('e2', {
+					status: 'failed',
+					summary: 'Relance',
+					error: 'carte non créée : refus',
+				}),
+			],
+			total: 2,
+		},
+		'GET /api/v1/team/agents': { items: [DEV] },
+		'GET /api/v1/projects': { items: [] },
+		...routes,
+	})
 	const path = tab ? `/sources/${ID}/${tab}` : `/sources/${ID}`
-	await renderAtPath(<SourceDetailPage sourceId={ID} tab={tab} />, path, ROUTE)
+	await renderAtPath(
+		withQueryClient(<SourceDetailPage sourceId={ID} tab={tab} />),
+		path,
+		ROUTE,
+	)
+	await screen.findByRole('heading', { name: 'Pièces Chatwoot' })
+	return fetchMock
 }
 
+function calls(fetchMock: ReturnType<typeof mockApi>, method: string) {
+	return fetchMock.mock.calls
+		.filter(([, init]) => (init?.method ?? 'GET') === method)
+		.map(([url, init]) => ({
+			url: new URL(String(url)),
+			body: init?.body ? JSON.parse(String(init.body)) : undefined,
+		}))
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+	clearAuth()
+})
+
 describe('SourceDetailPage', () => {
-	beforeEach(() => {
-		resetDemoState()
-		resetPipelines()
-	})
-
-	it('renders header, banner and five tab links', async () => {
-		const fetchSpy = vi.spyOn(globalThis, 'fetch')
+	it('shows the configuration and a masked webhook URL', async () => {
 		await open()
-		expect(
-			await screen.findByRole('heading', {
-				name: 'Nouveaux sous-domaines sensibles',
-			}),
-		).toBeTruthy()
-		expect(screen.getByText(/démonstration/i)).toBeTruthy()
-		expect(screen.getByText(/· Active ·/)).toBeTruthy()
 		const nav = screen.getByRole('navigation', {
-			name: 'Sections de la source',
-		})
-		const links = within(nav).getAllByRole('link')
-		expect(links.map((l) => l.textContent)).toEqual([
-			"Vue d'ensemble",
-			'Motifs et exclusions',
-			'Pipeline',
-			'Événements',
-			'Agents',
-		])
-		expect(links[0]?.getAttribute('aria-current')).toBe('page')
-		expect(links[2]?.getAttribute('href')).toBe(`/sources/${ID}/pipeline`)
-		expect(fetchSpy).not.toHaveBeenCalled()
-	})
-
-	it('marks the active tab from the URL and falls back to overview', async () => {
-		await open('regles')
-		const nav = await screen.findByRole('navigation', {
 			name: 'Sections de la source',
 		})
 		expect(
 			within(nav)
-				.getByRole('link', { name: 'Motifs et exclusions' })
-				.getAttribute('aria-current'),
-		).toBe('page')
-	})
-
-	it('unknown tab shows the overview', async () => {
-		await open('nimporte')
-		expect(await screen.findByText('Événements 24 h')).toBeTruthy()
-		expect(screen.getByText('Configuration')).toBeTruthy()
-	})
-
-	it('overview shows tiles and the flow', async () => {
-		await open('apercu')
-		expect(await screen.findByText('Tâches créées')).toBeTruthy()
-		expect(screen.getByText('Doublons')).toBeTruthy()
-		expect(screen.getByText('3. Agent')).toBeTruthy()
-	})
-
-	it('pauses and resumes, and sends a test', async () => {
-		await open()
-		fireEvent.click(
-			await screen.findByRole('button', { name: 'Mettre en pause' }),
-		)
-		expect(src()?.enabled).toBe(false)
-		expect(await screen.findByText(/· En pause ·/)).toBeTruthy()
-		fireEvent.click(screen.getByRole('button', { name: 'Activer' }))
-		expect(src()?.enabled).toBe(true)
-		fireEvent.click(screen.getByRole('button', { name: 'Envoyer un test' }))
+				.getAllByRole('link')
+				.map((l) => l.textContent),
+		).toEqual(["Vue d'ensemble", 'Événements', 'Paramètres'])
+		expect(screen.getByText('Active')).toBeTruthy()
+		expect(screen.getByText('Pièces jointes du support')).toBeTruthy()
 		expect(
-			await screen.findByText('Événement de test envoyé : iam.*'),
+			(await screen.findByRole('link', { name: DEV.name })).getAttribute(
+				'href',
+			),
+		).toBe(`/agents/${DEV.id}`)
+		expect(
+			screen.getByText(
+				'URL masquée, régénérez le token pour en obtenir une nouvelle.',
+			),
 		).toBeTruthy()
+		expect(screen.queryByText(/démonstration/i)).toBeNull()
+		expect(screen.queryByText(/Pipeline/)).toBeNull()
 	})
 
-	it('shows a not found state', async () => {
-		await renderAtPath(
-			<SourceDetailPage sourceId="zzz" />,
-			'/sources/zzz',
-			ROUTE,
+	it('rotates the token after confirmation and shows the new URL once', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open(undefined, {
+			[`POST /api/v1/sources/${ID}/rotate-token`]: {
+				source: SOURCE,
+				token: 'tok_new',
+				webhook_url: 'https://api.test/hooks/sources/tok_new',
+			},
+		})
+		await user.click(screen.getByRole('button', { name: 'Régénérer le token' }))
+		const dialog = await screen.findByRole('alertdialog')
+		expect(within(dialog).getByText(/cessera de fonctionner/)).toBeTruthy()
+		expect(calls(fetchMock, 'POST')).toHaveLength(0)
+		await user.click(within(dialog).getByRole('button', { name: 'Régénérer' }))
+		expect((await screen.findByLabelText('URL du webhook')).textContent).toBe(
+			'https://api.test/hooks/sources/tok_new',
 		)
-		expect(await screen.findByText('Source introuvable')).toBeTruthy()
+		expect(screen.getByText(/ne sera plus affichée/)).toBeTruthy()
+		await user.click(screen.getByRole('button', { name: "J'ai copié l'URL" }))
+		expect(screen.queryByLabelText('URL du webhook')).toBeNull()
 	})
 
-	describe('rules tab', () => {
-		it('adds and removes patterns and exclusions', async () => {
-			await open('regles')
-			fireEvent.change(await screen.findByLabelText('Nouveau motif'), {
-				target: { value: 'login.*' },
-			})
-			fireEvent.click(
-				screen.getAllByRole('button', { name: 'Ajouter' })[0] as HTMLElement,
-			)
-			expect(src()?.patterns).toEqual(['iam.*', 'auth.*', 'login.*'])
-			fireEvent.click(screen.getByRole('button', { name: 'Retirer iam.*' }))
-			expect(src()?.patterns).toEqual(['auth.*', 'login.*'])
-			fireEvent.change(screen.getByLabelText('Nouvelle exclusion'), {
-				target: { value: '*.test.fr' },
-			})
-			fireEvent.click(
-				screen.getAllByRole('button', { name: 'Ajouter' })[1] as HTMLElement,
-			)
-			expect(src()?.exclusions).toContain('*.test.fr')
-		})
-
-		it('tests a value live', async () => {
-			await open('regles')
-			const field = await screen.findByLabelText('Valeur à tester')
-			fireEvent.change(field, { target: { value: 'iam.acme.fr' } })
-			expect(screen.getByText('iam.*', { selector: 'b' })).toBeTruthy()
-			fireEvent.change(field, { target: { value: 'auth.getnatalia.com' } })
-			expect(screen.getByText(/Ignoré : exclu par/)).toBeTruthy()
-			fireEvent.change(field, { target: { value: 'zzz.fr' } })
-			expect(screen.getByText(/Aucun motif ne correspond/)).toBeTruthy()
-		})
-	})
-
-	it('events tab lists decisions with linked task ids', async () => {
+	it('lists the events with status, task link and error', async () => {
 		await open('evenements')
+		const table = await screen.findByRole('table')
+		expect(within(table).getByText('Tâche créée')).toBeTruthy()
+		expect(within(table).getByText('Échec')).toBeTruthy()
+		expect(within(table).getByText('carte non créée : refus')).toBeTruthy()
 		expect(
-			(await screen.findAllByText('iam.acme-logistique.fr', { selector: 'td' }))
-				.length,
-		).toBe(2)
-		expect(screen.getAllByText('Doublon').length).toBeGreaterThan(0)
-		expect(screen.getAllByText('Sans correspondance')).toHaveLength(2)
+			within(table)
+				.getByRole('link', { name: '6f1c2a90' })
+				.getAttribute('href'),
+		).toBe(`/tasks/${CARD}`)
 		expect(
-			screen.getByRole('link', { name: 'NAT-690' }).getAttribute('href'),
-		).toBe('/tasks/nat-690')
-		expect(screen.getByText('Déjà traité : NAT-690')).toBeTruthy()
-	})
-
-	describe('agents tab', () => {
-		it('detaches and attaches an agent', async () => {
-			await open('agents')
-			fireEvent.click(
-				await screen.findByRole('button', { name: 'Retirer Veille légale' }),
-			)
-			expect(src()?.agentIds).toEqual([])
-			expect(screen.getByText(/Aucun agent n'écoute/)).toBeTruthy()
-			fireEvent.change(screen.getByLabelText('Agent'), {
-				target: { value: 'archibald' },
-			})
-			fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
-			expect(src()?.agentIds).toEqual(['archibald'])
-		})
-
-		it('saves the task template', async () => {
-			await open('agents')
-			fireEvent.change(await screen.findByLabelText('Modèle de tâche'), {
-				target: { value: 'Nouveau {hôte}' },
-			})
-			fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(src()?.template).toBe('Nouveau {hôte}')
-			expect(await screen.findByText('Modèle enregistré')).toBeTruthy()
-		})
-	})
-
-	describe('pipeline tab', () => {
-		it('shows the flow, dossier, verdict and criteria', async () => {
-			await open('pipeline')
-			expect(await screen.findByText('2. Recherche (IA)')).toBeTruthy()
-			expect(screen.getByText(/délègue à/)).toBeTruthy()
-			expect(screen.getByText('ACME LOGISTIQUE SAS')).toBeTruthy()
-			expect(screen.getByText('Qualifié')).toBeTruthy()
-			fireEvent.click(
-				screen.getByRole('button', { name: 'auth.lumen-sante.com' }),
-			)
-			expect(screen.getByText('LUMEN SANTE SARL')).toBeTruthy()
-			expect(screen.getByText('Rejeté')).toBeTruthy()
-			expect(screen.getByText('Aucun export pour ce dossier')).toBeTruthy()
-		})
-
-		it('reacts to criteria edits and presets', async () => {
-			await open('pipeline')
-			await screen.findByText('Qualifié')
-			fireEvent.click(
-				screen.getByRole('button', { name: 'iam.novabank-groupe.eu' }),
-			)
-			expect(
-				screen.getByText('À valider', { selector: 'span.border' }),
-			).toBeTruthy()
-			fireEvent.change(screen.getByLabelText('Si non : Effectif minimum'), {
-				target: { value: 'ignore' },
-			})
-			fireEvent.change(
-				screen.getByLabelText(
-					'Si non : SIREN trouvé et confirmé par 2 indices',
-				),
-				{
-					target: { value: 'ignore' },
-				},
-			)
-			expect(screen.getByText('Qualifié')).toBeTruthy()
-			fireEvent.click(screen.getByRole('button', { name: 'Minimal' }))
-			expect(screen.getAllByRole('switch', { name: /^Activer / })).toHaveLength(
-				2,
-			)
-			fireEvent.change(screen.getByLabelText('Critère à ajouter'), {
-				target: { value: 'age' },
-			})
-			fireEvent.click(
-				screen.getByRole('button', { name: 'Ajouter un critère' }),
-			)
-			expect(screen.getAllByRole('switch', { name: /^Activer / })).toHaveLength(
-				3,
-			)
-			fireEvent.click(
-				screen.getByRole('button', {
-					name: 'Retirer Entreprise active (non radiée)',
-				}),
-			)
-			expect(screen.getAllByRole('switch', { name: /^Activer / })).toHaveLength(
-				2,
-			)
-		})
-
-		it('shows the dry-run payload then blocks without CRM access', async () => {
-			await open('pipeline')
-			await screen.findByText('Qualifié')
-			expect(screen.getByText('Charge envoyée au CRM')).toBeTruthy()
-			expect(document.querySelector('pre')?.textContent).toContain(
-				'"mode": "dry_run"',
-			)
-			fireEvent.click(screen.getByRole('switch', { name: 'Essai à blanc' }))
-			expect(document.querySelector('pre')?.textContent).toContain(
-				'"mode": "write"',
-			)
-			revokeConnector('veille-legale', 'Odoo CRM (MCP)')
-			expect(
-				await screen.findByText(
-					"Export bloqué : aucun agent n'a accès au connecteur Odoo CRM (MCP)",
-				),
-			).toBeTruthy()
-		})
-
-		it('grants a connector from the access table', async () => {
-			revokeConnector('veille-legale', 'BODACC')
-			revokeConnector('registre', 'BODACC')
-			await open('pipeline')
-			fireEvent.click(
-				await screen.findByRole('button', { name: 'Autoriser Veille légale' }),
-			)
-			expect(demoStore.state.grants['veille-legale']).toContain('BODACC')
-			expect(
-				screen.queryByRole('button', { name: 'Autoriser Veille légale' }),
-			).toBeNull()
-		})
-
-		it('flags uninstalled CRM destinations', async () => {
-			grantConnector('veille-legale', 'Odoo CRM (MCP)')
-			await open('pipeline')
-			fireEvent.change(await screen.findByLabelText('Destination'), {
-				target: { value: 'HubSpot (MCP)' },
-			})
-			expect(screen.getByText('Connecteur non installé')).toBeTruthy()
-			expect(screen.getByText(/Export bloqué/)).toBeTruthy()
-		})
-	})
-})
-
-describe('pipeline validation request', () => {
-	beforeEach(() => {
-		resetDemoState()
-		resetPipelines()
-	})
-
-	it('only offers the request when the verdict is to validate', async () => {
-		await open('pipeline')
-		await screen.findByText('Qualifié')
-		expect(
-			screen.queryByRole('button', { name: 'Demander une validation' }),
+			screen.queryByRole('navigation', { name: 'Pagination des événements' }),
 		).toBeNull()
 	})
 
-	it('creates one pending approval per dossier and source', async () => {
-		await open('pipeline')
-		await screen.findByText('Qualifié')
-		fireEvent.click(
-			screen.getByRole('button', { name: 'iam.novabank-groupe.eu' }),
+	it('pages through the events', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open('evenements', {
+			[`GET /api/v1/sources/${ID}/events`]: {
+				items: Array.from({ length: 20 }, (_, i) => sourceEvent(`e${i}`)),
+				total: 45,
+			},
+		})
+		expect(await screen.findByText('1–20 sur 45')).toBeTruthy()
+		await user.click(screen.getByRole('button', { name: 'Suivants' }))
+		await waitFor(() =>
+			expect(
+				calls(fetchMock, 'GET').some(
+					({ url }) =>
+						url.pathname.endsWith('/events') &&
+						url.searchParams.get('offset') === '20' &&
+						url.searchParams.get('limit') === '20',
+				),
+			).toBe(true),
 		)
-		expect(screen.queryByText('Voir les approbations')).toBeNull()
-		const before = demoStore.state.approvals.length
-		fireEvent.click(
-			screen.getByRole('button', { name: 'Demander une validation' }),
+	})
+
+	it('sends a test event and reloads the events', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open('evenements', {
+			[`POST /api/v1/sources/${ID}/test`]: {
+				status: 202,
+				body: sourceEvent('e9'),
+			},
+		})
+		await screen.findByRole('table')
+		const before = calls(fetchMock, 'GET').filter(({ url }) =>
+			url.pathname.endsWith('/events'),
+		).length
+		await user.click(
+			screen.getByRole('button', { name: 'Envoyer un événement de test' }),
 		)
-		expect(demoStore.state.approvals).toHaveLength(before + 1)
-		const created = demoStore.state.approvals[0]
-		expect(created?.id).toBe(`APP-${before + 1}`)
-		expect(created?.status).toBe('pending')
-		expect(created?.title).toBe(
-			'Valider le rapprochement : NOVABANK GROUPE (Nouveaux sous-domaines sensibles)',
+		expect(await screen.findByText('Événement de test envoyé')).toBeTruthy()
+		await waitFor(() =>
+			expect(
+				calls(fetchMock, 'GET').filter(({ url }) =>
+					url.pathname.endsWith('/events'),
+				).length,
+			).toBeGreaterThan(before),
 		)
-		expect(created?.requestedBy).toBe(src()?.agentIds[0])
-		expect(created?.detail).not.toBe('')
-		expect(screen.getByText('Voir les approbations').getAttribute('href')).toBe(
-			'/approvals',
+	})
+
+	it('saves the settings and clears the agent with null', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open('parametres', {
+			[`PATCH /api/v1/sources/${ID}`]: SOURCE,
+		})
+		await screen.findByRole('option', { name: DEV.name })
+		expect((screen.getByLabelText('Slug') as HTMLInputElement).value).toBe(
+			'pieces-chatwoot',
 		)
-		fireEvent.click(
-			screen.getByRole('button', { name: 'Demander une validation' }),
+		await user.selectOptions(screen.getByLabelText('Agent par défaut'), '')
+		await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+		expect(await screen.findByText('Source enregistrée')).toBeTruthy()
+		expect(calls(fetchMock, 'PATCH')[0]?.body).toEqual({
+			default_agent_id: null,
+			auto_run: false,
+		})
+	})
+
+	it('archives the source', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open('parametres', {
+			[`POST /api/v1/sources/${ID}/archive`]: { ...SOURCE, archived: true },
+		})
+		await user.click(screen.getByRole('button', { name: 'Archiver la source' }))
+		expect(await screen.findByText('Source archivée')).toBeTruthy()
+		expect(calls(fetchMock, 'POST')[0]?.url.pathname).toBe(
+			`/api/v1/sources/${ID}/archive`,
 		)
-		expect(demoStore.state.approvals).toHaveLength(before + 1)
-		expect(screen.getByText('Demande déjà envoyée')).toBeTruthy()
+	})
+
+	it('says when the source does not exist', async () => {
+		mockApi({
+			[`GET /api/v1/sources/${ID}`]: {
+				status: 404,
+				body: { code: 'not_found', message: 'source', status: 404 },
+			},
+		})
+		await renderAtPath(
+			withQueryClient(<SourceDetailPage sourceId={ID} />),
+			`/sources/${ID}`,
+			ROUTE,
+		)
+		expect(await screen.findByText('Source introuvable')).toBeTruthy()
 	})
 })

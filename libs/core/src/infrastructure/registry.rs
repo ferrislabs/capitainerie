@@ -22,6 +22,8 @@ pub mod domain {
     pub struct Project;
     pub struct Run;
     pub struct Skill;
+    pub struct Source;
+    pub struct SourceEvent;
     pub struct Step;
     pub struct TaskGrant;
     pub struct Transcript;

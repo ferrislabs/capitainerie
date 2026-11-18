@@ -1,72 +1,148 @@
-import { fireEvent, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderAtPath } from '#/components/layout/test-router'
-import { demoStore, resetDemoState } from '#/domain/demo'
 import { SourceNewPage } from '#/domain/sources/feature/source-new-page'
+import { source } from '#/domain/sources/test-fixtures'
+import { clearAuth } from '#/store/auth.store'
+import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { DEV } from '#/test-utils/team-agents'
 
 const EXTRA = ['/sources/nouvelle', '/sources/$sourceId/{-$tab}']
+const URL_ONCE = 'https://api.test/hooks/sources/tok_secret'
+
+type Routes = Parameters<typeof mockApi>[0]
+
+async function open(routes: Routes = {}) {
+	const fetchMock = mockApi({
+		'GET /api/v1/team/agents': { items: [DEV] },
+		'GET /api/v1/projects': {
+			items: [
+				{
+					open_cards: 0,
+					project: {
+						id: 'p1',
+						name: 'Compta',
+						aliases: [],
+						archived: false,
+						created_at: '',
+						created_by: 'u',
+						description: '',
+						updated_at: '',
+					},
+				},
+			],
+		},
+		'POST /api/v1/sources': {
+			status: 201,
+			body: {
+				source: source('s-new', { name: 'Pièces Chatwoot' }),
+				token: 'tok_secret',
+				webhook_url: URL_ONCE,
+			},
+		},
+		...routes,
+	})
+	await renderAtPath(
+		withQueryClient(<SourceNewPage />),
+		'/sources/nouvelle',
+		EXTRA,
+	)
+	await screen.findByRole('option', { name: DEV.name })
+	return fetchMock
+}
+
+function posted(fetchMock: ReturnType<typeof mockApi>) {
+	const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
+	return call ? JSON.parse(String(call[1]?.body)) : undefined
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+	clearAuth()
+})
 
 describe('SourceNewPage', () => {
-	beforeEach(resetDemoState)
-
-	it('renders title, banner and six type tiles', async () => {
-		const fetchSpy = vi.spyOn(globalThis, 'fetch')
-		await renderAtPath(<SourceNewPage />, '/sources/nouvelle', EXTRA)
+	it('has no demo-only fields', async () => {
+		await open()
 		expect(
-			await screen.findByRole('heading', { name: 'Nouvelle source' }),
+			screen.getByRole('heading', { name: 'Nouvelle source' }),
 		).toBeTruthy()
-		expect(screen.getByRole('status').textContent).toContain('démonstration')
-		expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(5)
-		expect(screen.getByText(/Exemple :/).textContent).toContain(
-			'iam.exemple.fr',
-		)
-		expect(fetchSpy).not.toHaveBeenCalled()
+		expect(screen.queryByLabelText('Exclusions')).toBeNull()
+		expect(screen.queryByLabelText('Dédoublonnage')).toBeNull()
+		expect(screen.queryByText(/démonstration/i)).toBeNull()
+		expect(screen.getByText(/sans demander d'approbation/)).toBeTruthy()
 	})
 
-	it('switching type resets defaults and keeps the name', async () => {
-		await renderAtPath(<SourceNewPage />, '/sources/nouvelle', EXTRA)
-		fireEvent.change(await screen.findByLabelText('Nom'), {
-			target: { value: 'Ma boîte' },
-		})
-		fireEvent.click(screen.getByRole('button', { name: /Boîte e-mail/ }))
-		expect((screen.getByLabelText('Nom') as HTMLInputElement).value).toBe(
-			'Ma boîte',
+	it('derives the slug from the name until it is edited', async () => {
+		const user = userEvent.setup()
+		await open()
+		await user.type(screen.getByLabelText('Nom'), 'Pièces reçues')
+		expect((screen.getByLabelText('Slug') as HTMLInputElement).value).toBe(
+			'pieces-recues',
 		)
-		expect(
-			(screen.getByLabelText('Adresses ou expéditeurs') as HTMLInputElement)
-				.value,
-		).toBe('cabinet@natalia.fr')
-		expect(
-			(screen.getByLabelText('Exclusions') as HTMLInputElement).value,
-		).toBe('')
-		expect(
-			(screen.getByLabelText('Titre de la tâche') as HTMLInputElement).value,
-		).toBe('Mail reçu : {valeur}')
+		await user.clear(screen.getByLabelText('Slug'))
+		await user.type(screen.getByLabelText('Slug'), 'perso')
+		await user.type(screen.getByLabelText('Nom'), ' X')
+		expect((screen.getByLabelText('Slug') as HTMLInputElement).value).toBe(
+			'perso',
+		)
 	})
 
-	it('refuses an incomplete form', async () => {
-		await renderAtPath(<SourceNewPage />, '/sources/nouvelle', EXTRA)
-		fireEvent.click(
-			await screen.findByRole('button', { name: 'Créer la source' }),
-		)
-		expect((await screen.findByRole('alert')).textContent).toBe(
-			'Renseigne un nom et au moins un motif',
-		)
-		expect(demoStore.state.sources).toHaveLength(3)
+	it('refuses an empty name without calling the API', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open()
+		await user.click(screen.getByRole('button', { name: 'Créer la source' }))
+		expect(screen.getByRole('alert').textContent).toMatch(/nom/)
+		expect(posted(fetchMock)).toBeUndefined()
 	})
 
-	it('creates the source and navigates to it', async () => {
-		await renderAtPath(<SourceNewPage />, '/sources/nouvelle', EXTRA)
-		fireEvent.change(await screen.findByLabelText('Nom'), {
-			target: { value: 'Mes sous-domaines' },
+	it('creates the source and shows its URL once', async () => {
+		const user = userEvent.setup()
+		const fetchMock = await open()
+		await user.type(screen.getByLabelText('Nom'), 'Pièces Chatwoot')
+		await user.selectOptions(screen.getByLabelText('Agent par défaut'), DEV.id)
+		await user.selectOptions(screen.getByLabelText('Projet'), 'p1')
+		await user.click(
+			screen.getByRole('switch', { name: "Lancer l'agent automatiquement" }),
+		)
+		await user.click(
+			screen.getByRole('switch', { name: 'Écritures sans approbation' }),
+		)
+		await user.click(screen.getByRole('button', { name: 'Créer la source' }))
+		expect(await screen.findByText(/ne sera plus affichée/)).toBeTruthy()
+		expect(screen.getByLabelText('URL du webhook').textContent).toBe(URL_ONCE)
+		expect(screen.getByLabelText('Token').textContent).toBe('tok_secret')
+		expect(
+			screen.getByRole('button', { name: 'Ouvrir la source' }),
+		).toBeTruthy()
+		await waitFor(() =>
+			expect(posted(fetchMock)).toEqual({
+				kind: 'webhook',
+				name: 'Pièces Chatwoot',
+				slug: 'pieces-chatwoot',
+				description: '',
+				enabled: true,
+				default_agent_id: DEV.id,
+				project_id: 'p1',
+				auto_run: true,
+				allow_writes: true,
+			}),
+		)
+	})
+
+	it('explains a slug conflict', async () => {
+		const user = userEvent.setup()
+		await open({
+			'POST /api/v1/sources': {
+				status: 409,
+				body: { code: 'conflict', message: 'slug', status: 409 },
+			},
 		})
-		fireEvent.click(screen.getByRole('button', { name: 'Créer la source' }))
-		await vi.waitFor(() => expect(demoStore.state.sources).toHaveLength(4))
-		const created = demoStore.state.sources[3]
-		expect(created).toMatchObject({
-			id: 'mes-sous-domaines',
-			patterns: ['iam.*', 'auth.*'],
-			agentIds: ['veille-legale'],
-		})
+		await user.type(screen.getByLabelText('Nom'), 'Doublon')
+		await user.click(screen.getByRole('button', { name: 'Créer la source' }))
+		expect(
+			await screen.findByText('Une source porte déjà ce slug.'),
+		).toBeTruthy()
 	})
 })

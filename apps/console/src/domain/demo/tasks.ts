@@ -45,8 +45,6 @@ export const DEMO_TASKS: ReadonlyArray<DemoTask> = [
 		agentId: 'veille-legale',
 		age: 'il y a 31 min',
 		project: 'Veille sous-domaines',
-		sourceId: 'nouveaux-sous-domaines-sensibles',
-		sourceValue: 'auth.lumen-sante.com',
 	},
 	{
 		id: 'NAT-690',
@@ -56,19 +54,6 @@ export const DEMO_TASKS: ReadonlyArray<DemoTask> = [
 		agentId: 'veille-legale',
 		age: 'il y a 4 min',
 		project: 'Veille sous-domaines',
-		sourceId: 'nouveaux-sous-domaines-sensibles',
-		sourceValue: 'iam.acme-logistique.fr',
-		dossier: [
-			['Domaine racine', 'acme-logistique.fr'],
-			['Titulaire (RDAP)', 'ACME LOGISTIQUE SAS · registrar Gandi'],
-			['SIREN', '512 847 391'],
-			['Forme · capital', 'SAS · 450 000 €'],
-			['Siège', '14 rue des Docks, 69002 Lyon'],
-			['Dirigeant', 'Claire Vasseur (présidente)'],
-			['Effectif · NAF', '120 à 199 · 5229A'],
-			['BODACC', 'Aucune procédure collective'],
-			['Sources', 'RNE (INPI), BODACC, RDAP'],
-		],
 	},
 	{
 		id: 'NAT-689',
@@ -79,8 +64,6 @@ export const DEMO_TASKS: ReadonlyArray<DemoTask> = [
 		age: 'il y a 3 h',
 		project: 'Veille sous-domaines',
 		note: 'Titulaire masqué (RDAP) : à valider',
-		sourceId: 'nouveaux-sous-domaines-sensibles',
-		sourceValue: 'iam.novabank-groupe.eu',
 	},
 	{
 		id: 'NAT-611',

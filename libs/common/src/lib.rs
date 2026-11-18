@@ -69,6 +69,8 @@ id!(AgentId);
 id!(McpConnectorId);
 id!(SkillId);
 id!(ApprovalId);
+id!(SourceId);
+id!(SourceEventId);
 
 #[cfg(test)]
 mod tests {

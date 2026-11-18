@@ -236,6 +236,18 @@ describe('startRealtime', () => {
 		expect(invalidated(key('/api/v1/cards'))).toBe(false)
 	})
 
+	it('invalidates the sources on source events', () => {
+		start()
+		latest().receive({ op: 'event', kind: 'source.event_received' })
+		expect(invalidated(key('/api/v1/sources'))).toBe(true)
+		expect(
+			invalidated(
+				key('/api/v1/sources/{source_id}/events', { source_id: 's1' }),
+			),
+		).toBe(true)
+		expect(invalidated(key('/api/v1/approvals'))).toBe(false)
+	})
+
 	it('invalidates everything on resync', () => {
 		start()
 		latest().receive({ op: 'resync' })

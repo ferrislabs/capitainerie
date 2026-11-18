@@ -299,7 +299,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					}
 				/>
 			) : null}
-			{tab === 'sources' ? <SourcesTab /> : null}
+			{tab === 'sources' ? <SourcesTab agentId={agent.id} /> : null}
 			{tab === 'team' ? (
 				<DelegationTab
 					agent={agent}

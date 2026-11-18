@@ -20,6 +20,7 @@ mod pipeline;
 mod provider;
 mod run;
 mod skill;
+mod source;
 mod transcription;
 mod user_provider;
 mod worksite;

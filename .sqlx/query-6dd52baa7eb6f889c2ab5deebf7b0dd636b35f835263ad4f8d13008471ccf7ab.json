@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE sources\n            SET slug = $3, name = $4, description = $5, enabled = $6, config = $7,\n                webhook_token_hash = $8, default_agent_id = $9, project_id = $10,\n                auto_run = $11, allow_writes = $12, archived = $13, updated_at = $14\n            WHERE organization_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Jsonb",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6dd52baa7eb6f889c2ab5deebf7b0dd636b35f835263ad4f8d13008471ccf7ab"
+}

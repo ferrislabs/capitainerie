@@ -715,12 +715,14 @@ mod tests {
     }
 
     #[test]
-    fn members_manage_skills_and_decide_approvals_and_no_agent_does() {
+    fn members_manage_skills_sources_and_decide_approvals_and_no_agent_does() {
         let actions = [
             Action::SkillRead,
             Action::SkillManage,
             Action::ApprovalRead,
             Action::ApprovalDecide,
+            Action::SourceRead,
+            Action::SourceManage,
         ];
         for action in actions {
             assert!(allowed(action, None), "{action:?}");

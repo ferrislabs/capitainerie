@@ -4,6 +4,7 @@
 pub mod approval;
 pub mod card;
 pub mod run;
+pub mod source;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -15,16 +16,18 @@ pub enum Topic {
     Runs,
     Cards,
     Approvals,
+    Sources,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 3] = [Topic::Runs, Topic::Cards, Topic::Approvals];
+    pub const ALL: [Topic; 4] = [Topic::Runs, Topic::Cards, Topic::Approvals, Topic::Sources];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Runs => "runs",
             Self::Cards => "cards",
             Self::Approvals => "approvals",
+            Self::Sources => "sources",
         }
     }
 }

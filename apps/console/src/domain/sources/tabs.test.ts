@@ -3,11 +3,11 @@ import { resolveTab } from '#/domain/sources/tabs'
 
 describe('resolveTab', () => {
 	it('keeps known tabs', () => {
-		expect(resolveTab('pipeline')).toBe('pipeline')
+		expect(resolveTab('evenements')).toBe('evenements')
 	})
 
 	it('falls back to apercu', () => {
 		expect(resolveTab(undefined)).toBe('apercu')
-		expect(resolveTab('nope')).toBe('apercu')
+		expect(resolveTab('pipeline')).toBe('apercu')
 	})
 })

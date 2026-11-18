@@ -1,18 +1,67 @@
+import { Link } from '@tanstack/react-router'
 import { Cable } from 'lucide-react'
 import { SectionCard } from '#/components/layout/section-card'
-import { Empty } from '#/domain/agent-team/ui/rows'
+import { Empty, ROW, Ttl } from '#/domain/agent-team/ui/rows'
+import { relativeAge } from '#/domain/dashboard/format'
+import { useSources } from '#/domain/sources/hooks/use-sources'
+import { sourcesOfAgent } from '#/domain/sources/model'
 
-export function SourcesTab() {
+interface Props {
+	agentId: string
+}
+
+export function SourcesTab({ agentId }: Props) {
+	const query = useSources()
+	const sources = sourcesOfAgent(query.data?.items ?? [], agentId)
 	return (
-		<SectionCard title="Sources écoutées" flush>
-			<Empty
-				icon={<Cable aria-hidden="true" className="mx-auto size-4" />}
-				title="Aucune source branchée"
-			>
-				Cet agent se réveille sur sa cadence ou quand une tâche lui est
-				assignée. Le branchement de sources sur un agent n'est pas encore
-				disponible.
-			</Empty>
+		<SectionCard
+			title="Sources écoutées"
+			flush
+			actions={<Link to="/sources/nouvelle">Nouvelle source</Link>}
+		>
+			{query.isPending ? (
+				<output className="block p-3 text-muted-foreground">
+					Chargement des sources…
+				</output>
+			) : query.isError ? (
+				<Empty title="Impossible de charger les sources" />
+			) : sources.length === 0 ? (
+				<Empty
+					icon={<Cable aria-hidden="true" className="mx-auto size-4" />}
+					title="Aucune source branchée"
+				>
+					Aucune source n'a cet agent comme agent par défaut. Choisis-le dans
+					les paramètres d'une source pour qu'il reçoive ses événements.
+				</Empty>
+			) : (
+				<ul className="m-0 list-none p-0">
+					{sources.map((source) => (
+						<li key={source.id} className={ROW}>
+							<Ttl
+								title={
+									<Link
+										to="/sources/$sourceId/{-$tab}"
+										params={{ sourceId: source.id }}
+										className="text-foreground"
+									>
+										{source.name}
+									</Link>
+								}
+								sub={
+									source.last_event_at
+										? `Dernier événement ${relativeAge(source.last_event_at)}`
+										: 'Aucun événement reçu'
+								}
+							/>
+							<span className="text-[12px] whitespace-nowrap text-muted-foreground">
+								{source.enabled
+									? `${source.events_last_24h} / 24 h`
+									: 'En pause'}
+							</span>
+						</li>
+					))}
+				</ul>
+			)}
 		</SectionCard>
 	)
 }

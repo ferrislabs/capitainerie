@@ -26,6 +26,7 @@ members = [
     "libs/handlers-realtime",
     "libs/handlers-runs",
     "libs/handlers-skills",
+    "libs/handlers-sources",
     "libs/handlers-team",
     "libs/handlers-transcriptions",
     "libs/integrations",
@@ -117,6 +118,7 @@ capitainerie-handlers-providers = { path = "libs/handlers-providers" }
 capitainerie-handlers-realtime = { path = "libs/handlers-realtime" }
 capitainerie-handlers-runs ={ path = "libs/handlers-runs" }
 capitainerie-handlers-skills = { path = "libs/handlers-skills" }
+capitainerie-handlers-sources = { path = "libs/handlers-sources" }
 capitainerie-handlers-team = { path = "libs/handlers-team" }
 capitainerie-handlers-transcriptions = { path = "libs/handlers-transcriptions" }
 capitainerie-integrations = { path = "libs/integrations" }

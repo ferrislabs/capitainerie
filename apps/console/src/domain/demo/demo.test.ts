@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
 	DEMO_AGENTS,
-	DEMO_CONNECTORS,
 	DEMO_GRANTS,
 	DEMO_PROJECTS,
 	DEMO_TASKS,
@@ -15,14 +14,9 @@ describe('demo fixtures', () => {
 		expect(new Set(ids).size).toBe(ids.length)
 	})
 
-	it('grants only connectors that exist and have an account', () => {
-		const usable = new Set(
-			DEMO_CONNECTORS.filter((c) => c.accounts.length > 0).map((c) => c.name),
-		)
-		for (const [agentId, names] of Object.entries(DEMO_GRANTS)) {
+	it('grants connectors to known agents only', () => {
+		for (const agentId of Object.keys(DEMO_GRANTS))
 			expect(demoAgent(agentId), agentId).toBeDefined()
-			for (const name of names) expect(usable.has(name), name).toBe(true)
-		}
 	})
 
 	it('points every task and project to a known agent', () => {

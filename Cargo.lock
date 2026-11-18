@@ -1060,6 +1060,7 @@ dependencies = [
  "capitainerie-handlers-realtime",
  "capitainerie-handlers-runs",
  "capitainerie-handlers-skills",
+ "capitainerie-handlers-sources",
  "capitainerie-handlers-team",
  "capitainerie-handlers-transcriptions",
  "capitainerie-integrations",
@@ -1471,6 +1472,26 @@ dependencies = [
 
 [[package]]
 name = "capitainerie-handlers-skills"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "capitainerie-auth",
+ "capitainerie-common",
+ "capitainerie-core",
+ "capitainerie-handlers",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "capitainerie-handlers-sources"
 version = "0.1.0"
 dependencies = [
  "axum",

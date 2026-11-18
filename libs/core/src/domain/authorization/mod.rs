@@ -69,6 +69,8 @@ pub enum Action {
     SkillManage,
     ApprovalRead,
     ApprovalDecide,
+    SourceRead,
+    SourceManage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +101,7 @@ pub enum ResourceKind {
     McpConnector,
     Skill,
     Approval,
+    Source,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +110,7 @@ pub enum Decision {
     Deny { reason: String },
 }
 
-pub const READ_ACTIONS: [&str; 9] = [
+pub const READ_ACTIONS: [&str; 10] = [
     "run.read",
     "card.read",
     "provider.read",
@@ -117,6 +120,7 @@ pub const READ_ACTIONS: [&str; 9] = [
     "agent.read",
     "skill.read",
     "approval.read",
+    "source.read",
 ];
 
 impl Action {
@@ -162,6 +166,8 @@ impl Action {
             Self::SkillManage => "skill.manage",
             Self::ApprovalRead => "approval.read",
             Self::ApprovalDecide => "approval.decide",
+            Self::SourceRead => "source.read",
+            Self::SourceManage => "source.manage",
         }
     }
 }
@@ -188,6 +194,7 @@ impl ResourceKind {
             Self::McpConnector => "mcp_connector",
             Self::Skill => "skill",
             Self::Approval => "approval",
+            Self::Source => "source",
         }
     }
 }

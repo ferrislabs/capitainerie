@@ -19,6 +19,7 @@ pub mod provider;
 pub mod registry;
 pub mod run;
 pub mod skill;
+pub mod source;
 pub mod transcript;
 pub mod user_provider;
 pub mod worksite;

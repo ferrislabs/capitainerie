@@ -1,79 +1,80 @@
 import { Link } from '@tanstack/react-router'
-import type { DemoAgent, DemoSource } from '#/domain/demo'
+import type { Schemas } from '#/api/api.client'
+import { relativeAge } from '#/domain/dashboard/format'
+import type { Source } from '#/domain/sources/model'
 import { AgentAvatar } from '#/domain/sources/ui/agent-avatar'
 import { Sev, Sw, Tbl, Td, Th, Tr } from '#/domain/sources/ui/mockup'
-import { SourceTypeTile } from '#/domain/sources/ui/source-type-tile'
 
 interface Props {
-	sources: ReadonlyArray<DemoSource>
-	agents: ReadonlyArray<DemoAgent>
-	onToggle: (source: DemoSource, enabled: boolean) => void
+	sources: ReadonlyArray<Source>
+	agents: ReadonlyArray<Schemas.TeamAgentResponse>
+	busy: boolean
+	onToggle: (source: Source, enabled: boolean) => void
 }
 
-const AVS =
-	'flex min-w-0 items-center gap-1.5 overflow-hidden text-[12px] leading-[normal] text-ellipsis whitespace-nowrap text-muted-foreground'
-
-export function SourcesTable({ sources, agents, onToggle }: Props) {
+export function SourcesTable({ sources, agents, busy, onToggle }: Props) {
 	return (
 		<Tbl>
 			<thead>
 				<tr>
 					<Th>Source</Th>
-					<Th>Type</Th>
-					<Th>Motifs</Th>
-					<Th>Agents</Th>
+					<Th>Agent par défaut</Th>
 					<Th>24 h</Th>
+					<Th>Dernier événement</Th>
 					<Th>Actif</Th>
 				</tr>
 			</thead>
 			<tbody>
 				{sources.map((source) => {
-					const listening = source.agentIds
-						.map((id) => agents.find((a) => a.id === id))
-						.filter((a): a is DemoAgent => a !== undefined)
+					const agent = agents.find((a) => a.id === source.default_agent_id)
 					return (
 						<Tr key={source.id}>
 							<Td>
-								<span className={AVS}>
-									<SourceTypeTile type={source.type} size={24} />
-									<span>
-										<Link
-											to="/sources/$sourceId/{-$tab}"
-											params={{ sourceId: source.id }}
-											className="font-medium text-foreground"
-										>
-											{source.name}
-										</Link>
-										<div className="text-[12px] text-muted-foreground">
-											Dernier événement {source.last}
-										</div>
+								<Link
+									to="/sources/$sourceId/{-$tab}"
+									params={{ sourceId: source.id }}
+									className="font-medium text-foreground"
+								>
+									{source.name}
+								</Link>
+								<div className="font-mono text-[11.5px] text-muted-foreground">
+									{source.slug}
+								</div>
+							</Td>
+							<Td>
+								{agent ? (
+									<span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+										<AgentAvatar agent={agent} decorative />
+										<span className="truncate">{agent.name}</span>
 									</span>
-								</span>
-							</Td>
-							<Td>
-								<span className="font-mono text-[11px] font-medium whitespace-nowrap text-faint">
-									{source.type}
-								</span>
-							</Td>
-							<Td className="max-w-60 font-mono text-[11.5px] [overflow-wrap:anywhere]">
-								{source.patterns.join('  ') || '—'}
-							</Td>
-							<Td>
-								{listening.length > 0 ? (
-									<span className={AVS}>
-										{listening.slice(0, 3).map((a) => (
-											<AgentAvatar key={a.id} agent={a} />
-										))}
+								) : source.default_agent_id ? (
+									<span className="text-[12px] text-muted-foreground">
+										Agent inconnu
 									</span>
 								) : (
 									<Sev tone="warn">Aucun agent</Sev>
 								)}
 							</Td>
-							<Td className="tabular-nums">{source.eventsLast24h}</Td>
+							<Td className="tabular-nums">{source.events_last_24h}</Td>
+							<Td className="whitespace-nowrap text-muted-foreground">
+								{source.last_event_at ? (
+									<time
+										dateTime={source.last_event_at}
+										title={new Date(source.last_event_at).toLocaleString(
+											'fr-FR',
+										)}
+									>
+										{relativeAge(source.last_event_at)}
+									</time>
+								) : (
+									'Jamais'
+								)}
+							</Td>
 							<Td>
 								<Sw
 									aria-label={`Activer ${source.name}`}
 									checked={source.enabled}
+									disabled={busy || source.archived}
 									onCheckedChange={(checked) => onToggle(source, checked)}
 								/>
 							</Td>
