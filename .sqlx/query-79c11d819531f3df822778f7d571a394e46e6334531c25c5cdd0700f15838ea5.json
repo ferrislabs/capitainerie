@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT approval_id, tool, arguments_hash, used_at, created_at\n            FROM approval_grants\n            WHERE organization_id = $1 AND run_id = $2\n            ORDER BY created_at\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "approval_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tool",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "arguments_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "used_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "79c11d819531f3df822778f7d571a394e46e6334531c25c5cdd0700f15838ea5"
+}

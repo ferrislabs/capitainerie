@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { Button } from '#/components/ui/button'
 import {
 	type Approval,
+	type Decision,
 	formatWhen,
 	KIND_LABEL,
 	prettyJson,
@@ -13,7 +14,7 @@ import {
 import { Sev } from '#/domain/audit/ui/sev'
 import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
 
-export type Decision = 'approve' | 'reject'
+export type { Decision }
 
 interface Props {
 	approval: Approval

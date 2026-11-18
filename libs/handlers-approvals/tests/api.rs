@@ -2,12 +2,14 @@
 
 use axum::{Extension, Router};
 use capitainerie_auth::{AcceptedClients, Actor, FerrisKeyVerifier, Identity};
-use capitainerie_common::{ApprovalId, OrganizationId};
+use capitainerie_common::{AgentId, ApprovalId, CardId, OrganizationId, RunId};
 use capitainerie_core::{
     CapitainerieUseCase, Organization, OrganizationSlug,
     domain::{
         agent::SecretToken,
         approval::{Approval, ApprovalKind, ApprovalStatus},
+        authorization::Subject,
+        card::service::CreateCard,
     },
     infrastructure::postgres,
 };
@@ -142,10 +144,48 @@ impl Fixture {
                 decided_at: None,
                 decision_note: None,
                 created_at: Utc::now(),
+                arguments_hash: None,
+                resumed_run_id: None,
             })
             .await
             .unwrap();
         approval.id
+    }
+
+    /// A write an agent asked for on a card nobody is assigned to.
+    async fn request_tool_call(&self) -> (ApprovalId, CardId) {
+        let card = self
+            .usecase
+            .create_card(
+                Subject {
+                    id: "user-1".into(),
+                    organization_id: self.organization.id,
+                    actor: None,
+                    is_admin: false,
+                },
+                CreateCard {
+                    title: "Relancer le client".into(),
+                    description: String::new(),
+                    provenance: None,
+                    run_id: None,
+                    attributes: Default::default(),
+                },
+            )
+            .await
+            .unwrap();
+        let mut approval = Approval::tool_call(
+            self.organization.id,
+            (AgentId::new(), "Darnold"),
+            card.id,
+            RunId::new(),
+            "mestier__create_order",
+            &json!({"q": "x"}),
+            Utc::now(),
+        );
+        approval.requested_by_agent_id = None;
+        approval.run_id = None;
+        let approval = self.usecase.request_approval(approval).await.unwrap();
+        (approval.id, card.id)
     }
 
     async fn announced(&self, id: ApprovalId, kind: &str) -> i64 {
@@ -300,4 +340,58 @@ async fn an_agent_caller_cannot_read_or_decide() {
         .await
         .unwrap();
     assert_eq!(status, "pending");
+}
+
+#[tokio::test]
+async fn deciding_a_tool_call_says_whether_a_run_resumed_it() {
+    let Some(fixture) = fixture(None).await else {
+        return;
+    };
+    let (approved, _) = fixture.request_tool_call().await;
+    let (status, body) = fixture
+        .post(
+            &format!("/api/v1/approvals/{approved}/decide"),
+            json!({"decision": "approve"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "approved");
+    assert_eq!(body["resumed_run_id"], Value::Null);
+    assert_eq!(
+        body["resume_error"],
+        "la carte n'est assignée à aucun agent"
+    );
+    let (_, detail) = fixture.get(&format!("/api/v1/approvals/{approved}")).await;
+    assert_eq!(detail["status"], "approved");
+    assert_eq!(detail["resumed_run_id"], Value::Null);
+    assert!(detail.get("resume_error").is_none());
+
+    let (rejected, card_id) = fixture.request_tool_call().await;
+    let (status, body) = fixture
+        .post(
+            &format!("/api/v1/approvals/{rejected}/decide"),
+            json!({"decision": "reject", "note": "non"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["resume_error"], Value::Null);
+    assert_eq!(body["resumed_run_id"], Value::Null);
+    let (actor, text): (Option<String>, String) =
+        sqlx::query_as("SELECT author_actor, body FROM card_comments WHERE card_id = $1")
+            .bind(card_id.0)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(actor.as_deref(), Some("Capitainerie"));
+    assert!(text.starts_with("**Demande refusée**"), "{text}");
+
+    let action = fixture.request("Dépassement de budget").await;
+    let (_, body) = fixture
+        .post(
+            &format!("/api/v1/approvals/{action}/decide"),
+            json!({"decision": "approve"}),
+        )
+        .await;
+    assert_eq!(body["resume_error"], Value::Null);
+    assert_eq!(body["resumed_run_id"], Value::Null);
 }

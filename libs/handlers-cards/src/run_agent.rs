@@ -85,7 +85,7 @@ impl IntoResponse for RunAgentError {
         (status = 403, description = "The policy refused: an agent cannot start an agent run", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 409, description = "not_connected (the message names the connector slug), no_provider (neither the caller nor the organization connected an LLM provider), execution_already_active, or the card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 422, description = "card_without_agent, agent_archived or agent_without_connector", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 422, description = "card_without_agent, agent_archived, agent_paused or agent_without_connector", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -139,6 +139,11 @@ mod tests {
                 AgentRunRefusal::AgentArchived,
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "agent_archived",
+            ),
+            (
+                AgentRunRefusal::AgentPaused,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "agent_paused",
             ),
             (
                 AgentRunRefusal::NoConnector,

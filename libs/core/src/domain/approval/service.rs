@@ -1,8 +1,10 @@
-use capitainerie_common::{ApprovalId, CoreError};
-use capitainerie_events::approval::{ApprovalDecided, ApprovalRequested};
-use chrono::Utc;
+use capitainerie_common::{ApprovalId, CoreError, OrganizationId, RunId};
+use capitainerie_events::approval::{ApprovalDecided, ApprovalRequested, ApprovalResumed};
+use chrono::{DateTime, Utc};
 
-use super::{Approval, ApprovalStatus, Verdict, ports::ApprovalRepository};
+use super::{
+    Approval, ApprovalKind, ApprovalStatus, ToolGrant, Verdict, ports::ApprovalRepository,
+};
 use crate::domain::{
     authorization::{AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require},
     event::ports::EventEmitter,
@@ -91,8 +93,22 @@ where
     }
 
     /// Files a request on behalf of the system, which is not a member: no
-    /// policy applies, the caller decides when an approval is needed.
+    /// policy applies, the caller decides when an approval is needed. A tool
+    /// call already pending for the same card with the same arguments is
+    /// returned instead of filing it twice.
     pub async fn request(mut self, approval: Approval) -> Result<Approval, CoreError> {
+        if let (ApprovalKind::ToolCall, Some(card_id), Some(tool), Some(hash)) = (
+            approval.kind,
+            approval.card_id,
+            approval.tool(),
+            approval.arguments_hash.as_deref(),
+        ) && let Some(pending) = self
+            .approvals
+            .find_pending_tool_call(approval.organization_id, card_id, tool, hash)
+            .await?
+        {
+            return Ok(pending);
+        }
         self.approvals.insert(&approval).await?;
         self.emitter.emit(&ApprovalRequested {
             approval_id: approval.id.0,
@@ -103,6 +119,57 @@ where
             run_id: approval.run_id.map(|id| id.0),
         })?;
         Ok(approval)
+    }
+
+    /// Hands an approved tool call to the run started to carry it out: the
+    /// run may make that call once, and the approval points to the run.
+    pub async fn link_resumed(
+        mut self,
+        approval: &Approval,
+        run_id: RunId,
+        initiated_by: String,
+        now: DateTime<Utc>,
+    ) -> Result<ToolGrant, CoreError> {
+        let grant = approval.grant(run_id, now)?;
+        if !self
+            .approvals
+            .mark_resumed(approval.organization_id, approval.id, run_id)
+            .await?
+        {
+            return Err(CoreError::Conflict(
+                "the approval was resumed already".into(),
+            ));
+        }
+        self.approvals.insert_grant(&grant).await?;
+        self.emitter.emit(&ApprovalResumed {
+            approval_id: approval.id.0,
+            organization_id: approval.organization_id.0,
+            card_id: approval.card_id.map(|id| id.0),
+            run_id: approval.run_id.map(|id| id.0),
+            resumed_run_id: run_id.0,
+            decided_by: approval.decided_by.clone().unwrap_or_default(),
+            initiated_by,
+            tool: grant.tool.clone(),
+        })?;
+        Ok(grant)
+    }
+
+    /// Spends the grant of a run for this call; false when the run has no
+    /// grant covering it or spent it already.
+    pub async fn use_grant(
+        mut self,
+        organization_id: OrganizationId,
+        grant: &ToolGrant,
+        tool: &str,
+        arguments: &serde_json::Value,
+        now: DateTime<Utc>,
+    ) -> Result<bool, CoreError> {
+        if !grant.covers(tool, arguments) {
+            return Ok(false);
+        }
+        self.approvals
+            .use_grant(organization_id, grant.approval_id, grant.run_id, now)
+            .await
     }
 
     async fn require(
@@ -234,6 +301,9 @@ mod tests {
     async fn a_request_is_stored_and_announced_without_a_policy() {
         let mut repository = MockApprovalRepository::new();
         repository
+            .expect_find_pending_tool_call()
+            .returning(|_, _, _, _| Box::pin(async { Ok(None) }));
+        repository
             .expect_insert()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
@@ -244,6 +314,108 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(*emitter.0.lock().unwrap(), ["approval.requested"]);
+    }
+
+    #[tokio::test]
+    async fn a_tool_call_already_pending_is_reused_and_not_announced_again() {
+        let organization_id = OrganizationId::new();
+        let existing = pending(organization_id);
+        let mut repeated = existing.clone();
+        repeated.id = ApprovalId::new();
+        repeated.run_id = Some(RunId::new());
+        let mut repository = MockApprovalRepository::new();
+        let found = existing.clone();
+        let tool = existing.tool().unwrap().to_owned();
+        let hash = existing.arguments_hash.clone().unwrap();
+        let card_id = existing.card_id.unwrap();
+        repository
+            .expect_find_pending_tool_call()
+            .times(1)
+            .withf(move |_, card, asked_tool, asked_hash| {
+                *card == card_id && asked_tool == tool && asked_hash == hash
+            })
+            .returning(move |_, _, _, _| {
+                let found = found.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        repository.expect_insert().never();
+        let emitter = RecordingEmitter::default();
+        let authorizer = MockAuthorizer::new();
+        let filed = ApprovalService::new(repository, &emitter, &authorizer)
+            .request(repeated)
+            .await
+            .unwrap();
+        assert_eq!(filed.id, existing.id);
+        assert!(emitter.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_approved_call_is_linked_to_its_run_with_a_grant_and_announced() {
+        let organization_id = OrganizationId::new();
+        let mut approval = pending(organization_id);
+        approval
+            .decide(Verdict::Approve, "user-2".into(), None, Utc::now())
+            .unwrap();
+        let run_id = RunId::new();
+        let mut repository = MockApprovalRepository::new();
+        let id = approval.id;
+        repository
+            .expect_mark_resumed()
+            .times(1)
+            .withf(move |_, approval_id, run| *approval_id == id && *run == run_id)
+            .returning(|_, _, _| Box::pin(async { Ok(true) }));
+        repository
+            .expect_insert_grant()
+            .times(1)
+            .withf(move |grant| grant.run_id == run_id && grant.tool == "github__merge")
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let emitter = RecordingEmitter::default();
+        let authorizer = MockAuthorizer::new();
+        let grant = ApprovalService::new(repository, &emitter, &authorizer)
+            .link_resumed(&approval, run_id, "user-1".into(), Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(grant.approval_id, approval.id);
+        assert_eq!(*emitter.0.lock().unwrap(), ["approval.resumed"]);
+    }
+
+    #[tokio::test]
+    async fn a_grant_is_spent_only_for_its_call() {
+        let organization_id = OrganizationId::new();
+        let mut approval = pending(organization_id);
+        approval
+            .decide(Verdict::Approve, "user-2".into(), None, Utc::now())
+            .unwrap();
+        let grant = approval.grant(RunId::new(), Utc::now()).unwrap();
+        let mut repository = MockApprovalRepository::new();
+        repository
+            .expect_use_grant()
+            .times(1)
+            .returning(|_, _, _, _| Box::pin(async { Ok(true) }));
+        let emitter = RecordingEmitter::default();
+        let authorizer = MockAuthorizer::new();
+        let other = ApprovalService::new(MockApprovalRepository::new(), &emitter, &authorizer)
+            .use_grant(
+                organization_id,
+                &grant,
+                "github__merge",
+                &json!({"x": 1}),
+                Utc::now(),
+            )
+            .await
+            .unwrap();
+        assert!(!other);
+        let same = ApprovalService::new(repository, &emitter, &authorizer)
+            .use_grant(
+                organization_id,
+                &grant,
+                "github__merge",
+                &json!({}),
+                Utc::now(),
+            )
+            .await
+            .unwrap();
+        assert!(same);
     }
 
     #[tokio::test]

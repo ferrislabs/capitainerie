@@ -63,6 +63,18 @@ pub struct ApprovalResponse {
     pub decided_at: Option<DateTime<Utc>>,
     pub decision_note: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// The run started when this tool call was approved, to carry it out.
+    pub resumed_run_id: Option<RunId>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DecideApprovalResponse {
+    #[serde(flatten)]
+    pub approval: ApprovalResponse,
+    /// Why an approved tool call did not start a new run (no provider,
+    /// connector disconnected, agent archived or paused, a run already
+    /// active on the card…); null otherwise. The decision stands either way.
+    pub resume_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -91,6 +103,7 @@ impl From<Approval> for ApprovalResponse {
             decided_at: approval.decided_at,
             decision_note: approval.decision_note,
             created_at: approval.created_at,
+            resumed_run_id: approval.resumed_run_id,
         }
     }
 }

@@ -94,12 +94,14 @@ describe('ApprovalsPage', () => {
 		).toBe('true')
 	})
 
-	it('approves with a note', async () => {
+	it('approves with a note and links the resumed run to its task', async () => {
 		const user = userEvent.setup()
 		const fetchMock = await open({
 			'POST /api/v1/approvals/ap-1/decide': {
 				...SEND,
 				status: 'approved',
+				resumed_run_id: 'run-2',
+				resume_error: null,
 			},
 		})
 		await screen.findByRole('article')
@@ -107,10 +109,36 @@ describe('ApprovalsPage', () => {
 		await user.click(
 			screen.getByRole('button', { name: 'Approuver : Envoyer le devis' }),
 		)
-		expect(await screen.findByText('Approbation accordée')).toBeTruthy()
+		expect(await screen.findByText(/Exécution relancée/)).toBeTruthy()
+		const link = screen.getByRole('link', { name: 'Voir la tâche' })
+		expect(link.getAttribute('href')).toBe(`/tasks/${CARD.toLowerCase()}`)
 		expect(calls(fetchMock, 'POST')[0]).toMatchObject({
 			body: { decision: 'approve', note: 'OK pour moi' },
 		})
+	})
+
+	it('says why an approved call did not start a new run', async () => {
+		const user = userEvent.setup()
+		await open({
+			'POST /api/v1/approvals/ap-1/decide': {
+				...SEND,
+				status: 'approved',
+				resumed_run_id: null,
+				resume_error:
+					"l'agent assigné est en pause : reprenez-le avant de le lancer",
+			},
+		})
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Approuver : Envoyer le devis',
+			}),
+		)
+		expect(
+			await screen.findByText(
+				/n'a pas été relancée : l'agent assigné est en pause/,
+			),
+		).toBeTruthy()
+		expect(screen.getByRole('link', { name: 'Voir la tâche' })).toBeTruthy()
 	})
 
 	it('rejects without a note', async () => {
@@ -119,6 +147,7 @@ describe('ApprovalsPage', () => {
 			'POST /api/v1/approvals/ap-1/decide': {
 				...SEND,
 				status: 'rejected',
+				resume_error: null,
 			},
 		})
 		await user.click(
@@ -126,7 +155,11 @@ describe('ApprovalsPage', () => {
 				name: 'Refuser : Envoyer le devis',
 			}),
 		)
-		expect(await screen.findByText('Approbation refusée')).toBeTruthy()
+		expect(
+			await screen.findByText(
+				/Demande refusée. Le refus est noté sur la tâche./,
+			),
+		).toBeTruthy()
 		expect(calls(fetchMock, 'POST')[0]?.body).toEqual({ decision: 'reject' })
 	})
 

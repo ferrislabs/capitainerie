@@ -1,6 +1,6 @@
+import { Link } from '@tanstack/react-router'
 import { Shield } from 'lucide-react'
 import { InlineAlert } from '#/components/layout/inline-alert'
-import { Notice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
 import { Button } from '#/components/ui/button'
@@ -8,12 +8,12 @@ import {
 	APPROVAL_TABS,
 	type Approval,
 	type ApprovalStatus,
-} from '#/domain/approvals/model'
-import {
-	ApprovalCard,
 	type Decision,
-} from '#/domain/approvals/ui/approval-card'
+	type DecisionOutcome,
+} from '#/domain/approvals/model'
+import { ApprovalCard } from '#/domain/approvals/ui/approval-card'
 import { Panel, PanelEmpty } from '#/domain/audit/ui/rows'
+import { taskPathId } from '#/domain/tasks/task-ids'
 import { cn } from '#/lib/utils'
 
 interface Props {
@@ -22,7 +22,7 @@ interface Props {
 	pendingCount: number
 	loading: boolean
 	error: boolean
-	notice: string | null
+	outcome: DecisionOutcome | null
 	decideError: string | null
 	busyId: string | null
 	requesterName: (agentId: string | null | undefined) => string | null
@@ -44,7 +44,7 @@ export function ApprovalsView({
 	pendingCount,
 	loading,
 	error,
-	notice,
+	outcome,
 	decideError,
 	busyId,
 	requesterName,
@@ -58,7 +58,23 @@ export function ApprovalsView({
 				title="Approbations"
 				description="Décisions demandées par les agents avant d'agir"
 			/>
-			<Notice message={notice} className="mb-3" />
+			{outcome ? (
+				<InlineAlert tone={outcome.tone} className="mb-3">
+					{outcome.message}
+					{outcome.cardId ? (
+						<>
+							{' '}
+							<Link
+								to="/tasks/$taskId"
+								params={{ taskId: taskPathId(outcome.cardId) }}
+								className="underline underline-offset-2"
+							>
+								Voir la tâche
+							</Link>
+						</>
+					) : null}
+				</InlineAlert>
+			) : null}
 			{decideError ? (
 				<InlineAlert tone="danger" className="mb-3">
 					{decideError}

@@ -144,6 +144,25 @@ describe('run agent', () => {
 		expect(link.getAttribute('href')).toBe('/providers')
 	})
 
+	it('shows the agent_paused refusal', async () => {
+		mockApi({
+			...base(),
+			[POST]: {
+				status: 422,
+				body: {
+					code: 'agent_paused',
+					message: "l'agent assigné est en pause",
+					status: 422,
+				},
+			},
+		})
+		await open()
+		await launch()
+		expect(
+			await screen.findByText(/L'agent assigné est en pause : reprends-le/),
+		).toBeTruthy()
+	})
+
 	it('polls to success and refetches the card', async () => {
 		let polls = 0
 		const fetchMock = mockApi({
