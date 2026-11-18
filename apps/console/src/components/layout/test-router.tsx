@@ -19,6 +19,7 @@ const PATHS = [
 	'/kanban',
 	'/clients',
 	'/projects',
+	'/worksites',
 	'/agents',
 	'/routines',
 	'/tasks',

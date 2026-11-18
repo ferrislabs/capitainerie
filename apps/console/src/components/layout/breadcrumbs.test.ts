@@ -18,6 +18,7 @@ describe('breadcrumbs', () => {
 	it('shows a section page alone, tabs included', () => {
 		expect(breadcrumbs('/tasks')).toEqual([{ label: 'Tâches' }])
 		expect(breadcrumbs('/audit/runs')).toEqual([{ label: 'Audit' }])
+		expect(breadcrumbs('/worksites')).toEqual([{ label: 'Chantiers' }])
 		expect(breadcrumbs('/agents/organigramme')).toEqual([{ label: 'Agents' }])
 	})
 
