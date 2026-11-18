@@ -501,7 +501,7 @@ async fn a_member_reads_budgets_but_only_an_admin_sets_them() {
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
-const COST_ROUTES: [&str; 4] = ["projects", "agents", "tasks", "users"];
+const COST_ROUTES: [&str; 5] = ["projects", "agents", "tasks", "users", "days"];
 
 #[tokio::test]
 async fn costs_require_a_human_member() {
@@ -645,4 +645,21 @@ async fn costs_are_narrowed_by_agent_and_task() {
         assert_eq!(status, StatusCode::OK, "{route}: {report}");
         assert_eq!(report["total"]["cost_micros"], 1_500, "{route}");
     }
+}
+
+#[tokio::test]
+async fn day_costs_return_the_daily_spend() {
+    let Some(fixture) = fixture(Who::Member).await else {
+        return;
+    };
+    fixture.story(1_500).await;
+
+    let (status, report) = fixture.get("/api/v1/analytics/costs/days").await;
+
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let rows = report["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0]["day"].as_str().unwrap().len() == 10);
+    assert_eq!(rows[0]["cost_micros"], 1_500);
+    assert_eq!(report["total"]["cost_micros"], 1_500);
 }

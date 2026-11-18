@@ -1,6 +1,6 @@
 use capitainerie_common::{AgentId, CardId, CoreError, OrganizationId, ProjectId};
 
-use super::{AgentRow, CostFilter, Period, ProjectAgentRow, TaskAgentRow, UserModelRow};
+use super::{AgentRow, CostFilter, DaySpend, Period, ProjectAgentRow, TaskAgentRow, UserModelRow};
 
 #[cfg_attr(any(test, feature = "mock"), mockall::automock)]
 pub trait CostRepository: Send {
@@ -33,6 +33,14 @@ pub trait CostRepository: Send {
         period: &Period,
         filter: &CostFilter,
     ) -> impl Future<Output = Result<Vec<UserModelRow>, CoreError>> + Send;
+
+    /// Spend per UTC day, oldest first; days without a step are absent.
+    fn day_rows(
+        &mut self,
+        organization_id: OrganizationId,
+        period: &Period,
+        filter: &CostFilter,
+    ) -> impl Future<Output = Result<Vec<DaySpend>, CoreError>> + Send;
 
     fn project_exists(
         &mut self,

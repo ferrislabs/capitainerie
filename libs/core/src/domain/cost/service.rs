@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use capitainerie_common::{CardId, CoreError, OrganizationId, ProjectId};
 
 use super::{
-    AgentRef, AgentRow, AgentSpend, CostFilter, CostReport, ModelSpend, Period, ProjectSpend,
-    Spent, TaskSpend, UserSpend, ports::CostRepository,
+    AgentRef, AgentRow, AgentSpend, CostFilter, CostReport, DaySpend, ModelSpend, Period,
+    ProjectSpend, Spent, TaskSpend, UserSpend, ports::CostRepository,
 };
 use crate::domain::authorization::{
     AccessRequest, Action, ResourceKind, Subject, ports::Authorizer, require,
@@ -150,6 +150,23 @@ impl<'a, R: CostRepository, A: Authorizer> CostService<'a, R, A> {
         }
         rows.sort_by(|a, b| by_cost_then_name(&a.spent, &a.user, &b.spent, &b.user));
         Ok(report(&period, rows, |group| group.spent))
+    }
+
+    pub async fn days(
+        mut self,
+        subject: Subject,
+        period: Period,
+        filter: CostFilter,
+    ) -> Result<CostReport<DaySpend>, CoreError> {
+        let organization_id = subject.organization_id;
+        self.require(subject).await?;
+        self.check_filter(organization_id, &filter).await?;
+        let mut days = self
+            .costs
+            .day_rows(organization_id, &period, &filter)
+            .await?;
+        days.sort_by_key(|day| day.day);
+        Ok(report(&period, days, |day| day.spent))
     }
 
     async fn check_filter(

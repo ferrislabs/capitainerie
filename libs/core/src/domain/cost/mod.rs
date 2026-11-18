@@ -1,5 +1,5 @@
 use capitainerie_common::{AgentId, CardId, CoreError, ProjectId};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 
 pub mod ports;
 pub mod service;
@@ -134,6 +134,13 @@ pub struct UserSpend {
     pub user: String,
     pub spent: Spent,
     pub models: Vec<ModelSpend>,
+}
+
+/// Spend of one UTC day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaySpend {
+    pub day: NaiveDate,
+    pub spent: Spent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -8,7 +8,7 @@ use crate::domain::{
     authorization::Subject,
     budget::{BudgetOverview, BudgetSettings, service::BudgetService},
     cost::{
-        AgentSpend, CostFilter, CostReport, Period, ProjectSpend, TaskSpend, UserSpend,
+        AgentSpend, CostFilter, CostReport, DaySpend, Period, ProjectSpend, TaskSpend, UserSpend,
         service::CostService,
     },
 };
@@ -89,6 +89,18 @@ impl CapitainerieUseCase {
     ) -> Result<CostReport<UserSpend>, CoreError> {
         CostService::new(cost_repository, authz)
             .users(subject, period, filter)
+            .await
+    }
+
+    #[transactional(cost, authz)]
+    pub async fn day_costs(
+        &self,
+        subject: Subject,
+        period: Period,
+        filter: CostFilter,
+    ) -> Result<CostReport<DaySpend>, CoreError> {
+        CostService::new(cost_repository, authz)
+            .days(subject, period, filter)
             .await
     }
 }

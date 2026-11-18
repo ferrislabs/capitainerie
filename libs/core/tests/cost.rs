@@ -656,3 +656,42 @@ async fn unknown_agent_or_card_is_not_found() {
         assert!(matches!(result, Err(CoreError::NotFound)), "{filter:?}");
     }
 }
+
+#[tokio::test]
+async fn days_group_the_spend_by_utc_day_and_follow_the_filters() {
+    let Some(pool) = pool().await else { return };
+    let org = organization(&pool).await;
+    let ann = agent(&pool, org, "Ann", false).await;
+    let bob = agent(&pool, org, "Bob", false).await;
+    let c1 = card(&pool, org, "one", None).await;
+    let day = |ago: i64| Utc::now() - Duration::days(ago);
+    let at = |ago: i64, cost: i64| Step {
+        agent: None,
+        model: Some("m"),
+        cost,
+        at: day(ago),
+    };
+    agent_run(&pool, org, c1, ann, "u", &[at(2, 10), at(2, 5), at(4, 7)]).await;
+    agent_run(&pool, org, c1, bob, "u", &[at(2, 100)]).await;
+    let case = usecase(&pool);
+
+    let all = case
+        .day_costs(admin(org), period(), CostFilter::default())
+        .await
+        .unwrap();
+    assert_eq!(all.rows.len(), 2);
+    assert!(all.rows[0].day < all.rows[1].day);
+    assert_eq!(all.rows[0].spent.cost_micros, 7);
+    assert_eq!(all.rows[1].spent.cost_micros, 115);
+    assert_eq!(all.total.cost_micros, 122);
+
+    let only_ann = case
+        .day_costs(admin(org), period(), only_agent(ann))
+        .await
+        .unwrap();
+    assert_eq!(only_ann.total.cost_micros, 22);
+    let unknown = case
+        .day_costs(admin(org), period(), only_agent(Uuid::now_v7()))
+        .await;
+    assert!(matches!(unknown, Err(CoreError::NotFound)));
+}

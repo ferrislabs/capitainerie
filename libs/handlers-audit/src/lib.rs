@@ -17,4 +17,5 @@ pub fn router() -> Router<AppState> {
         .typed_get(costs::agents_handler)
         .typed_get(costs::tasks_handler)
         .typed_get(costs::users_handler)
+        .typed_get(costs::days_handler)
 }

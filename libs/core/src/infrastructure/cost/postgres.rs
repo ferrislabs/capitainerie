@@ -3,8 +3,8 @@ use capitainerie_macros::repository;
 
 use crate::{
     domain::cost::{
-        AgentRef, AgentRow, CostFilter, Period, ProjectAgentRow, Spent, TaskAgentRow, UserModelRow,
-        ports::CostRepository,
+        AgentRef, AgentRow, CostFilter, DaySpend, Period, ProjectAgentRow, Spent, TaskAgentRow,
+        UserModelRow, ports::CostRepository,
     },
     infrastructure::postgres::{SharedTx, map_sqlx_error},
 };
@@ -214,6 +214,46 @@ impl CostRepository for PgCostRepository<'_> {
             .map(|row| UserModelRow {
                 user: row.user,
                 model: row.model,
+                spent: spent(row.input_tokens, row.output_tokens, row.cost_micros),
+            })
+            .collect())
+    }
+
+    async fn day_rows(
+        &mut self,
+        organization_id: OrganizationId,
+        period: &Period,
+        filter: &CostFilter,
+    ) -> Result<Vec<DaySpend>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query!(
+            r#"
+            SELECT (s.started_at AT TIME ZONE 'UTC')::date AS "day!",
+                   COALESCE(sum(s.input_tokens), 0)::bigint AS "input_tokens!",
+                   COALESCE(sum(s.output_tokens), 0)::bigint AS "output_tokens!",
+                   COALESCE(sum(s.cost_micros), 0)::bigint AS "cost_micros!"
+            FROM run_steps s
+            JOIN runs r ON r.id = s.run_id AND r.organization_id = s.organization_id
+            LEFT JOIN agent_tasks t ON t.run_id = s.run_id AND t.organization_id = s.organization_id
+            LEFT JOIN agents a ON a.id = t.agent_id AND a.organization_id = s.organization_id
+            WHERE s.organization_id = $1 AND s.started_at >= $2 AND s.started_at < $3
+              AND ($4::uuid IS NULL OR a.id = $4) AND ($5::uuid IS NULL OR r.card_id = $5)
+            GROUP BY 1
+            ORDER BY 1
+            "#,
+            organization_id.0,
+            period.from(),
+            period.to(),
+            filter.agent.map(|id| id.0),
+            filter.card.map(|id| id.0),
+        )
+        .fetch_all(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| DaySpend {
+                day: row.day,
                 spent: spent(row.input_tokens, row.output_tokens, row.cost_micros),
             })
             .collect())
