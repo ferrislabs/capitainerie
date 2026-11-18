@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { PageHeader } from '#/components/layout/page-header'
@@ -13,6 +13,7 @@ import {
 	useConnectGithub,
 	useCreateGithubApp,
 } from '#/domain/integrations/hooks/use-github'
+import { hasErrorKey } from '#/lib/api-error'
 
 export type GithubReturn = 'app' | 'installation'
 
@@ -83,10 +84,10 @@ export function GithubAppCallbackPage({
 	state,
 	error,
 }: AppCallbackProps) {
-	const create = useCreateGithubApp()
+	const { mutateAsync } = useCreateGithubApp()
 	const leave = useLeaveTo()
 	const submitted = useRef(false)
-	const { mutate } = create
+	const [failure, setFailure] = useState<unknown>(null)
 
 	const missing = error
 		? `GitHub n'a pas créé l'application (${error}).`
@@ -97,16 +98,19 @@ export function GithubAppCallbackPage({
 	useEffect(() => {
 		if (missing || !code || !state || submitted.current) return
 		submitted.current = true
-		mutate({ body: { code, state } }, { onSuccess: () => leave('app') })
-	}, [missing, code, state, mutate, leave])
+		mutateAsync({ body: { code, state } }).then(
+			() => leave('app'),
+			(error: unknown) =>
+				hasErrorKey(error, 'github_app_exists')
+					? leave('app')
+					: setFailure(error ?? new Error('échec')),
+		)
+	}, [missing, code, state, mutateAsync, leave])
 
 	return (
 		<Shell
 			title="Création de l'application GitHub"
-			problem={
-				missing ??
-				(create.isError ? describeCreateAppError(create.error) : null)
-			}
+			problem={missing ?? (failure ? describeCreateAppError(failure) : null)}
 			pending="Enregistrement de l'application…"
 		/>
 	)
@@ -126,10 +130,10 @@ export function GithubInstallCallbackPage({
 	code,
 	state,
 }: InstallCallbackProps) {
-	const connect = useConnectGithub()
+	const { mutateAsync } = useConnectGithub()
 	const leave = useLeaveTo()
 	const submitted = useRef(false)
-	const { mutate } = connect
+	const [failure, setFailure] = useState<unknown>(null)
 
 	const requested = setupAction === 'request'
 	const updatedFromGithub =
@@ -150,19 +154,18 @@ export function GithubInstallCallbackPage({
 		if (!ready || !code || !state || installationId === undefined) return
 		if (submitted.current) return
 		submitted.current = true
-		mutate(
-			{ body: { installation_id: installationId, code, state } },
-			{ onSuccess: () => leave('installation') },
+		mutateAsync({
+			body: { installation_id: installationId, code, state },
+		}).then(
+			() => leave('installation'),
+			(error: unknown) => setFailure(error ?? new Error('échec')),
 		)
-	}, [ready, code, state, installationId, mutate, leave])
+	}, [ready, code, state, installationId, mutateAsync, leave])
 
 	return (
 		<Shell
 			title="Installation de l'application GitHub"
-			problem={
-				missing ??
-				(connect.isError ? describeConnectError(connect.error) : null)
-			}
+			problem={missing ?? (failure ? describeConnectError(failure) : null)}
 			info={
 				requested
 					? "Ta demande d'installation a été envoyée aux propriétaires de l'organisation GitHub. Reviens ici une fois qu'ils l'ont acceptée, puis relance l'installation."
