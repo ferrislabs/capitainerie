@@ -19,6 +19,7 @@ const ACTIVE_RUNS_ID = '/api/v1/runs/active'
 const CARDS_ID = '/api/v1/cards'
 const TIMELINE_ID = '/api/v1/runs/{run_id}/timeline'
 const APPROVALS_ID = '/api/v1/approvals'
+const SOURCES_ID = '/api/v1/sources'
 
 export interface SocketLike {
 	readyState: number
@@ -111,6 +112,13 @@ export function invalidateForEvent(
 		void queryClient.invalidateQueries({
 			predicate: (query) =>
 				queryKeyHead(query)._id?.startsWith(APPROVALS_ID) ?? false,
+		})
+		return
+	}
+	if (kind.startsWith('source.')) {
+		void queryClient.invalidateQueries({
+			predicate: (query) =>
+				queryKeyHead(query)._id?.startsWith(SOURCES_ID) ?? false,
 		})
 		return
 	}

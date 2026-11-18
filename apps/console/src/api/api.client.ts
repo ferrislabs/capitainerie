@@ -267,6 +267,18 @@ export namespace Schemas {
     slug: string;
     source?: (string | null) | undefined;
   };
+  export type CreateSourceRequest = {
+    allow_writes?: boolean | undefined;
+    auto_run?: boolean | undefined;
+    config?: (Record<string, unknown> | null) | undefined;
+    default_agent_id?: (null | AgentId) | undefined;
+    description?: (string | null) | undefined;
+    enabled?: (boolean | null) | undefined;
+    kind?: (string | null) | undefined;
+    name: string;
+    project_id?: (null | ProjectId) | undefined;
+    slug: string;
+  };
   export type CreateTeamAgentRequest = {
     connector_grants?: (Array<string> | null) | undefined;
     description?: (string | null) | undefined;
@@ -321,6 +333,8 @@ export namespace Schemas {
     installation: null | GithubInstallationResponse;
   }>;
   export type GrantAccessDto = "read" | "write";
+  export type SourceEventId = string;
+  export type HookResponse = { event_id: SourceEventId };
   export type InstallUrlResponse = { url: string };
   export type InstanceGrantRequest = { access: GrantAccessDto; instance_id: IntegrationInstanceId };
   export type IntegrationActionId = string;
@@ -366,6 +380,28 @@ export namespace Schemas {
     title: string;
   };
   export type IssueListResponse = { issues: Array<IssueResponse> };
+  export type SourceId = string;
+  export type SourceKindDto = "webhook";
+  export type SourceResponse = {
+    allow_writes: boolean;
+    archived: boolean;
+    auto_run: boolean;
+    config: Record<string, unknown>;
+    created_at: string;
+    created_by: string;
+    default_agent_id?: (null | AgentId) | undefined;
+    description: string;
+    enabled: boolean;
+    events_last_24h: number;
+    id: SourceId;
+    kind: SourceKindDto;
+    last_event_at?: (string | null) | undefined;
+    name: string;
+    project_id?: (null | ProjectId) | undefined;
+    slug: string;
+    updated_at: string;
+  };
+  export type IssuedSourceResponse = { source: SourceResponse; token: string; webhook_url: string };
   export type LaunchWorksitesRequest = {
     issues?: Array<number> | undefined;
     prompts?: Array<string> | undefined;
@@ -524,6 +560,19 @@ export namespace Schemas {
     used_by: number;
   };
   export type SkillListResponse = { items: Array<SkillResponse> };
+  export type SourceEventStatusDto = "received" | "card_created" | "ignored" | "failed";
+  export type SourceEventResponse = {
+    card_id?: (null | CardId) | undefined;
+    error?: (string | null) | undefined;
+    id: SourceEventId;
+    received_at: string;
+    run_id?: (null | RunId) | undefined;
+    source_id: SourceId;
+    status: SourceEventStatusDto;
+    summary: string;
+  };
+  export type SourceEventListResponse = { items: Array<SourceEventResponse>; total: number };
+  export type SourceListResponse = { items: Array<SourceResponse> };
   export type SubmitTranscriptRequest = {
     body: string;
     client_id?: (null | ClientId) | undefined;
@@ -594,6 +643,18 @@ export namespace Schemas {
     name: string | null;
     slug: string | null;
     source: string | null;
+  }>;
+  export type UpdateSourceRequest = Partial<{
+    allow_writes: boolean | null;
+    archived: boolean | null;
+    auto_run: boolean | null;
+    config: Record<string, unknown> | null;
+    default_agent_id: null | AgentId;
+    description: string | null;
+    enabled: boolean | null;
+    name: string | null;
+    project_id: null | ProjectId;
+    slug: string | null;
   }>;
   export type UpdateTeamAgentRequest = Partial<{
     archived: boolean | null;
@@ -1687,6 +1748,121 @@ export namespace Endpoints {
       404: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListSources = {
+    method: "GET";
+    path: "/api/v1/sources";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ archived: boolean }>;
+    };
+    responses: { 200: Schemas.SourceListResponse; 401: Schemas.ApiErrorResponse; 403: Schemas.ApiErrorResponse };
+  };
+  export type post_CreateSource = {
+    method: "POST";
+    path: "/api/v1/sources";
+    requestFormat: "json";
+    parameters: {
+      body: Schemas.CreateSourceRequest;
+    };
+    responses: {
+      201: Schemas.IssuedSourceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_GetSource = {
+    method: "GET";
+    path: "/api/v1/sources/{source_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { source_id: string };
+    };
+    responses: {
+      200: Schemas.SourceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type patch_UpdateSource = {
+    method: "PATCH";
+    path: "/api/v1/sources/{source_id}";
+    requestFormat: "json";
+    parameters: {
+      path: { source_id: string };
+
+      body: Schemas.UpdateSourceRequest;
+    };
+    responses: {
+      200: Schemas.SourceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      409: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_ArchiveSource = {
+    method: "POST";
+    path: "/api/v1/sources/{source_id}/archive";
+    requestFormat: "json";
+    parameters: {
+      path: { source_id: string };
+    };
+    responses: {
+      200: Schemas.SourceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListSourceEvents = {
+    method: "GET";
+    path: "/api/v1/sources/{source_id}/events";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ limit: number; offset: number }>;
+      path: { source_id: string };
+    };
+    responses: {
+      200: Schemas.SourceEventListResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_RotateSourceToken = {
+    method: "POST";
+    path: "/api/v1/sources/{source_id}/rotate-token";
+    requestFormat: "json";
+    parameters: {
+      path: { source_id: string };
+    };
+    responses: {
+      200: Schemas.IssuedSourceResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
+  export type post_TestSource = {
+    method: "POST";
+    path: "/api/v1/sources/{source_id}/test";
+    requestFormat: "json";
+    parameters: {
+      path: { source_id: string };
+    };
+    responses: {
+      202: Schemas.SourceEventResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      429: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListTeamAgents = {
     method: "GET";
     path: "/api/v1/team/agents";
@@ -1819,6 +1995,23 @@ export namespace Endpoints {
     parameters: never;
     responses: { 204: unknown; 503: Schemas.ApiErrorResponse };
   };
+  export type post_ReceiveSourceEvent = {
+    method: "POST";
+    path: "/hooks/sources/{token}";
+    requestFormat: "json";
+    parameters: {
+      path: { token: string };
+
+      body: Record<string, unknown>;
+    };
+    responses: {
+      202: Schemas.HookResponse;
+      404: Schemas.ApiErrorResponse;
+      413: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+      429: Schemas.ApiErrorResponse;
+    };
+  };
 
   // </Endpoints>
 }
@@ -1860,6 +2053,9 @@ export type EndpointByMethod = {
     "/api/v1/runs/{run_id}/timeline": Endpoints.get_GetRunTimeline;
     "/api/v1/skills": Endpoints.get_ListSkills;
     "/api/v1/skills/{skill_id}": Endpoints.get_GetSkill;
+    "/api/v1/sources": Endpoints.get_ListSources;
+    "/api/v1/sources/{source_id}": Endpoints.get_GetSource;
+    "/api/v1/sources/{source_id}/events": Endpoints.get_ListSourceEvents;
     "/api/v1/team/agents": Endpoints.get_ListTeamAgents;
     "/api/v1/team/agents/{agent_id}": Endpoints.get_GetTeamAgent;
     "/api/v1/team/agents/{agent_id}/revisions": Endpoints.get_ListTeamAgentRevisions;
@@ -1894,10 +2090,15 @@ export type EndpointByMethod = {
     "/api/v1/providers/{kind}/test": Endpoints.post_TestProvider;
     "/api/v1/skills": Endpoints.post_CreateSkill;
     "/api/v1/skills/{skill_id}/archive": Endpoints.post_ArchiveSkill;
+    "/api/v1/sources": Endpoints.post_CreateSource;
+    "/api/v1/sources/{source_id}/archive": Endpoints.post_ArchiveSource;
+    "/api/v1/sources/{source_id}/rotate-token": Endpoints.post_RotateSourceToken;
+    "/api/v1/sources/{source_id}/test": Endpoints.post_TestSource;
     "/api/v1/team/agents": Endpoints.post_CreateTeamAgent;
     "/api/v1/team/agents/{agent_id}/revisions/{revision}/restore": Endpoints.post_RestoreTeamAgentRevision;
     "/api/v1/transcriptions": Endpoints.post_CreateTranscription;
     "/api/v1/transcripts": Endpoints.post_SubmitTranscript;
+    "/hooks/sources/{token}": Endpoints.post_ReceiveSourceEvent;
   };
   patch: {
     "/api/v1/cards/{card_id}": Endpoints.patch_PatchCard;
@@ -1907,6 +2108,7 @@ export type EndpointByMethod = {
     "/api/v1/mcp-connectors/{connector_id}": Endpoints.patch_UpdateMcpConnector;
     "/api/v1/projects/{project_id}": Endpoints.patch_UpdateProject;
     "/api/v1/skills/{skill_id}": Endpoints.patch_UpdateSkill;
+    "/api/v1/sources/{source_id}": Endpoints.patch_UpdateSource;
     "/api/v1/team/agents/{agent_id}": Endpoints.patch_UpdateTeamAgent;
   };
   delete: {

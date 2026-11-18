@@ -20,6 +20,7 @@ import { usePendingApprovalsCount } from '#/domain/approvals/hooks/use-approvals
 import { useActiveRuns } from '#/domain/dashboard/hooks/use-dashboard-data'
 import { UserMenuFeature } from '#/domain/identity/feature/account-features'
 import { useMe } from '#/domain/identity/hooks/use-me'
+import { useSource } from '#/domain/sources/hooks/use-sources'
 import { NewTaskDialog } from '#/domain/tasks/feature/new-task-dialog'
 import { useCards } from '#/domain/tasks/hooks/use-tasks'
 import { useMediaQuery } from '#/hooks/use-media-query'
@@ -32,6 +33,16 @@ import { resolveTheme, systemPrefersDark } from '#/lib/theme'
 export const Route = createFileRoute('/_app')({ component: AppLayout })
 
 const RAIL_STORAGE_KEY = 'capitainerie.rail-expanded'
+
+function sourceIdOf(pathname: string): string | undefined {
+	const [section, id] = pathname.split('/').filter(Boolean)
+	if (section !== 'sources' || !id || id === 'nouvelle') return undefined
+	try {
+		return decodeURIComponent(id)
+	} catch {
+		return id
+	}
+}
 
 function AppLayout() {
 	useRealtime()
@@ -46,6 +57,9 @@ function AppLayout() {
 	const liveCount = useActiveRuns().data?.items.length ?? 0
 	const organization = useMe().data?.organization.name
 	const pendingApprovals = usePendingApprovalsCount()
+	const sourceId = sourceIdOf(pathname)
+	const sourceName = useSource(sourceId ?? '', sourceId !== undefined).data
+		?.name
 	const badges = useMemo<RailBadges>(
 		() => (pendingApprovals > 0 ? { '/approvals': pendingApprovals } : {}),
 		[pendingApprovals],
@@ -62,8 +76,9 @@ function AppLayout() {
 		() => ({
 			task: (id) => cards?.find((t) => t.id === id)?.title,
 			agent: (id) => agents?.find((a) => a.id === id)?.name,
+			source: (id) => (id === sourceId ? sourceName : undefined),
 		}),
-		[cards, agents],
+		[cards, agents, sourceId, sourceName],
 	)
 	const { preference, setPreference } = useTheme()
 	const dark = resolveTheme(preference, systemPrefersDark()) === 'dark'

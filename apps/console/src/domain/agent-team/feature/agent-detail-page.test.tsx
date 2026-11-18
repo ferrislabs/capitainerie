@@ -6,6 +6,7 @@ import { renderAtPath } from '#/components/layout/test-router'
 import { AGENT_TABS } from '#/domain/agent-team/agent-tabs'
 import { AgentDetailPage } from '#/domain/agent-team/feature/agent-detail-page'
 import { skill } from '#/domain/skills/test-fixtures'
+import { source } from '#/domain/sources/test-fixtures'
 import { card } from '#/domain/tasks/test-fixtures'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
@@ -585,10 +586,40 @@ describe('agent detail page', () => {
 		})
 	})
 
-	it('sources: shows an honest empty state', async () => {
-		await open({ agentId: 'a-legal', tab: 'sources' }, {}, LEGAL)
-		expect(screen.getByText('Aucune source branchée')).toBeTruthy()
-		expect(screen.queryByRole('button', { name: 'Écouter' })).toBeNull()
+	it('sources: shows an empty state when no source targets the agent', async () => {
+		await open(
+			{ agentId: 'a-legal', tab: 'sources' },
+			{
+				'GET /api/v1/sources': {
+					items: [source('s-other', { default_agent_id: 'a-dev' })],
+				},
+			},
+			LEGAL,
+		)
+		expect(await screen.findByText('Aucune source branchée')).toBeTruthy()
+	})
+
+	it('sources: lists the sources whose default agent is this agent', async () => {
+		await open(
+			{ agentId: 'a-legal', tab: 'sources' },
+			{
+				'GET /api/v1/sources': {
+					items: [
+						source('s-dns', {
+							name: 'Sous-domaines',
+							default_agent_id: 'a-legal',
+							events_last_24h: 7,
+						}),
+						source('s-other', { name: 'Autre', default_agent_id: 'a-dev' }),
+					],
+				},
+			},
+			LEGAL,
+		)
+		const link = await screen.findByRole('link', { name: 'Sous-domaines' })
+		expect(link.getAttribute('href')).toBe('/sources/s-dns')
+		expect(screen.getByText('7 / 24 h')).toBeTruthy()
+		expect(screen.queryByRole('link', { name: 'Autre' })).toBeNull()
 	})
 
 	describe('delegation', () => {

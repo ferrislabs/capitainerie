@@ -1,7 +1,5 @@
-import type { DemoAgent } from '#/domain/demo'
-
 interface Props {
-	agent: Pick<DemoAgent, 'name' | 'hue'>
+	agent: { name: string; hue: number }
 	size?: number
 	decorative?: boolean
 }

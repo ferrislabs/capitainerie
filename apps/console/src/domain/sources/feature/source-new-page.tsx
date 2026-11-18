@@ -1,65 +1,80 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { DemoBanner } from '#/components/layout/demo-banner'
 import { Page } from '#/components/layout/page'
-import { addSource, demoStore, useDemoState } from '#/domain/demo'
+import { Button } from '#/components/ui/button'
+import { useSourceFormOptions } from '#/domain/sources/feature/use-form-options'
+import { useCreateSource } from '#/domain/sources/hooks/use-sources'
 import {
-	initialForm,
-	type SourceForm,
-	switchType,
-	toSource,
-	validateForm,
-} from '#/domain/sources/source-form'
+	createBody,
+	describeSourceError,
+	EMPTY_DRAFT,
+	type IssuedSource,
+	type SourceDraft,
+} from '#/domain/sources/model'
+import { IssuedWebhook } from '#/domain/sources/ui/issued-webhook'
 import { SourceFormView } from '#/domain/sources/ui/source-form-view'
 
-const DEFAULT_AGENT = 'veille-legale'
-
 export function SourceNewPage() {
-	const agents = useDemoState((s) => s.agents)
 	const navigate = useNavigate()
-	const [form, setForm] = useState<SourceForm>(() =>
-		initialForm(
-			agents.some((a) => a.id === DEFAULT_AGENT)
-				? DEFAULT_AGENT
-				: (agents[0]?.id ?? ''),
-		),
-	)
+	const { agents, projects } = useSourceFormOptions()
+	const create = useCreateSource()
 	const [error, setError] = useState<string | null>(null)
+	const [issued, setIssued] = useState<IssuedSource | null>(null)
 
-	function submit() {
-		const problem = validateForm(form)
-		setError(problem)
-		if (problem) return
-		const source = toSource(
-			form,
-			demoStore.state.sources.map((s) => s.id),
+	const submit = (draft: SourceDraft) => {
+		setError(null)
+		create.mutate(
+			{ body: createBody(draft) },
+			{
+				onSuccess: setIssued,
+				onError: (failure) => setError(describeSourceError(failure)),
+			},
 		)
-		addSource(source)
-		void navigate({
-			to: '/sources/$sourceId/{-$tab}',
-			params: { sourceId: source.id },
-		})
+	}
+
+	const openSource = () => {
+		if (issued)
+			void navigate({
+				to: '/sources/$sourceId/{-$tab}',
+				params: { sourceId: issued.source.id },
+			})
 	}
 
 	return (
 		<Page>
-			<DemoBanner />
-			<header>
+			<header className="mb-4">
 				<h1 className="m-0 text-xl leading-[1.2] font-semibold tracking-[-0.01em]">
 					Nouvelle source
 				</h1>
 				<span className="text-muted-foreground">
-					Choisis ce que l'agent écoute, puis qui reçoit le travail
+					Un webhook que ton outil appelle ; chaque événement devient une tâche
 				</span>
 			</header>
-			<SourceFormView
-				form={form}
-				agents={agents}
-				error={error}
-				onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-				onType={(type) => setForm((f) => switchType(f, type))}
-				onSubmit={submit}
-			/>
+			{issued ? (
+				<div className="grid max-w-[880px] gap-3">
+					<p className="m-0">Source « {issued.source.name} » créée.</p>
+					<IssuedWebhook issued={issued} />
+					<div className="flex gap-2">
+						<Button type="button" onClick={openSource}>
+							Ouvrir la source
+						</Button>
+						<Button asChild variant="outline">
+							<Link to="/sources">Retour aux sources</Link>
+						</Button>
+					</div>
+				</div>
+			) : (
+				<SourceFormView
+					mode="create"
+					initial={EMPTY_DRAFT}
+					agents={agents}
+					projects={projects}
+					pending={create.isPending}
+					error={error}
+					onSubmit={submit}
+					onCancel={() => void navigate({ to: '/sources' })}
+				/>
+			)}
 		</Page>
 	)
 }
