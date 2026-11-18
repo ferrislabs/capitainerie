@@ -54,6 +54,15 @@
   --signal-neutral-soft: #eceef2;
 
   --faint: #8f949d;
+
+  /* Graphes : palette catégorielle validée (clair), slots 1 à 6 puis « Autres ». */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-other: #8f949d;
   --violet: #6f55d8;
 
   --brand-from: #4fc36d;
@@ -104,6 +113,14 @@
   --signal-neutral-soft: #212327;
 
   --faint: #62666e;
+
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-other: #62666e;
   --violet: #9078f2;
 }
 
@@ -154,6 +171,13 @@
   --color-signal-neutral-soft: var(--signal-neutral-soft);
 
   --color-faint: var(--faint);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-other: var(--chart-other);
   --color-violet: var(--violet);
   --color-brand-from: var(--brand-from);
   --color-brand-to: var(--brand-to);

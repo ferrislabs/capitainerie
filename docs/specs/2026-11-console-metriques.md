@@ -22,8 +22,9 @@ Goal:
 | M4 | Id inconnu ou d'une autre organisation | 404, comme `project_id` | Liste vide : cache une erreur |
 | M5 | Entrée de menu | « Métriques », groupe Organisation, route `/metrics/{-$tab}` | Étendre Audit › Coûts |
 | M6 | Onglets | Projets, Agents, Tâches, Utilisateurs (un lien chacun) | Un seul tableau |
-| M7 | Période | Choix : 7 jours, 30 jours (défaut), mois en cours, dates libres. Envoyée en `from`/`to` UTC | Mois seul |
-| M8 | État des filtres et de la période | État local de la page, pas dans l'URL | Query string : suite possible |
+| M7 | Période | Calendrier de plage (deux mois, aperçu au survol) et préréglages : 7 jours, 30 jours (défaut), mois en cours. Envoyée en `from`/`to` UTC, fin incluse | Mois seul, champs date natifs |
+| M8 | État des filtres et de la période | Dans l'URL : `periode`, `du`, `au`, `agent`, `tache` (la valeur par défaut est omise) | État local |
+| M10 | Graphes | Coût par jour (barres ou cumul, période précédente en pointillé), part par ligne (anneau), courbes dans les tuiles, route `GET /api/v1/analytics/costs/days` | Bibliothèque de graphes |
 | M9 | Accès | `audit.read` : un 403 affiche « pas accès », comme Budgets | — |
 
 ## Invariants

@@ -400,6 +400,8 @@ export namespace Schemas {
   };
   export type CreateTranscriptionRequest = { file: string };
   export type CreatedConversationResponse = { id: ConversationId };
+  export type DaySpendResponse = { cost_micros: number; day: string; input_tokens: number; output_tokens: number };
+  export type DayCostsResponse = { from: string; rows: Array<DaySpendResponse>; to: string; total: SpentResponse };
   export type DecideApprovalRequest = { decision: ApprovalDecisionDto; note?: (string | null) | undefined };
   export type DecideApprovalResponse = ApprovalResponse & Partial<{ resume_error: string | null }>;
   export type DecisionResponse = {
@@ -973,6 +975,21 @@ export namespace Endpoints {
     };
     responses: {
       200: Schemas.AgentCostsResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+      422: Schemas.ApiErrorResponse;
+    };
+  };
+  export type get_ListDayCosts = {
+    method: "GET";
+    path: "/api/v1/analytics/costs/days";
+    requestFormat: "json";
+    parameters: {
+      query: Partial<{ from: string; to: string; agent_id: string; card_id: string }>;
+    };
+    responses: {
+      200: Schemas.DayCostsResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -2613,6 +2630,7 @@ export type EndpointByMethod = {
     "/api/v1/agents": Endpoints.get_ListAgents;
     "/api/v1/analytics/costs": Endpoints.get_GetCosts;
     "/api/v1/analytics/costs/agents": Endpoints.get_ListAgentCosts;
+    "/api/v1/analytics/costs/days": Endpoints.get_ListDayCosts;
     "/api/v1/analytics/costs/projects": Endpoints.get_ListProjectCosts;
     "/api/v1/analytics/costs/tasks": Endpoints.get_ListTaskCosts;
     "/api/v1/analytics/costs/users": Endpoints.get_ListUserCosts;
