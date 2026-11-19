@@ -2,10 +2,14 @@ use axum::{Extension, Json, extract::State, http::StatusCode};
 use axum_extra::routing::TypedPath;
 use capitainerie_common::CardId;
 use capitainerie_handlers::{ApiError, AppState, Caller};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::response::CommentResponse;
+use crate::{
+    auto_run::{AgentRunOutcome, Handoff, hand_off},
+    execute_card::CodeHostHandle,
+    response::CommentResponse,
+};
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/api/v1/cards/{card_id}/comments")]
@@ -19,6 +23,14 @@ pub struct CommentCardRequest {
     pub body: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PostedCommentResponse {
+    #[serde(flatten)]
+    pub comment: CommentResponse,
+    /// When the card has an agent: whether the reply started it again.
+    pub agent_run: Option<AgentRunOutcome>,
+}
+
 #[utoipa::path(
     post,
     path = "/api/v1/cards/{card_id}/comments",
@@ -27,7 +39,7 @@ pub struct CommentCardRequest {
     params(("card_id" = CardId, Path, description = "Card identifier")),
     request_body = CommentCardRequest,
     responses(
-        (status = 201, description = "The comment, signed by the caller", body = CommentResponse),
+        (status = 201, description = "The comment, signed by the caller; on a card with an agent, the agent starts again and reads the whole thread, and `agent_run` says whether it did", body = PostedCommentResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "An agent caller: agents comment through the MCP server", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
@@ -39,8 +51,9 @@ pub async fn handler(
     CommentCardPath { card_id }: CommentCardPath,
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
+    Extension(CodeHostHandle(github)): Extension<CodeHostHandle>,
     Json(request): Json<CommentCardRequest>,
-) -> Result<(StatusCode, Json<CommentResponse>), ApiError> {
+) -> Result<(StatusCode, Json<PostedCommentResponse>), ApiError> {
     let subject = caller.subject();
     if subject.actor.is_some() {
         return Err(ApiError::Forbidden(Some(
@@ -49,7 +62,14 @@ pub async fn handler(
     }
     let comment = state
         .usecase
-        .comment_card(subject, card_id, request.body, None)
+        .comment_card(subject.clone(), card_id, request.body, None)
         .await?;
-    Ok((StatusCode::CREATED, Json(comment.into())))
+    let agent_run = hand_off(&state, &github, subject, card_id, Handoff::Replied).await;
+    Ok((
+        StatusCode::CREATED,
+        Json(PostedCommentResponse {
+            comment: comment.into(),
+            agent_run,
+        }),
+    ))
 }

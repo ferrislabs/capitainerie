@@ -1575,3 +1575,60 @@ async fn a_paused_agent_is_not_started() {
         Err(AgentRunError::Refused(AgentRunRefusal::AgentPaused))
     ));
 }
+
+async fn runs_of_card(world: &World) -> Vec<(Uuid, String, String)> {
+    sqlx::query_as(
+        "SELECT id, status, initiated_by FROM runs WHERE card_id = $1 ORDER BY created_at",
+    )
+    .bind(world.card.id.0)
+    .fetch_all(&world.pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_reply_posted_during_the_run_starts_the_next_one() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    world
+        .usecase
+        .comment_card(
+            human(world.organization_id),
+            world.card.id,
+            "Ajoute aussi les montants".into(),
+            None,
+        )
+        .await
+        .unwrap();
+    let gateway = Gateway::default();
+    let script = script(vec![], "Voici la liste.");
+
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    let runs = runs_of_card(&world).await;
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].1, "succeeded");
+    assert_eq!((runs[1].1.as_str(), runs[1].2.as_str()), ("queued", USER));
+}
+
+#[tokio::test]
+async fn without_a_reply_the_agents_own_comment_starts_nothing() {
+    let oauth = OAuth::new(3600, true);
+    let Some(world) = world(Options::default(), &oauth).await else {
+        return;
+    };
+    let gateway = Gateway::default();
+    let script = script(vec![], "Voici la liste.");
+
+    pipeline(&world, &script, &oauth, &gateway)
+        .execute(world.run_id, None)
+        .await
+        .unwrap();
+
+    assert_eq!(runs_of_card(&world).await.len(), 1);
+}

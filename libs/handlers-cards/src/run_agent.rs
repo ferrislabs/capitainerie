@@ -141,7 +141,7 @@ pub async fn handler(
 
 /// Refuses what the agent and the organization lack before it asks GitHub
 /// whether the installation reaches the repository and which branch to use.
-async fn start_on_repository(
+pub(crate) async fn start_on_repository(
     state: &AppState,
     github: &GithubApps,
     subject: Subject,
