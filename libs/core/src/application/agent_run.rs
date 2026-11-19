@@ -1,4 +1,5 @@
 use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId};
+use capitainerie_events::card::{CardAuthor, CardMoved};
 use capitainerie_macros::transactional;
 use chrono::{SubsecRound, Utc};
 use serde_json::Value;
@@ -11,11 +12,12 @@ use crate::{
             ports::AgentTaskRepository,
         },
         approval::{
-            Approval, ApprovedCall, ToolGrant, ports::ApprovalRepository, service::ApprovalService,
+            Approval, ApprovalStatus, ApprovedCall, ToolGrant, ports::ApprovalRepository,
+            service::ApprovalService,
         },
         authorization::{AccessRequest, Action, Decision, ResourceKind, Subject, require},
         card::{
-            Card, CardComment,
+            Author, Card, CardComment, Column,
             ports::{CardCommentRepository, CardRepository},
             service::CardService,
         },
@@ -680,5 +682,66 @@ impl CapitainerieUseCase {
             step_repository.save(step).await?;
         }
         Ok(comment.id)
+    }
+}
+
+/// Where an agent task run stands, as the board shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskStage {
+    Started,
+    Succeeded,
+    Failed,
+}
+
+impl CapitainerieUseCase {
+    /// Moves the card of an agent task along with its run: in progress when
+    /// the run starts, done when it succeeds, back to todo when it fails. A run
+    /// that stops on a pending approval leaves the card in progress. The run lifecycle drives the move, not an actor's
+    /// choice, so the PDP is not asked; a card a human has settled, proposed
+    /// or moved elsewhere is left where it is.
+    #[transactional(card, approval, emitter)]
+    pub async fn track_task_card(
+        &self,
+        run: &Run,
+        card_id: CardId,
+        stage: TaskStage,
+    ) -> Result<(), CoreError> {
+        let (organization_id, run_id) = (run.organization_id, run.id);
+        let mut card_repository = card_repository;
+        let mut approval_repository = approval_repository;
+        let Some(mut card) = card_repository.find(organization_id, card_id).await? else {
+            return Ok(());
+        };
+        let waiting = stage == TaskStage::Succeeded
+            && approval_repository
+                .list(organization_id, Some(ApprovalStatus::Pending))
+                .await?
+                .iter()
+                .any(|approval| approval.run_id == Some(run_id));
+        let to = match (stage, card.column) {
+            _ if waiting => return Ok(()),
+            (TaskStage::Started, Column::Todo) => Column::InProgress,
+            (TaskStage::Succeeded, Column::Todo | Column::InProgress) => Column::Done,
+            (TaskStage::Failed, Column::InProgress) => Column::Todo,
+            _ => return Ok(()),
+        };
+        let from = card.column;
+        card.column = to;
+        card.touch(Utc::now());
+        card_repository.update(&card).await?;
+        let author = Author {
+            subject: run.initiated_by.clone(),
+            actor: None,
+        };
+        emitter.emit(&CardMoved {
+            card_id: card.id.0,
+            organization_id: organization_id.0,
+            from: from.as_str().to_owned(),
+            to: to.as_str().to_owned(),
+            version: card.version,
+            run_id: Some(run_id.0),
+            author: CardAuthor::from(&author),
+        })?;
+        Ok(())
     }
 }

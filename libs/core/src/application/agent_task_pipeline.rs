@@ -10,7 +10,7 @@ use tracing::Instrument;
 
 use super::{
     CapitainerieUseCase,
-    agent_run::AgentTaskSource,
+    agent_run::{AgentTaskSource, TaskStage},
     execute_pipeline::defang_mentions,
     execute_stream::truncate_chars,
     intervene_pipeline::{
@@ -252,6 +252,7 @@ impl<R: TaskRuntime, O: McpOAuth, G: McpGateway> AgentTaskPipeline<R, O, G> {
             return Ok(());
         };
         tracing::info!(%run_id, resumed = context.resumed, "agent task claimed");
+        self.track(&context, TaskStage::Started).await;
         let result = match self.run_task(&context).await {
             Ok(result) => result,
             Err(error) => {
@@ -262,11 +263,30 @@ impl<R: TaskRuntime, O: McpOAuth, G: McpGateway> AgentTaskPipeline<R, O, G> {
         self.usecase
             .finish_run(context.run.clone(), result.clone())
             .await?;
+        let stage = if result.is_ok() {
+            TaskStage::Succeeded
+        } else {
+            TaskStage::Failed
+        };
+        self.track(&context, stage).await;
         match result {
             Ok(()) => tracing::info!(%run_id, "agent task succeeded"),
             Err(error) => tracing::warn!(%run_id, %error, "agent task failed"),
         }
         Ok(())
+    }
+
+    /// Keeps the card's column in step with the run. The board is a view of
+    /// the run: a failed move is logged and never fails the run.
+    async fn track(&self, context: &AgentTaskContext, stage: TaskStage) {
+        let run = &context.run;
+        let moved = self
+            .usecase
+            .track_task_card(run, context.card_id, stage)
+            .await;
+        if let Err(error) = moved {
+            tracing::warn!(run_id = %run.id, %error, "the card did not follow the run");
+        }
     }
 
     async fn run_task(&self, context: &AgentTaskContext) -> Result<Result<(), String>, CoreError> {

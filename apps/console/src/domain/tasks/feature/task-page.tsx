@@ -1,23 +1,16 @@
 import { Link } from '@tanstack/react-router'
-import {
-	ClipboardList,
-	GitPullRequestDraft,
-	Layers,
-	PanelRight,
-	Send,
-} from 'lucide-react'
+import { ArrowUp, ClipboardList, Layers, PanelRight } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { useNotice } from '#/components/layout/notice'
 import { Page } from '#/components/layout/page'
-import { Markdown } from '#/components/markdown'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
+import { hueOf } from '#/domain/agent-team/agent-identity'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { TaskArtifactsPanel } from '#/domain/artifacts/feature/task-artifacts-panel'
-import { relativeAge } from '#/domain/dashboard/format'
 import { useMe } from '#/domain/identity/hooks/use-me'
 import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
 import { RunStatusPanel } from '#/domain/tasks/feature/run-status-panel'
@@ -36,12 +29,17 @@ import {
 	type TaskStatus,
 	toTask,
 } from '#/domain/tasks/model'
-import { pullRequestLink } from '#/domain/tasks/pull-request'
 import { canRunAgent, isActiveRun } from '#/domain/tasks/run-agent'
 import { taskPathId } from '#/domain/tasks/task-ids'
 import { STATUS_LABEL } from '#/domain/tasks/task-list'
 import { AgentAvatar } from '#/domain/tasks/ui/agent-chip'
 import { PropertiesPanel } from '#/domain/tasks/ui/properties-panel'
+import { StatusIcon } from '#/domain/tasks/ui/status-icon'
+import {
+	type Speaker,
+	Thread,
+	ThreadMessage,
+} from '#/domain/tasks/ui/task-thread'
 import { Toast } from '#/domain/tasks/ui/toast'
 import { cn } from '#/lib/utils'
 
@@ -117,29 +115,6 @@ function NotFound() {
 				}
 			/>
 		</Page>
-	)
-}
-
-const BUBBLE =
-	'max-w-[min(560px,90%)] self-end rounded-[12px_12px_3px_12px] bg-primary px-3 py-[9px] text-primary-foreground'
-
-/** Les liens d'un commentaire restent lisibles sur le fond de la bulle. */
-const BUBBLE_LINKS =
-	'[&_a]:text-inherit [&_a]:underline [&_a]:underline-offset-2 [&_a]:break-all'
-
-function PullRequestChip({ body }: { body: string }) {
-	const pr = pullRequestLink(body)
-	if (!pr) return null
-	return (
-		<a
-			href={pr.url}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-primary-foreground/15 px-2 py-1 text-[12px] font-medium no-underline! hover:bg-primary-foreground/25"
-		>
-			<GitPullRequestDraft aria-hidden="true" className="size-3.5" />
-			Ouvrir la pull request {pr.repository}#{pr.number}
-		</a>
 	)
 }
 
@@ -251,9 +226,6 @@ export function TaskPage({ pathId }: Props) {
 
 	return (
 		<>
-			<h1 className="sr-only">
-				{task.shortId} {task.title}
-			</h1>
 			{topbar
 				? createPortal(
 						<button
@@ -278,103 +250,142 @@ export function TaskPage({ pathId }: Props) {
 				)}
 			>
 				<section className="flex min-h-0 min-w-0 flex-col">
-					<div className="flex flex-1 flex-col gap-3.5 overflow-auto px-4 py-3.5">
-						{task.parentId ? (
-							<Banner
-								icon={Layers}
-								title={`Déléguée par ${parent ? agentOf(parent.agentId).name : 'un agent'}`}
-							>
-								Sous-tâche de{' '}
-								<Link
-									to="/tasks/$taskId"
-									params={{ taskId: taskPathId(task.parentId) }}
-									className="text-primary"
+					<div className="flex-1 overflow-auto">
+						<div className="mx-auto grid w-full max-w-[820px] gap-6 px-5 pt-8 pb-6 sm:px-8">
+							<header className="grid gap-2">
+								<div className="flex items-start gap-3">
+									<StatusIcon
+										status={task.status}
+										className="mt-[7px] size-[18px]"
+									/>
+									<h1 className="m-0 min-w-0 flex-1 text-[22px] leading-snug font-semibold tracking-[-0.01em] text-balance">
+										{task.title}
+									</h1>
+									<span className="mt-1.5 shrink-0 font-mono text-[13px] text-muted-foreground">
+										{task.shortId}
+									</span>
+								</div>
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-[30px] text-[13px] text-muted-foreground">
+									<span>{STATUS_LABEL[task.status]}</span>
+									{task.card.project ? (
+										<span>{task.card.project.name}</span>
+									) : null}
+									{task.agentId ? (
+										<span className="flex items-center gap-1.5">
+											<AgentAvatar hue={agent.hue} size={16} />
+											{agent.name}
+										</span>
+									) : null}
+								</div>
+							</header>
+							{task.parentId ? (
+								<Banner
+									icon={Layers}
+									title={`Déléguée par ${parent ? agentOf(parent.agentId).name : 'un agent'}`}
 								>
-									{parent?.shortId ?? task.parentId.slice(0, 8)}
-								</Link>
-								. Le résultat remonte à l'agent parent.
-							</Banner>
-						) : null}
-						<div className={BUBBLE}>
-							<p className="m-0 mb-1.5 font-medium last:mb-0">{task.title}</p>
-							{task.note ? (
-								<p className="m-0 mb-1.5 whitespace-pre-wrap last:mb-0">
-									{task.note}
-								</p>
+									Sous-tâche de{' '}
+									<Link
+										to="/tasks/$taskId"
+										params={{ taskId: taskPathId(task.parentId) }}
+										className="text-primary"
+									>
+										{parent?.shortId ?? task.parentId.slice(0, 8)}
+									</Link>
+									. Le résultat remonte à l'agent parent.
+								</Banner>
 							) : null}
-							<small className="mt-1 block text-right text-[0.83em] opacity-75">
-								{relativeAge(task.card.created_at)}
-							</small>
-						</div>
-						<SubtasksPanel task={task} tasks={tasks} onNotify={notify} />
-						<TaskArtifactsPanel cardId={task.id} />
-						{comments.length ? (
-							<ul aria-label="Commentaires" className="contents">
+							<SubtasksPanel task={task} tasks={tasks} onNotify={notify} />
+							<TaskArtifactsPanel cardId={task.id} />
+							<Thread>
+								{task.note ? (
+									<ThreadMessage
+										speaker={speakerOf(
+											{
+												author_subject: task.card.created_by_subject,
+												author_actor: task.card.created_by_agent
+													? `agent:${task.card.created_by_agent}`
+													: null,
+											},
+											team,
+											me,
+											agentOf,
+										)}
+										body={task.note}
+										at={task.card.created_at}
+										plain
+									/>
+								) : null}
 								{comments.map((c) => (
-									<li key={c.id} className={cn(BUBBLE, BUBBLE_LINKS)}>
-										<small className="mb-0.5 block text-[0.83em] opacity-75">
-											{commentAuthor(c, team, me)}
-										</small>
-										<Markdown source={c.body} />
-										<PullRequestChip body={c.body} />
-										<small className="mt-1 block text-right text-[0.83em] opacity-75">
-											{relativeAge(c.created_at)}
-										</small>
-									</li>
+									<ThreadMessage
+										key={c.id}
+										speaker={speakerOf(c, team, me, agentOf)}
+										body={c.body}
+										at={c.created_at}
+									/>
 								))}
-							</ul>
-						) : null}
+							</Thread>
+							{shownRun ? (
+								<RunStatusPanel
+									key={shownRun}
+									runId={shownRun}
+									onActiveChange={setRunActive}
+								/>
+							) : null}
+						</div>
 					</div>
-					{shownRun ? (
-						<div className="mx-4 mb-2.5">
-							<RunStatusPanel
-								key={shownRun}
-								runId={shownRun}
-								onActiveChange={setRunActive}
+					<div className="mx-auto w-full max-w-[820px] px-5 pb-5 sm:px-8">
+						{runnable ? (
+							<div className="mb-2.5 flex">
+								<Button onClick={() => setDialogOpen(true)} disabled={running}>
+									Exécuter avec {agent.name}
+								</Button>
+							</div>
+						) : null}
+						<form
+							onSubmit={send}
+							className="rounded-2xl border bg-card px-4 pt-3 pb-2.5 shadow-sm focus-within:border-[color-mix(in_srgb,var(--primary)_55%,var(--border))]"
+						>
+							<textarea
+								aria-label="Message"
+								placeholder="Écrire un commentaire…"
+								value={draft}
+								rows={2}
+								onChange={(event) => setDraft(event.target.value)}
+								onKeyDown={(event) => {
+									if (
+										event.key === 'Enter' &&
+										(event.metaKey || event.ctrlKey)
+									) {
+										send(event)
+									}
+								}}
+								className="block max-h-60 min-h-12 w-full resize-none border-0 bg-transparent p-0 text-[14.5px] outline-none field-sizing-content placeholder:text-muted-foreground"
 							/>
-						</div>
-					) : null}
-					{runnable ? (
-						<div className="mx-4 mb-2.5 flex">
-							<Button onClick={() => setDialogOpen(true)} disabled={running}>
-								Exécuter avec {agent.name}
-							</Button>
-						</div>
-					) : null}
-					<form
-						onSubmit={send}
-						className="mx-4 mb-3.5 rounded-[10px] border bg-card px-2.5 py-2 focus-within:border-primary"
-					>
-						<textarea
-							aria-label="Message"
-							placeholder="Écrire un commentaire…"
-							value={draft}
-							onChange={(event) => setDraft(event.target.value)}
-							className="block min-h-10 w-full resize-none p-0.5 border-0 bg-transparent outline-none placeholder:text-muted-foreground"
-						/>
-						<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-							{task.agentId ? (
-								<span className="flex min-w-0 items-center gap-1.5">
-									<AgentAvatar hue={agent.hue} size={16} />
-									{agent.name}
-								</span>
-							) : null}
-							{agent.model ? (
-								<>
-									<span className="text-faint">·</span>
-									<span>{agent.model}</span>
-								</>
-							) : null}
-							<button
-								type="submit"
-								aria-label="Envoyer"
-								disabled={comment.isPending}
-								className="ml-auto grid size-7 place-items-center rounded-full bg-foreground text-background"
-							>
-								<Send aria-hidden="true" className="size-4" />
-							</button>
-						</div>
-					</form>
+							<div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+								{task.agentId ? (
+									<span className="flex min-w-0 items-center gap-1.5">
+										<AgentAvatar hue={agent.hue} size={18} />
+										<span className="text-foreground">{agent.name}</span>
+									</span>
+								) : null}
+								{agent.model ? (
+									<>
+										<span className="text-faint">·</span>
+										<span>{agent.model}</span>
+									</>
+								) : null}
+								<button
+									type="submit"
+									aria-label="Envoyer"
+									title="Envoyer (⌘ Entrée)"
+									disabled={comment.isPending}
+									className="ml-auto grid size-8 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
+								>
+									<ArrowUp aria-hidden="true" className="size-4" />
+								</button>
+							</div>
+						</form>
+					</div>
 				</section>
 				{showProps ? (
 					<PropertiesPanel
@@ -416,9 +427,9 @@ export function TaskPage({ pathId }: Props) {
 	)
 }
 
-function commentAuthor(
+function speakerOf(
 	comment: { author_actor?: string | null; author_subject: string },
-	team: ReadonlyArray<{ slug: string; name: string }> | undefined,
+	team: ReadonlyArray<{ id: string; slug: string }> | undefined,
 	me:
 		| {
 				subject: string
@@ -426,15 +437,25 @@ function commentAuthor(
 				username?: string | null
 		  }
 		| undefined,
-): string {
+	agentOf: (id: string | null) => { name: string; hue: number },
+): Speaker {
 	const actor = comment.author_actor
 	if (actor?.startsWith('agent:')) {
 		const slug = actor.slice('agent:'.length)
-		return team?.find((a) => a.slug === slug)?.name ?? slug
+		const member = team?.find((a) => a.slug === slug)
+		if (member) {
+			const shown = agentOf(member.id)
+			return { kind: 'agent', name: shown.name, hue: shown.hue }
+		}
+		return { kind: 'agent', name: slug, hue: hueOf(slug) }
 	}
-	if (actor) return actor
+	if (actor) return { kind: 'human', name: actor, mine: false }
 	if (me && comment.author_subject === me.subject) {
-		return me.display_name || me.username || 'Moi'
+		return {
+			kind: 'human',
+			name: me.display_name || me.username || 'Moi',
+			mine: true,
+		}
 	}
-	return 'Membre'
+	return { kind: 'human', name: 'Membre', mine: false }
 }
