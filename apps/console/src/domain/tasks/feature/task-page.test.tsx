@@ -72,9 +72,9 @@ describe('TaskPage', () => {
 	it('renders the card, its comments, properties and sub-tasks', async () => {
 		mockApi(BASE)
 		await open(ROOT)
-		expect(
-			(await screen.findByRole('heading', { level: 1 })).textContent,
-		).toBe('Tâche racine')
+		expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe(
+			'Tâche racine',
+		)
 		expect(screen.getAllByText('11111111').length).toBeGreaterThan(0)
 		expect(screen.getByText('Contexte détaillé')).toBeTruthy()
 		expect(screen.getByText('Premier commentaire')).toBeTruthy()
@@ -278,6 +278,87 @@ describe('TaskPage', () => {
 			).toEqual({ body: 'Bonjour' }),
 		)
 		await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(''))
+	})
+
+	it('a reply starts the agent and shows it working', async () => {
+		const RUN = '99999999-eeee-4000-8000-000000000009'
+		mockApi({
+			...BASE,
+			[`POST /api/v1/cards/${ROOT}/comments`]: {
+				status: 201,
+				body: {
+					id: 'cm2',
+					author_subject: 'user-1',
+					body: 'Ajoute les montants',
+					created_at: new Date().toISOString(),
+					agent_run: { run_id: RUN },
+				},
+			},
+			[`GET /api/v1/runs/${RUN}`]: {
+				id: RUN,
+				status: 'running',
+				created_at: new Date().toISOString(),
+				initiated_by: 'user-1',
+				pipeline: [],
+			},
+			[`GET /api/v1/runs/${RUN}/timeline`]: {
+				run: { id: RUN, status: 'running' },
+				decisions: [],
+				totals: { cost_micros: 0, input_tokens: 0, output_tokens: 0 },
+				steps: [
+					{
+						seq: 0,
+						tool_calls: [
+							{
+								tool: 'mestier__list_projects',
+								summary: 'ok',
+								succeeded: true,
+								latency_ms: 1,
+							},
+						],
+					},
+				],
+			},
+		})
+		await open(ROOT)
+		const field = await screen.findByRole('textbox', { name: 'Message' })
+		expect((field as HTMLTextAreaElement).placeholder).toMatch(/^Répondre à/)
+		fireEvent.change(field, { target: { value: 'Ajoute les montants' } })
+		fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
+		const panel = await screen.findByRole('region', {
+			name: "Exécution de l'agent",
+		})
+		expect(await within(panel).findByText('En cours')).toBeTruthy()
+		expect(
+			await within(panel).findByText(/mestier__list_projects/),
+		).toBeTruthy()
+	})
+
+	it('says the agent is busy when a reply lands during a run', async () => {
+		mockApi({
+			...BASE,
+			[`POST /api/v1/cards/${ROOT}/comments`]: {
+				status: 201,
+				body: {
+					id: 'cm2',
+					author_subject: 'user-1',
+					body: 'Et aussi',
+					created_at: new Date().toISOString(),
+					agent_run: {
+						skipped: 'agent_busy',
+						message: "L'agent travaille déjà sur cette tâche.",
+					},
+				},
+			},
+		})
+		await open(ROOT)
+		fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
+			target: { value: 'Et aussi' },
+		})
+		fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
+		expect(
+			await screen.findByText("L'agent travaille déjà sur cette tâche."),
+		).toBeTruthy()
 	})
 
 	it('delegates a sub-task to a sub-agent as a child card', async () => {

@@ -55,7 +55,7 @@ const open = () =>
 	renderAtPath(withQueryClient(<TaskPage pathId={ID} />), `/tasks/${ID}`, EXTRA)
 
 const launch = async () => {
-	fireEvent.click(await screen.findByRole('button', { name: /Exécuter avec/ }))
+	fireEvent.click(await screen.findByRole('button', { name: /Relancer/ }))
 	fireEvent.click(await screen.findByRole('button', { name: 'Confirmer' }))
 }
 
@@ -64,14 +64,14 @@ describe('run agent', () => {
 		mockApi(base(detail({ assignee_agent_id: undefined })))
 		await open()
 		await screen.findByRole('heading', { level: 1 })
-		expect(screen.queryByRole('button', { name: /Exécuter avec/ })).toBeNull()
+		expect(screen.queryByRole('button', { name: /Relancer/ })).toBeNull()
 	})
 
 	it('hides the action for a done card', async () => {
 		mockApi(base(detail({ column: 'done' })))
 		await open()
 		await screen.findByRole('heading', { level: 1 })
-		expect(screen.queryByRole('button', { name: /Exécuter avec/ })).toBeNull()
+		expect(screen.queryByRole('button', { name: /Relancer/ })).toBeNull()
 	})
 
 	it('opens the dialog with writes off and posts the body', async () => {
@@ -81,9 +81,7 @@ describe('run agent', () => {
 			[`GET /api/v1/runs/${RUN}`]: run('running'),
 		})
 		await open()
-		fireEvent.click(
-			await screen.findByRole('button', { name: /Exécuter avec/ }),
-		)
+		fireEvent.click(await screen.findByRole('button', { name: /Relancer/ }))
 		const box = await screen.findByRole('checkbox', {
 			name: /Autoriser les écritures/,
 		})
@@ -97,7 +95,7 @@ describe('run agent', () => {
 			expect(
 				(
 					screen.getByRole('button', {
-						name: /Exécuter avec/,
+						name: /Relancer/,
 					}) as HTMLButtonElement
 				).disabled,
 			).toBe(true),
@@ -244,9 +242,7 @@ describe('run agent', () => {
 
 		const openDialog = async () => {
 			await open()
-			fireEvent.click(
-				await screen.findByRole('button', { name: /Exécuter avec/ }),
-			)
+			fireEvent.click(await screen.findByRole('button', { name: /Relancer/ }))
 			return screen.findByRole('dialog')
 		}
 

@@ -25,13 +25,19 @@ export function useRunPolling(runId: string | null) {
 	})
 }
 
-export function useRunTimeline(runId: string | null, enabled: boolean) {
+/** `live` refetches while the run goes, to show the tool it is calling. */
+export function useRunTimeline(
+	runId: string | null,
+	enabled: boolean,
+	live = false,
+) {
 	const accessToken = useAccessToken()
 	return useQuery({
 		...tanstackApi.get('/api/v1/runs/{run_id}/timeline', {
 			path: { run_id: runId ?? '' },
 		}).queryOptions,
 		enabled: Boolean(accessToken) && runId !== null && enabled,
+		refetchInterval: live ? RUN_POLL_MS : false,
 	})
 }
 

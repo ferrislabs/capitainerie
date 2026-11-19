@@ -86,6 +86,7 @@ export namespace Schemas {
     output_tokens: number;
     runs: number;
   };
+  export type AgentRunOutcome = Partial<{ message: string | null; run_id: null | RunId; skipped: string | null }>;
   export type AgentRunStatusDto = "queued" | "running" | "succeeded" | "failed" | "cancelled";
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type ApprovalDecisionDto = "approve" | "reject";
@@ -319,6 +320,7 @@ export namespace Schemas {
     parent_id?: (null | CardId) | undefined;
     priority?: (null | PriorityDto) | undefined;
     project_id?: (null | ProjectId) | undefined;
+    repository?: (string | null) | undefined;
     title: string;
   };
   export type CreateClientRequest = {
@@ -400,6 +402,7 @@ export namespace Schemas {
     slug: string;
   };
   export type CreateTranscriptionRequest = { file: string };
+  export type CreatedCardResponse = CardResponse & Partial<{ agent_run: null | AgentRunOutcome }>;
   export type CreatedConversationResponse = { id: ConversationId };
   export type DaySpendResponse = { cost_micros: number; day: string; input_tokens: number; output_tokens: number };
   export type DayCostsResponse = { from: string; rows: Array<DaySpendResponse>; to: string; total: SpentResponse };
@@ -683,6 +686,8 @@ export namespace Schemas {
     project_id?: (null | ProjectId) | undefined;
     title?: (string | null) | undefined;
   };
+  export type PatchedCardResponse = CardResponse & Partial<{ agent_run: null | AgentRunOutcome }>;
+  export type PostedCommentResponse = CommentResponse & Partial<{ agent_run: null | AgentRunOutcome }>;
   export type ProjectSpendResponse = {
     agents: Array<AgentSpendResponse>;
     cost_micros: number;
@@ -1202,7 +1207,7 @@ export namespace Endpoints {
       body: Schemas.CreateCardRequest;
     };
     responses: {
-      201: Schemas.CardResponse;
+      201: Schemas.CreatedCardResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
@@ -1227,7 +1232,7 @@ export namespace Endpoints {
       body: Schemas.PatchCardRequest;
     };
     responses: {
-      200: Schemas.CardResponse;
+      200: Schemas.PatchedCardResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;
@@ -1263,7 +1268,7 @@ export namespace Endpoints {
       body: Schemas.CommentCardRequest;
     };
     responses: {
-      201: Schemas.CommentResponse;
+      201: Schemas.PostedCommentResponse;
       401: Schemas.ApiErrorResponse;
       403: Schemas.ApiErrorResponse;
       404: Schemas.ApiErrorResponse;

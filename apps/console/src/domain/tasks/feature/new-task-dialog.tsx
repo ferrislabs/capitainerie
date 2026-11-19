@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from '#/components/ui/dialog'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
 import { useProjects } from '#/domain/projects/hooks/use-projects'
 import { MAX_SUBTASK_DEPTH } from '#/domain/tasks/delegation'
+import { rememberHandoff } from '#/domain/tasks/handoff'
 import { useCards, useCreateCard } from '#/domain/tasks/hooks/use-tasks'
 import { ancestorCount, toTask } from '#/domain/tasks/model'
 import { shortTaskId, taskPathId } from '#/domain/tasks/task-ids'
@@ -54,6 +55,7 @@ export function NewTaskDialog({
 	const [projectId, setProjectId] = useState(NONE)
 	const [priority, setPriority] = useState<Schemas.PriorityDto>('normal')
 	const [parentId, setParentId] = useState(NONE)
+	const [repository, setRepository] = useState(NONE)
 	const [error, setError] = useState<string | null>(null)
 	const parents = useMemo(() => {
 		const tasks = (cards ?? []).map((card) => toTask(card))
@@ -65,6 +67,11 @@ export function NewTaskDialog({
 		)
 	}, [cards])
 
+	const agent = agents.find((a) => a.id === agentId)
+	const repositories =
+		agent && agent.connector_grants.length === 0 ? agent.repository_grants : []
+	const choosesRepository = repositories.length > 1
+
 	const close = () => {
 		setTitle('')
 		setDescription('')
@@ -72,6 +79,7 @@ export function NewTaskDialog({
 		setProjectId(NONE)
 		setPriority('normal')
 		setParentId(NONE)
+		setRepository(NONE)
 		setError(null)
 		create.reset()
 		onOpenChange(false)
@@ -93,10 +101,12 @@ export function NewTaskDialog({
 					assignee_agent_id: agentId || null,
 					project_id: projectId || null,
 					parent_id: parentId || null,
+					repository: (choosesRepository && repository) || null,
 				},
 			},
 			{
 				onSuccess: (card) => {
+					rememberHandoff(card.id, card.agent_run)
 					close()
 					void navigate({
 						to: '/tasks/$taskId',
@@ -164,7 +174,10 @@ export function NewTaskDialog({
 								<select
 									id="nt-agent"
 									value={agentId}
-									onChange={(event) => setAgentId(event.target.value)}
+									onChange={(event) => {
+										setAgentId(event.target.value)
+										setRepository(NONE)
+									}}
 									className={CONTROL}
 								>
 									{' '}
@@ -237,6 +250,33 @@ export function NewTaskDialog({
 								</select>
 							</label>
 						</div>
+						{choosesRepository ? (
+							<label
+								htmlFor="nt-repository"
+								className="grid gap-1 text-xs text-muted-foreground"
+							>
+								Dépôt
+								<select
+									id="nt-repository"
+									value={repository}
+									onChange={(event) => setRepository(event.target.value)}
+									className={CONTROL}
+								>
+									<option value={NONE}>Choisir plus tard</option>
+									{repositories.map((r) => (
+										<option key={r} value={r}>
+											{r}
+										</option>
+									))}
+								</select>
+							</label>
+						) : null}
+						{agent ? (
+							<p className="m-0 text-xs text-muted-foreground">
+								{agent.name} commence dès la création. Chaque écriture te sera
+								demandée en approbation.
+							</p>
+						) : null}
 						{create.isError ? (
 							<p role="alert" className="text-[13px] text-signal-danger">
 								{createError(create.error)}
@@ -247,7 +287,7 @@ export function NewTaskDialog({
 								Annuler
 							</Button>
 							<Button type="submit" disabled={create.isPending}>
-								Créer la tâche
+								{agent ? 'Créer et lancer' : 'Créer la tâche'}
 							</Button>
 						</div>
 					</div>
