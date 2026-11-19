@@ -13,7 +13,11 @@ use capitainerie_core::{
         agent_task::{AgentRunError, AgentRunRefusal, ports::TaskRuntime},
         approval::Verdict,
         authorization::Subject,
-        card::{Card, edit::EditCard, service::CreateCard},
+        card::{
+            Card, Column,
+            edit::EditCard,
+            service::{CreateCard, MoveCard},
+        },
         client::links::Change,
         conversation::ToolRecord,
         crew::service::UpdateAgent,
@@ -361,6 +365,18 @@ async fn world(options: Options, oauth: &OAuth) -> Option<World> {
         .edit_card(human(organization_id), card.id, edit)
         .await
         .unwrap();
+    let card = usecase
+        .move_card(
+            human(organization_id),
+            card.id,
+            MoveCard {
+                to: Column::Todo,
+                expected_version: card.version,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
     if !options.without_own_provider {
         usecase
             .put_user_provider(own_provider(organization_id))
@@ -454,6 +470,14 @@ async fn run_row(world: &World) -> (String, Option<String>) {
         .unwrap()
 }
 
+async fn column(world: &World) -> String {
+    sqlx::query_scalar("SELECT \"column\" FROM cards WHERE id = $1")
+        .bind(world.card.id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap()
+}
+
 async fn comments(world: &World) -> Vec<(String, Option<String>, String)> {
     sqlx::query_as(
         "SELECT author_subject, author_actor, body FROM card_comments WHERE card_id = $1 ORDER BY created_at",
@@ -505,6 +529,7 @@ async fn a_read_only_run_calls_the_connector_with_the_users_token_and_comments_t
         .unwrap();
 
     assert_eq!(run_row(&world).await, ("succeeded".into(), None));
+    assert_eq!(column(&world).await, "done");
     let calls = gateway.calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].0, "https://demo.mestier.fr/mcp");
@@ -575,6 +600,7 @@ async fn a_write_is_refused_and_an_approval_requested_when_writes_are_not_allowe
     assert!(answers[0].text.starts_with("Refused"));
     assert!(answers[0].text.contains("approval request"));
     assert_eq!(run_row(&world).await.0, "succeeded");
+    assert_eq!(column(&world).await, "in_progress");
     let (_, _, _, output) = step(&world).await;
     assert_eq!(output["tool_calls"][0]["succeeded"], false);
     assert_eq!(
@@ -1120,6 +1146,7 @@ async fn a_failed_run_files_no_artifact() {
         .unwrap();
 
     assert_eq!(run_row(&world).await.0, "failed");
+    assert_eq!(column(&world).await, "todo");
     assert!(artifacts(&world).await.is_empty());
 }
 

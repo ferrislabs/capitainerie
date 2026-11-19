@@ -74,7 +74,8 @@ describe('TaskPage', () => {
 		await open(ROOT)
 		expect(
 			(await screen.findByRole('heading', { level: 1 })).textContent,
-		).toContain('11111111')
+		).toBe('Tâche racine')
+		expect(screen.getAllByText('11111111').length).toBeGreaterThan(0)
 		expect(screen.getByText('Contexte détaillé')).toBeTruthy()
 		expect(screen.getByText('Premier commentaire')).toBeTruthy()
 		expect(screen.getByText('Nathaël')).toBeTruthy()
