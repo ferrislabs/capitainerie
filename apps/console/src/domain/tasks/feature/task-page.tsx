@@ -1,6 +1,18 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowUp, ClipboardList, Layers, PanelRight } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import {
+	ArrowUp,
+	ClipboardList,
+	Layers,
+	PanelRight,
+	RotateCcw,
+} from 'lucide-react'
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { EmptyState } from '#/components/layout/empty-state'
 import { InlineAlert } from '#/components/layout/inline-alert'
@@ -16,6 +28,11 @@ import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
 import { RunStatusPanel } from '#/domain/tasks/feature/run-status-panel'
 import { SubtasksPanel } from '#/domain/tasks/feature/subtasks-panel'
 import { useAgentOf } from '#/domain/tasks/feature/use-agent-of'
+import {
+	type AgentRunOutcome,
+	handoffNotice,
+	takeHandoff,
+} from '#/domain/tasks/handoff'
 import {
 	useCard,
 	useCards,
@@ -140,6 +157,22 @@ export function TaskPage({ pathId }: Props) {
 		[cards.data],
 	)
 
+	const adopt = useCallback(
+		(outcome: AgentRunOutcome | null | undefined) => {
+			if (outcome?.run_id) {
+				setRunId(outcome.run_id)
+				setRunActive(true)
+			}
+			const notice = handoffNotice(outcome)
+			if (notice) notify(notice)
+		},
+		[notify],
+	)
+
+	useEffect(() => {
+		adopt(takeHandoff(id))
+	}, [id, adopt])
+
 	if (detail.isPending) {
 		return (
 			<Page>
@@ -182,7 +215,10 @@ export function TaskPage({ pathId }: Props) {
 		comment.mutate(
 			{ path: { card_id: task.id }, body: { body } },
 			{
-				onSuccess: () => setDraft(''),
+				onSuccess: (posted) => {
+					setDraft('')
+					adopt(posted.agent_run)
+				},
 				onError: () => notify("Le commentaire n'a pas pu être envoyé"),
 			},
 		)
@@ -214,12 +250,14 @@ export function TaskPage({ pathId }: Props) {
 				body: { assignee_agent_id: agentId, expected_version: task.version },
 			},
 			{
-				onSuccess: () =>
+				onSuccess: (patched) => {
 					notify(
 						agentId
 							? `Assignée à ${agentOf(agentId).name}`
 							: 'Tâche désassignée',
-					),
+					)
+					adopt(patched.agent_run)
+				},
 				onError: conflictOr("Le changement d'assignation a échoué"),
 			},
 		)
@@ -264,6 +302,18 @@ export function TaskPage({ pathId }: Props) {
 									<span className="mt-1.5 shrink-0 font-mono text-[13px] text-muted-foreground">
 										{task.shortId}
 									</span>
+									{runnable ? (
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => setDialogOpen(true)}
+											disabled={running}
+											className="shrink-0"
+										>
+											<RotateCcw aria-hidden="true" className="size-3.5" />
+											Relancer…
+										</Button>
+									) : null}
 								</div>
 								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-[30px] text-[13px] text-muted-foreground">
 									<span>{STATUS_LABEL[task.status]}</span>
@@ -328,26 +378,25 @@ export function TaskPage({ pathId }: Props) {
 								<RunStatusPanel
 									key={shownRun}
 									runId={shownRun}
+									agentName={agent.name}
+									agentHue={agent.hue}
 									onActiveChange={setRunActive}
 								/>
 							) : null}
 						</div>
 					</div>
 					<div className="mx-auto w-full max-w-[820px] px-5 pb-5 sm:px-8">
-						{runnable ? (
-							<div className="mb-2.5 flex">
-								<Button onClick={() => setDialogOpen(true)} disabled={running}>
-									Exécuter avec {agent.name}
-								</Button>
-							</div>
-						) : null}
 						<form
 							onSubmit={send}
 							className="rounded-2xl border bg-card px-4 pt-3 pb-2.5 shadow-sm focus-within:border-[color-mix(in_srgb,var(--primary)_55%,var(--border))]"
 						>
 							<textarea
 								aria-label="Message"
-								placeholder="Écrire un commentaire…"
+								placeholder={
+									task.agentId
+										? `Répondre à ${agent.name}… il reprend avec tout le fil`
+										: 'Écrire un commentaire…'
+								}
 								value={draft}
 								rows={2}
 								onChange={(event) => setDraft(event.target.value)}

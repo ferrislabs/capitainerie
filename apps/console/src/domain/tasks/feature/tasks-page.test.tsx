@@ -6,6 +6,7 @@ import type { TasksSearch } from '#/domain/tasks/task-search'
 import {
 	AGENT_LEAD,
 	AGENTS_ROUTE,
+	agent,
 	card,
 	jsonBody,
 } from '#/domain/tasks/test-fixtures'
@@ -232,7 +233,8 @@ describe('TasksPage', () => {
 		fireEvent.change(screen.getByLabelText('Tâche parente'), {
 			target: { value: ID_B },
 		})
-		fireEvent.click(screen.getByRole('button', { name: 'Créer la tâche' }))
+		expect(screen.getByText(/commence dès la création/)).toBeTruthy()
+		fireEvent.click(screen.getByRole('button', { name: 'Créer et lancer' }))
 		await waitFor(() =>
 			expect(jsonBody(fetchMock, 'POST', '/api/v1/cards')).toEqual({
 				title: 'Ma tâche',
@@ -241,12 +243,54 @@ describe('TasksPage', () => {
 				assignee_agent_id: AGENT_LEAD,
 				project_id: 'p1',
 				parent_id: ID_B,
+				repository: null,
 			}),
 		)
 		await waitFor(() =>
 			expect(
-				screen.queryByRole('button', { name: 'Créer la tâche' }),
+				screen.queryByRole('button', { name: 'Créer et lancer' }),
 			).toBeNull(),
+		)
+	})
+
+	it('asks for the repository when the agent has several and no connector', async () => {
+		const fetchMock = mockApi({
+			...BASE,
+			'GET /api/v1/team/agents': {
+				items: [
+					agent(AGENT_LEAD, 'Auditeur', {
+						repository_grants: ['acme/web', 'acme/api'],
+					}),
+				],
+			},
+			'POST /api/v1/cards': {
+				status: 201,
+				body: card('44444444-dddd-4000-8000-000000000004'),
+			},
+		})
+		await render()
+		fireEvent.click(
+			await screen.findByRole('button', { name: 'Nouvelle tâche' }),
+		)
+		fireEvent.change(await screen.findByLabelText('Titre'), {
+			target: { value: 'Auditer' },
+		})
+		await waitFor(() =>
+			expect(screen.getByRole('option', { name: 'Auditeur' })).toBeTruthy(),
+		)
+		expect(screen.queryByLabelText('Dépôt')).toBeNull()
+		fireEvent.change(screen.getByLabelText('Assigner à'), {
+			target: { value: AGENT_LEAD },
+		})
+		fireEvent.change(screen.getByLabelText('Dépôt'), {
+			target: { value: 'acme/api' },
+		})
+		fireEvent.click(screen.getByRole('button', { name: 'Créer et lancer' }))
+		await waitFor(() =>
+			expect(jsonBody(fetchMock, 'POST', '/api/v1/cards')).toMatchObject({
+				assignee_agent_id: AGENT_LEAD,
+				repository: 'acme/api',
+			}),
 		)
 	})
 
