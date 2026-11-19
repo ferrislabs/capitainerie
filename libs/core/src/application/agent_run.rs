@@ -695,7 +695,8 @@ pub enum TaskStage {
 
 impl CapitainerieUseCase {
     /// Moves the card of an agent task along with its run: in progress when
-    /// the run starts, done when it succeeds, back to todo when it fails. A run
+    /// the run starts (a done card reopens: someone replied), done when it
+    /// succeeds, back to todo when it fails. A run
     /// that stops on a pending approval leaves the card in progress. The run lifecycle drives the move, not an actor's
     /// choice, so the PDP is not asked; a card a human has settled, proposed
     /// or moved elsewhere is left where it is.
@@ -720,7 +721,7 @@ impl CapitainerieUseCase {
                 .any(|approval| approval.run_id == Some(run_id));
         let to = match (stage, card.column) {
             _ if waiting => return Ok(()),
-            (TaskStage::Started, Column::Todo) => Column::InProgress,
+            (TaskStage::Started, Column::Todo | Column::Done) => Column::InProgress,
             (TaskStage::Succeeded, Column::Todo | Column::InProgress) => Column::Done,
             (TaskStage::Failed, Column::InProgress) => Column::Todo,
             _ => return Ok(()),
@@ -743,5 +744,66 @@ impl CapitainerieUseCase {
             author: CardAuthor::from(&author),
         })?;
         Ok(())
+    }
+}
+
+impl CapitainerieUseCase {
+    /// The person who answered on the card while `run` was going, the latest
+    /// one, with the card's version: their reply has not been read by an agent
+    /// yet. Agent comments never count, so an agent never relaunches itself.
+    #[transactional(card, card_comment)]
+    async fn unread_reply(
+        &self,
+        run: &Run,
+        card_id: CardId,
+    ) -> Result<Option<(Subject, i32)>, CoreError> {
+        let mut card_repository = card_repository;
+        let mut card_comment_repository = card_comment_repository;
+        let Some(card) = card_repository.get(run.organization_id, card_id).await? else {
+            return Ok(None);
+        };
+        if matches!(card.column, Column::Proposed | Column::Rejected) {
+            return Ok(None);
+        }
+        let comments = card_comment_repository
+            .list(run.organization_id, card_id)
+            .await?;
+        Ok(comments
+            .into_iter()
+            .rev()
+            .find(|comment| comment.author.actor.is_none() && comment.created_at > run.created_at)
+            .map(|comment| {
+                (
+                    Subject {
+                        id: comment.author.subject,
+                        organization_id: run.organization_id,
+                        actor: None,
+                        is_admin: false,
+                    },
+                    card.version,
+                )
+            }))
+    }
+
+    /// Starts the card's agent again when someone replied while `run` was
+    /// going: the reply would otherwise wait for a click. The new run reads
+    /// the whole thread, the reply included, as the person who wrote it.
+    pub async fn relaunch_on_reply(
+        &self,
+        run: &Run,
+        card_id: CardId,
+    ) -> Result<Option<StartedAgentRun>, AgentRunError> {
+        let Some((subject, version)) = self.unread_reply(run, card_id).await? else {
+            return Ok(None);
+        };
+        let command = StartAgentRun {
+            expected_version: version,
+            allow_writes: false,
+        };
+        match self.start_agent_run(subject, card_id, command).await {
+            Ok(started) => Ok(Some(started)),
+            Err(AgentRunError::Core(CoreError::Conflict(_))) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 }

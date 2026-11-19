@@ -269,6 +269,7 @@ impl<R: TaskRuntime, O: McpOAuth, G: McpGateway> AgentTaskPipeline<R, O, G> {
             TaskStage::Failed
         };
         self.track(&context, stage).await;
+        self.relaunch(&context).await;
         match result {
             Ok(()) => tracing::info!(%run_id, "agent task succeeded"),
             Err(error) => tracing::warn!(%run_id, %error, "agent task failed"),
@@ -286,6 +287,21 @@ impl<R: TaskRuntime, O: McpOAuth, G: McpGateway> AgentTaskPipeline<R, O, G> {
             .await;
         if let Err(error) = moved {
             tracing::warn!(run_id = %run.id, %error, "the card did not follow the run");
+        }
+    }
+
+    /// A reply posted while the run was going starts the next one. A refused
+    /// relaunch is logged: the reply stays on the card for a later run.
+    async fn relaunch(&self, context: &AgentTaskContext) {
+        let run = &context.run;
+        match self.usecase.relaunch_on_reply(run, context.card_id).await {
+            Ok(Some(started)) => {
+                tracing::info!(run_id = %run.id, next = %started.run_id, "relaunched on a reply");
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(run_id = %run.id, %error, "a reply did not relaunch the agent");
+            }
         }
     }
 

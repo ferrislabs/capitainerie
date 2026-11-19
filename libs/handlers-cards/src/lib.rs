@@ -1,3 +1,4 @@
+pub mod auto_run;
 pub mod comment_card;
 pub mod create_card;
 pub mod execute_card;

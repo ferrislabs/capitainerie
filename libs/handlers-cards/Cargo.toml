@@ -15,6 +15,7 @@ capitainerie-handlers.workspace = true
 capitainerie-handlers-runs.workspace = true
 chrono.workspace = true
 serde.workspace = true
+tracing.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]

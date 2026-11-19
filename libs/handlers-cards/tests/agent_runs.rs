@@ -13,7 +13,10 @@ use capitainerie_core::{
         agent::SecretToken,
         authorization::Subject,
         card::edit::EditCard,
-        card::{Card, service::CreateCard},
+        card::{
+            Card, Column,
+            service::{CreateCard, MoveCard},
+        },
         client::links::Change,
         crew::{
             CrewAgent,
@@ -598,4 +601,202 @@ async fn without_a_provider_of_the_callers_or_the_organizations_the_run_is_a_409
     let accepted = fixture.run(card.id, body(&card)).await;
     assert_eq!(accepted.status(), 202);
     assert_eq!(fixture.runs(card.id).await, 1);
+}
+
+impl Fixture {
+    async fn post(&self, path: &str, body: Value) -> (u16, Value) {
+        let response = reqwest::Client::new()
+            .post(format!("{}{path}", self.base))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        (response.status().as_u16(), response.json().await.unwrap())
+    }
+
+    async fn agent_with_repositories(&self, slug: &str, repositories: &[&str]) -> CrewAgent {
+        self.usecase
+            .create_crew_agent(
+                self.subject(),
+                CreateAgent {
+                    slug: slug.into(),
+                    name: slug.into(),
+                    role: String::new(),
+                    description: String::new(),
+                    model: String::new(),
+                    hue: 0,
+                    reports_to: None,
+                    instructions: "Tu aides.".into(),
+                    connector_grants: vec![],
+                    repository_grants: repositories.iter().map(|r| (*r).to_owned()).collect(),
+                },
+            )
+            .await
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn creating_a_card_for_an_agent_starts_it_writes_off() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", true).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+
+    let (status, created) = fixture
+        .post(
+            "/api/v1/cards",
+            json!({"title": "Lister les projets", "assignee_agent_id": agent.id.0}),
+        )
+        .await;
+
+    assert_eq!(status, 201);
+    assert_eq!(created["title"], "Lister les projets");
+    let run_id: Uuid = created["agent_run"]["run_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(created["agent_run"]["skipped"].is_null());
+    let allowed: bool =
+        sqlx::query_scalar("SELECT allow_writes FROM agent_tasks WHERE run_id = $1")
+            .bind(run_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert!(!allowed);
+}
+
+#[tokio::test]
+async fn a_card_without_an_agent_starts_nothing() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+
+    let (status, created) = fixture
+        .post("/api/v1/cards", json!({"title": "Sans agent"}))
+        .await;
+
+    assert_eq!(status, 201);
+    assert!(created["agent_run"].is_null());
+}
+
+#[tokio::test]
+async fn a_refused_start_keeps_the_card_and_says_why() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", false).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+
+    let (status, created) = fixture
+        .post(
+            "/api/v1/cards",
+            json!({"title": "Lister", "assignee_agent_id": agent.id.0}),
+        )
+        .await;
+
+    assert_eq!(status, 201);
+    assert!(created["agent_run"]["run_id"].is_null());
+    assert_eq!(created["agent_run"]["skipped"], "not_connected");
+    let card_id: Uuid = created["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(fixture.runs(CardId(card_id)).await, 0);
+}
+
+#[tokio::test]
+async fn an_agent_with_several_repositories_waits_for_one_to_be_chosen() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    let agent = fixture
+        .agent_with_repositories("ferris", &["acme/web", "acme/api"])
+        .await;
+
+    let (status, created) = fixture
+        .post(
+            "/api/v1/cards",
+            json!({"title": "Auditer", "assignee_agent_id": agent.id.0}),
+        )
+        .await;
+
+    assert_eq!(status, 201);
+    assert_eq!(created["agent_run"]["skipped"], "choose_repository");
+}
+
+#[tokio::test]
+async fn a_reply_starts_the_agent_again_and_a_reply_during_a_run_queues_nothing_more() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", true).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+    let card = fixture.card(Some(&agent)).await;
+    let card = fixture
+        .usecase
+        .move_card(
+            fixture.subject(),
+            card.id,
+            MoveCard {
+                to: Column::Todo,
+                expected_version: card.version,
+                run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let path = format!("/api/v1/cards/{}/comments", card.id);
+
+    let (status, first) = fixture.post(&path, json!({"body": "Vas-y"})).await;
+    assert_eq!(status, 201);
+    assert_eq!(first["body"], "Vas-y");
+    assert!(first["agent_run"]["run_id"].is_string());
+
+    let (status, second) = fixture.post(&path, json!({"body": "Et aussi…"})).await;
+    assert_eq!(status, 201);
+    assert_eq!(second["agent_run"]["skipped"], "agent_busy");
+    assert_eq!(fixture.runs(card.id).await, 1);
+}
+
+#[tokio::test]
+async fn a_reply_on_a_card_without_an_agent_only_comments() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    let card = fixture.card(None).await;
+
+    let (status, posted) = fixture
+        .post(
+            &format!("/api/v1/cards/{}/comments", card.id),
+            json!({"body": "Note"}),
+        )
+        .await;
+
+    assert_eq!(status, 201);
+    assert!(posted["agent_run"].is_null());
+    assert_eq!(fixture.runs(card.id).await, 0);
+}
+
+#[tokio::test]
+async fn assigning_an_agent_starts_it() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", true).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+    let (_, created) = fixture
+        .post("/api/v1/cards", json!({"title": "À assigner"}))
+        .await;
+    let card_id = created["id"].as_str().unwrap();
+
+    let response = reqwest::Client::new()
+        .patch(format!("{}/api/v1/cards/{card_id}", fixture.base))
+        .json(&json!({"expected_version": created["version"], "assignee_agent_id": agent.id.0}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 200);
+    let patched: Value = response.json().await.unwrap();
+    assert!(patched["agent_run"]["run_id"].is_string());
 }

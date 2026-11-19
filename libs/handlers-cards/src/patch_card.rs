@@ -4,10 +4,14 @@ use capitainerie_common::{AgentId, CardId, ClientId, ProjectId};
 use capitainerie_core::domain::{card::edit::EditCard, client::links::Change};
 use capitainerie_handlers::{ApiError, AppState, Caller, Patch};
 use chrono::NaiveDate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::response::{CardResponse, CriterionDto, EstimateDto, PriorityDto};
+use crate::{
+    auto_run::{AgentRunOutcome, Handoff, hand_off},
+    execute_card::CodeHostHandle,
+    response::{CardResponse, CriterionDto, EstimateDto, PriorityDto},
+};
 
 #[derive(TypedPath, Deserialize)]
 #[typed_path("/api/v1/cards/{card_id}")]
@@ -56,6 +60,14 @@ pub struct PatchCardRequest {
     pub parent_id: Patch<CardId>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PatchedCardResponse {
+    #[serde(flatten)]
+    pub card: CardResponse,
+    /// When the change assigned an agent: whether it started on the card.
+    pub agent_run: Option<AgentRunOutcome>,
+}
+
 #[utoipa::path(
     patch,
     path = "/api/v1/cards/{card_id}",
@@ -64,7 +76,7 @@ pub struct PatchCardRequest {
     params(("card_id" = CardId, Path, description = "Card identifier")),
     request_body = PatchCardRequest,
     responses(
-        (status = 200, description = "The card as edited; absent fields are unchanged, null clears a field (a priority goes back to normal, a title cannot be cleared)", body = CardResponse),
+        (status = 200, description = "The card as edited; absent fields are unchanged, null clears a field (a priority goes back to normal, a title cannot be cleared); assigning an agent starts it on the card, and `agent_run` says whether it did", body = PatchedCardResponse),
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused the change; agents may never edit a card through this route", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
@@ -77,8 +89,10 @@ pub async fn handler(
     PatchCardPath { card_id }: PatchCardPath,
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
+    Extension(CodeHostHandle(github)): Extension<CodeHostHandle>,
     Json(request): Json<PatchCardRequest>,
-) -> Result<Json<CardResponse>, ApiError> {
+) -> Result<Json<PatchedCardResponse>, ApiError> {
+    let assigned = matches!(request.assignee_agent_id, Patch::Value(_));
     let card = state
         .usecase
         .edit_card(
@@ -107,7 +121,22 @@ pub async fn handler(
             },
         )
         .await?;
-    Ok(Json(card.into()))
+    let agent_run = if assigned {
+        hand_off(
+            &state,
+            &github,
+            caller.subject(),
+            card.id,
+            Handoff::Assigned,
+        )
+        .await
+    } else {
+        None
+    };
+    Ok(Json(PatchedCardResponse {
+        card: card.into(),
+        agent_run,
+    }))
 }
 
 fn map_change<T, U: From<T>>(change: Change<T>) -> Change<U> {
