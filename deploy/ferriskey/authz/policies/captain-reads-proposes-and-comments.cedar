@@ -10,8 +10,7 @@ permit (
   ],
   resource
 )
-when { context.actor_kind == "captain" };
-
-@id("captain-links-cards")
-permit (principal, action == Capitainerie::Action::"card.update", resource)
-when { context.actor_kind == "captain" && context.intent == "link" };
+when {
+  context.actor_kind == "captain" && context has actor &&
+  context.organization == resource.organization
+};

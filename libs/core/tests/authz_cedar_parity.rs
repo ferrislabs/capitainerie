@@ -15,9 +15,9 @@ use capitainerie_core::infrastructure::authorization::{
     LocalPolicyEngine, actor_kind, evaluation_of,
 };
 use cedar_policy::{
-    Authorizer as CedarAuthorizer, Context, Decision as CedarDecision, Entities, Entity, EntityId,
-    EntityTypeName, EntityUid, PolicySet, Request, Schema, SchemaFragment, ValidationMode,
-    Validator,
+    Authorizer as CedarAuthorizer, Context, Decision as CedarDecision, Effect, Entities, Entity,
+    EntityId, EntityTypeName, EntityUid, Policy, PolicyId, PolicySet, Request, Schema,
+    SchemaFragment, ValidationMode, Validator,
 };
 use serde_json::{Value, json};
 
@@ -184,7 +184,9 @@ fn schema() -> Schema {
     Schema::from_schema_fragments([fragment(BUILTIN_SCHEMA), fragment(REALM_SCHEMA)]).unwrap()
 }
 
-fn policy_sources() -> Vec<String> {
+const POLICY_COUNT: usize = 20;
+
+fn policy_files() -> Vec<(String, String)> {
     let directory =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../deploy/ferriskey/authz/policies");
     let mut files: Vec<PathBuf> = fs::read_dir(directory)
@@ -195,12 +197,30 @@ fn policy_sources() -> Vec<String> {
     files.sort();
     files
         .iter()
-        .map(|path| fs::read_to_string(path).unwrap())
+        .map(|path| {
+            (
+                path.file_stem().unwrap().to_str().unwrap().to_owned(),
+                fs::read_to_string(path).unwrap(),
+            )
+        })
         .collect()
 }
 
 fn policies() -> PolicySet {
-    PolicySet::from_str(&policy_sources().join("\n")).unwrap()
+    let mut set = PolicySet::new();
+    for (stem, source) in policy_files() {
+        let policy = Policy::parse(Some(PolicyId::new(&stem)), source).unwrap();
+        set.add(policy).unwrap();
+    }
+    set
+}
+
+fn permits_only(set: &PolicySet) -> PolicySet {
+    let mut permits = PolicySet::new();
+    for policy in set.policies().filter(|p| p.effect() == Effect::Permit) {
+        permits.add(policy.clone()).unwrap();
+    }
+    permits
 }
 
 fn uid(ty: &str, id: &str) -> EntityUid {
@@ -299,15 +319,20 @@ fn the_policies_validate_against_the_schema_in_strict_mode() {
 }
 
 #[test]
-fn every_policy_carries_a_distinct_meaningful_id() {
+fn every_policy_is_its_own_file_named_after_its_id() {
+    let files = policy_files();
     let set = policies();
     let mut seen = HashSet::new();
 
-    for policy in set.policies() {
-        let id = policy.annotation("id").expect("every policy has an @id");
-        assert!(seen.insert(id.to_owned()), "duplicate {id}");
+    assert_eq!(files.len(), POLICY_COUNT);
+    assert_eq!(set.policies().count(), POLICY_COUNT);
+    assert!(set.templates().next().is_none());
+    for (stem, source) in &files {
+        let policy = set.policy(&PolicyId::new(stem)).unwrap();
+        assert_eq!(policy.annotation("id"), Some(stem.as_str()));
+        assert_eq!(source.matches("@id(").count(), 1, "{stem}");
+        assert!(seen.insert(stem.clone()), "duplicate {stem}");
     }
-    assert!(!seen.is_empty());
 }
 
 #[test]
@@ -358,10 +383,8 @@ fn the_evaluation_body_is_authzen_shaped() {
     assert_eq!(body["context"]["is_admin"], false);
 }
 
-#[tokio::test]
-async fn cedar_decides_exactly_like_the_local_engine() {
+async fn sweep(policies: &PolicySet, exact: bool) -> (usize, Vec<String>) {
     let schema = schema();
-    let policies = policies();
     let mut cases = 0usize;
     let mut failures = Vec::new();
 
@@ -376,8 +399,8 @@ async fn cedar_decides_exactly_like_the_local_engine() {
                             LocalPolicyEngine.evaluate(&request).await.unwrap() == Decision::Allow;
                         let body = evaluation_of(&request);
                         cases += 1;
-                        match cedar_allows(&body, &schema, &policies) {
-                            Ok(cedar) if cedar == local => {}
+                        match cedar_allows(&body, &schema, policies) {
+                            Ok(cedar) if cedar == local || (!exact && !cedar) => {}
                             Ok(cedar) => failures.push(format!(
                                 "local={local} cedar={cedar}\n{request:#?}\n{body:#}"
                             )),
@@ -388,8 +411,14 @@ async fn cedar_decides_exactly_like_the_local_engine() {
             }
         }
     }
+    (cases, failures)
+}
 
-    eprintln!("enumerated {cases} cases, {} mismatches", failures.len());
+fn assert_no_failures(label: &str, cases: usize, failures: &[String]) {
+    eprintln!(
+        "{label}: enumerated {cases} cases, {} mismatches",
+        failures.len()
+    );
     assert!(
         failures.is_empty(),
         "{} of {cases} cases differ, first:\n{}",
@@ -401,4 +430,158 @@ async fn cedar_decides_exactly_like_the_local_engine() {
             .collect::<Vec<_>>()
             .join("\n---\n")
     );
+}
+
+#[tokio::test]
+async fn cedar_decides_exactly_like_the_local_engine() {
+    let (cases, failures) = sweep(&policies(), true).await;
+
+    assert_no_failures("full policy set", cases, &failures);
+}
+
+#[tokio::test]
+async fn the_permits_alone_never_allow_more_than_the_local_engine() {
+    let permits = permits_only(&policies());
+    assert!(permits.policies().all(|p| p.effect() == Effect::Permit));
+
+    let (cases, failures) = sweep(&permits, false).await;
+
+    assert_no_failures("permits only", cases, &failures);
+}
+
+fn representative_requests() -> Vec<AccessRequest> {
+    let actions = [
+        Action::CardRead,
+        Action::CardCreate,
+        Action::CardLink,
+        Action::ProviderManage,
+        Action::CardUpdate {
+            column: Column::Todo,
+        },
+        Action::CardUpdate {
+            column: Column::Done,
+        },
+        Action::CardMove {
+            from: Column::Todo,
+            to: Column::Done,
+        },
+        Action::CardMove {
+            from: Column::Proposed,
+            to: Column::Todo,
+        },
+        Action::IntegrationCall {
+            access: Access::Write,
+        },
+        Action::McpCall {
+            initiated: true,
+            granted: true,
+        },
+    ];
+    let mut requests = Vec::new();
+    for action in actions {
+        for actor in actors() {
+            requests.push(request_of(
+                action,
+                ResourceKind::Card,
+                actor.as_ref(),
+                true,
+                true,
+            ));
+        }
+    }
+    requests
+}
+
+fn flipped(value: &Value) -> Value {
+    match value {
+        Value::Bool(_) => json!("true"),
+        Value::String(_) => json!(true),
+        _ => json!("x"),
+    }
+}
+
+#[tokio::test]
+async fn a_malformed_context_is_never_allowed() {
+    let schema = schema();
+    let policies = policies();
+    let mut mutations = 0usize;
+
+    for request in representative_requests() {
+        let body = evaluation_of(&request);
+        let local = LocalPolicyEngine.evaluate(&request).await.unwrap() == Decision::Allow;
+        let keys: Vec<String> = body["context"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        for key in keys {
+            let mut deleted = body.clone();
+            deleted["context"].as_object_mut().unwrap().remove(&key);
+            let mut changed = body.clone();
+            changed["context"][&key] = flipped(&body["context"][&key]);
+            for mutated in [deleted, changed] {
+                mutations += 1;
+                let outcome = cedar_allows(&mutated, &schema, &policies);
+                assert_ne!(outcome, Ok(true), "local={local} key={key}\n{mutated:#}");
+            }
+        }
+    }
+    eprintln!("malformed context: {mutations} mutations, none allowed");
+    assert!(mutations > 0);
+}
+
+fn with_context(request: &AccessRequest, key: &str, value: Value) -> Value {
+    let mut body = evaluation_of(request);
+    body["context"][key] = value;
+    body
+}
+
+#[test]
+fn spoofed_actor_kinds_and_columns_are_denied() {
+    let schema = schema();
+    let policies = policies();
+    let writer = "agent-writer".to_owned();
+    let card = ResourceKind::Card;
+    let denied = |body: &Value| {
+        assert_ne!(cedar_allows(body, &schema, &policies), Ok(true), "{body:#}");
+    };
+
+    let agent = request_of(Action::CardRead, card, Some(&writer), true, true);
+    denied(&with_context(&agent, "actor_kind", json!("human")));
+
+    let human = request_of(Action::CardRead, card, None, true, true);
+    assert_eq!(
+        cedar_allows(&evaluation_of(&human), &schema, &policies),
+        Ok(true)
+    );
+    denied(&with_context(&human, "actor_kind", json!("agent")));
+    denied(&with_context(&human, "actor_kind", json!("captain")));
+
+    for bogus in ["DONE", "bogus", "", "Todo"] {
+        for actor in [None, Some(&writer)] {
+            let update = request_of(
+                Action::CardUpdate {
+                    column: Column::Todo,
+                },
+                card,
+                actor,
+                true,
+                true,
+            );
+            denied(&with_context(&update, "column", json!(bogus)));
+            let movement = request_of(
+                Action::CardMove {
+                    from: Column::Todo,
+                    to: Column::InProgress,
+                },
+                card,
+                actor,
+                true,
+                true,
+            );
+            denied(&with_context(&movement, "from", json!(bogus)));
+            denied(&with_context(&movement, "to", json!(bogus)));
+        }
+    }
 }

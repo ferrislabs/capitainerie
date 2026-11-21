@@ -8,4 +8,7 @@ permit (
   ],
   resource
 )
-when { context.actor_kind == "integrator" };
+when {
+  context.actor_kind == "integrator" && context has actor &&
+  context.organization == resource.organization
+};
