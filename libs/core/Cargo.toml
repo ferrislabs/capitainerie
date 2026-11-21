@@ -32,6 +32,7 @@ mock = ["dep:mockall"]
 [dev-dependencies]
 uuid.workspace = true
 mockall.workspace = true
+cedar-policy = "=4.14.0"
 
 [lints]
 workspace = true
