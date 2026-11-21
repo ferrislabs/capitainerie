@@ -1,3 +1,4 @@
+pub mod harness;
 pub mod ports;
 pub mod report;
 
@@ -7,6 +8,7 @@ use capitainerie_common::{CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use self::harness::Harness;
 use crate::domain::{
     agent::SecretToken,
     card::{Card, Column},
@@ -170,42 +172,47 @@ pub struct RepositoryIssue {
     pub labels: Vec<String>,
 }
 
-/// The model Claude Code runs on: always an Anthropic model.
+/// The model an execution runs on, checked against the harness that runs it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct ExecutorModel(String);
+pub struct ExecutorModel {
+    harness: Harness,
+    model: String,
+}
 
 impl ExecutorModel {
-    pub const DEFAULT: &'static str = "claude-sonnet-5-5";
-    const PREFIX: &'static str = "claude-";
-
-    pub fn new(model: impl Into<String>) -> Result<Self, CoreError> {
+    pub fn new(harness: Harness, model: impl Into<String>) -> Result<Self, CoreError> {
         let model = model.into();
-        if !model.starts_with(Self::PREFIX) {
+        if !harness.accepts_model(&model) {
             return Err(CoreError::Invalid(format!(
-                "the executor runs on an Anthropic model ({}…), got {model:?}",
-                Self::PREFIX
+                "the {harness} executor does not run on {model:?}"
             )));
         }
-        Ok(Self(model))
+        Ok(Self { harness, model })
+    }
+
+    pub fn harness(&self) -> Harness {
+        self.harness
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.model
     }
 }
 
-/// The model an agent's execution runs on: the agent's own model when it is
-/// an Anthropic model id, else the default model of the initiator's Anthropic
-/// key, else `fallback`.
+/// The model an agent's execution runs on: the agent's own model when the
+/// fallback's harness accepts it, else the default model of the initiator's
+/// key for that harness's provider, else `fallback`.
 pub fn agent_executor_model(
     agent_model: &str,
     user_default: Option<&str>,
     fallback: &ExecutorModel,
 ) -> ExecutorModel {
-    use crate::domain::provider::{ProviderKind, is_model_id, model_ref_of};
-    let agent = model_ref_of(agent_model, ProviderKind::Anthropic)
-        .filter(|wanted| wanted.provider == ProviderKind::Anthropic)
+    use crate::domain::provider::{is_model_id, model_ref_of};
+    let harness = fallback.harness();
+    let provider = harness.provider();
+    let agent = model_ref_of(agent_model, provider)
+        .filter(|wanted| wanted.provider == provider)
         .map(|wanted| wanted.model);
     let user = user_default
         .map(str::trim)
@@ -214,7 +221,7 @@ pub fn agent_executor_model(
     [agent, user]
         .into_iter()
         .flatten()
-        .find_map(|model| ExecutorModel::new(model).ok())
+        .find_map(|model| ExecutorModel::new(harness, model).ok())
         .unwrap_or_else(|| fallback.clone())
 }
 
@@ -222,19 +229,23 @@ impl TryFrom<String> for ExecutorModel {
     type Error = CoreError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::new(Harness::default(), value)
     }
 }
 
 impl From<ExecutorModel> for String {
     fn from(value: ExecutorModel) -> Self {
-        value.0
+        value.model
     }
 }
 
 impl Default for ExecutorModel {
     fn default() -> Self {
-        Self(Self::DEFAULT.to_owned())
+        let harness = Harness::default();
+        Self {
+            harness,
+            model: harness.default_model().to_owned(),
+        }
     }
 }
 
@@ -336,7 +347,7 @@ pub struct TaskSpec {
 /// One line of the task's output.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskLine {
-    /// A Claude Code `stream-json` event.
+    /// A raw output line of the harness, read by its parser.
     Agent(serde_json::Value),
     /// A marker written by the entrypoint script.
     Capitainerie(TaskMarker),
@@ -457,14 +468,22 @@ mod tests {
     }
 
     #[test]
-    fn the_executor_model_must_be_an_anthropic_model() {
-        assert!(ExecutorModel::new("claude-opus-5").is_ok());
+    fn the_executor_model_must_suit_its_harness() {
+        let harness = Harness::ClaudeCode;
+        assert!(ExecutorModel::new(harness, "claude-opus-5").is_ok());
         for refused in ["", "gpt-4o", "llama3", " claude-opus-5", "anthropic/claude"] {
             assert!(
-                matches!(ExecutorModel::new(refused), Err(CoreError::Invalid(_))),
+                matches!(
+                    ExecutorModel::new(harness, refused),
+                    Err(CoreError::Invalid(_))
+                ),
                 "{refused:?}"
             );
         }
+        let Err(CoreError::Invalid(message)) = ExecutorModel::new(harness, "gpt-4o") else {
+            panic!("gpt-4o is not a Claude Code model");
+        };
+        assert!(message.contains("claude-code"), "{message}");
         assert!(serde_json::from_str::<ExecutorModel>("\"gpt-4o\"").is_err());
         assert_eq!(
             serde_json::from_str::<ExecutorModel>("\"claude-haiku-5-5\"")
@@ -520,16 +539,22 @@ mod tests {
             "claude-opus-5"
         );
         assert_eq!(model("anthropic:claude-opus-5", None), "claude-opus-5");
-        assert_eq!(model("mistral:claude-x", None), ExecutorModel::DEFAULT);
+        assert_eq!(
+            model("mistral:claude-x", None),
+            Harness::ClaudeCode.default_model()
+        );
         assert_eq!(model("", Some("claude-haiku-5-5")), "claude-haiku-5-5");
         assert_eq!(
             model("gpt-4o", Some("claude-haiku-5-5")),
             "claude-haiku-5-5"
         );
-        assert_eq!(model("Claude Opus", None), ExecutorModel::DEFAULT);
+        assert_eq!(
+            model("Claude Opus", None),
+            Harness::ClaudeCode.default_model()
+        );
         assert_eq!(
             model("mistral-large", Some("gemini-3")),
-            ExecutorModel::DEFAULT
+            Harness::ClaudeCode.default_model()
         );
     }
 

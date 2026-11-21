@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, net::IpAddr};
 
 use capitainerie_common::RunId;
-use capitainerie_core::domain::execution::{REPORT_PATH, TaskSpec};
+use capitainerie_core::domain::execution::{REPORT_PATH, TaskSpec, harness::Harness};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
@@ -76,9 +76,7 @@ fn from_secret(name: &str, secret: &str) -> EnvVar {
 
 fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<EnvVar> {
     let proxy = &config.proxy_base_url;
-    vec![
-        plain("ANTHROPIC_BASE_URL", format!("{proxy}/anthropic")),
-        from_secret("ANTHROPIC_API_KEY", secret),
+    let mut variables = vec![
         from_secret("CAPITAINERIE_TASK_TOKEN", secret),
         plain(
             "GIT_REMOTE",
@@ -92,17 +90,36 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
         plain("BASE_BRANCH", &spec.base_branch),
         plain("BRANCH", &spec.branch),
         plain("MODEL", spec.model.as_str()),
-        // Claude Code asks a small model for background work; the proxy
-        // serves only the run's model, so every role points at it.
-        plain("ANTHROPIC_SMALL_FAST_MODEL", spec.model.as_str()),
-        plain("ANTHROPIC_DEFAULT_HAIKU_MODEL", spec.model.as_str()),
-        plain("CLAUDE_CODE_SUBAGENT_MODEL", spec.model.as_str()),
         plain("CAPITAINERIE_MODE", spec.mode.as_str()),
         plain("REPORT_PATH", REPORT_PATH),
         plain("MAX_TURNS", spec.max_turns.to_string()),
         plain("PROMPT", &spec.prompt),
         plain("HOME", "/home/executor"),
-    ]
+    ];
+    variables.extend(harness_environment(config, spec, secret));
+    variables
+}
+
+fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<EnvVar> {
+    let proxy = &config.proxy_base_url;
+    let model = spec.model.as_str();
+    match spec.model.harness() {
+        Harness::ClaudeCode => vec![
+            plain("ANTHROPIC_BASE_URL", format!("{proxy}/anthropic")),
+            from_secret("ANTHROPIC_API_KEY", secret),
+            // Claude Code asks a small model for background work; the proxy
+            // serves only the run's model, so every role points at it.
+            plain("ANTHROPIC_SMALL_FAST_MODEL", model),
+            plain("ANTHROPIC_DEFAULT_HAIKU_MODEL", model),
+            plain("CLAUDE_CODE_SUBAGENT_MODEL", model),
+        ],
+    }
+}
+
+fn image(config: &KubeRunnerConfig, harness: Harness) -> String {
+    match harness {
+        Harness::ClaudeCode => config.image.clone(),
+    }
 }
 
 pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&ProxyHost>) -> Job {
@@ -110,7 +127,7 @@ pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&Prox
     let labels = labels(spec.run_id);
     let container = Container {
         name: "executor".to_owned(),
-        image: Some(config.image.clone()),
+        image: Some(image(config, spec.model.harness())),
         command: config.command.clone(),
         env: Some(environment(config, spec, &name)),
         resources: Some(config.resources.clone()),
@@ -463,7 +480,7 @@ mod tests {
         );
         assert_eq!(
             env(&job, "MODEL").value.as_deref(),
-            Some(ExecutorModel::DEFAULT)
+            Some(Harness::ClaudeCode.default_model())
         );
         assert_eq!(env(&job, "PROMPT").value.as_deref(), Some("Fix the bug"));
     }
@@ -493,7 +510,7 @@ mod tests {
     #[test]
     fn every_model_role_of_claude_code_is_the_run_model() {
         let spec = TaskSpec {
-            model: ExecutorModel::new("claude-opus-5").unwrap(),
+            model: ExecutorModel::new(Harness::ClaudeCode, "claude-opus-5").unwrap(),
             ..spec()
         };
         let job = build_job(&config(), &spec, Some(&proxy()));

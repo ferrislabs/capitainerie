@@ -1,3 +1,5 @@
+mod claude_code;
+
 use std::{collections::HashMap, time::Instant};
 
 use serde_json::Value;
@@ -6,6 +8,7 @@ use crate::domain::{
     agent::ToolCall,
     execution::{
         TaskLine, TaskMarker,
+        harness::{AgentEvent, AgentFinish, Harness},
         report::{ReportAssembler, ReportOutcome},
     },
     run::step::CachedUsage,
@@ -78,7 +81,7 @@ impl Digest {
         }
     }
 
-    /// The cost Claude Code reports, for a model without a known price.
+    /// The cost the harness reports, for a model without a known price.
     pub(super) fn reported_cost_micros(&self) -> i64 {
         self.reported_cost_usd
             .filter(|usd| usd.is_finite() && *usd > 0.0)
@@ -95,6 +98,7 @@ impl Digest {
 }
 
 pub(super) struct StreamReader {
+    harness: Harness,
     redactor: Redactor,
     digest: Digest,
     report: ReportAssembler,
@@ -104,8 +108,9 @@ pub(super) struct StreamReader {
 }
 
 impl StreamReader {
-    pub(super) fn new(redactor: Redactor) -> Self {
+    pub(super) fn new(harness: Harness, redactor: Redactor) -> Self {
         Self {
+            harness,
             redactor,
             digest: Digest::default(),
             report: ReportAssembler::default(),
@@ -161,81 +166,61 @@ impl StreamReader {
                 self.digest.marker = Some(marker.clone());
                 self.dirty = true;
             }
-            TaskLine::Agent(event) => self.accept_event(event),
-        }
-    }
-
-    fn accept_event(&mut self, event: &Value) {
-        match event["type"].as_str() {
-            Some("assistant") => self.tool_uses(&event["message"]["content"]),
-            Some("user") => self.tool_results(&event["message"]["content"]),
-            Some("result") => self.result(event),
-            _ => {}
-        }
-    }
-
-    fn tool_uses(&mut self, content: &Value) {
-        for item in content.as_array().into_iter().flatten() {
-            if item["type"] != "tool_use" {
-                continue;
+            TaskLine::Agent(line) => {
+                for event in agent_events(self.harness, line) {
+                    self.apply(event);
+                }
             }
-            let Some(id) = item["id"].as_str() else {
-                continue;
-            };
-            let input = self.redactor.apply(&item["input"].to_string());
-            self.order.push(id.to_owned());
-            self.pending.insert(
-                id.to_owned(),
-                PendingCall {
-                    tool: item["name"].as_str().unwrap_or("unknown").to_owned(),
-                    input,
-                    since: Instant::now(),
-                },
-            );
         }
     }
 
-    fn tool_results(&mut self, content: &Value) {
-        for item in content.as_array().into_iter().flatten() {
-            if item["type"] != "tool_result" {
-                continue;
+    fn apply(&mut self, event: AgentEvent) {
+        match event {
+            AgentEvent::ToolCall { id, tool, input } => {
+                let input = self.redactor.apply(&input);
+                self.order.push(id.clone());
+                self.pending.insert(
+                    id,
+                    PendingCall {
+                        tool,
+                        input,
+                        since: Instant::now(),
+                    },
+                );
             }
-            let Some(call) = item["tool_use_id"]
-                .as_str()
-                .and_then(|id| self.pending.remove(id))
-            else {
-                continue;
-            };
-            let output = self.redactor.apply(&result_text(&item["content"]));
-            let succeeded = !item["is_error"].as_bool().unwrap_or(false);
-            self.digest.keep(ToolCall {
-                tool: call.tool,
+            AgentEvent::ToolResult {
+                id,
+                output,
                 succeeded,
-                latency_ms: u64::try_from(call.since.elapsed().as_millis()).unwrap_or(u64::MAX),
-                summary: call_summary(&call.input, &output),
-            });
-            self.dirty = true;
+            } => {
+                let Some(call) = self.pending.remove(&id) else {
+                    return;
+                };
+                let output = self.redactor.apply(&output);
+                self.digest.keep(ToolCall {
+                    tool: call.tool,
+                    succeeded,
+                    latency_ms: u64::try_from(call.since.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    summary: call_summary(&call.input, &output),
+                });
+                self.dirty = true;
+            }
+            AgentEvent::Finished(finish) => self.finished(finish),
         }
     }
 
-    fn result(&mut self, event: &Value) {
-        let usage = &event["usage"];
-        let count = |field: &str| usage[field].as_u64().unwrap_or(0);
-        self.digest.input_tokens = count("input_tokens")
-            .saturating_add(count("cache_read_input_tokens"))
-            .saturating_add(count("cache_creation_input_tokens"));
-        self.digest.output_tokens = count("output_tokens");
-        self.digest.cache_read_tokens = count("cache_read_input_tokens");
-        self.digest.cache_creation_tokens = count("cache_creation_input_tokens");
-        self.digest.summary = event["result"]
-            .as_str()
-            .map(|text| truncate_chars(&self.redactor.apply(text), SUMMARY_MAX_CHARS))
+    fn finished(&mut self, finish: AgentFinish) {
+        self.digest.input_tokens = finish.usage.input_tokens;
+        self.digest.output_tokens = finish.usage.output_tokens;
+        self.digest.cache_read_tokens = finish.usage.cache_read_tokens;
+        self.digest.cache_creation_tokens = finish.usage.cache_creation_tokens;
+        self.digest.summary = finish
+            .summary
+            .map(|text| truncate_chars(&self.redactor.apply(&text), SUMMARY_MAX_CHARS))
             .filter(|text| !text.trim().is_empty());
-        let subtype = event["subtype"].as_str().unwrap_or("success");
-        self.digest.stopped =
-            (subtype != "success" || event["is_error"] == true).then(|| subtype.to_owned());
-        self.digest.reported_cost_usd = event["total_cost_usd"].as_f64();
-        self.digest.turns = event["num_turns"].as_u64();
+        self.digest.stopped = finish.stopped;
+        self.digest.reported_cost_usd = finish.reported_cost_usd;
+        self.digest.turns = finish.turns;
         self.dirty = true;
     }
 
@@ -262,16 +247,9 @@ fn call_summary(input: &str, output: &str) -> String {
     )
 }
 
-fn result_text(content: &Value) -> String {
-    match content {
-        Value::String(text) => text.clone(),
-        Value::Array(items) => items
-            .iter()
-            .filter_map(|item| item["text"].as_str())
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Value::Null => String::new(),
-        other => other.to_string(),
+fn agent_events(harness: Harness, line: &Value) -> Vec<AgentEvent> {
+    match harness {
+        Harness::ClaudeCode => claude_code::events(line),
     }
 }
 
@@ -282,7 +260,7 @@ mod tests {
 
     use super::*;
 
-    const SAMPLE: &str = include_str!("../../tests/fixtures/claude-stream.jsonl");
+    const SAMPLE: &str = include_str!("../../../tests/fixtures/claude-stream.jsonl");
 
     fn lines(sample: &str) -> Vec<TaskLine> {
         sample
@@ -299,7 +277,7 @@ mod tests {
     }
 
     fn read(sample: &str, secret: &str) -> Digest {
-        let mut reader = StreamReader::new(Redactor::new(secret));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new(secret));
         for line in lines(sample) {
             reader.accept(&line);
         }
@@ -425,7 +403,7 @@ mod tests {
 
     #[test]
     fn a_reattached_follower_starts_from_a_clean_slate() {
-        let mut reader = StreamReader::new(Redactor::new(""));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new(""));
         for line in lines(SAMPLE) {
             reader.accept(&line);
         }
@@ -463,7 +441,7 @@ mod tests {
 
     #[test]
     fn report_chunks_rebuild_the_report_and_leave_the_marker_alone() {
-        let mut reader = StreamReader::new(Redactor::new("tok-secret"));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new("tok-secret"));
         for line in lines(SAMPLE) {
             reader.accept(&line);
         }
@@ -484,7 +462,7 @@ mod tests {
 
     #[test]
     fn a_report_whose_digest_does_not_match_is_invalid() {
-        let mut reader = StreamReader::new(Redactor::new(""));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new(""));
         for line in report_lines("rapport", 4, Some("00".repeat(32))) {
             reader.accept(&line);
         }
@@ -493,7 +471,7 @@ mod tests {
 
     #[test]
     fn a_reattached_follower_rebuilds_the_report_from_scratch() {
-        let mut reader = StreamReader::new(Redactor::new(""));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new(""));
         let sent = report_lines("rapport", 4, None);
         for line in &sent {
             reader.accept(line);

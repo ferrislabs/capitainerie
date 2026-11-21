@@ -9,7 +9,7 @@ use capitainerie_core::{
             Card, Column,
             service::{CreateCard, MoveCard},
         },
-        execution::{EXECUTOR_AGENT, ExecutionMode, ExecutorModel, TaskGrant},
+        execution::{EXECUTOR_AGENT, ExecutionMode, ExecutorModel, TaskGrant, harness::Harness},
         provider::ModelAssignments,
     },
     infrastructure::{crypto::SecretCipher, postgres},
@@ -221,7 +221,7 @@ async fn the_run_freezes_the_organization_models() {
     };
     connect(&usecase, organization_id).await;
     let mut assignments = ModelAssignments::defaults("chat", "embed");
-    assignments.executor = ExecutorModel::new("claude-opus-5").unwrap();
+    assignments.executor = ExecutorModel::new(Harness::ClaudeCode, "claude-opus-5").unwrap();
     sqlx::query(
         "INSERT INTO model_assignments (organization_id, assignments, updated_by, updated_at) VALUES ($1, $2, 'u', now())",
     )

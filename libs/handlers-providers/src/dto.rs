@@ -2,7 +2,7 @@ use axum_extra::routing::TypedPath;
 use capitainerie_common::CoreError;
 use capitainerie_core::{
     application::ModelListing,
-    domain::execution::ExecutorModel,
+    domain::execution::{ExecutorModel, harness::Harness},
     domain::provider::{
         ModelAssignments, ModelRef, ProviderKind, ProviderSummary, ports::CatalogModel,
     },
@@ -299,7 +299,10 @@ impl ModelAssignmentsDto {
         current: Option<&ModelAssignments>,
     ) -> Result<ModelAssignments, CoreError> {
         let executor = match self.executor {
-            Some(model) => ExecutorModel::new(model)?,
+            Some(model) => ExecutorModel::new(
+                current.map_or_else(Harness::default, |c| c.executor.harness()),
+                model,
+            )?,
             None => current.map(|c| c.executor.clone()).unwrap_or_default(),
         };
         let transcriber = match self.transcriber {
@@ -366,7 +369,7 @@ mod tests {
     #[test]
     fn an_absent_executor_keeps_the_current_one_or_the_default() {
         let mut current = ModelAssignments::defaults("chat", "embed");
-        current.executor = ExecutorModel::new("claude-opus-5").unwrap();
+        current.executor = ExecutorModel::new(Harness::ClaudeCode, "claude-opus-5").unwrap();
 
         let kept = dto(None).into_assignments(Some(&current)).unwrap();
         let defaulted = dto(None).into_assignments(None).unwrap();

@@ -34,7 +34,7 @@ use crate::{
             ports::{CodeHost, TaskGrantRepository, TaskRunner},
             report::ReportOutcome,
         },
-        provider::{ModelAssignments, ModelRef, ProviderKind},
+        provider::{ModelAssignments, ModelRef},
         run::{
             Run, RunStatus, RunSubject, StepKind,
             ports::{RunRepository, StepRepository},
@@ -541,7 +541,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
             extras.branch = Some(prepared.spec.branch.clone());
         }
         let progress = Mutex::new(Progress {
-            reader: StreamReader::new(prepared.redactor.clone()),
+            reader: StreamReader::new(prepared.spec.model.harness(), prepared.redactor.clone()),
             step,
             extras,
         });
@@ -665,8 +665,9 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         source: &ExecutionAgentSource,
         fallback: &ExecutorModel,
     ) -> Result<ExecutorModel, CoreError> {
+        let harness = fallback.harness();
         if let Some(frozen) = &source.task.model
-            && let Ok(model) = ExecutorModel::new(frozen.model.clone())
+            && let Ok(model) = ExecutorModel::new(harness, frozen.model.clone())
         {
             return Ok(model);
         }
@@ -678,7 +679,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         {
             Ok(credentials) => credentials
                 .into_iter()
-                .find(|credential| credential.kind == ProviderKind::Anthropic)
+                .find(|credential| credential.kind == harness.provider())
                 .map(|credential| credential.default_model),
             Err(error @ CoreError::Database(_)) => return Err(error),
             Err(error) => {
@@ -693,12 +694,12 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                 run.organization_id,
                 run.id,
                 &ModelRef {
-                    provider: ProviderKind::Anthropic,
+                    provider: harness.provider(),
                     model: chosen.as_str().to_owned(),
                 },
             )
             .await?;
-        Ok(ExecutorModel::new(frozen.model).unwrap_or(chosen))
+        Ok(ExecutorModel::new(harness, frozen.model).unwrap_or(chosen))
     }
 
     async fn task_token(
@@ -1336,7 +1337,10 @@ mod tests {
     use capitainerie_common::{CardId, OrganizationId};
 
     use super::*;
-    use crate::domain::card::{Author, CardTitle, Column, Provenance};
+    use crate::domain::{
+        card::{Author, CardTitle, Column, Provenance},
+        execution::harness::Harness,
+    };
 
     fn card(description: &str) -> Card {
         let now = Utc::now();
@@ -1577,7 +1581,7 @@ mod tests {
 
     fn reader_with(summary: Option<&str>, report: Option<&str>) -> StreamReader {
         use base64::engine::general_purpose::STANDARD;
-        let mut reader = StreamReader::new(Redactor::new(""));
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new(""));
         if let Some(summary) = summary {
             reader.accept(&TaskLine::Agent(serde_json::json!({
                 "type": "result", "subtype": "success", "result": summary,
