@@ -325,7 +325,8 @@ async fn build_executor(
         return Err("EXECUTOR_IMAGE et EXECUTOR_PROXY_URL sont requis pour les exécutions".into());
     };
     let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str())
-        .with_codex_image(args.executor.codex_image.clone());
+        .with_codex_image(args.executor.codex_image.clone())
+        .with_antigravity_image(args.executor.antigravity_image.clone());
     config.namespace = namespace.to_owned();
     let runner = KubeTaskRunner::try_default(config)
         .await

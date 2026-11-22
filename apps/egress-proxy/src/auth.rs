@@ -14,10 +14,14 @@ pub fn api_token(headers: &HeaderMap) -> Option<&str> {
     if let Some(key) = headers.get("x-api-key").and_then(|v| v.to_str().ok()) {
         return Some(key);
     }
-    headers
+    if let Some(bearer) = headers
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        return Some(bearer);
+    }
+    headers.get("x-goog-api-key").and_then(|v| v.to_str().ok())
 }
 
 pub fn basic_token(headers: &HeaderMap) -> Option<String> {
@@ -72,6 +76,17 @@ mod tests {
     #[test]
     fn api_token_prefers_x_api_key_then_bearer() {
         let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer b"));
+        assert_eq!(api_token(&headers), Some("b"));
+        headers.insert("x-api-key", HeaderValue::from_static("k"));
+        assert_eq!(api_token(&headers), Some("k"));
+    }
+
+    #[test]
+    fn api_token_falls_back_to_x_goog_api_key() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-goog-api-key", HeaderValue::from_static("g"));
+        assert_eq!(api_token(&headers), Some("g"));
         headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer b"));
         assert_eq!(api_token(&headers), Some("b"));
         headers.insert("x-api-key", HeaderValue::from_static("k"));

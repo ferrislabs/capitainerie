@@ -1,3 +1,4 @@
+mod antigravity;
 mod claude_code;
 mod codex;
 
@@ -253,6 +254,7 @@ fn call_summary(input: &str, output: &str) -> String {
 
 enum AgentParser {
     ClaudeCode,
+    Antigravity,
     Codex(codex::CodexParser),
 }
 
@@ -261,12 +263,14 @@ impl AgentParser {
         match harness {
             Harness::ClaudeCode => Self::ClaudeCode,
             Harness::Codex => Self::Codex(codex::CodexParser::default()),
+            Harness::Antigravity => Self::Antigravity,
         }
     }
 
     fn events(&mut self, line: &Value) -> Vec<AgentEvent> {
         match self {
             Self::ClaudeCode => claude_code::events(line),
+            Self::Antigravity => antigravity::events(line),
             Self::Codex(parser) => parser.events(line),
         }
     }
@@ -403,6 +407,41 @@ mod tests {
             })
         );
         assert_eq!(digest.cached_usage().fresh_input, 6_500);
+    }
+
+    const ANTIGRAVITY_SAMPLE: &str =
+        include_str!("../../../tests/fixtures/antigravity-stream.jsonl");
+
+    #[test]
+    fn a_recorded_antigravity_stream_gives_tool_calls_usage_summary_and_marker() {
+        let mut reader = StreamReader::new(Harness::Antigravity, Redactor::new(""));
+        for line in lines(ANTIGRAVITY_SAMPLE) {
+            reader.accept(&line);
+        }
+        let digest = reader.finish();
+
+        let tools: Vec<_> = digest
+            .tool_calls
+            .iter()
+            .map(|call| (call.tool.as_str(), call.succeeded))
+            .collect();
+        assert_eq!(tools, [("run_command", true)], "{digest:?}");
+        assert!(digest.tool_calls[0].summary.contains("hello_lab"));
+        assert_eq!(digest.input_tokens, 2_400);
+        assert_eq!(digest.cache_read_tokens, 1_600);
+        assert_eq!(digest.cache_creation_tokens, 0);
+        assert_eq!(digest.output_tokens, 70);
+        assert_eq!(digest.summary.as_deref(), Some("Done: I ran echo.\n"));
+        assert_eq!(digest.stopped, None);
+        assert_eq!(digest.reported_cost_usd, None);
+        assert_eq!(digest.turns, Some(1));
+        assert_eq!(
+            digest.marker,
+            Some(TaskMarker::Pushed {
+                sha: "3f9c2a7d1e5b48a6c0d7e9f1a2b3c4d5e6f70812".into()
+            })
+        );
+        assert_eq!(digest.cached_usage().fresh_input, 800);
     }
 
     #[test]

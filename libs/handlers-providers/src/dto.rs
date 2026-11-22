@@ -20,6 +20,8 @@ pub enum ProviderKindDto {
     Mistral,
     #[serde(rename = "openai")]
     OpenAi,
+    #[serde(rename = "google")]
+    Google,
     #[serde(rename = "openai_compatible")]
     OpenAiCompatible,
 }
@@ -30,6 +32,7 @@ impl From<ProviderKind> for ProviderKindDto {
             ProviderKind::Anthropic => Self::Anthropic,
             ProviderKind::Mistral => Self::Mistral,
             ProviderKind::OpenAi => Self::OpenAi,
+            ProviderKind::Google => Self::Google,
             ProviderKind::OpenAiCompatible => Self::OpenAiCompatible,
         }
     }
@@ -41,6 +44,7 @@ impl From<ProviderKindDto> for ProviderKind {
             ProviderKindDto::Anthropic => Self::Anthropic,
             ProviderKindDto::Mistral => Self::Mistral,
             ProviderKindDto::OpenAi => Self::OpenAi,
+            ProviderKindDto::Google => Self::Google,
             ProviderKindDto::OpenAiCompatible => Self::OpenAiCompatible,
         }
     }
@@ -398,7 +402,9 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(
-            refused.contains("claude-code") && refused.contains("codex"),
+            refused.contains("claude-code")
+                && refused.contains("codex")
+                && refused.contains("antigravity on gemini-4-argon"),
             "{refused}"
         );
     }
@@ -409,6 +415,24 @@ mod tests {
         assert_eq!(ProviderKind::from(kind), ProviderKind::OpenAi);
         assert_eq!(ProviderKindDto::from(ProviderKind::OpenAi), kind);
         assert_eq!(serde_json::to_value(kind).unwrap(), "openai");
+    }
+
+    #[test]
+    fn a_gemini_model_can_be_assigned_as_executor_with_the_antigravity_harness() {
+        let current = ModelAssignments::defaults("chat", "embed");
+        let gemini = dto(Some("gemini-3.8-flash"))
+            .into_assignments(Some(&current))
+            .unwrap();
+        assert_eq!(gemini.executor.harness(), Harness::Antigravity);
+        assert_eq!(gemini.executor.as_str(), "gemini-3.8-flash");
+    }
+
+    #[test]
+    fn the_google_provider_kind_round_trips_on_the_wire() {
+        let kind: ProviderKindDto = serde_json::from_value(serde_json::json!("google")).unwrap();
+        assert_eq!(ProviderKind::from(kind), ProviderKind::Google);
+        assert_eq!(ProviderKindDto::from(ProviderKind::Google), kind);
+        assert_eq!(serde_json::to_value(kind).unwrap(), "google");
     }
 
     fn wire(transcriber: Option<serde_json::Value>) -> ModelAssignmentsDto {

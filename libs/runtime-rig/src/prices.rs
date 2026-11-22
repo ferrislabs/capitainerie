@@ -56,10 +56,18 @@ const OPENAI: &[(&str, Price)] = &[
     ("gpt-5.5", price(5_000_000, 30_000_000)),
 ];
 
+const GOOGLE: &[(&str, Price)] = &[
+    ("gemini-4-argon", price(4_000_000, 20_000_000)),
+    ("gemini-3.8-flash", price(1_500_000, 7_500_000)),
+    ("gemini-3.6-flash", price(1_500_000, 7_500_000)),
+    ("gemini-3.1-pro", price(2_000_000, 12_000_000)),
+];
+
 fn table(kind: ProviderKind) -> &'static [(&'static str, Price)] {
     match kind {
         ProviderKind::Anthropic => CLAUDE,
         ProviderKind::OpenAi => OPENAI,
+        ProviderKind::Google => GOOGLE,
         ProviderKind::Mistral | ProviderKind::OpenAiCompatible => &[],
     }
 }
@@ -77,6 +85,7 @@ pub fn executor_prices() -> Vec<(String, Pricing)> {
     CLAUDE
         .iter()
         .chain(OPENAI)
+        .chain(GOOGLE)
         .map(|(model, price)| {
             (
                 (*model).to_owned(),
@@ -91,7 +100,7 @@ pub fn executor_prices() -> Vec<(String, Pricing)> {
 
 #[cfg(test)]
 mod tests {
-    use capitainerie_core::domain::execution::harness::CODEX_MODELS;
+    use capitainerie_core::domain::execution::harness::{ANTIGRAVITY_MODELS, CODEX_MODELS};
 
     use super::*;
 
@@ -114,7 +123,7 @@ mod tests {
     #[test]
     fn executor_prices_cover_every_priced_model() {
         let prices = executor_prices();
-        assert_eq!(prices.len(), CLAUDE.len() + OPENAI.len());
+        assert_eq!(prices.len(), CLAUDE.len() + OPENAI.len() + GOOGLE.len());
         let sonnet = prices
             .iter()
             .find(|(model, _)| model == "claude-sonnet-5-5")
@@ -137,6 +146,13 @@ mod tests {
             price_of(ProviderKind::OpenAi, "gpt-6-luna"),
             Some(price(100_000, 500_000))
         );
+    }
+
+    #[test]
+    fn every_antigravity_model_has_a_price() {
+        for (model, _) in ANTIGRAVITY_MODELS {
+            assert!(price_of(ProviderKind::Google, model).is_some(), "{model}");
+        }
     }
 
     #[test]

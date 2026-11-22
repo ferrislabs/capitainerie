@@ -121,6 +121,11 @@ fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str)
             from_secret("CODEX_API_KEY", secret),
             plain("CODEX_HOME", CODEX_HOME),
         ]),
+        Harness::Antigravity => variables.extend([
+            plain("GOOGLE_GEMINI_BASE_URL", format!("{proxy}/google")),
+            from_secret("GEMINI_API_KEY", secret),
+            plain("AGY_CLI_DISABLE_AUTO_UPDATE", "true"),
+        ]),
     }
     variables
 }
@@ -130,6 +135,10 @@ fn image(config: &KubeRunnerConfig, harness: Harness) -> Result<&str, RunnerErro
         Harness::ClaudeCode => Ok(&config.image),
         Harness::Codex => config
             .codex_image
+            .as_deref()
+            .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
+        Harness::Antigravity => config
+            .antigravity_image
             .as_deref()
             .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
     }
@@ -297,6 +306,18 @@ mod tests {
     fn codex_spec() -> TaskSpec {
         TaskSpec {
             model: ExecutorModel::new(Harness::Codex, Harness::Codex.default_model()).unwrap(),
+            ..spec()
+        }
+    }
+
+    fn antigravity_config() -> KubeRunnerConfig {
+        config().with_antigravity_image(Some("capitainerie-executor-antigravity:1".into()))
+    }
+
+    fn antigravity_spec() -> TaskSpec {
+        TaskSpec {
+            model: ExecutorModel::new(Harness::Antigravity, Harness::Antigravity.default_model())
+                .unwrap(),
             ..spec()
         }
     }
@@ -592,7 +613,11 @@ mod tests {
 
     #[test]
     fn every_harness_pod_holds_only_literals_and_references_to_the_task_secret() {
-        for (config, spec) in [(config(), spec()), (codex_config(), codex_spec())] {
+        for (config, spec) in [
+            (config(), spec()),
+            (codex_config(), codex_spec()),
+            (antigravity_config(), antigravity_spec()),
+        ] {
             let job = build_job(&config, &spec, Some(&proxy())).unwrap();
             assert_no_inline_secret(&job);
             assert_eq!(
@@ -634,11 +659,48 @@ mod tests {
     }
 
     #[test]
+    fn an_antigravity_pod_talks_to_the_google_route_of_the_proxy() {
+        let job = build_job(&antigravity_config(), &antigravity_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            env(&job, "GOOGLE_GEMINI_BASE_URL").value.as_deref(),
+            Some("http://capitainerie-egress-proxy.capitainerie.svc:4130/google")
+        );
+        assert_eq!(
+            env(&job, "AGY_CLI_DISABLE_AUTO_UPDATE").value.as_deref(),
+            Some("true")
+        );
+        let key = env(&job, "GEMINI_API_KEY");
+        assert_eq!(key.value, None);
+        assert_eq!(
+            key.value_from
+                .as_ref()
+                .and_then(|source| source.secret_key_ref.as_ref())
+                .map(|key| key.key.as_str()),
+            Some(TOKEN_KEY)
+        );
+        let names: Vec<_> = pod(&job).containers[0]
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|var| var.name.as_str())
+            .collect();
+        assert!(names.iter().all(|name| !name.starts_with("ANTHROPIC_")));
+        assert!(names.iter().all(|name| !name.starts_with("CODEX_")));
+    }
+
+    #[test]
     fn the_image_follows_the_harness() {
         let codex = build_job(&codex_config(), &codex_spec(), Some(&proxy())).unwrap();
         assert_eq!(
             pod(&codex).containers[0].image.as_deref(),
             Some("capitainerie-executor-codex:1")
+        );
+        let antigravity =
+            build_job(&antigravity_config(), &antigravity_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            pod(&antigravity).containers[0].image.as_deref(),
+            Some("capitainerie-executor-antigravity:1")
         );
         let claude = build_job(&codex_config(), &spec(), Some(&proxy())).unwrap();
         assert_eq!(
@@ -656,5 +718,12 @@ mod tests {
         let error = build_job(&config(), &codex_spec(), Some(&proxy())).unwrap_err();
         assert!(matches!(error, RunnerError::NoHarnessImage("codex")));
         assert!(error.to_string().contains("codex"));
+    }
+
+    #[test]
+    fn an_antigravity_execution_without_an_antigravity_image_fails_before_any_job() {
+        let error = build_job(&config(), &antigravity_spec(), Some(&proxy())).unwrap_err();
+        assert!(matches!(error, RunnerError::NoHarnessImage("antigravity")));
+        assert!(error.to_string().contains("antigravity"));
     }
 }

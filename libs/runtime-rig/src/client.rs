@@ -19,6 +19,7 @@ use crate::{anthropic::Api, args::LlmArgs, error::RuntimeError};
 pub(crate) const ANTHROPIC_BASE: &str = "https://api.anthropic.com";
 pub(crate) const MISTRAL_BASE: &str = "https://api.mistral.ai";
 pub(crate) const OPENAI_BASE: &str = "https://api.openai.com/v1";
+pub(crate) const GOOGLE_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/openai";
 const UNUSED_KEY: &str = "unused";
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -189,6 +190,11 @@ impl Clients {
                 url: format!("{}/chat/completions", base_url.unwrap_or(OPENAI_BASE)),
                 key: secret(access.secret.expose()),
             }),
+            ProviderKind::Google => Ok(Endpoint::OpenAi {
+                http: self.http.clone(),
+                url: format!("{}/chat/completions", base_url.unwrap_or(GOOGLE_BASE)),
+                key: secret(access.secret.expose()),
+            }),
             ProviderKind::OpenAiCompatible => {
                 let base = base_url.ok_or_else(|| {
                     CoreError::Invalid(
@@ -239,6 +245,11 @@ impl Clients {
                     .with_base_url(base_url.unwrap_or(OPENAI_BASE))
                     .connect(ReqwestClient::from(self.http.clone())),
             ))),
+            ProviderKind::Google => Ok(Client::Chat(Box::new(
+                OpenAIConfig::new(key)
+                    .with_base_url(base_url.unwrap_or(GOOGLE_BASE))
+                    .connect(ReqwestClient::from(self.http.clone())),
+            ))),
             ProviderKind::Mistral => Ok(Client::Chat(Box::new(
                 OpenAIConfig::with_key(&MISTRAL, key)
                     .with_base_url(base_url.unwrap_or(MISTRAL_BASE))
@@ -257,6 +268,7 @@ pub(crate) fn provider_name(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::Anthropic => "anthropic",
         ProviderKind::Mistral => "mistral",
+        ProviderKind::Google => "google",
         ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => "openai",
     }
 }
@@ -362,6 +374,32 @@ mod tests {
                     access: None
                 })
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn the_google_provider_defaults_to_the_gemini_openai_endpoint_and_honours_an_override() {
+        let clients = clients();
+        let url = |base: Option<&str>| match clients
+            .endpoint(&target(ProviderKind::Google, "key-one", base))
+            .unwrap()
+        {
+            Endpoint::OpenAi { url, .. } => url,
+            Endpoint::Anthropic(_) => String::new(),
+        };
+        assert_eq!(
+            url(None),
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        );
+        assert_eq!(
+            url(Some("http://proxy/v1beta/openai/")),
+            "http://proxy/v1beta/openai/chat/completions"
+        );
+        assert_eq!(provider_name(ProviderKind::Google), "google");
+        assert!(
+            clients
+                .resolve(&target(ProviderKind::Google, "key-one", None))
+                .is_ok()
         );
     }
 

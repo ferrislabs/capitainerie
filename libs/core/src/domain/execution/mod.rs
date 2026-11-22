@@ -8,7 +8,7 @@ use capitainerie_common::{CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use self::harness::{CODEX_MODELS, Harness};
+use self::harness::{ANTIGRAVITY_MODELS, CODEX_MODELS, Harness};
 use crate::domain::{
     agent::SecretToken,
     card::{Card, Column},
@@ -250,8 +250,9 @@ impl TryFrom<String> for ExecutorModel {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let harness = Harness::of_model(&value).ok_or_else(|| {
             CoreError::Invalid(format!(
-                "no executor runs on {value:?}: claude-code runs on claude-* models, codex on {}",
-                CODEX_MODELS.join(", ")
+                "no executor runs on {value:?}: claude-code runs on claude-* models, codex on {}, antigravity on {}",
+                CODEX_MODELS.join(", "),
+                ANTIGRAVITY_MODELS.map(|(model, _)| model).join(", ")
             ))
         })?;
         Self::new(harness, value)

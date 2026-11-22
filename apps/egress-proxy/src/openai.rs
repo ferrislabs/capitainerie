@@ -42,7 +42,7 @@ pub async fn handle<C: Credentials>(
     }
 }
 
-fn check_body(body: &[u8], model: &str) -> Result<(), &'static str> {
+fn check_body(body: &[u8], model: &str) -> Result<Vec<u8>, &'static str> {
     let value: Value = serde_json::from_slice(body).map_err(|_| "the body is not JSON")?;
     let fields = value.as_object().ok_or("the body is not a JSON object")?;
     if fields.get("model").and_then(Value::as_str) != Some(model) {
@@ -79,7 +79,7 @@ fn check_body(body: &[u8], model: &str) -> Result<(), &'static str> {
         Some(Value::Array(tools)) if tools.iter().all(is_client_tool) => {}
         Some(_) => return Err("only function and custom tools are allowed"),
     }
-    Ok(())
+    serde_json::to_vec(&value).map_err(|_| "the body cannot be re-encoded")
 }
 
 fn fetches_remotely(value: &Value) -> bool {
@@ -129,7 +129,8 @@ async fn run<C: Credentials>(
     }
     let permit = proxy.acquire(run_id)?;
     let body = forward::read_request(headers, body, run_id).await?;
-    check_body(&body, &grant.model).map_err(|reason| ProxyError::bad_request(run_id, reason))?;
+    let body = check_body(&body, &grant.model)
+        .map_err(|reason| ProxyError::bad_request(run_id, reason))?;
     let key = proxy
         .credentials
         .executor_key(
@@ -173,7 +174,7 @@ mod tests {
         if let Some(fields) = body.as_object_mut() {
             fields.entry("store").or_insert(Value::Bool(false));
         }
-        check_body(body.to_string().as_bytes(), MODEL)
+        check_body(body.to_string().as_bytes(), MODEL).map(|_| ())
     }
 
     #[test]
