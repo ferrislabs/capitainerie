@@ -26,6 +26,8 @@ struct Cli {
     anthropic_api_key: Option<String>,
     #[arg(long, env = "MISTRAL_API_KEY", hide_env_values = true)]
     mistral_api_key: Option<String>,
+    #[arg(long, env = "OPENAI_API_KEY", hide_env_values = true)]
+    openai_api_key: Option<String>,
 }
 
 fn target(cli: &Cli) -> Result<ModelTarget, Box<dyn std::error::Error>> {
@@ -33,6 +35,7 @@ fn target(cli: &Cli) -> Result<ModelTarget, Box<dyn std::error::Error>> {
     let key = match kind {
         ProviderKind::Anthropic => cli.anthropic_api_key.clone(),
         ProviderKind::Mistral => cli.mistral_api_key.clone(),
+        ProviderKind::OpenAi => cli.openai_api_key.clone(),
         ProviderKind::OpenAiCompatible => None,
     };
     let access = match (kind, key) {

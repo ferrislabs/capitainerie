@@ -644,7 +644,7 @@ export namespace Schemas {
     subject: string;
   };
   export type MemberListResponse = { items: Array<MemberResponse> };
-  export type ProviderKindDto = "anthropic" | "mistral" | "openai_compatible";
+  export type ProviderKindDto = "anthropic" | "mistral" | "openai" | "openai_compatible";
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
     captain?: (null | ModelRefDto) | undefined;
@@ -1866,7 +1866,7 @@ export namespace Endpoints {
     path: "/api/v1/me/providers/{kind}";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
 
       body: Schemas.PutUserProviderRequest;
     };
@@ -1882,7 +1882,7 @@ export namespace Endpoints {
     path: "/api/v1/me/providers/{kind}";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
     };
     responses: {
       204: unknown;
@@ -1896,7 +1896,7 @@ export namespace Endpoints {
     path: "/api/v1/me/providers/{kind}/test";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
     };
     responses: {
       200: Schemas.TestUserProviderResponse;
@@ -2035,7 +2035,7 @@ export namespace Endpoints {
     path: "/api/v1/providers/{kind}";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
 
       body: Schemas.PutProviderRequest;
     };
@@ -2051,7 +2051,7 @@ export namespace Endpoints {
     path: "/api/v1/providers/{kind}";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
     };
     responses: {
       204: unknown;
@@ -2065,7 +2065,7 @@ export namespace Endpoints {
     path: "/api/v1/providers/{kind}/test";
     requestFormat: "json";
     parameters: {
-      path: { kind: "anthropic" | "mistral" | "openai_compatible" };
+      path: { kind: "anthropic" | "mistral" | "openai" | "openai_compatible" };
     };
     responses: {
       200: Schemas.TestProviderResponse;

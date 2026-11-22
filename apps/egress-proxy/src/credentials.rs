@@ -6,6 +6,7 @@ use capitainerie_core::{
     domain::{
         agent::SecretToken,
         execution::{ExecutionMode, RepositoryRef, TaskGrant},
+        provider::ProviderKind,
     },
 };
 use capitainerie_github::GithubApps;
@@ -26,10 +27,11 @@ pub trait Credentials: Send + Sync + 'static {
         token_sha256: [u8; 32],
     ) -> impl Future<Output = Result<Option<TaskGrant>, CredentialsError>> + Send;
 
-    /// The Anthropic key of the run: its initiator's own one first, then the
+    /// The provider key of the run: its initiator's own one first, then the
     /// organization's.
-    fn anthropic_key(
+    fn executor_key(
         &self,
+        provider: ProviderKind,
         organization_id: OrganizationId,
         initiated_by: Option<&str>,
     ) -> impl Future<Output = Result<Option<SecretToken>, CredentialsError>> + Send;
@@ -63,14 +65,15 @@ impl Credentials for Live {
             .map_err(CredentialsError::from_display)
     }
 
-    async fn anthropic_key(
+    async fn executor_key(
         &self,
+        provider: ProviderKind,
         organization_id: OrganizationId,
         initiated_by: Option<&str>,
     ) -> Result<Option<SecretToken>, CredentialsError> {
         Ok(self
             .usecase
-            .executor_anthropic_access(organization_id, initiated_by)
+            .executor_access(organization_id, initiated_by, provider)
             .await
             .map_err(CredentialsError::from_display)?
             .map(|access| access.secret))

@@ -1,4 +1,5 @@
 mod claude_code;
+mod codex;
 
 use std::{collections::HashMap, time::Instant};
 
@@ -99,6 +100,7 @@ impl Digest {
 
 pub(super) struct StreamReader {
     harness: Harness,
+    parser: AgentParser,
     redactor: Redactor,
     digest: Digest,
     report: ReportAssembler,
@@ -111,6 +113,7 @@ impl StreamReader {
     pub(super) fn new(harness: Harness, redactor: Redactor) -> Self {
         Self {
             harness,
+            parser: AgentParser::new(harness),
             redactor,
             digest: Digest::default(),
             report: ReportAssembler::default(),
@@ -121,6 +124,7 @@ impl StreamReader {
     }
 
     pub(super) fn reset(&mut self) {
+        self.parser = AgentParser::new(self.harness);
         self.digest = Digest::default();
         self.report = ReportAssembler::default();
         self.pending.clear();
@@ -167,7 +171,7 @@ impl StreamReader {
                 self.dirty = true;
             }
             TaskLine::Agent(line) => {
-                for event in agent_events(self.harness, line) {
+                for event in self.parser.events(line) {
                     self.apply(event);
                 }
             }
@@ -247,9 +251,24 @@ fn call_summary(input: &str, output: &str) -> String {
     )
 }
 
-fn agent_events(harness: Harness, line: &Value) -> Vec<AgentEvent> {
-    match harness {
-        Harness::ClaudeCode => claude_code::events(line),
+enum AgentParser {
+    ClaudeCode,
+    Codex(codex::CodexParser),
+}
+
+impl AgentParser {
+    fn new(harness: Harness) -> Self {
+        match harness {
+            Harness::ClaudeCode => Self::ClaudeCode,
+            Harness::Codex => Self::Codex(codex::CodexParser::default()),
+        }
+    }
+
+    fn events(&mut self, line: &Value) -> Vec<AgentEvent> {
+        match self {
+            Self::ClaudeCode => claude_code::events(line),
+            Self::Codex(parser) => parser.events(line),
+        }
     }
 }
 
@@ -322,6 +341,68 @@ mod tests {
                 sha: "3f9c2a7d1e5b48a6c0d7e9f1a2b3c4d5e6f70812".into()
             })
         );
+    }
+
+    const CODEX_SAMPLE: &str = include_str!("../../../tests/fixtures/codex-stream.jsonl");
+
+    #[test]
+    fn a_reattached_follower_does_not_count_a_codex_turn_twice() {
+        let mut reader = StreamReader::new(Harness::Codex, Redactor::new(""));
+        for line in lines(CODEX_SAMPLE) {
+            reader.accept(&line);
+        }
+        reader.reset();
+        for line in lines(CODEX_SAMPLE) {
+            reader.accept(&line);
+        }
+        let digest = reader.finish();
+        assert_eq!(digest.input_tokens, 27_500);
+        assert_eq!(digest.output_tokens, 420);
+        assert_eq!(digest.tool_calls.len(), 3, "{digest:?}");
+    }
+
+    #[test]
+    fn a_recorded_codex_stream_gives_tool_calls_usage_summary_and_marker() {
+        let mut reader = StreamReader::new(Harness::Codex, Redactor::new(""));
+        for line in lines(CODEX_SAMPLE) {
+            reader.accept(&line);
+        }
+        let digest = reader.finish();
+
+        let tools: Vec<_> = digest
+            .tool_calls
+            .iter()
+            .map(|call| (call.tool.as_str(), call.succeeded))
+            .collect();
+        assert_eq!(
+            tools,
+            [("shell", true), ("file_change", true), ("shell", false)],
+            "{digest:?}"
+        );
+        assert!(digest.tool_calls[0].summary.contains("ls -la"));
+        assert!(digest.tool_calls[1].summary.contains("add CHANGELOG.md"));
+        assert!(digest.tool_calls[2].summary.contains("jest: not found"));
+        assert_eq!(digest.input_tokens, 27_500);
+        assert_eq!(digest.cache_read_tokens, 21_000);
+        assert_eq!(digest.cache_creation_tokens, 0);
+        assert_eq!(digest.output_tokens, 420);
+        assert!(
+            digest
+                .summary
+                .as_deref()
+                .unwrap()
+                .starts_with("I added CHANGELOG.md")
+        );
+        assert_eq!(digest.stopped, None);
+        assert_eq!(digest.reported_cost_usd, None);
+        assert_eq!(digest.turns, Some(1));
+        assert_eq!(
+            digest.marker,
+            Some(TaskMarker::Pushed {
+                sha: "3f9c2a7d1e5b48a6c0d7e9f1a2b3c4d5e6f70812".into()
+            })
+        );
+        assert_eq!(digest.cached_usage().fresh_input, 6_500);
     }
 
     #[test]

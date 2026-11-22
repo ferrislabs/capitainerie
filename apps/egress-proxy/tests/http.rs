@@ -22,6 +22,7 @@ use capitainerie_common::{OrganizationId, RunId};
 use capitainerie_core::domain::{
     agent::SecretToken,
     execution::{ExecutionMode, RepositoryRef, TaskGrant},
+    provider::ProviderKind,
 };
 use capitainerie_egress_proxy::{Credentials, CredentialsError, Proxy, ProxyConfig, router};
 use chrono::Utc;
@@ -30,6 +31,8 @@ use tokio::{net::TcpListener, sync::mpsc};
 
 const TASK_TOKEN: &str = "task-token-0001";
 const ANTHROPIC_KEY: &str = "sk-ant-real-key";
+const OPENAI_KEY: &str = "sk-openai-real-key";
+const CODEX_MODEL: &str = "gpt-6-luna";
 const INSTALLATION_TOKEN: &str = "ghs_installation";
 const READ_ONLY_TOKEN: &str = "ghs_read_only";
 const INITIATOR: &str = "user-1";
@@ -49,6 +52,13 @@ fn sha256(token: &str) -> [u8; 32] {
     out
 }
 
+fn codex_grant() -> TaskGrant {
+    TaskGrant {
+        model: CODEX_MODEL.into(),
+        ..grant()
+    }
+}
+
 fn grant() -> TaskGrant {
     TaskGrant {
         run_id: RunId::new(),
@@ -66,7 +76,7 @@ fn grant() -> TaskGrant {
 struct Fake {
     grants: HashMap<[u8; 32], TaskGrant>,
     anthropic_key: Option<&'static str>,
-    /// Personal Anthropic keys, by subject.
+    openai_key: Option<&'static str>,
     user_keys: HashMap<&'static str, &'static str>,
     github_token: Option<&'static str>,
     lookups: Arc<AtomicUsize>,
@@ -78,6 +88,7 @@ impl Fake {
         Self {
             grants: HashMap::from([(sha256(TASK_TOKEN), grant)]),
             anthropic_key: Some(ANTHROPIC_KEY),
+            openai_key: Some(OPENAI_KEY),
             user_keys: HashMap::new(),
             github_token: Some(INSTALLATION_TOKEN),
             lookups: Arc::new(AtomicUsize::new(0)),
@@ -92,13 +103,21 @@ impl Credentials for Fake {
         Ok(self.grants.get(&token_sha256).cloned())
     }
 
-    async fn anthropic_key(
+    async fn executor_key(
         &self,
+        provider: ProviderKind,
         _: OrganizationId,
         initiated_by: Option<&str>,
     ) -> Result<Option<SecretToken>, CredentialsError> {
-        let own = initiated_by.and_then(|subject| self.user_keys.get(subject).copied());
-        Ok(own.or(self.anthropic_key).map(SecretToken::new))
+        let key = match provider {
+            ProviderKind::Anthropic => {
+                let own = initiated_by.and_then(|subject| self.user_keys.get(subject).copied());
+                own.or(self.anthropic_key)
+            }
+            ProviderKind::OpenAi => self.openai_key,
+            _ => None,
+        };
+        Ok(key.map(SecretToken::new))
     }
 
     async fn github_token(
@@ -159,6 +178,7 @@ async fn capturing_upstream() -> (String, Log) {
 struct Harness {
     url: String,
     anthropic: Log,
+    openai: Log,
     github: Log,
     client: reqwest::Client,
     lookups: Arc<AtomicUsize>,
@@ -174,9 +194,47 @@ async fn harness_with(fake: Fake) -> Harness {
     start(fake, anthropic_url, github_url, anthropic, github).await
 }
 
+async fn start_openai(fake: Fake, openai_url: String, openai: Log) -> Harness {
+    let (anthropic_url, anthropic) = capturing_upstream().await;
+    let (github_url, github) = capturing_upstream().await;
+    let mut h = start_with(
+        fake,
+        anthropic_url,
+        openai_url,
+        github_url,
+        anthropic,
+        github,
+    )
+    .await;
+    h.openai = openai;
+    h
+}
+
 async fn start(
     fake: Fake,
     anthropic_url: String,
+    github_url: String,
+    anthropic: Log,
+    github: Log,
+) -> Harness {
+    let (openai_url, openai) = capturing_upstream().await;
+    let mut h = start_with(
+        fake,
+        anthropic_url,
+        openai_url,
+        github_url,
+        anthropic,
+        github,
+    )
+    .await;
+    h.openai = openai;
+    h
+}
+
+async fn start_with(
+    fake: Fake,
+    anthropic_url: String,
+    openai_url: String,
     github_url: String,
     anthropic: Log,
     github: Log,
@@ -186,6 +244,7 @@ async fn start(
         fake,
         ProxyConfig {
             anthropic_base: anthropic_url,
+            openai_base: openai_url,
             github_base: github_url,
         },
         plain_client(),
@@ -193,6 +252,7 @@ async fn start(
     Harness {
         url: serve(router(proxy)).await,
         anthropic,
+        openai: Log::default(),
         github,
         client: plain_client(),
         lookups,
@@ -252,6 +312,20 @@ impl Harness {
             .post(format!("{}/anthropic/v1/messages", self.url))
             .header("x-api-key", TASK_TOKEN)
             .header("content-type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn responses(&self, token: &str, body: serde_json::Value) -> reqwest::Response {
+        self.client
+            .post(format!("{}/openai/v1/responses", self.url))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream")
+            .header("openai-organization", "org-container")
+            .header("openai-project", "proj-container")
             .body(body.to_string())
             .send()
             .await
@@ -1104,4 +1178,200 @@ async fn s8_a_grant_serves_at_most_16_requests_at_once() {
     assert_eq!(statuses.iter().filter(|s| **s == 200).count(), 16);
     assert_eq!(statuses.iter().filter(|s| **s == 429).count(), 4);
     assert_eq!(h.messages("/v1/messages", TASK_TOKEN).await.status(), 200);
+}
+
+fn codex_body() -> serde_json::Value {
+    serde_json::json!({
+        "model": CODEX_MODEL,
+        "stream": true,
+        "store": false,
+        "input": [{"role": "user", "content": "hi"}],
+        "tools": [
+            {"type": "function", "name": "shell", "parameters": {}},
+            {"type": "custom", "name": "apply_patch"},
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": true,
+        "reasoning": {"effort": "high"},
+        "include": ["reasoning.encrypted_content"],
+        "prompt_cache_key": "k",
+        "text": {},
+        "client_metadata": {},
+    })
+}
+
+#[tokio::test]
+async fn a_codex_request_is_forwarded_with_the_organizations_openai_key() {
+    let sse = "event: response.created\ndata: {}\n\nevent: response.completed\ndata: {}\n\n";
+    let upstream = Router::new().fallback(move || async move {
+        Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(Body::from(sse))
+            .unwrap()
+    });
+    let openai_url = serve(upstream).await;
+    let (log_url, log) = capturing_upstream().await;
+    let capture_h = start_openai(Fake::with(codex_grant()), log_url, log).await;
+    let response = capture_h.responses(TASK_TOKEN, codex_body()).await;
+    assert_eq!(response.status(), 200);
+    let seen = Harness::received(&capture_h.openai);
+    assert_eq!(seen.len(), 1);
+    let request = &seen[0];
+    assert_eq!(request.method, Method::POST);
+    assert_eq!(request.uri, "/v1/responses");
+    assert_eq!(
+        request.headers["authorization"],
+        format!("Bearer {OPENAI_KEY}")
+    );
+    assert_eq!(request.headers["content-type"], "application/json");
+    assert_eq!(request.headers["accept"], "text/event-stream");
+    assert!(request.headers.get("openai-organization").is_none());
+    assert!(request.headers.get("openai-project").is_none());
+    assert!(request.headers.get("x-api-key").is_none());
+    for (_, value) in &request.headers {
+        assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
+    }
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&request.body).unwrap(),
+        codex_body()
+    );
+    assert!(Harness::received(&capture_h.anthropic).is_empty());
+
+    let streaming = start_openai(Fake::with(codex_grant()), openai_url, Log::default()).await;
+    let response = streaming.responses(TASK_TOKEN, codex_body()).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "text/event-stream");
+    assert_eq!(response.text().await.unwrap(), sse);
+}
+
+#[tokio::test]
+async fn the_openai_query_string_is_dropped() {
+    let h = harness_with(Fake::with(codex_grant())).await;
+    let response = h
+        .client
+        .post(format!("{}/openai/v1/responses?api-version=x&a=b", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .header("content-type", "application/json")
+        .body(codex_body().to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(Harness::received(&h.openai)[0].uri, "/v1/responses");
+}
+
+#[tokio::test]
+async fn a_codex_grant_cannot_use_the_anthropic_route() {
+    let h = harness_with(Fake::with(codex_grant())).await;
+    let response = h
+        .messages_with(serde_json::json!({"model": CODEX_MODEL}))
+        .await;
+    assert_eq!(response.status(), 403);
+    assert!(Harness::received(&h.anthropic).is_empty());
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+#[tokio::test]
+async fn a_claude_grant_cannot_use_the_openai_route() {
+    let h = harness().await;
+    let response = h
+        .responses(TASK_TOKEN, serde_json::json!({"model": MODEL}))
+        .await;
+    assert_eq!(response.status(), 403);
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+#[tokio::test]
+async fn openai_bodies_that_escape_the_task_are_refused() {
+    let h = harness_with(Fake::with(codex_grant())).await;
+    let with = |field: &str, value: serde_json::Value| {
+        let mut body = codex_body();
+        body[field] = value;
+        body
+    };
+    let refused = [
+        serde_json::json!([1]),
+        with("model", "gpt-5".into()),
+        with("store", true.into()),
+        with("previous_response_id", "resp_1".into()),
+        with("conversation", "conv_1".into()),
+        with("prompt", serde_json::json!({"id": "p"})),
+        with("background", true.into()),
+        with("max_output_tokens", 128_001.into()),
+        with("tools", serde_json::json!([{"type": "web_search"}])),
+        with("tools", serde_json::json!([{"name": "untyped"}])),
+        with("tools", serde_json::json!([{"type": "image_generation"}])),
+    ];
+    for body in refused {
+        let response = h.responses(TASK_TOKEN, body.clone()).await;
+        assert_eq!(response.status(), 400, "{body}");
+    }
+    let not_json = h
+        .client
+        .post(format!("{}/openai/v1/responses", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .body("nope")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(not_json.status(), 400);
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+#[tokio::test]
+async fn only_post_v1_responses_is_served_on_the_openai_route() {
+    let h = harness_with(Fake::with(codex_grant())).await;
+    let models = h
+        .client
+        .get(format!("{}/openai/v1/models", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(models.status(), 403);
+    let other = h
+        .client
+        .post(format!("{}/openai/v1/chat/completions", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .body(codex_body().to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other.status(), 403);
+    let get = h
+        .client
+        .get(format!("{}/openai/v1/responses", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get.status(), 403);
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+#[tokio::test]
+async fn an_unknown_token_is_401_on_the_openai_route() {
+    let h = harness_with(Fake::with(codex_grant())).await;
+    let response = h.responses("who-knows", codex_body()).await;
+    assert_eq!(response.status(), 401);
+    let none = h
+        .client
+        .post(format!("{}/openai/v1/responses", h.url))
+        .body(codex_body().to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), 401);
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+#[tokio::test]
+async fn an_organization_without_an_openai_key_gets_a_clear_403() {
+    let mut fake = Fake::with(codex_grant());
+    fake.openai_key = None;
+    let h = harness_with(fake).await;
+    let response = h.responses(TASK_TOKEN, codex_body()).await;
+    assert_eq!(response.status(), 403);
+    assert!(response.text().await.unwrap().contains("OpenAI key"));
+    assert!(Harness::received(&h.openai).is_empty());
 }

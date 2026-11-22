@@ -33,7 +33,7 @@ impl ModelCatalog for FakeCatalog {
                 "401 unauthorized for key {}",
                 access.secret.expose()
             ))),
-            ProviderKind::OpenAiCompatible => Ok(Vec::new()),
+            ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => Ok(Vec::new()),
         }
     }
 }

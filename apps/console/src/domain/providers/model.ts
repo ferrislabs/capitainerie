@@ -27,6 +27,13 @@ export const PROVIDER_SPECS: ReadonlyArray<ProviderSpec> = [
 		keyRequired: true,
 	},
 	{
+		kind: 'openai',
+		name: 'OpenAI',
+		modelPlaceholder: 'gpt-5.5',
+		needsBaseUrl: false,
+		keyRequired: true,
+	},
+	{
 		kind: 'openai_compatible',
 		name: 'Compatible OpenAI',
 		modelPlaceholder: 'gemini-3-flash-preview',

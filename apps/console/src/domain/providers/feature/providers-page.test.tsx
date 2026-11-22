@@ -74,7 +74,7 @@ describe('ProvidersPage', () => {
 		await open({ 'GET /api/v1/me/providers': [] })
 		expect(await screen.findByText('Aucun fournisseur connecté')).toBeTruthy()
 		expect(screen.getByText(/s'exécutent avec votre propre/)).toBeTruthy()
-		expect(screen.getAllByRole('button', { name: 'Connecter' })).toHaveLength(3)
+		expect(screen.getAllByRole('button', { name: 'Connecter' })).toHaveLength(4)
 	})
 
 	it('shows a load error', async () => {

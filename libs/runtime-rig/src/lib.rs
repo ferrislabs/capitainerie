@@ -23,7 +23,7 @@ pub use catalog::RigModelCatalog;
 pub use embeddings::RigEmbedder;
 pub use error::RuntimeError;
 pub use integrator::RigIntegrator;
-pub use prices::claude_prices;
+pub use prices::executor_prices;
 pub use read::{RigDocumentReader, RigDocumentReaders};
 pub use runtime::RigAgentRuntime;
 pub use transcribe::{RigTranscriber, RigTranscribers};

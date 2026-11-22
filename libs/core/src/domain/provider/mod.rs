@@ -12,6 +12,8 @@ use crate::domain::{agent::SecretToken, execution::ExecutorModel};
 pub enum ProviderKind {
     Anthropic,
     Mistral,
+    #[serde(rename = "openai")]
+    OpenAi,
     #[serde(rename = "openai_compatible")]
     OpenAiCompatible,
 }
@@ -119,12 +121,18 @@ impl From<ProviderCredential> for ProviderAccess {
 }
 
 impl ProviderKind {
-    pub const ALL: [ProviderKind; 3] = [Self::Anthropic, Self::Mistral, Self::OpenAiCompatible];
+    pub const ALL: [ProviderKind; 4] = [
+        Self::Anthropic,
+        Self::Mistral,
+        Self::OpenAi,
+        Self::OpenAiCompatible,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Anthropic => "anthropic",
             Self::Mistral => "mistral",
+            Self::OpenAi => "openai",
             Self::OpenAiCompatible => "openai_compatible",
         }
     }
@@ -322,7 +330,7 @@ mod tests {
         for kind in ProviderKind::ALL {
             assert_eq!(ProviderKind::try_from(kind.as_str()).unwrap(), kind);
         }
-        assert!(ProviderKind::try_from("openai").is_err());
+        assert!(ProviderKind::try_from("open_ai").is_err());
     }
 
     #[test]

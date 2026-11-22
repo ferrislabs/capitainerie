@@ -13,7 +13,7 @@ use tracing::{Instrument, field, info_span};
 
 use crate::{
     args::LlmArgs,
-    client::{MISTRAL_BASE, http_client, provider_name},
+    client::{MISTRAL_BASE, OPENAI_BASE, http_client, provider_name},
     error::RuntimeError,
 };
 
@@ -95,6 +95,11 @@ impl RigEmbedder {
                     provider,
                 })
             }
+            ProviderKind::OpenAi => Ok(Endpoint {
+                url: format!("{}/embeddings", base_url.unwrap_or(OPENAI_BASE)),
+                key,
+                provider,
+            }),
             ProviderKind::Mistral => Ok(Endpoint {
                 url: format!("{}/v1/embeddings", base_url.unwrap_or(MISTRAL_BASE)),
                 key,

@@ -7,6 +7,15 @@ marker() {
 
 : "${GIT_REMOTE:?}" "${BASE_BRANCH:?}" "${BRANCH:?}" "${MODEL:?}" "${MAX_TURNS:?}" "${PROMPT:?}"
 : "${CAPITAINERIE_TASK_TOKEN:?}"
+harness="${CAPITAINERIE_HARNESS:-claude-code}"
+case "$harness" in
+  claude-code) ;;
+  codex) : "${CAPITAINERIE_OPENAI_BASE_URL:?}" "${CODEX_API_KEY:?}" "${CODEX_HOME:?}" ;;
+  *)
+    echo "unknown CAPITAINERIE_HARNESS: $harness" >&2
+    exit 2
+    ;;
+esac
 mode="${CAPITAINERIE_MODE:-change}"
 case "$mode" in
   change | audit) ;;
@@ -61,9 +70,63 @@ git config --global user.email "noreply@capitainerie.dev"
 git clone --depth 50 --branch "$BASE_BRANCH" "$GIT_REMOTE" repo >&2
 marker cloned
 
+write_codex_config() {
+  mkdir -p "$CODEX_HOME"
+  cat >"$CODEX_HOME/config.toml" <<CODEX_CONFIG
+model_provider = "capitainerie"
+web_search = "disabled"
+check_for_update_on_startup = false
+
+[model_providers.capitainerie]
+name = "capitainerie"
+base_url = "$CAPITAINERIE_OPENAI_BASE_URL"
+env_key = "CODEX_API_KEY"
+wire_api = "responses"
+
+[features]
+image_generation = false
+api_key_model_discovery = false
+
+[analytics]
+enabled = false
+CODEX_CONFIG
+}
+
+run_agent() {
+  local run_mode="$1"
+  case "$harness" in
+    claude-code)
+      if [ "$run_mode" = audit ]; then
+        claude -p "$PROMPT" \
+          --output-format stream-json \
+          --verbose \
+          --model "$MODEL" \
+          --max-turns "$MAX_TURNS" \
+          --allowedTools "Read,Glob,Grep,Bash,Write" \
+          --disallowedTools "Edit,MultiEdit,NotebookEdit"
+      else
+        claude -p "$PROMPT" \
+          --output-format stream-json \
+          --verbose \
+          --model "$MODEL" \
+          --max-turns "$MAX_TURNS" \
+          --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+      fi
+      ;;
+    codex)
+      codex exec --json --skip-git-repo-check --ephemeral \
+        --dangerously-bypass-approvals-and-sandbox -m "$MODEL" -- "$PROMPT"
+      ;;
+  esac
+}
+
 cd repo
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-claude_status=0
+if [ "$harness" = claude-code ]; then
+  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+else
+  write_codex_config
+fi
+agent_status=0
 
 if [ "$mode" = audit ]; then
   : "${REPORT_PATH:?}"
@@ -71,14 +134,8 @@ if [ "$mode" = audit ]; then
   rm -f "$REPORT_PATH"
   # Read-only: no Edit, and nothing is ever committed or pushed (the proxy
   # refuses a push of this run anyway). Write is kept for the report only.
-  claude -p "$PROMPT" \
-    --output-format stream-json \
-    --verbose \
-    --model "$MODEL" \
-    --max-turns "$MAX_TURNS" \
-    --allowedTools "Read,Glob,Grep,Bash,Write" \
-    --disallowedTools "Edit,MultiEdit,NotebookEdit" || claude_status=$?
-  echo "claude exited with $claude_status" >&2
+  run_agent audit || agent_status=$?
+  echo "$harness exited with $agent_status" >&2
   emit_report "$REPORT_PATH" || echo "no report at $REPORT_PATH" >&2
   # The worker judges the audit from the report and the summary it read;
   # a stop of Claude Code is in its stream.
@@ -87,12 +144,7 @@ if [ "$mode" = audit ]; then
 fi
 
 git switch -c "$BRANCH" >&2
-claude -p "$PROMPT" \
-  --output-format stream-json \
-  --verbose \
-  --model "$MODEL" \
-  --max-turns "$MAX_TURNS" \
-  --allowedTools "Read,Edit,Write,Glob,Grep,Bash" || claude_status=$?
+run_agent change || agent_status=$?
 
 if [ -n "$(git status --porcelain)" ]; then
   first_line="${PROMPT%%$'\n'*}"
@@ -104,4 +156,4 @@ else
   marker no_changes
 fi
 
-exit "$claude_status"
+exit "$agent_status"

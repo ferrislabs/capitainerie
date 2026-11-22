@@ -10,10 +10,13 @@ use axum::{
     routing::{any, get},
 };
 use capitainerie_common::RunId;
-use capitainerie_core::domain::execution::TaskGrant;
+use capitainerie_core::domain::{
+    execution::{TaskGrant, harness::Harness},
+    provider::ProviderKind,
+};
 use chrono::Utc;
 
-use crate::{anthropic, auth, credentials::Credentials, error::ProxyError, git};
+use crate::{anthropic, auth, credentials::Credentials, error::ProxyError, git, openai};
 
 const GRANT_CACHE_TTL: Duration = Duration::from_secs(10);
 const UNKNOWN_TOKEN_TTL: Duration = Duration::from_secs(10);
@@ -43,6 +46,7 @@ impl Drop for Permit {
 #[derive(Debug, Clone)]
 pub struct ProxyConfig {
     pub anthropic_base: String,
+    pub openai_base: String,
     pub github_base: String,
 }
 
@@ -70,6 +74,7 @@ impl<C: Credentials> Proxy<C> {
             http,
             config: ProxyConfig {
                 anthropic_base: config.anthropic_base.trim_end_matches('/').to_owned(),
+                openai_base: config.openai_base.trim_end_matches('/').to_owned(),
                 github_base: config.github_base.trim_end_matches('/').to_owned(),
             },
             cache: Mutex::new(HashMap::new()),
@@ -161,6 +166,16 @@ impl<C: Credentials> Proxy<C> {
     }
 }
 
+pub(crate) fn ensure_provider(grant: &TaskGrant, provider: ProviderKind) -> Result<(), ProxyError> {
+    match Harness::of_model(&grant.model).map(Harness::provider) {
+        Some(served) if served == provider => Ok(()),
+        _ => Err(ProxyError::forbidden(
+            grant.run_id,
+            "this execution is not allowed to use this provider",
+        )),
+    }
+}
+
 async fn healthz() -> StatusCode {
     StatusCode::OK
 }
@@ -169,6 +184,7 @@ pub fn router<C: Credentials>(proxy: Proxy<C>) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/anthropic/{*path}", any(anthropic::handle::<C>))
+        .route("/openai/{*path}", any(openai::handle::<C>))
         .route("/git/{owner}/{repo}/{*rest}", any(git::handle::<C>))
         .with_state(Arc::new(proxy))
 }

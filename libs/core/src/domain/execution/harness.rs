@@ -4,36 +4,61 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::provider::ProviderKind;
 
+pub const CODEX_MODELS: [&str; 9] = [
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+];
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Harness {
     #[default]
     ClaudeCode,
+    Codex,
 }
 
 impl Harness {
+    pub const ALL: [Harness; 2] = [Self::ClaudeCode, Self::Codex];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
+            Self::Codex => "codex",
         }
     }
 
     pub const fn provider(self) -> ProviderKind {
         match self {
             Self::ClaudeCode => ProviderKind::Anthropic,
+            Self::Codex => ProviderKind::OpenAi,
         }
     }
 
     pub const fn default_model(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-sonnet-5-5",
+            Self::Codex => CODEX_MODELS[0],
         }
     }
 
     pub fn accepts_model(self, model: &str) -> bool {
         match self {
             Self::ClaudeCode => model.starts_with("claude-"),
+            Self::Codex => CODEX_MODELS.contains(&model),
         }
+    }
+
+    pub fn of_model(model: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|harness| harness.accepts_model(model))
     }
 }
 
@@ -96,5 +121,39 @@ mod tests {
             serde_json::to_string(&Harness::ClaudeCode).ok().as_deref(),
             Some("\"claude-code\"")
         );
+    }
+
+    #[test]
+    fn codex_runs_on_openai_models_only() {
+        let harness = Harness::Codex;
+        assert_eq!(harness.provider(), ProviderKind::OpenAi);
+        assert!(harness.accepts_model(harness.default_model()));
+        for refused in ["claude-sonnet-5-5", "gpt-4o", ""] {
+            assert!(!harness.accepts_model(refused), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_model_finds_its_harness() {
+        assert_eq!(
+            Harness::of_model("claude-opus-5-5"),
+            Some(Harness::ClaudeCode)
+        );
+        assert_eq!(Harness::of_model("gpt-6-luna"), Some(Harness::Codex));
+        assert_eq!(Harness::of_model("mistral-large"), None);
+    }
+
+    #[test]
+    fn exactly_one_harness_accepts_each_known_model() {
+        let models = CODEX_MODELS
+            .into_iter()
+            .chain(Harness::ALL.map(Harness::default_model));
+        for model in models {
+            let accepting = Harness::ALL
+                .into_iter()
+                .filter(|harness| harness.accepts_model(model))
+                .count();
+            assert_eq!(accepting, 1, "{model}");
+        }
     }
 }

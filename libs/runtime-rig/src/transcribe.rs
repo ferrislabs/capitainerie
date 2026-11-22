@@ -14,7 +14,7 @@ use rig_reqwest::reqwest::{
 use serde_json::Value;
 
 use crate::{
-    client::{MISTRAL_BASE, http_client},
+    client::{MISTRAL_BASE, OPENAI_BASE, http_client},
     error::RuntimeError,
     usage::truncate_chars,
 };
@@ -68,6 +68,10 @@ impl RigTranscriber {
             ProviderKind::Mistral => Ok(format!(
                 "{}/v1/audio/transcriptions",
                 base.unwrap_or(MISTRAL_BASE)
+            )),
+            ProviderKind::OpenAi => Ok(format!(
+                "{}/audio/transcriptions",
+                base.unwrap_or(OPENAI_BASE)
             )),
             ProviderKind::OpenAiCompatible => base
                 .map(|base| format!("{base}/audio/transcriptions"))

@@ -7,9 +7,15 @@ use axum::{
 };
 use futures_util::{Stream, StreamExt};
 
-use crate::proxy::Permit;
+use capitainerie_common::RunId;
+
+use crate::{error::ProxyError, proxy::Permit};
 
 pub const MAX_BODY: u64 = 512 * 1024 * 1024;
+pub const MAX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
+/// Coding agents ask for long outputs (64k and more on current models); the
+/// run stays bounded by its turns and its deadline.
+pub const MAX_OUTPUT_TOKENS_CAP: u64 = 128_000;
 
 const HOP_BY_HOP: [HeaderName; 7] = [
     header::CONNECTION,
@@ -32,6 +38,19 @@ pub fn declared_length(headers: &HeaderMap) -> Option<u64> {
         .ok()?
         .parse()
         .ok()
+}
+
+pub async fn read_request(
+    headers: &HeaderMap,
+    body: Body,
+    run_id: RunId,
+) -> Result<Bytes, ProxyError> {
+    if declared_length(headers).is_some_and(|length| length > MAX_REQUEST_BYTES as u64) {
+        return Err(ProxyError::TooLarge { run_id });
+    }
+    axum::body::to_bytes(body, MAX_REQUEST_BYTES)
+        .await
+        .map_err(|_| ProxyError::TooLarge { run_id })
 }
 
 pub fn copy_allowed(from: &HeaderMap, names: &[HeaderName]) -> HeaderMap {

@@ -171,6 +171,13 @@ pub struct ExecutorArgs {
     #[arg(id = "executor_image", long = "executor-image", env = "EXECUTOR_IMAGE")]
     pub image: Option<String>,
 
+    #[arg(
+        id = "executor_codex_image",
+        long = "executor-codex-image",
+        env = "EXECUTOR_CODEX_IMAGE"
+    )]
+    pub codex_image: Option<String>,
+
     /// Base URL of the credentials proxy as the task pods reach it.
     #[arg(
         id = "executor_proxy_url",
@@ -231,6 +238,14 @@ pub struct EgressProxyArgs {
         default_value = "https://api.anthropic.com"
     )]
     pub anthropic_base: String,
+
+    #[arg(
+        id = "egress_openai_base",
+        long = "egress-openai-base",
+        env = "EGRESS_OPENAI_BASE",
+        default_value = "https://api.openai.com"
+    )]
+    pub openai_base: String,
 
     #[arg(
         id = "egress_github_base",

@@ -161,18 +161,15 @@ fn is_refused_v6(address: Ipv6Addr) -> bool {
         || address.to_ipv4().is_some_and(is_refused_v4)
 }
 
-/// The Anthropic key an execution reaches its model with: the initiator's
-/// own key first, then the organization's. An Anthropic credential never holds
-/// a base URL (`validate_provider` drops it), so the proxy always calls its own
-/// Anthropic upstream.
 pub fn executor_access(
+    kind: ProviderKind,
     user: Vec<UserProviderCredential>,
     organization: Option<ProviderAccess>,
 ) -> Option<ProviderAccess> {
     user.into_iter()
-        .find(|credential| credential.kind == ProviderKind::Anthropic)
+        .find(|credential| credential.kind == kind)
         .map(ProviderAccess::from)
-        .or_else(|| organization.filter(|access| access.kind == ProviderKind::Anthropic))
+        .or_else(|| organization.filter(|access| access.kind == kind))
 }
 
 /// Which model serves a user's agent run, in order: the agent's own model on
@@ -302,17 +299,46 @@ mod tests {
             credential(ProviderKind::Mistral, "mistral-key"),
             credential(ProviderKind::Anthropic, "sk-ant-mine"),
         ];
-        let used = executor_access(mine, organization.clone()).unwrap();
+        let used = executor_access(ProviderKind::Anthropic, mine, organization.clone()).unwrap();
         assert_eq!(used.secret.expose(), "sk-ant-mine");
         assert_eq!(used.kind, ProviderKind::Anthropic);
 
         let other_kinds = vec![credential(ProviderKind::Mistral, "mistral-key")];
-        let used = executor_access(other_kinds, organization).unwrap();
+        let used = executor_access(ProviderKind::Anthropic, other_kinds, organization).unwrap();
         assert_eq!(used.secret.expose(), "sk-ant-org");
 
-        assert_eq!(executor_access(Vec::new(), None), None);
         assert_eq!(
-            executor_access(Vec::new(), Some(access(ProviderKind::Mistral, "m"))),
+            executor_access(ProviderKind::Anthropic, Vec::new(), None),
+            None
+        );
+        assert_eq!(
+            executor_access(
+                ProviderKind::Anthropic,
+                Vec::new(),
+                Some(access(ProviderKind::Mistral, "m"))
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn an_execution_selects_the_key_of_the_requested_provider() {
+        let organization = Some(access(ProviderKind::OpenAi, "sk-openai-org"));
+        let mine = vec![
+            credential(ProviderKind::Anthropic, "sk-ant-mine"),
+            credential(ProviderKind::OpenAi, "sk-openai-mine"),
+        ];
+        let used = executor_access(ProviderKind::OpenAi, mine, organization.clone()).unwrap();
+        assert_eq!(used.secret.expose(), "sk-openai-mine");
+        assert_eq!(used.kind, ProviderKind::OpenAi);
+
+        let anthropic_only = vec![credential(ProviderKind::Anthropic, "sk-ant-mine")];
+        let used = executor_access(ProviderKind::OpenAi, anthropic_only, organization).unwrap();
+        assert_eq!(used.secret.expose(), "sk-openai-org");
+
+        let anthropic_org = Some(access(ProviderKind::Anthropic, "sk-ant-org"));
+        assert_eq!(
+            executor_access(ProviderKind::OpenAi, Vec::new(), anthropic_org),
             None
         );
     }

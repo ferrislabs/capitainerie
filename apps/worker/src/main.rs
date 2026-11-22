@@ -33,7 +33,7 @@ use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_integrations::{HttpConnector, McpHttp, NetworkPolicy};
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner};
 use capitainerie_runtime_rig::{
-    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, RigIntegrator, claude_prices,
+    EmbeddingArgs, LlmArgs, RigAgentRuntime, RigEmbedder, RigIntegrator, executor_prices,
 };
 use capitainerie_vector_lancedb::LanceVectorStore;
 use clap::Parser;
@@ -237,7 +237,7 @@ async fn main() -> anyhow::Result<()> {
             progress_every: Duration::from_secs(5),
             console_url: args.console_url.clone(),
             default_models,
-            prices: claude_prices(),
+            prices: executor_prices(),
         },
     );
     let pipeline = Dispatcher::new(meeting, execution, intervention, agent_task);
@@ -324,7 +324,8 @@ async fn build_executor(
     let (Some(image), Some(proxy_url)) = (&args.executor.image, &args.executor.proxy_url) else {
         return Err("EXECUTOR_IMAGE et EXECUTOR_PROXY_URL sont requis pour les exécutions".into());
     };
-    let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str());
+    let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str())
+        .with_codex_image(args.executor.codex_image.clone());
     config.namespace = namespace.to_owned();
     let runner = KubeTaskRunner::try_default(config)
         .await

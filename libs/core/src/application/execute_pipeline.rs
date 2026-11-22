@@ -30,7 +30,7 @@ use crate::{
         execution::{
             DraftPullRequest, EXECUTOR_AGENT, ExecutionMode, ExecutorModel, REPORT_PATH,
             RepositoryRef, TaskGrant, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
-            agent_executor_model, execution_branch,
+            agent_executor_model, agent_harness, execution_branch,
             ports::{CodeHost, TaskGrantRepository, TaskRunner},
             report::ReportOutcome,
         },
@@ -665,12 +665,12 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         source: &ExecutionAgentSource,
         fallback: &ExecutorModel,
     ) -> Result<ExecutorModel, CoreError> {
-        let harness = fallback.harness();
         if let Some(frozen) = &source.task.model
-            && let Ok(model) = ExecutorModel::new(harness, frozen.model.clone())
+            && let Ok(model) = ExecutorModel::try_from(frozen.model.clone())
         {
             return Ok(model);
         }
+        let harness = agent_harness(&source.agent.model, fallback);
         let run = &context.run;
         let user_default = match self
             .usecase
@@ -694,12 +694,12 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                 run.organization_id,
                 run.id,
                 &ModelRef {
-                    provider: harness.provider(),
+                    provider: chosen.harness().provider(),
                     model: chosen.as_str().to_owned(),
                 },
             )
             .await?;
-        Ok(ExecutorModel::new(harness, frozen.model).unwrap_or(chosen))
+        Ok(ExecutorModel::try_from(frozen.model).unwrap_or(chosen))
     }
 
     async fn task_token(

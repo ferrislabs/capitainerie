@@ -37,20 +37,46 @@ const CLAUDE: &[(&str, Price)] = &[
     ),
 ];
 
-pub(crate) fn price_of(kind: ProviderKind, model: &str) -> Option<Price> {
-    match kind {
-        ProviderKind::Anthropic => CLAUDE
-            .iter()
-            .find(|(id, _)| *id == model)
-            .map(|(_, price)| *price),
-        ProviderKind::Mistral | ProviderKind::OpenAiCompatible => None,
+const fn price(input_per_mtok_micros: u64, output_per_mtok_micros: u64) -> Price {
+    Price {
+        input_per_mtok_micros,
+        output_per_mtok_micros,
     }
 }
 
-/// Every Claude model with its price, for pricing the usage of an execution.
-pub fn claude_prices() -> Vec<(String, Pricing)> {
+const OPENAI: &[(&str, Price)] = &[
+    ("gpt-6.1-sol", price(2_000_000, 10_000_000)),
+    ("gpt-6.1-terra", price(1_000_000, 5_000_000)),
+    ("gpt-6-astra", price(10_000_000, 50_000_000)),
+    ("gpt-6-sol", price(2_000_000, 10_000_000)),
+    ("gpt-6-luna", price(100_000, 500_000)),
+    ("gpt-5.6-sol", price(4_000_000, 20_000_000)),
+    ("gpt-5.6-terra", price(2_000_000, 12_000_000)),
+    ("gpt-5.6-luna", price(200_000, 1_200_000)),
+    ("gpt-5.5", price(5_000_000, 30_000_000)),
+];
+
+fn table(kind: ProviderKind) -> &'static [(&'static str, Price)] {
+    match kind {
+        ProviderKind::Anthropic => CLAUDE,
+        ProviderKind::OpenAi => OPENAI,
+        ProviderKind::Mistral | ProviderKind::OpenAiCompatible => &[],
+    }
+}
+
+pub(crate) fn price_of(kind: ProviderKind, model: &str) -> Option<Price> {
+    table(kind)
+        .iter()
+        .find(|(id, _)| *id == model)
+        .map(|(_, price)| *price)
+}
+
+/// Every model an executor runs on, with its price, for pricing the usage of
+/// an execution.
+pub fn executor_prices() -> Vec<(String, Pricing)> {
     CLAUDE
         .iter()
+        .chain(OPENAI)
         .map(|(model, price)| {
             (
                 (*model).to_owned(),
@@ -65,6 +91,8 @@ pub fn claude_prices() -> Vec<(String, Pricing)> {
 
 #[cfg(test)]
 mod tests {
+    use capitainerie_core::domain::execution::harness::CODEX_MODELS;
+
     use super::*;
 
     #[test]
@@ -84,9 +112,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_prices_cover_every_priced_model() {
-        let prices = claude_prices();
-        assert_eq!(prices.len(), CLAUDE.len());
+    fn executor_prices_cover_every_priced_model() {
+        let prices = executor_prices();
+        assert_eq!(prices.len(), CLAUDE.len() + OPENAI.len());
         let sonnet = prices
             .iter()
             .find(|(model, _)| model == "claude-sonnet-5-5")
@@ -97,6 +125,17 @@ mod tests {
                 input_per_million_micros: 2_000_000,
                 output_per_million_micros: 10_000_000
             })
+        );
+    }
+
+    #[test]
+    fn every_codex_model_has_a_price() {
+        for model in CODEX_MODELS {
+            assert!(price_of(ProviderKind::OpenAi, model).is_some(), "{model}");
+        }
+        assert_eq!(
+            price_of(ProviderKind::OpenAi, "gpt-6-luna"),
+            Some(price(100_000, 500_000))
         );
     }
 

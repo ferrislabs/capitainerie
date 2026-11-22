@@ -94,6 +94,7 @@ impl ModelCatalog for FakeCatalog {
         match access.kind {
             ProviderKind::Anthropic => Ok(vec![model("claude-haiku-5-5", true, false)]),
             ProviderKind::Mistral => Err(CoreError::Internal("mistral is down".into())),
+            ProviderKind::OpenAi => Ok(vec![model("gpt-6-luna", true, false)]),
             ProviderKind::OpenAiCompatible => Ok(vec![
                 model("qwen2.5:7b-instruct", true, false),
                 model("bge-m3", false, true),

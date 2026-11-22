@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use axum::{
-    body::{Body, Bytes},
+    body::Body,
     extract::{Path, State},
     http::{HeaderMap, HeaderName, HeaderValue, Method, Uri, header},
     response::{IntoResponse, Response},
 };
-use capitainerie_core::domain::provider::AnthropicAuth;
+use capitainerie_core::domain::provider::{AnthropicAuth, ProviderKind};
 use serde_json::Value;
 
 use crate::{
     auth,
     credentials::Credentials,
     error::ProxyError,
-    forward::{self},
-    proxy::Proxy,
+    forward::{self, MAX_OUTPUT_TOKENS_CAP},
+    proxy::{self, Proxy},
 };
 
 const CLASS: &str = "anthropic";
@@ -33,10 +33,6 @@ const BETA_PREFIXES: [&str; 5] = [
     "context-management-",
     "token-efficient-tools-",
 ];
-pub const MAX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
-/// Claude Code asks for long outputs (64k and more on current models); the
-/// run stays bounded by its turns and its deadline.
-pub const MAX_TOKENS_CAP: u64 = 128_000;
 const REFUSED_FIELDS: [&str; 2] = ["mcp_servers", "container"];
 
 pub async fn handle<C: Credentials>(
@@ -68,7 +64,7 @@ fn check_body(body: &[u8], model: &str) -> Result<(), &'static str> {
     match fields.get("max_tokens") {
         None => {}
         Some(tokens) => match tokens.as_u64() {
-            Some(tokens) if tokens <= MAX_TOKENS_CAP => {}
+            Some(tokens) if tokens <= MAX_OUTPUT_TOKENS_CAP => {}
             _ => return Err("max_tokens is above the allowed maximum"),
         },
     }
@@ -140,6 +136,7 @@ async fn run<C: Credentials>(
     })?;
     let grant = proxy.authenticate(token).await?;
     let run_id = grant.run_id;
+    proxy::ensure_provider(&grant, ProviderKind::Anthropic)?;
     if method != Method::POST || !ALLOWED_PATHS.contains(&path) {
         return Err(ProxyError::forbidden(
             run_id,
@@ -147,16 +144,15 @@ async fn run<C: Credentials>(
         ));
     }
     let permit = proxy.acquire(run_id)?;
-    if forward::declared_length(headers).is_some_and(|length| length > MAX_REQUEST_BYTES as u64) {
-        return Err(ProxyError::TooLarge { run_id });
-    }
-    let body: Bytes = axum::body::to_bytes(body, MAX_REQUEST_BYTES)
-        .await
-        .map_err(|_| ProxyError::TooLarge { run_id })?;
+    let body = forward::read_request(headers, body, run_id).await?;
     check_body(&body, &grant.model).map_err(|reason| ProxyError::forbidden(run_id, reason))?;
     let key = proxy
         .credentials
-        .anthropic_key(grant.organization_id, grant.initiated_by.as_deref())
+        .executor_key(
+            ProviderKind::Anthropic,
+            grant.organization_id,
+            grant.initiated_by.as_deref(),
+        )
         .await?
         .ok_or(ProxyError::forbidden(
             run_id,

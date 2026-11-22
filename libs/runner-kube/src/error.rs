@@ -22,6 +22,9 @@ pub enum RunnerError {
 
     #[error("job {0} has no uid, so the secret cannot be owned by it")]
     NoJobUid(String),
+
+    #[error("no executor image is configured for the {0} harness")]
+    NoHarnessImage(&'static str),
 }
 
 impl From<RunnerError> for CoreError {
