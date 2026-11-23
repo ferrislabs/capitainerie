@@ -17,8 +17,9 @@ use capitainerie_core::{
         },
         delegation::DelegatedToken,
         execution::{
-            DraftPullRequest, ExecutionMode, GithubAppCredentials, PullRequestUrl, TaskGrant,
-            TaskLine, TaskMarker, TaskOutcome, execution_branch,
+            DraftPullRequest, ExecutionMode, ExecutorModel, GithubAppCredentials, PullRequestUrl,
+            TaskGrant, TaskLine, TaskMarker, TaskOutcome, execution_branch,
+            harness::Harness,
             ports::{MockCodeHost, MockTaskRunner},
         },
         provider::ModelAssignments,
@@ -34,6 +35,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 const SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/claude-stream.jsonl");
+const CODEX_SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/codex-stream.jsonl");
 const PR_URL: &str = "https://github.com/acme/web/pull/7";
 
 fn database_url() -> Option<String> {
@@ -322,6 +324,59 @@ async fn assert_closed(world: &World) {
     let (total, revoked) = grants(&world.pool, world.run_id).await;
     assert_eq!(total, revoked, "every task grant is revoked");
     assert_eq!(delegations(&world.pool, world.run_id).await, 0);
+}
+
+#[tokio::test]
+async fn a_codex_execution_is_priced_from_its_stream_and_opens_the_pull_request() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = runner_ending(&seen, lines_of(CODEX_SAMPLE), TaskOutcome::Succeeded);
+    let mut codex = config();
+    codex.default_models.executor = ExecutorModel::new(Harness::Codex, "gpt-6-luna").unwrap();
+    codex.prices = vec![(
+        "gpt-6-luna".into(),
+        Pricing {
+            input_per_million_micros: 100_000,
+            output_per_million_micros: 500_000,
+        },
+    )];
+    let pipeline = ExecutePipeline::new(
+        world.usecase.clone(),
+        Executor::Ready {
+            runner,
+            host: host(&seen, world.organization_id, world.installation_id),
+        },
+        codex,
+    );
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    let pull_requests = seen.pull_requests.lock().unwrap().clone();
+    assert_eq!(pull_requests.len(), 1);
+    assert!(
+        pull_requests[0]
+            .body
+            .contains("27500 en entrée, 420 en sortie")
+    );
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert!(posted[0].2.contains(PR_URL));
+    assert!(posted[0].2.contains("I added CHANGELOG.md"));
+    let (status, kind, cost, input_tokens, output) = step(&world.pool, world.run_id).await;
+    assert_eq!((status.as_str(), kind.as_str()), ("succeeded", "execute"));
+    assert_eq!(input_tokens, 27_500);
+    assert_eq!(cost, 1_070, "6500 fresh, 21000 cached at 10 %, 420 out");
+    assert_eq!(output["pull_request"], PR_URL);
+    assert_eq!(output["comment"], "posted");
+    assert_eq!(output["tool_calls"].as_array().unwrap().len(), 3);
+    let model: String = sqlx::query_scalar("SELECT model FROM task_grants WHERE run_id = $1")
+        .bind(world.run_id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(model, "gpt-6-luna");
+    assert_closed(&world).await;
 }
 
 #[tokio::test]

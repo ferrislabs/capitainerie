@@ -237,6 +237,8 @@ executor:
     repository: ""
     # -- Defaults to .Chart.AppVersion.
     tag: ""
+  # -- Full image reference of the Codex executor (value of EXECUTOR_CODEX_IMAGE). Codex executions fail to start while empty.
+  codexImage: ""
   # -- Value of EXECUTOR_MAX_TURNS (--max-turns of Claude Code).
   maxTurns: 50
   # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).

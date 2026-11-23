@@ -12,6 +12,8 @@ pub enum ProxyError {
     Unauthorized { reason: &'static str },
     #[error("forbidden: {reason}")]
     Forbidden { run_id: RunId, reason: &'static str },
+    #[error("bad request: {reason}")]
+    BadRequest { run_id: RunId, reason: &'static str },
     #[error("request body too large")]
     TooLarge { run_id: RunId },
     #[error("too many requests in flight")]
@@ -27,12 +29,16 @@ impl ProxyError {
         Self::Forbidden { run_id, reason }
     }
 
+    pub fn bad_request(run_id: RunId, reason: &'static str) -> Self {
+        Self::BadRequest { run_id, reason }
+    }
+
     pub fn log(&self, method: &Method, class: &str) {
         match self {
             Self::Unauthorized { reason } => {
                 tracing::warn!(%method, class, reason, "request denied")
             }
-            Self::Forbidden { run_id, reason } => {
+            Self::Forbidden { run_id, reason } | Self::BadRequest { run_id, reason } => {
                 tracing::warn!(run_id = %run_id, %method, class, reason, "request denied")
             }
             Self::TooLarge { run_id } => {
@@ -58,6 +64,7 @@ impl IntoResponse for ProxyError {
             )
                 .into_response(),
             Self::Forbidden { reason, .. } => (StatusCode::FORBIDDEN, reason).into_response(),
+            Self::BadRequest { reason, .. } => (StatusCode::BAD_REQUEST, reason).into_response(),
             Self::TooLarge { .. } => {
                 (StatusCode::PAYLOAD_TOO_LARGE, "request body too large").into_response()
             }

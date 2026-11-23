@@ -8,7 +8,7 @@ use capitainerie_common::{CoreError, OrganizationId, RunId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use self::harness::Harness;
+use self::harness::{CODEX_MODELS, Harness};
 use crate::domain::{
     agent::SecretToken,
     card::{Card, Column},
@@ -200,16 +200,31 @@ impl ExecutorModel {
     }
 }
 
-/// The model an agent's execution runs on: the agent's own model when the
-/// fallback's harness accepts it, else the default model of the initiator's
-/// key for that harness's provider, else `fallback`.
+/// The harness an agent's execution runs on: the one that accepts the
+/// agent's own model, else the fallback's.
+pub fn agent_harness(agent_model: &str, fallback: &ExecutorModel) -> Harness {
+    use crate::domain::provider::model_ref_of;
+    Harness::ALL
+        .into_iter()
+        .find(|harness| {
+            model_ref_of(agent_model, harness.provider()).is_some_and(|wanted| {
+                wanted.provider == harness.provider() && harness.accepts_model(&wanted.model)
+            })
+        })
+        .unwrap_or_else(|| fallback.harness())
+}
+
+/// The model an agent's execution runs on: the agent's own model when its
+/// harness accepts it, else the default model of the initiator's key for that
+/// harness's provider (`user_default`), else `fallback` when it runs on that
+/// harness, else the harness's default model.
 pub fn agent_executor_model(
     agent_model: &str,
     user_default: Option<&str>,
     fallback: &ExecutorModel,
 ) -> ExecutorModel {
     use crate::domain::provider::{is_model_id, model_ref_of};
-    let harness = fallback.harness();
+    let harness = agent_harness(agent_model, fallback);
     let provider = harness.provider();
     let agent = model_ref_of(agent_model, provider)
         .filter(|wanted| wanted.provider == provider)
@@ -222,14 +237,24 @@ pub fn agent_executor_model(
         .into_iter()
         .flatten()
         .find_map(|model| ExecutorModel::new(harness, model).ok())
-        .unwrap_or_else(|| fallback.clone())
+        .or_else(|| (fallback.harness() == harness).then(|| fallback.clone()))
+        .unwrap_or_else(|| ExecutorModel {
+            harness,
+            model: harness.default_model().to_owned(),
+        })
 }
 
 impl TryFrom<String> for ExecutorModel {
     type Error = CoreError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(Harness::default(), value)
+        let harness = Harness::of_model(&value).ok_or_else(|| {
+            CoreError::Invalid(format!(
+                "no executor runs on {value:?}: claude-code runs on claude-* models, codex on {}",
+                CODEX_MODELS.join(", ")
+            ))
+        })?;
+        Self::new(harness, value)
     }
 }
 
@@ -555,6 +580,34 @@ mod tests {
         assert_eq!(
             model("mistral-large", Some("gemini-3")),
             Harness::ClaudeCode.default_model()
+        );
+    }
+
+    #[test]
+    fn an_agent_on_a_codex_model_runs_on_codex() {
+        let fallback = ExecutorModel::default();
+        let chosen = agent_executor_model("gpt-6-luna", None, &fallback);
+        assert_eq!(chosen.harness(), Harness::Codex);
+        assert_eq!(chosen.as_str(), "gpt-6-luna");
+        let prefixed = agent_executor_model("openai:gpt-6-sol", Some("gpt-5.5"), &fallback);
+        assert_eq!(prefixed.as_str(), "gpt-6-sol");
+        assert_eq!(agent_harness("gpt-6-luna", &fallback), Harness::Codex);
+        assert_eq!(agent_harness("gpt-4o", &fallback), Harness::ClaudeCode);
+    }
+
+    #[test]
+    fn an_agent_without_a_model_keeps_the_fallback() {
+        let fallback = ExecutorModel::default();
+        assert_eq!(agent_executor_model("", None, &fallback), fallback);
+        let codex = ExecutorModel::new(Harness::Codex, "gpt-5.5").unwrap();
+        assert_eq!(agent_executor_model("", None, &codex), codex);
+        assert_eq!(
+            agent_executor_model("claude-opus-5", None, &codex).harness(),
+            Harness::ClaudeCode
+        );
+        assert_eq!(
+            agent_executor_model("mistral-large", Some("gpt-6-sol"), &codex).as_str(),
+            "gpt-6-sol"
         );
     }
 

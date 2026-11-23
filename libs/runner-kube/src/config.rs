@@ -12,6 +12,7 @@ pub const EPHEMERAL_STORAGE: &str = "6Gi";
 pub struct KubeRunnerConfig {
     pub namespace: String,
     pub image: String,
+    pub codex_image: Option<String>,
     pub proxy_base_url: String,
     pub resources: ResourceRequirements,
     pub ttl_seconds_after_finished: i32,
@@ -35,10 +36,16 @@ impl KubeRunnerConfig {
         }
     }
 
+    pub fn with_codex_image(mut self, image: Option<String>) -> Self {
+        self.codex_image = image;
+        self
+    }
+
     pub fn new(image: impl Into<String>, proxy_base_url: impl Into<String>) -> Self {
         Self {
             namespace: DEFAULT_NAMESPACE.to_owned(),
             image: image.into(),
+            codex_image: None,
             proxy_base_url: proxy_base_url.into().trim_end_matches('/').to_owned(),
             resources: default_resources(),
             ttl_seconds_after_finished: DEFAULT_TTL_SECONDS,

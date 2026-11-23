@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::{
     anthropic,
-    client::{ANTHROPIC_BASE, MISTRAL_BASE, http_client},
+    client::{ANTHROPIC_BASE, MISTRAL_BASE, OPENAI_BASE, http_client},
     error::RuntimeError,
     prices::price_of,
     usage::truncate_chars,
@@ -100,6 +100,18 @@ impl RigModelCatalog {
         Ok(mistral_models(&page))
     }
 
+    async fn openai(&self, access: &ProviderAccess) -> Result<Vec<CatalogModel>, CoreError> {
+        let base = base_of(access, OPENAI_BASE);
+        let page = self
+            .get(
+                self.http
+                    .get(format!("{base}/models"))
+                    .bearer_auth(access.secret.expose()),
+            )
+            .await?;
+        Ok(openai_models(&page, ProviderKind::OpenAi))
+    }
+
     async fn openai_compatible(
         &self,
         access: &ProviderAccess,
@@ -116,7 +128,7 @@ impl RigModelCatalog {
             request = request.bearer_auth(access.secret.expose());
         }
         let page = self.get(request).await?;
-        Ok(openai_models(&page))
+        Ok(openai_models(&page, ProviderKind::OpenAiCompatible))
     }
 }
 
@@ -222,7 +234,7 @@ fn is_embedding_model(id: &str) -> bool {
         .any(|marker| id.contains(marker))
 }
 
-fn openai_models(page: &Value) -> Vec<CatalogModel> {
+fn openai_models(page: &Value, kind: ProviderKind) -> Vec<CatalogModel> {
     sorted(
         page["data"]
             .as_array()
@@ -231,14 +243,7 @@ fn openai_models(page: &Value) -> Vec<CatalogModel> {
             .filter_map(|entry| {
                 let id = entry["id"].as_str()?;
                 let embeddings = is_embedding_model(id);
-                Some(model(
-                    ProviderKind::OpenAiCompatible,
-                    id,
-                    None,
-                    embeddings,
-                    !embeddings,
-                    None,
-                ))
+                Some(model(kind, id, None, embeddings, !embeddings, None))
             })
             .collect(),
     )
@@ -249,6 +254,7 @@ impl ModelCatalog for RigModelCatalog {
         match access.kind {
             ProviderKind::Anthropic => self.anthropic(access).await.map(sorted),
             ProviderKind::Mistral => self.mistral(access).await,
+            ProviderKind::OpenAi => self.openai(access).await,
             ProviderKind::OpenAiCompatible => self.openai_compatible(access).await,
         }
     }

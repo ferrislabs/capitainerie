@@ -2,7 +2,7 @@ use axum_extra::routing::TypedPath;
 use capitainerie_common::CoreError;
 use capitainerie_core::{
     application::ModelListing,
-    domain::execution::{ExecutorModel, harness::Harness},
+    domain::execution::ExecutorModel,
     domain::provider::{
         ModelAssignments, ModelRef, ProviderKind, ProviderSummary, ports::CatalogModel,
     },
@@ -18,6 +18,8 @@ pub enum ProviderKindDto {
     Anthropic,
     #[serde(rename = "mistral")]
     Mistral,
+    #[serde(rename = "openai")]
+    OpenAi,
     #[serde(rename = "openai_compatible")]
     OpenAiCompatible,
 }
@@ -27,6 +29,7 @@ impl From<ProviderKind> for ProviderKindDto {
         match kind {
             ProviderKind::Anthropic => Self::Anthropic,
             ProviderKind::Mistral => Self::Mistral,
+            ProviderKind::OpenAi => Self::OpenAi,
             ProviderKind::OpenAiCompatible => Self::OpenAiCompatible,
         }
     }
@@ -37,6 +40,7 @@ impl From<ProviderKindDto> for ProviderKind {
         match kind {
             ProviderKindDto::Anthropic => Self::Anthropic,
             ProviderKindDto::Mistral => Self::Mistral,
+            ProviderKindDto::OpenAi => Self::OpenAi,
             ProviderKindDto::OpenAiCompatible => Self::OpenAiCompatible,
         }
     }
@@ -299,10 +303,7 @@ impl ModelAssignmentsDto {
         current: Option<&ModelAssignments>,
     ) -> Result<ModelAssignments, CoreError> {
         let executor = match self.executor {
-            Some(model) => ExecutorModel::new(
-                current.map_or_else(Harness::default, |c| c.executor.harness()),
-                model,
-            )?,
+            Some(model) => ExecutorModel::try_from(model)?,
             None => current.map(|c| c.executor.clone()).unwrap_or_default(),
         };
         let transcriber = match self.transcriber {
@@ -345,6 +346,7 @@ pub struct ModelAssignmentsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use capitainerie_core::domain::execution::harness::Harness;
 
     #[test]
     fn kinds_use_the_wire_names_of_the_domain() {
@@ -381,6 +383,32 @@ mod tests {
         assert_eq!(defaulted.executor, ExecutorModel::default());
         assert_eq!(replaced.executor.as_str(), "claude-haiku-5-5");
         assert!(dto(Some(" ")).into_assignments(None).is_err());
+    }
+
+    #[test]
+    fn a_codex_model_can_be_assigned_as_executor_and_a_foreign_one_is_refused() {
+        let current = ModelAssignments::defaults("chat", "embed");
+        let codex = dto(Some("gpt-5.5"))
+            .into_assignments(Some(&current))
+            .unwrap();
+        assert_eq!(codex.executor.harness(), Harness::Codex);
+        assert_eq!(codex.executor.as_str(), "gpt-5.5");
+        let refused = dto(Some("mistral-large"))
+            .into_assignments(Some(&current))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("claude-code") && refused.contains("codex"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn the_openai_provider_kind_round_trips_on_the_wire() {
+        let kind: ProviderKindDto = serde_json::from_value(serde_json::json!("openai")).unwrap();
+        assert_eq!(ProviderKind::from(kind), ProviderKind::OpenAi);
+        assert_eq!(ProviderKindDto::from(ProviderKind::OpenAi), kind);
+        assert_eq!(serde_json::to_value(kind).unwrap(), "openai");
     }
 
     fn wire(transcriber: Option<serde_json::Value>) -> ModelAssignmentsDto {

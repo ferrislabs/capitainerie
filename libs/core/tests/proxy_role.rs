@@ -83,7 +83,7 @@ async fn the_proxy_role_reads_what_the_proxy_reads_and_writes_nothing() {
     );
     assert!(
         usecase
-            .executor_anthropic_access(organization, Some("user-1"))
+            .executor_access(organization, Some("user-1"), ProviderKind::Anthropic)
             .await
             .unwrap()
             .is_none()

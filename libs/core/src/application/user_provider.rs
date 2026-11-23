@@ -89,21 +89,20 @@ impl CapitainerieUseCase {
             .await
     }
 
-    /// For the credentials proxy, which acts for no user: the Anthropic key an
-    /// execution started by `initiated_by` uses.
-    pub async fn executor_anthropic_access(
+    /// For the credentials proxy, which acts for no user: the key of
+    /// `provider` an execution started by `initiated_by` uses.
+    pub async fn executor_access(
         &self,
         organization_id: OrganizationId,
         initiated_by: Option<&str>,
+        provider: ProviderKind,
     ) -> Result<Option<ProviderAccess>, CoreError> {
         let own = match initiated_by {
             Some(subject) => self.user_credentials_of(organization_id, subject).await?,
             None => Vec::new(),
         };
-        let organization = self
-            .provider_access(organization_id, ProviderKind::Anthropic)
-            .await?;
-        Ok(executor_access(own, organization))
+        let organization = self.provider_access(organization_id, provider).await?;
+        Ok(executor_access(provider, own, organization))
     }
 
     /// For the worker, which acts for no user: every key the initiator of a

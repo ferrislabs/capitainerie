@@ -79,7 +79,7 @@ impl CapitainerieUseCase {
 fn usable(access: &ProviderAccess) -> bool {
     match access.kind {
         ProviderKind::Anthropic => false,
-        ProviderKind::Mistral => true,
+        ProviderKind::Mistral | ProviderKind::OpenAi => true,
         ProviderKind::OpenAiCompatible => access
             .base_url
             .as_deref()

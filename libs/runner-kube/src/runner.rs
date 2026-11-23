@@ -72,14 +72,8 @@ impl KubeTaskRunner {
     async fn create_job(&self, spec: &TaskSpec) -> Result<Job, RunnerError> {
         let name = job_name(spec.run_id);
         let proxy = self.resolve_proxy().await?;
-        match self
-            .jobs()
-            .create(
-                &PostParams::default(),
-                &build_job(&self.config, spec, proxy.as_ref()),
-            )
-            .await
-        {
+        let job = build_job(&self.config, spec, proxy.as_ref())?;
+        match self.jobs().create(&PostParams::default(), &job).await {
             Ok(job) => Ok(job),
             Err(error) if is_status(&error, 409) => Ok(self.jobs().get(&name).await?),
             Err(error) => Err(error.into()),

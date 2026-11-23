@@ -17,12 +17,13 @@ use k8s_openapi::{
     },
 };
 
-use crate::config::KubeRunnerConfig;
+use crate::{config::KubeRunnerConfig, error::RunnerError};
 
 pub const PART_OF_LABEL: &str = "app.kubernetes.io/part-of";
 pub const RUN_ID_LABEL: &str = "capitainerie.dev/run-id";
 pub const TOKEN_KEY: &str = "task-token";
 const EXECUTOR_UID: i64 = 1000;
+const CODEX_HOME: &str = "/home/executor/.codex";
 const WRITABLE_DIRS: [(&str, &str, &str); 3] = [
     ("workspace", "/workspace", "4Gi"),
     ("tmp", "/tmp", "1Gi"),
@@ -103,8 +104,10 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
 fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<EnvVar> {
     let proxy = &config.proxy_base_url;
     let model = spec.model.as_str();
-    match spec.model.harness() {
-        Harness::ClaudeCode => vec![
+    let harness = spec.model.harness();
+    let mut variables = vec![plain("CAPITAINERIE_HARNESS", harness.as_str())];
+    match harness {
+        Harness::ClaudeCode => variables.extend([
             plain("ANTHROPIC_BASE_URL", format!("{proxy}/anthropic")),
             from_secret("ANTHROPIC_API_KEY", secret),
             // Claude Code asks a small model for background work; the proxy
@@ -112,22 +115,36 @@ fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str)
             plain("ANTHROPIC_SMALL_FAST_MODEL", model),
             plain("ANTHROPIC_DEFAULT_HAIKU_MODEL", model),
             plain("CLAUDE_CODE_SUBAGENT_MODEL", model),
-        ],
+        ]),
+        Harness::Codex => variables.extend([
+            plain("CAPITAINERIE_OPENAI_BASE_URL", format!("{proxy}/openai/v1")),
+            from_secret("CODEX_API_KEY", secret),
+            plain("CODEX_HOME", CODEX_HOME),
+        ]),
     }
+    variables
 }
 
-fn image(config: &KubeRunnerConfig, harness: Harness) -> String {
+fn image(config: &KubeRunnerConfig, harness: Harness) -> Result<&str, RunnerError> {
     match harness {
-        Harness::ClaudeCode => config.image.clone(),
+        Harness::ClaudeCode => Ok(&config.image),
+        Harness::Codex => config
+            .codex_image
+            .as_deref()
+            .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
     }
 }
 
-pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&ProxyHost>) -> Job {
+pub fn build_job(
+    config: &KubeRunnerConfig,
+    spec: &TaskSpec,
+    proxy: Option<&ProxyHost>,
+) -> Result<Job, RunnerError> {
     let name = job_name(spec.run_id);
     let labels = labels(spec.run_id);
     let container = Container {
         name: "executor".to_owned(),
-        image: Some(image(config, spec.model.harness())),
+        image: Some(image(config, spec.model.harness())?.to_owned()),
         command: config.command.clone(),
         env: Some(environment(config, spec, &name)),
         resources: Some(config.resources.clone()),
@@ -154,7 +171,7 @@ pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&Prox
         ),
         ..Default::default()
     };
-    Job {
+    Ok(Job {
         metadata: ObjectMeta {
             name: Some(name),
             namespace: Some(config.namespace.clone()),
@@ -217,7 +234,7 @@ pub fn build_job(config: &KubeRunnerConfig, spec: &TaskSpec, proxy: Option<&Prox
             ..Default::default()
         }),
         status: None,
-    }
+    })
 }
 
 pub fn build_secret(config: &KubeRunnerConfig, spec: &TaskSpec, owner: OwnerReference) -> Secret {
@@ -273,6 +290,17 @@ mod tests {
         )
     }
 
+    fn codex_config() -> KubeRunnerConfig {
+        config().with_codex_image(Some("capitainerie-executor-codex:1".into()))
+    }
+
+    fn codex_spec() -> TaskSpec {
+        TaskSpec {
+            model: ExecutorModel::new(Harness::Codex, Harness::Codex.default_model()).unwrap(),
+            ..spec()
+        }
+    }
+
     fn proxy() -> ProxyHost {
         ProxyHost {
             name: "capitainerie-egress-proxy.capitainerie.svc".into(),
@@ -299,7 +327,7 @@ mod tests {
 
     #[test]
     fn the_job_is_named_after_the_run_and_bounded() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         assert_eq!(
             job.metadata.name.as_deref(),
             Some("run-0a1b2c3d-0000-7000-8000-000000000000")
@@ -317,7 +345,7 @@ mod tests {
 
     #[test]
     fn job_and_pod_carry_the_labels() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let template_labels = job
             .spec
             .as_ref()
@@ -332,7 +360,7 @@ mod tests {
 
     #[test]
     fn the_pod_is_locked_down() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let pod = pod(&job);
         assert_eq!(pod.restart_policy.as_deref(), Some("Never"));
         assert_eq!(pod.automount_service_account_token, Some(false));
@@ -357,7 +385,7 @@ mod tests {
 
     #[test]
     fn the_pod_resolves_the_proxy_from_its_hosts_file_and_nothing_else() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let spec_of_pod = pod(&job);
         assert_eq!(spec_of_pod.dns_policy.as_deref(), Some("None"));
         assert_eq!(
@@ -373,14 +401,14 @@ mod tests {
                 "capitainerie-egress-proxy.capitainerie.svc".to_owned()
             ])
         );
-        let literal = build_job(&config(), &spec(), None);
+        let literal = build_job(&config(), &spec(), None).unwrap();
         assert_eq!(pod(&literal).host_aliases, None);
         assert_eq!(pod(&literal).dns_policy.as_deref(), Some("None"));
     }
 
     #[test]
     fn the_writable_paths_and_the_container_are_size_bounded() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let pod = pod(&job);
         let limits: BTreeMap<_, _> = pod
             .volumes
@@ -414,7 +442,7 @@ mod tests {
 
     #[test]
     fn the_only_writable_paths_are_empty_dirs() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let pod = pod(&job);
         let volumes = pod.volumes.as_ref().unwrap();
         assert!(volumes.iter().all(|volume| volume.empty_dir.is_some()));
@@ -439,7 +467,7 @@ mod tests {
 
     #[test]
     fn the_task_token_is_the_only_secret_and_never_inline() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let secret_name = "run-0a1b2c3d-0000-7000-8000-000000000000";
         let mut referenced = Vec::new();
         for var in pod(&job).containers[0].env.as_ref().unwrap() {
@@ -462,7 +490,7 @@ mod tests {
 
     #[test]
     fn the_environment_points_at_the_proxy() {
-        let job = build_job(&config(), &spec(), Some(&proxy()));
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         let proxy = "http://capitainerie-egress-proxy.capitainerie.svc:4130";
         assert_eq!(
             env(&job, "ANTHROPIC_BASE_URL").value.as_deref(),
@@ -487,7 +515,7 @@ mod tests {
 
     #[test]
     fn the_mode_and_the_report_path_reach_the_container() {
-        let change = build_job(&config(), &spec(), Some(&proxy()));
+        let change = build_job(&config(), &spec(), Some(&proxy())).unwrap();
         assert_eq!(
             env(&change, "CAPITAINERIE_MODE").value.as_deref(),
             Some("change")
@@ -496,7 +524,7 @@ mod tests {
             mode: ExecutionMode::Audit,
             ..spec()
         };
-        let job = build_job(&config(), &audit, Some(&proxy()));
+        let job = build_job(&config(), &audit, Some(&proxy())).unwrap();
         assert_eq!(
             env(&job, "CAPITAINERIE_MODE").value.as_deref(),
             Some("audit")
@@ -513,7 +541,7 @@ mod tests {
             model: ExecutorModel::new(Harness::ClaudeCode, "claude-opus-5").unwrap(),
             ..spec()
         };
-        let job = build_job(&config(), &spec, Some(&proxy()));
+        let job = build_job(&config(), &spec, Some(&proxy())).unwrap();
         for name in [
             "MODEL",
             "ANTHROPIC_SMALL_FAST_MODEL",
@@ -544,5 +572,89 @@ mod tests {
         );
         assert_eq!(secret.metadata.owner_references, Some(vec![owner]));
         assert_eq!(secret.string_data.unwrap()[TOKEN_KEY], TOKEN);
+    }
+
+    fn assert_no_inline_secret(job: &Job) {
+        let secret_name = "run-0a1b2c3d-0000-7000-8000-000000000000";
+        for var in pod(job).containers[0].env.as_ref().unwrap() {
+            match (&var.value, &var.value_from) {
+                (Some(value), None) => assert!(!value.contains(TOKEN), "{}", var.name),
+                (None, Some(source)) => {
+                    let key = source.secret_key_ref.as_ref().unwrap();
+                    assert_eq!(key.name, secret_name, "{}", var.name);
+                    assert_eq!(key.key, TOKEN_KEY, "{}", var.name);
+                }
+                _ => panic!("env {} is neither a value nor a reference", var.name),
+            }
+        }
+        assert!(!serde_json::to_string(job).unwrap().contains(TOKEN));
+    }
+
+    #[test]
+    fn every_harness_pod_holds_only_literals_and_references_to_the_task_secret() {
+        for (config, spec) in [(config(), spec()), (codex_config(), codex_spec())] {
+            let job = build_job(&config, &spec, Some(&proxy())).unwrap();
+            assert_no_inline_secret(&job);
+            assert_eq!(
+                env(&job, "CAPITAINERIE_HARNESS").value.as_deref(),
+                Some(spec.model.harness().as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn a_codex_pod_talks_to_the_openai_route_of_the_proxy() {
+        let job = build_job(&codex_config(), &codex_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            env(&job, "CAPITAINERIE_OPENAI_BASE_URL").value.as_deref(),
+            Some("http://capitainerie-egress-proxy.capitainerie.svc:4130/openai/v1")
+        );
+        assert_eq!(
+            env(&job, "CODEX_HOME").value.as_deref(),
+            Some("/home/executor/.codex")
+        );
+        let key = env(&job, "CODEX_API_KEY");
+        assert_eq!(key.value, None);
+        assert_eq!(
+            key.value_from
+                .as_ref()
+                .and_then(|source| source.secret_key_ref.as_ref())
+                .map(|key| key.key.as_str()),
+            Some(TOKEN_KEY)
+        );
+        let names: Vec<_> = pod(&job).containers[0]
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|var| var.name.as_str())
+            .collect();
+        assert!(names.iter().all(|name| !name.starts_with("ANTHROPIC_")));
+        assert!(!names.contains(&"CLAUDE_CODE_SUBAGENT_MODEL"));
+    }
+
+    #[test]
+    fn the_image_follows_the_harness() {
+        let codex = build_job(&codex_config(), &codex_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            pod(&codex).containers[0].image.as_deref(),
+            Some("capitainerie-executor-codex:1")
+        );
+        let claude = build_job(&codex_config(), &spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            pod(&claude).containers[0].image.as_deref(),
+            Some("capitainerie-executor:1")
+        );
+        assert_eq!(
+            env(&claude, "CAPITAINERIE_HARNESS").value.as_deref(),
+            Some("claude-code")
+        );
+    }
+
+    #[test]
+    fn a_codex_execution_without_a_codex_image_fails_before_any_job() {
+        let error = build_job(&config(), &codex_spec(), Some(&proxy())).unwrap_err();
+        assert!(matches!(error, RunnerError::NoHarnessImage("codex")));
+        assert!(error.to_string().contains("codex"));
     }
 }

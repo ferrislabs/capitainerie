@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
         Live::new(usecase, github),
         ProxyConfig {
             anthropic_base: args.proxy.anthropic_base.clone(),
+            openai_base: args.proxy.openai_base.clone(),
             github_base: args.proxy.github_base.clone(),
         },
     )
