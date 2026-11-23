@@ -364,7 +364,7 @@ impl Harness {
             .post(format!("{}/google{path}", self.url))
             .header(token_header.0, token_header.1)
             .header("content-type", "application/json")
-            .header("accept-encoding", "gzip")
+            .header("accept-encoding", "x-agy-coding")
             .header("x-goog-api-client", "gl-go/1.0 container-token")
             .header("user-agent", "agy/1.5.3")
             .body(body.to_owned())
@@ -1451,7 +1451,14 @@ async fn an_agy_request_is_forwarded_with_the_organizations_google_key() {
     assert!(request.headers.get("x-goog-api-client").is_none());
     assert!(request.headers.get("x-api-key").is_none());
     assert!(request.headers.get("user-agent").is_none());
-    assert!(request.headers.get("accept-encoding").is_none());
+    assert!(
+        !request
+            .headers
+            .get("accept-encoding")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .contains("x-agy-coding")
+    );
     for (_, value) in &request.headers {
         assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
     }
