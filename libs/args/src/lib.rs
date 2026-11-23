@@ -185,6 +185,13 @@ pub struct ExecutorArgs {
     )]
     pub antigravity_image: Option<String>,
 
+    #[arg(
+        id = "executor_mistral_vibe_image",
+        long = "executor-mistral-vibe-image",
+        env = "EXECUTOR_MISTRAL_VIBE_IMAGE"
+    )]
+    pub mistral_vibe_image: Option<String>,
+
     /// Base URL of the credentials proxy as the task pods reach it.
     #[arg(
         id = "executor_proxy_url",
@@ -261,6 +268,14 @@ pub struct EgressProxyArgs {
         default_value = "https://generativelanguage.googleapis.com"
     )]
     pub google_base: String,
+
+    #[arg(
+        id = "egress_mistral_base",
+        long = "egress-mistral-base",
+        env = "EGRESS_MISTRAL_BASE",
+        default_value = "https://api.mistral.ai"
+    )]
+    pub mistral_base: String,
 
     #[arg(
         id = "egress_github_base",
@@ -366,6 +381,34 @@ mod tests {
         assert_eq!(ExecutorCli::parse_from(["bin"]).executor.concurrency, 2);
         let cli = ExecutorCli::parse_from(["bin", "--executor-concurrency", "5"]);
         assert_eq!(cli.executor.concurrency, 5);
+    }
+
+    #[test]
+    fn the_mistral_vibe_image_is_unset_until_configured() {
+        assert!(
+            ExecutorCli::parse_from(["bin"])
+                .executor
+                .mistral_vibe_image
+                .is_none()
+        );
+        let cli = ExecutorCli::parse_from(["bin", "--executor-mistral-vibe-image", "vibe:1"]);
+        assert_eq!(cli.executor.mistral_vibe_image.as_deref(), Some("vibe:1"));
+    }
+
+    #[derive(Parser)]
+    struct EgressCli {
+        #[command(flatten)]
+        proxy: EgressProxyArgs,
+    }
+
+    #[test]
+    fn the_egress_proxy_reaches_mistral_by_default_and_on_override() {
+        assert_eq!(
+            EgressCli::parse_from(["bin"]).proxy.mistral_base,
+            "https://api.mistral.ai"
+        );
+        let cli = EgressCli::parse_from(["bin", "--egress-mistral-base", "http://m:1"]);
+        assert_eq!(cli.proxy.mistral_base, "http://m:1");
     }
 
     #[test]

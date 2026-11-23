@@ -63,12 +63,18 @@ const GOOGLE: &[(&str, Price)] = &[
     ("gemini-3.1-pro", price(2_000_000, 12_000_000)),
 ];
 
+const MISTRAL: &[(&str, Price)] = &[
+    ("mistral-large-4-0", price(700_000, 2_100_000)),
+    ("mistral-medium-3.5", price(1_500_000, 7_500_000)),
+];
+
 fn table(kind: ProviderKind) -> &'static [(&'static str, Price)] {
     match kind {
         ProviderKind::Anthropic => CLAUDE,
         ProviderKind::OpenAi => OPENAI,
         ProviderKind::Google => GOOGLE,
-        ProviderKind::Mistral | ProviderKind::OpenAiCompatible => &[],
+        ProviderKind::Mistral => MISTRAL,
+        ProviderKind::OpenAiCompatible => &[],
     }
 }
 
@@ -86,6 +92,7 @@ pub fn executor_prices() -> Vec<(String, Pricing)> {
         .iter()
         .chain(OPENAI)
         .chain(GOOGLE)
+        .chain(MISTRAL)
         .map(|(model, price)| {
             (
                 (*model).to_owned(),
@@ -100,7 +107,9 @@ pub fn executor_prices() -> Vec<(String, Pricing)> {
 
 #[cfg(test)]
 mod tests {
-    use capitainerie_core::domain::execution::harness::{ANTIGRAVITY_MODELS, CODEX_MODELS};
+    use capitainerie_core::domain::execution::harness::{
+        ANTIGRAVITY_MODELS, CODEX_MODELS, MISTRAL_VIBE_MODELS,
+    };
 
     use super::*;
 
@@ -123,7 +132,10 @@ mod tests {
     #[test]
     fn executor_prices_cover_every_priced_model() {
         let prices = executor_prices();
-        assert_eq!(prices.len(), CLAUDE.len() + OPENAI.len() + GOOGLE.len());
+        assert_eq!(
+            prices.len(),
+            CLAUDE.len() + OPENAI.len() + GOOGLE.len() + MISTRAL.len()
+        );
         let sonnet = prices
             .iter()
             .find(|(model, _)| model == "claude-sonnet-5-5")
@@ -153,6 +165,17 @@ mod tests {
         for (model, _) in ANTIGRAVITY_MODELS {
             assert!(price_of(ProviderKind::Google, model).is_some(), "{model}");
         }
+    }
+
+    #[test]
+    fn every_mistral_vibe_model_has_a_price() {
+        for (model, _) in MISTRAL_VIBE_MODELS {
+            assert!(price_of(ProviderKind::Mistral, model).is_some(), "{model}");
+        }
+        assert_eq!(
+            price_of(ProviderKind::Mistral, "mistral-medium-3.5"),
+            Some(price(1_500_000, 7_500_000))
+        );
     }
 
     #[test]

@@ -1,17 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
-import {
-	ADAPTERS,
-	DIRECTION,
-	EFFORTS,
-	ROLES,
-} from '#/domain/agent-team/constants'
-import {
-	isValidModelId,
-	MODEL_ID_ERROR,
-	MODEL_ID_PLACEHOLDER,
-} from '#/domain/agent-team/model-id'
+import { DIRECTION, EFFORTS, ROLES } from '#/domain/agent-team/constants'
+import { type Harness, harnessOfAgent } from '#/domain/agent-team/harness'
 import { CTL, FieldRow } from '#/domain/agent-team/ui/field-row'
 import { type OptionItem, Options } from '#/domain/agent-team/ui/options'
 import { DetailSection } from '#/domain/agent-team/ui/panel'
@@ -19,6 +10,7 @@ import { Toggle } from '#/domain/agent-team/ui/toggle'
 
 interface Props {
 	form: AgentForm
+	harnesses: ReadonlyArray<Harness>
 	reportsOptions: ReadonlyArray<OptionItem>
 	onChange: (patch: Partial<AgentForm>) => void
 }
@@ -98,9 +90,18 @@ function Switched({
 
 export function RuntimeTab({
 	form,
+	harnesses,
 	reportsOptions,
 	onChange,
 }: Props): ReactNode {
+	const current = harnessOfAgent(harnesses, form.model, form.adapter)
+	const models = current?.models ?? []
+	const modelValues: ReadonlyArray<OptionItem> = models.includes(form.model)
+		? models.map((m) => ({ value: m, label: m }))
+		: [
+				{ value: form.model, label: form.model || 'Modèle par défaut' },
+				...models.map((m) => ({ value: m, label: m })),
+			]
 	return (
 		<>
 			<DetailSection title="Identité de l'agent" flush>
@@ -134,27 +135,29 @@ export function RuntimeTab({
 			</DetailSection>
 			<DetailSection title="Adaptateur" flush>
 				<Select
-					label="Type d'adaptateur"
-					value={form.adapter}
-					values={ADAPTERS.map((a) => a.name)}
-					onChange={(adapter) => onChange({ adapter })}
+					label="Adaptateur"
+					value={current?.name ?? form.adapter}
+					values={harnesses.map((h) => h.name)}
+					onChange={(adapter) => {
+						const next = harnesses.find((h) => h.name === adapter)
+						onChange(
+							next ? { adapter, model: next.default_model } : { adapter },
+						)
+					}}
 				/>
 			</DetailSection>
 			<DetailSection title="Modèle" flush>
-				<Text
+				<Select
 					label="Modèle"
-					placeholder={MODEL_ID_PLACEHOLDER}
 					value={form.model}
+					values={modelValues}
 					onChange={(model) => onChange({ model })}
 				/>
-				{isValidModelId(form.model) ? null : (
-					<p role="alert" className="m-0 px-6 pb-4 text-signal-danger">
-						{MODEL_ID_ERROR}
-					</p>
-				)}
 				<p className="m-0 border-t px-6 py-4 text-muted-foreground">
-					Le modèle utilisé est celui de votre fournisseur par défaut, sauf si
-					vous renseignez un identifiant de modèle valide ici.{' '}
+					L'adaptateur est décidé par le modèle : choisir un modèle d'un autre
+					fournisseur change l'adaptateur qui exécute l'agent. La clé utilisée
+					est votre clé personnelle du fournisseur, sinon celle de
+					l'organisation.{' '}
 					<Link to="/providers" className="text-primary underline">
 						Gérer mes fournisseurs
 					</Link>

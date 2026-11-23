@@ -12,6 +12,7 @@ case "$harness" in
   claude-code) ;;
   codex) : "${CAPITAINERIE_OPENAI_BASE_URL:?}" "${CODEX_API_KEY:?}" "${CODEX_HOME:?}" ;;
   antigravity) : "${GOOGLE_GEMINI_BASE_URL:?}" "${GEMINI_API_KEY:?}" ;;
+  mistral-vibe) : "${CAPITAINERIE_MISTRAL_BASE_URL:?}" "${MISTRAL_API_KEY:?}" "${VIBE_HOME:?}" ;;
   *)
     echo "unknown CAPITAINERIE_HARNESS: $harness" >&2
     exit 2
@@ -98,6 +99,56 @@ write_antigravity_config() {
   printf '%s\n' '{"modelProvider":"gemini"}' >"$HOME/.gemini/antigravity-cli/settings.json"
 }
 
+write_vibe_config() {
+  mkdir -p "$VIBE_HOME"
+  cat >"$VIBE_HOME/config.toml" <<VIBE_CONFIG
+active_model = "capitainerie"
+enable_telemetry = false
+enable_update_checks = false
+enable_auto_update = false
+enable_mcp = false
+enable_connectors = false
+enable_notifications = false
+include_commit_signature = false
+vibe_base_url = "$CAPITAINERIE_MISTRAL_BASE_URL"
+console_base_url = "$CAPITAINERIE_MISTRAL_BASE_URL"
+
+[experiments]
+enable = false
+
+[session_logging]
+enabled = false
+generate_titles = false
+
+[[providers]]
+name = "capitainerie"
+api_base = "$CAPITAINERIE_MISTRAL_BASE_URL/v1"
+api_key_env_var = "MISTRAL_API_KEY"
+backend = "generic"
+api_style = "openai"
+
+[[models]]
+name = "$MODEL"
+provider = "capitainerie"
+alias = "capitainerie"
+max_context_length = 262144
+VIBE_CONFIG
+}
+
+run_vibe() {
+  local prompt_file output_dir status=0
+  prompt_file="$(mktemp /tmp/prompt.XXXXXX)"
+  output_dir="$(mktemp -d /tmp/vibe-out.XXXXXX)"
+  printf '%s' "$PROMPT" >"$prompt_file"
+  vibe --prompt-file "$prompt_file" --output streaming --output-dir "$output_dir" \
+    --auto-approve --model capitainerie --max-turns "$MAX_TURNS" || status=$?
+  if [ -s "$output_dir/export.json" ]; then
+    printf '{"type":"vibe_export","export":%s}\n' "$(tr -d '\n' <"$output_dir/export.json")"
+  fi
+  rm -rf "$prompt_file" "$output_dir"
+  return "$status"
+}
+
 run_agent() {
   local run_mode="$1"
   case "$harness" in
@@ -128,6 +179,9 @@ run_agent() {
       agy -p "$PROMPT" --output-format stream-json \
         --dangerously-skip-permissions --model "$MODEL"
       ;;
+    mistral-vibe)
+      run_vibe
+      ;;
   esac
 }
 
@@ -136,6 +190,7 @@ case "$harness" in
   claude-code) export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 ;;
   codex) write_codex_config ;;
   antigravity) write_antigravity_config ;;
+  mistral-vibe) write_vibe_config ;;
 esac
 agent_status=0
 

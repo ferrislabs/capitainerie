@@ -18,6 +18,8 @@ import {
 	resolveAgentTab,
 } from '#/domain/agent-team/agent-tabs'
 import { DIRECTION } from '#/domain/agent-team/constants'
+import { adapterNameOf } from '#/domain/agent-team/harness'
+import { useHarnesses } from '#/domain/agent-team/hooks/use-harnesses'
 import {
 	useActiveRuns,
 	useAgentCards,
@@ -97,6 +99,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const allCards = useCards()
 	const activeRuns = useActiveRuns()
 	const identity = useTeamAgentIdentity(agent.id)
+	const harnesses = useHarnesses().data?.harnesses ?? []
 	const [draft, setDraft] = useState<AgentForm | null>(null)
 	const [assignTo, setAssignTo] = useState<string | null>(null)
 	const [message, setMessage] = useNotice()
@@ -109,6 +112,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const dirty = diffForm(base, form).length > 0
 	const patch = (change: Partial<AgentForm>) => setDraft({ ...form, ...change })
 	const short = shortName(agent.name)
+	const adapter = adapterNameOf(harnesses, form.model, form.adapter)
 
 	const pool = agents.some((a) => a.id === agent.id)
 		? agents
@@ -281,7 +285,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 		<Page className={SHELL}>
 			<AgentHeader
 				agent={agent}
-				adapter={form.adapter}
+				adapter={adapter}
 				title={form.title}
 				paused={agent.paused}
 				mood={
@@ -303,6 +307,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					<OverviewTab
 						agent={agent}
 						form={form}
+						adapter={adapter}
 						subCount={subs.length}
 						reportsTo={parent?.name ?? DIRECTION}
 						tasks={ownTasks.slice(0, RECENT)}
@@ -387,7 +392,12 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 					/>
 				) : null}
 				{tab === 'runtime' ? (
-					<RuntimeTab form={form} reportsOptions={others} onChange={patch} />
+					<RuntimeTab
+						form={form}
+						harnesses={harnesses}
+						reportsOptions={others}
+						onChange={patch}
+					/>
 				) : null}
 				{tab === 'perms' ? <PermsTab form={form} onChange={patch} /> : null}
 				{tab === 'rev' ? (

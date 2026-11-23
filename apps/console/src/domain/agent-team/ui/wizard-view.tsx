@@ -3,17 +3,18 @@ import { cloneElement, type ReactElement, type ReactNode, useId } from 'react'
 import { Button } from '#/components/ui/button'
 import { Combobox } from '#/components/ui/combobox'
 import {
-	ADAPTERS,
 	DIRECTION,
 	EFFORTS,
 	ROLES,
 	WAKE_INTERVALS,
 } from '#/domain/agent-team/constants'
 import {
-	isValidModelId,
-	MODEL_ID_ERROR,
-	MODEL_ID_PLACEHOLDER,
-} from '#/domain/agent-team/model-id'
+	type Harness,
+	KEY_PLACEHOLDERS,
+	type KeySource,
+	keySourceLabel,
+	PROVIDER_NAMES,
+} from '#/domain/agent-team/harness'
 import { AdapterChip } from '#/domain/agent-team/ui/adapter-chip'
 import { CTL } from '#/domain/agent-team/ui/field-row'
 import { Mascot } from '#/domain/agent-team/ui/mascot'
@@ -27,18 +28,6 @@ import type { RepositoriesState } from '#/domain/integrations/hooks/use-github'
 import { cn } from '#/lib/utils'
 
 const STEPS = ['Connexion', 'Configuration', 'Confirmation'] as const
-
-const CONNECTIONS = [
-	{ id: 'sub', label: 'Abonnement', hint: 'Compte Claude' },
-	{ id: 'key', label: 'Clé API', hint: "Facturation à l'usage" },
-	{ id: 'gw', label: 'Avancé', hint: 'Passerelle perso' },
-] as const
-
-const CONNECTION_RECAP = {
-	sub: 'Abonnement',
-	key: 'Clé API',
-	gw: 'Passerelle',
-} as const
 
 const NEXT_LABEL = [
 	"Choisir l'adaptateur →",
@@ -57,6 +46,9 @@ interface Props {
 	connectors: ReadonlyArray<{ slug: string; name: string }>
 	connectorsLoading: boolean
 	repositories: RepositoriesState
+	harnesses: ReadonlyArray<Harness>
+	harnessesStatus: 'pending' | 'error' | 'success'
+	keySource: KeySource
 	/** Slugs proposés : catalogue des compétences et sélection courante. */
 	skillOptions: ReadonlyArray<string>
 	canAdvance: boolean
@@ -121,20 +113,21 @@ function Recap({
 	state,
 	connectors,
 	reportsOptions,
-}: Pick<Props, 'state' | 'connectors' | 'reportsOptions'>) {
+	harness,
+	keySource,
+}: Pick<Props, 'state' | 'connectors' | 'reportsOptions' | 'keySource'> & {
+	harness: Harness | undefined
+}) {
 	const rows: ReadonlyArray<readonly [string, string]> = [
 		['Nom', state.name.trim()],
-		['Adaptateur', state.adapter],
-		['Connexion', CONNECTION_RECAP[state.conn]],
+		['Adaptateur', harness?.name ?? state.adapter],
+		['Connexion', keySourceLabel(keySource, state.key.trim().length > 0)],
 		['Rôle', state.role + (state.title ? ` · ${state.title}` : '')],
 		[
 			'Rapporte à',
 			reportsOptions.find((o) => o.value === state.reports)?.label ?? DIRECTION,
 		],
-		[
-			'Modèle',
-			`${state.model.trim() || 'modèle par défaut du fournisseur'} · effort ${state.effort.toLowerCase()}`,
-		],
+		['Modèle', `${state.model} · effort ${state.effort.toLowerCase()}`],
 		[
 			'Réveils',
 			state.interval === 'Manuelle'
@@ -236,6 +229,9 @@ export function WizardView({
 	connectors,
 	connectorsLoading,
 	repositories,
+	harnesses,
+	harnessesStatus,
+	keySource,
 	skillOptions,
 	canAdvance,
 	onChange,
@@ -245,6 +241,8 @@ export function WizardView({
 }: Props) {
 	const { step } = state
 	const name = state.name.trim()
+	const harness = harnesses.find((h) => h.id === state.adapter)
+	const provider = harness ? PROVIDER_NAMES[harness.provider] : ''
 
 	const backButton =
 		step === 0 ? (
@@ -327,22 +325,45 @@ export function WizardView({
 						</>
 					) : (
 						<div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
-							{ADAPTERS.map((adapter) => (
-								<button
-									key={adapter.name}
-									type="button"
-									aria-pressed={state.adapter === adapter.name}
-									onClick={() => onChange({ adapter: adapter.name })}
-									className={cn(
-										CHOICE,
-										'flex flex-col items-center gap-[7px] px-2 py-3.5 font-medium',
-										state.adapter === adapter.name && CHOICE_ON,
-									)}
+							{harnessesStatus === 'pending' ? (
+								<p className="col-span-full m-0 text-muted-foreground">
+									Chargement des adaptateurs…
+								</p>
+							) : harnessesStatus === 'error' ? (
+								<p
+									role="alert"
+									className="col-span-full m-0 text-signal-danger"
 								>
-									<AdapterChip adapter={adapter.name} />
-									{adapter.name}
-								</button>
-							))}
+									Impossible de charger les adaptateurs.
+								</p>
+							) : (
+								harnesses.map((item) => (
+									<button
+										key={item.id}
+										type="button"
+										aria-label={item.name}
+										aria-pressed={state.adapter === item.id}
+										onClick={() =>
+											onChange({
+												adapter: item.id,
+												model: item.default_model,
+												key: '',
+											})
+										}
+										className={cn(
+											CHOICE,
+											'flex flex-col items-center gap-[7px] px-2 py-3.5 font-medium',
+											state.adapter === item.id && CHOICE_ON,
+										)}
+									>
+										<AdapterChip adapter={item.id} />
+										{item.name}
+										<small className="font-normal text-muted-foreground">
+											{PROVIDER_NAMES[item.provider]}
+										</small>
+									</button>
+								))
+							)}
 						</div>
 					)}
 					{footer}
@@ -364,7 +385,7 @@ export function WizardView({
 						<b className="block text-lg">{state.name}</b>
 						<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
 							<AdapterChip adapter={state.adapter} />
-							{state.adapter}
+							{harness?.name ?? state.adapter}
 						</span>
 					</div>
 				</div>
@@ -398,56 +419,49 @@ export function WizardView({
 				</ol>
 			</aside>
 			<div className="rounded-xl border bg-card px-[22px] pt-4 pb-0">
-				{step === 2 ? (
+				{step === 2 && harness ? (
 					<>
 						<h1 className="leading-[1.4] mt-1.5 mb-1 text-center text-[22px] font-bold">
-							Connecter un modèle
+							Clé {provider}
 						</h1>
-						<div className="my-3 grid grid-cols-3 gap-2">
-							{CONNECTIONS.map((option) => (
-								<button
-									key={option.id}
-									type="button"
-									aria-pressed={state.conn === option.id}
-									onClick={() => onChange({ conn: option.id, key: '' })}
-									className={cn(
-										CHOICE,
-										'flex flex-col items-center gap-[3px] px-1.5 py-3',
-										state.conn === option.id && CHOICE_ON,
-									)}
-								>
-									<AdapterChip adapter={state.adapter} />
-									<b className="font-semibold">{option.label}</b>
-									<small className="text-muted-foreground">{option.hint}</small>
-								</button>
-							))}
-						</div>
-						{state.conn === 'sub' ? (
+						{keySource.kind === 'loading' ? (
 							<p className="m-0 text-muted-foreground">
-								Une page de connexion s'ouvre dans ton navigateur. Reviens ici
-								ensuite, la connexion est détectée toute seule.
+								Recherche de ta clé {provider}…
 							</p>
-						) : state.conn === 'key' ? (
-							<Field label="Clé API">
-								<input
-									className={CTL}
-									type="password"
-									placeholder="sk-ant-…"
-									autoComplete="off"
-									value={state.key}
-									onChange={(event) => onChange({ key: event.target.value })}
-								/>
-							</Field>
+						) : keySource.kind === 'personal' ? (
+							<p className="m-0 text-muted-foreground">
+								Ta clé personnelle ({keySource.preview}) sera utilisée pour
+								exécuter {name}. Rien à saisir.
+							</p>
+						) : keySource.kind === 'organization' ? (
+							<p className="m-0 text-muted-foreground">
+								La clé de l'organisation sera utilisée pour exécuter {name}.
+								Rien à saisir.
+							</p>
 						) : (
-							<Field label="URL de la passerelle">
-								<input
-									className={CTL}
-									placeholder="https://gateway.exemple.fr/v1"
-									value={state.key}
-									onChange={(event) => onChange({ key: event.target.value })}
-								/>
-							</Field>
+							<>
+								<p className="m-0 mb-2 text-muted-foreground">
+									{keySource.kind === 'organization-unknown'
+										? `La clé de l'organisation sera utilisée si elle existe. Tu peux aussi renseigner ta propre clé ${provider}.`
+										: `Aucune clé ${provider} n'est configurée. Renseigne la tienne, elle sera enregistrée comme clé personnelle.`}
+								</p>
+								<Field label={`Clé API ${provider}`}>
+									<input
+										className={CTL}
+										type="password"
+										placeholder={KEY_PLACEHOLDERS[harness.provider]}
+										autoComplete="off"
+										value={state.key}
+										onChange={(event) => onChange({ key: event.target.value })}
+									/>
+								</Field>
+							</>
 						)}
+						<p className="m-0 mt-2 text-xs text-muted-foreground">
+							<Link to="/providers" className="text-primary underline">
+								Gérer mes fournisseurs
+							</Link>
+						</p>
 					</>
 				) : null}
 
@@ -491,19 +505,14 @@ export function WizardView({
 								</select>
 							</Field>
 							<Field label="Modèle">
-								<input
+								<select
 									className={CTL}
 									value={state.model}
-									placeholder={MODEL_ID_PLACEHOLDER}
-									aria-invalid={!isValidModelId(state.model)}
 									onChange={(event) => onChange({ model: event.target.value })}
-								/>
+								>
+									<Options values={harness?.models ?? [state.model]} />
+								</select>
 							</Field>
-							{isValidModelId(state.model) ? null : (
-								<p role="alert" className="m-0 text-xs text-signal-danger">
-									{MODEL_ID_ERROR}
-								</p>
-							)}
 							<Field label="Effort de réflexion">
 								<select
 									className={CTL}
@@ -591,6 +600,8 @@ export function WizardView({
 							state={state}
 							connectors={connectors}
 							reportsOptions={reportsOptions}
+							harness={harness}
+							keySource={keySource}
 						/>
 					</>
 				) : null}

@@ -43,6 +43,27 @@ RUN set -eu; \
     rm -rf /var/lib/apt/lists/*
 USER 1000:1000
 
+FROM python:3.12-slim-bookworm AS mistral-vibe-build
+ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_DOWNLOADS=never
+RUN pip install --no-cache-dir uv==0.9.5 \
+    && uv tool install --python /usr/local/bin/python3.12 mistral-vibe==3.1.4 \
+    && chmod -R a+rX /opt/uv-tools
+
+FROM python:3.12-slim-bookworm AS mistral-vibe
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd --uid 1000 --user-group --create-home --home-dir /home/executor --shell /bin/bash executor \
+    && mkdir /workspace \
+    && chown executor:executor /workspace
+COPY --from=mistral-vibe-build /opt/uv-tools /opt/uv-tools
+COPY --from=mistral-vibe-build /usr/local/bin/vibe /usr/local/bin/vibe-app-server /usr/local/bin/
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
+ENV HOME=/home/executor
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+USER 1000:1000
+
 FROM base AS executor
 RUN npm install -g @anthropic-ai/claude-code@2.1.302 \
     && npm cache clean --force

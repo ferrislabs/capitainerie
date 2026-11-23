@@ -645,6 +645,15 @@ export namespace Schemas {
   };
   export type MemberListResponse = { items: Array<MemberResponse> };
   export type ProviderKindDto = "anthropic" | "mistral" | "openai" | "google" | "openai_compatible";
+  export type HarnessDto = "claude-code" | "codex" | "mistral-vibe" | "antigravity";
+  export type HarnessResponse = {
+    default_model: string;
+    id: HarnessDto;
+    models: Array<string>;
+    name: string;
+    provider: ProviderKindDto;
+  };
+  export type HarnessListResponse = { harnesses: Array<HarnessResponse> };
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
     captain?: (null | ModelRefDto) | undefined;
@@ -1940,6 +1949,13 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListHarnesses = {
+    method: "GET";
+    path: "/api/v1/harnesses";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.HarnessListResponse; 401: Schemas.ApiErrorResponse };
+  };
   export type get_ListModels = {
     method: "GET";
     path: "/api/v1/models";
@@ -2683,6 +2699,7 @@ export type EndpointByMethod = {
     "/api/v1/conversations": Endpoints.get_ListConversations;
     "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
     "/api/v1/inbox": Endpoints.get_ListInbox;
+    "/api/v1/harnesses": Endpoints.get_ListHarnesses;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/issues": Endpoints.get_ListGithubIssues;

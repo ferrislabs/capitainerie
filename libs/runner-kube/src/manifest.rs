@@ -24,6 +24,7 @@ pub const RUN_ID_LABEL: &str = "capitainerie.dev/run-id";
 pub const TOKEN_KEY: &str = "task-token";
 const EXECUTOR_UID: i64 = 1000;
 const CODEX_HOME: &str = "/home/executor/.codex";
+const VIBE_HOME: &str = "/home/executor/.vibe";
 const WRITABLE_DIRS: [(&str, &str, &str); 3] = [
     ("workspace", "/workspace", "4Gi"),
     ("tmp", "/tmp", "1Gi"),
@@ -90,7 +91,7 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
         plain("REPOSITORY", spec.repository.to_string()),
         plain("BASE_BRANCH", &spec.base_branch),
         plain("BRANCH", &spec.branch),
-        plain("MODEL", spec.model.as_str()),
+        plain("MODEL", cli_model(spec)),
         plain("CAPITAINERIE_MODE", spec.mode.as_str()),
         plain("REPORT_PATH", REPORT_PATH),
         plain("MAX_TURNS", spec.max_turns.to_string()),
@@ -99,6 +100,14 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
     ];
     variables.extend(harness_environment(config, spec, secret));
     variables
+}
+
+fn cli_model(spec: &TaskSpec) -> &str {
+    let model = spec.model.as_str();
+    match spec.model.harness() {
+        Harness::MistralVibe => Harness::MistralVibe.wire_model(model),
+        Harness::ClaudeCode | Harness::Codex | Harness::Antigravity => model,
+    }
 }
 
 fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<EnvVar> {
@@ -121,6 +130,11 @@ fn harness_environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str)
             from_secret("CODEX_API_KEY", secret),
             plain("CODEX_HOME", CODEX_HOME),
         ]),
+        Harness::MistralVibe => variables.extend([
+            plain("CAPITAINERIE_MISTRAL_BASE_URL", format!("{proxy}/mistral")),
+            from_secret("MISTRAL_API_KEY", secret),
+            plain("VIBE_HOME", VIBE_HOME),
+        ]),
         Harness::Antigravity => variables.extend([
             plain("GOOGLE_GEMINI_BASE_URL", format!("{proxy}/google")),
             from_secret("GEMINI_API_KEY", secret),
@@ -139,6 +153,10 @@ fn image(config: &KubeRunnerConfig, harness: Harness) -> Result<&str, RunnerErro
             .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
         Harness::Antigravity => config
             .antigravity_image
+            .as_deref()
+            .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
+        Harness::MistralVibe => config
+            .mistral_vibe_image
             .as_deref()
             .ok_or(RunnerError::NoHarnessImage(harness.as_str())),
     }
@@ -318,6 +336,17 @@ mod tests {
         TaskSpec {
             model: ExecutorModel::new(Harness::Antigravity, Harness::Antigravity.default_model())
                 .unwrap(),
+            ..spec()
+        }
+    }
+
+    fn vibe_config() -> KubeRunnerConfig {
+        config().with_mistral_vibe_image(Some("capitainerie-executor-mistral-vibe:1".into()))
+    }
+
+    fn vibe_spec() -> TaskSpec {
+        TaskSpec {
+            model: ExecutorModel::new(Harness::MistralVibe, "mistral-medium-3.5").unwrap(),
             ..spec()
         }
     }
@@ -617,6 +646,7 @@ mod tests {
             (config(), spec()),
             (codex_config(), codex_spec()),
             (antigravity_config(), antigravity_spec()),
+            (vibe_config(), vibe_spec()),
         ] {
             let job = build_job(&config, &spec, Some(&proxy())).unwrap();
             assert_no_inline_secret(&job);
@@ -690,6 +720,42 @@ mod tests {
     }
 
     #[test]
+    fn a_vibe_pod_talks_to_the_mistral_route_of_the_proxy_with_the_wire_model() {
+        let job = build_job(&vibe_config(), &vibe_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            env(&job, "CAPITAINERIE_MISTRAL_BASE_URL").value.as_deref(),
+            Some("http://capitainerie-egress-proxy.capitainerie.svc:4130/mistral")
+        );
+        assert_eq!(
+            env(&job, "VIBE_HOME").value.as_deref(),
+            Some("/home/executor/.vibe")
+        );
+        assert_eq!(
+            env(&job, "MODEL").value.as_deref(),
+            Some("mistral-vibe-cli-latest")
+        );
+        let key = env(&job, "MISTRAL_API_KEY");
+        assert_eq!(key.value, None);
+        assert_eq!(
+            key.value_from
+                .as_ref()
+                .and_then(|source| source.secret_key_ref.as_ref())
+                .map(|key| key.key.as_str()),
+            Some(TOKEN_KEY)
+        );
+        let names: Vec<_> = pod(&job).containers[0]
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|var| var.name.as_str())
+            .collect();
+        assert!(names.iter().all(|name| !name.starts_with("ANTHROPIC_")));
+        assert!(names.iter().all(|name| !name.starts_with("CODEX_")));
+        assert!(!names.contains(&"GEMINI_API_KEY"));
+    }
+
+    #[test]
     fn the_image_follows_the_harness() {
         let codex = build_job(&codex_config(), &codex_spec(), Some(&proxy())).unwrap();
         assert_eq!(
@@ -701,6 +767,11 @@ mod tests {
         assert_eq!(
             pod(&antigravity).containers[0].image.as_deref(),
             Some("capitainerie-executor-antigravity:1")
+        );
+        let vibe = build_job(&vibe_config(), &vibe_spec(), Some(&proxy())).unwrap();
+        assert_eq!(
+            pod(&vibe).containers[0].image.as_deref(),
+            Some("capitainerie-executor-mistral-vibe:1")
         );
         let claude = build_job(&codex_config(), &spec(), Some(&proxy())).unwrap();
         assert_eq!(
@@ -725,5 +796,12 @@ mod tests {
         let error = build_job(&config(), &antigravity_spec(), Some(&proxy())).unwrap_err();
         assert!(matches!(error, RunnerError::NoHarnessImage("antigravity")));
         assert!(error.to_string().contains("antigravity"));
+    }
+
+    #[test]
+    fn a_vibe_execution_without_a_vibe_image_fails_before_any_job() {
+        let error = build_job(&config(), &vibe_spec(), Some(&proxy())).unwrap_err();
+        assert!(matches!(error, RunnerError::NoHarnessImage("mistral-vibe")));
+        assert!(error.to_string().contains("mistral-vibe"));
     }
 }
