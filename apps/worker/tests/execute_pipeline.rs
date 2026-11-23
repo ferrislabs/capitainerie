@@ -36,6 +36,8 @@ use uuid::Uuid;
 
 const SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/claude-stream.jsonl");
 const CODEX_SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/codex-stream.jsonl");
+const ANTIGRAVITY_SAMPLE: &str =
+    include_str!("../../../libs/core/tests/fixtures/antigravity-stream.jsonl");
 const PR_URL: &str = "https://github.com/acme/web/pull/7";
 
 fn database_url() -> Option<String> {
@@ -376,6 +378,60 @@ async fn a_codex_execution_is_priced_from_its_stream_and_opens_the_pull_request(
         .await
         .unwrap();
     assert_eq!(model, "gpt-6-luna");
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn an_antigravity_execution_is_priced_from_its_stream_and_opens_the_pull_request() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = runner_ending(&seen, lines_of(ANTIGRAVITY_SAMPLE), TaskOutcome::Succeeded);
+    let mut antigravity = config();
+    antigravity.default_models.executor =
+        ExecutorModel::new(Harness::Antigravity, "gemini-3.8-flash").unwrap();
+    antigravity.prices = vec![(
+        "gemini-3.8-flash".into(),
+        Pricing {
+            input_per_million_micros: 1_500_000,
+            output_per_million_micros: 7_500_000,
+        },
+    )];
+    let pipeline = ExecutePipeline::new(
+        world.usecase.clone(),
+        Executor::Ready {
+            runner,
+            host: host(&seen, world.organization_id, world.installation_id),
+        },
+        antigravity,
+    );
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    let pull_requests = seen.pull_requests.lock().unwrap().clone();
+    assert_eq!(pull_requests.len(), 1);
+    assert!(
+        pull_requests[0]
+            .body
+            .contains("2400 en entrée, 70 en sortie")
+    );
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert!(posted[0].2.contains(PR_URL));
+    assert!(posted[0].2.contains("Done: I ran echo."));
+    let (status, kind, cost, input_tokens, output) = step(&world.pool, world.run_id).await;
+    assert_eq!((status.as_str(), kind.as_str()), ("succeeded", "execute"));
+    assert_eq!(input_tokens, 2_400);
+    assert_eq!(cost, 1_965, "800 fresh, 1600 cached at 10 %, 70 out");
+    assert_eq!(output["pull_request"], PR_URL);
+    assert_eq!(output["comment"], "posted");
+    assert_eq!(output["tool_calls"].as_array().unwrap().len(), 1);
+    let model: String = sqlx::query_scalar("SELECT model FROM task_grants WHERE run_id = $1")
+        .bind(world.run_id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(model, "gemini-3.8-flash");
     assert_closed(&world).await;
 }
 

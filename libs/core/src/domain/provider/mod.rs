@@ -14,6 +14,7 @@ pub enum ProviderKind {
     Mistral,
     #[serde(rename = "openai")]
     OpenAi,
+    Google,
     #[serde(rename = "openai_compatible")]
     OpenAiCompatible,
 }
@@ -121,10 +122,11 @@ impl From<ProviderCredential> for ProviderAccess {
 }
 
 impl ProviderKind {
-    pub const ALL: [ProviderKind; 4] = [
+    pub const ALL: [ProviderKind; 5] = [
         Self::Anthropic,
         Self::Mistral,
         Self::OpenAi,
+        Self::Google,
         Self::OpenAiCompatible,
     ];
 
@@ -133,6 +135,7 @@ impl ProviderKind {
             Self::Anthropic => "anthropic",
             Self::Mistral => "mistral",
             Self::OpenAi => "openai",
+            Self::Google => "google",
             Self::OpenAiCompatible => "openai_compatible",
         }
     }

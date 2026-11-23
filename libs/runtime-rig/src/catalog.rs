@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::{
     anthropic,
-    client::{ANTHROPIC_BASE, MISTRAL_BASE, OPENAI_BASE, http_client},
+    client::{ANTHROPIC_BASE, GOOGLE_BASE, MISTRAL_BASE, OPENAI_BASE, http_client},
     error::RuntimeError,
     prices::price_of,
     usage::truncate_chars,
@@ -110,6 +110,18 @@ impl RigModelCatalog {
             )
             .await?;
         Ok(openai_models(&page, ProviderKind::OpenAi))
+    }
+
+    async fn google(&self, access: &ProviderAccess) -> Result<Vec<CatalogModel>, CoreError> {
+        let base = base_of(access, GOOGLE_BASE);
+        let page = self
+            .get(
+                self.http
+                    .get(format!("{base}/models"))
+                    .bearer_auth(access.secret.expose()),
+            )
+            .await?;
+        Ok(openai_models(&page, ProviderKind::Google))
     }
 
     async fn openai_compatible(
@@ -255,6 +267,7 @@ impl ModelCatalog for RigModelCatalog {
             ProviderKind::Anthropic => self.anthropic(access).await.map(sorted),
             ProviderKind::Mistral => self.mistral(access).await,
             ProviderKind::OpenAi => self.openai(access).await,
+            ProviderKind::Google => self.google(access).await,
             ProviderKind::OpenAiCompatible => self.openai_compatible(access).await,
         }
     }

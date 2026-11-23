@@ -16,21 +16,30 @@ pub const CODEX_MODELS: [&str; 9] = [
     "gpt-5.5",
 ];
 
+pub const ANTIGRAVITY_MODELS: [(&str, &str); 4] = [
+    ("gemini-4-argon", "gemini-4-argon"),
+    ("gemini-3.8-flash", "gemini-3.8-flash"),
+    ("gemini-3.6-flash", "gemini-3.6-flash"),
+    ("gemini-3.1-pro", "gemini-3.1-pro-preview"),
+];
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Harness {
     #[default]
     ClaudeCode,
     Codex,
+    Antigravity,
 }
 
 impl Harness {
-    pub const ALL: [Harness; 2] = [Self::ClaudeCode, Self::Codex];
+    pub const ALL: [Harness; 3] = [Self::ClaudeCode, Self::Codex, Self::Antigravity];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::Antigravity => "antigravity",
         }
     }
 
@@ -38,6 +47,7 @@ impl Harness {
         match self {
             Self::ClaudeCode => ProviderKind::Anthropic,
             Self::Codex => ProviderKind::OpenAi,
+            Self::Antigravity => ProviderKind::Google,
         }
     }
 
@@ -45,6 +55,7 @@ impl Harness {
         match self {
             Self::ClaudeCode => "claude-sonnet-5-5",
             Self::Codex => CODEX_MODELS[0],
+            Self::Antigravity => ANTIGRAVITY_MODELS[0].0,
         }
     }
 
@@ -52,6 +63,17 @@ impl Harness {
         match self {
             Self::ClaudeCode => model.starts_with("claude-"),
             Self::Codex => CODEX_MODELS.contains(&model),
+            Self::Antigravity => ANTIGRAVITY_MODELS.iter().any(|(id, _)| *id == model),
+        }
+    }
+
+    pub fn wire_model(self, model: &str) -> &str {
+        match self {
+            Self::ClaudeCode | Self::Codex => model,
+            Self::Antigravity => ANTIGRAVITY_MODELS
+                .iter()
+                .find(|(id, _)| *id == model)
+                .map_or(model, |(_, wire)| wire),
         }
     }
 
@@ -134,6 +156,45 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_runs_on_google_cli_model_ids_only() {
+        let harness = Harness::Antigravity;
+        assert_eq!(harness.provider(), ProviderKind::Google);
+        assert!(harness.accepts_model(harness.default_model()));
+        for (id, _) in ANTIGRAVITY_MODELS {
+            assert!(harness.accepts_model(id), "{id}");
+        }
+        for refused in [
+            "gemini-3.1-pro-preview",
+            "gemini-3.7-flash",
+            "claude-sonnet-5-5",
+            "",
+        ] {
+            assert!(!harness.accepts_model(refused), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn only_antigravity_translates_a_model_to_its_wire_id() {
+        assert_eq!(
+            Harness::Antigravity.wire_model("gemini-3.1-pro"),
+            "gemini-3.1-pro-preview"
+        );
+        assert_eq!(
+            Harness::Antigravity.wire_model("gemini-3.8-flash"),
+            "gemini-3.8-flash"
+        );
+        assert_eq!(Harness::Antigravity.wire_model("other"), "other");
+        assert_eq!(
+            Harness::Codex.wire_model("gemini-3.1-pro"),
+            "gemini-3.1-pro"
+        );
+        assert_eq!(
+            Harness::ClaudeCode.wire_model("claude-sonnet-5-5"),
+            "claude-sonnet-5-5"
+        );
+    }
+
+    #[test]
     fn a_model_finds_its_harness() {
         assert_eq!(
             Harness::of_model("claude-opus-5-5"),
@@ -147,6 +208,7 @@ mod tests {
     fn exactly_one_harness_accepts_each_known_model() {
         let models = CODEX_MODELS
             .into_iter()
+            .chain(ANTIGRAVITY_MODELS.map(|(id, _)| id))
             .chain(Harness::ALL.map(Harness::default_model));
         for model in models {
             let accepting = Harness::ALL

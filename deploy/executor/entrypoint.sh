@@ -11,6 +11,7 @@ harness="${CAPITAINERIE_HARNESS:-claude-code}"
 case "$harness" in
   claude-code) ;;
   codex) : "${CAPITAINERIE_OPENAI_BASE_URL:?}" "${CODEX_API_KEY:?}" "${CODEX_HOME:?}" ;;
+  antigravity) : "${GOOGLE_GEMINI_BASE_URL:?}" "${GEMINI_API_KEY:?}" ;;
   *)
     echo "unknown CAPITAINERIE_HARNESS: $harness" >&2
     exit 2
@@ -92,6 +93,11 @@ enabled = false
 CODEX_CONFIG
 }
 
+write_antigravity_config() {
+  mkdir -p "$HOME/.gemini/antigravity-cli"
+  printf '%s\n' '{"modelProvider":"gemini"}' >"$HOME/.gemini/antigravity-cli/settings.json"
+}
+
 run_agent() {
   local run_mode="$1"
   case "$harness" in
@@ -117,15 +123,20 @@ run_agent() {
       codex exec --json --skip-git-repo-check --ephemeral \
         --dangerously-bypass-approvals-and-sandbox -m "$MODEL" -- "$PROMPT"
       ;;
+    antigravity)
+      export AGY_CLI_DISABLE_AUTO_UPDATE=true
+      agy -p "$PROMPT" --output-format stream-json \
+        --dangerously-skip-permissions --model "$MODEL"
+      ;;
   esac
 }
 
 cd repo
-if [ "$harness" = claude-code ]; then
-  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-else
-  write_codex_config
-fi
+case "$harness" in
+  claude-code) export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 ;;
+  codex) write_codex_config ;;
+  antigravity) write_antigravity_config ;;
+esac
 agent_status=0
 
 if [ "$mode" = audit ]; then

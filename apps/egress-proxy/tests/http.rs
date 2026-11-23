@@ -32,7 +32,12 @@ use tokio::{net::TcpListener, sync::mpsc};
 const TASK_TOKEN: &str = "task-token-0001";
 const ANTHROPIC_KEY: &str = "sk-ant-real-key";
 const OPENAI_KEY: &str = "sk-openai-real-key";
+const GOOGLE_KEY: &str = "AIza-real-key";
 const CODEX_MODEL: &str = "gpt-6-luna";
+const AGY_MODEL: &str = "gemini-3.1-pro";
+const AGY_WIRE: &str = "gemini-3.1-pro-preview";
+const HELPER_WIRE: &str = "gemini-3.1-flash-lite-preview";
+const AGY_BODY: &str = include_str!("fixtures/agy-request-body.json");
 const INSTALLATION_TOKEN: &str = "ghs_installation";
 const READ_ONLY_TOKEN: &str = "ghs_read_only";
 const INITIATOR: &str = "user-1";
@@ -59,6 +64,13 @@ fn codex_grant() -> TaskGrant {
     }
 }
 
+fn agy_grant() -> TaskGrant {
+    TaskGrant {
+        model: AGY_MODEL.into(),
+        ..grant()
+    }
+}
+
 fn grant() -> TaskGrant {
     TaskGrant {
         run_id: RunId::new(),
@@ -77,6 +89,7 @@ struct Fake {
     grants: HashMap<[u8; 32], TaskGrant>,
     anthropic_key: Option<&'static str>,
     openai_key: Option<&'static str>,
+    google_key: Option<&'static str>,
     user_keys: HashMap<&'static str, &'static str>,
     github_token: Option<&'static str>,
     lookups: Arc<AtomicUsize>,
@@ -89,6 +102,7 @@ impl Fake {
             grants: HashMap::from([(sha256(TASK_TOKEN), grant)]),
             anthropic_key: Some(ANTHROPIC_KEY),
             openai_key: Some(OPENAI_KEY),
+            google_key: Some(GOOGLE_KEY),
             user_keys: HashMap::new(),
             github_token: Some(INSTALLATION_TOKEN),
             lookups: Arc::new(AtomicUsize::new(0)),
@@ -115,6 +129,7 @@ impl Credentials for Fake {
                 own.or(self.anthropic_key)
             }
             ProviderKind::OpenAi => self.openai_key,
+            ProviderKind::Google => self.google_key,
             _ => None,
         };
         Ok(key.map(SecretToken::new))
@@ -179,6 +194,7 @@ struct Harness {
     url: String,
     anthropic: Log,
     openai: Log,
+    google: Log,
     github: Log,
     client: reqwest::Client,
     lookups: Arc<AtomicUsize>,
@@ -204,6 +220,7 @@ async fn start_openai(fake: Fake, openai_url: String, openai: Log) -> Harness {
         github_url,
         anthropic,
         github,
+        capturing_upstream().await,
     )
     .await;
     h.openai = openai;
@@ -225,6 +242,7 @@ async fn start(
         github_url,
         anthropic,
         github,
+        capturing_upstream().await,
     )
     .await;
     h.openai = openai;
@@ -238,13 +256,16 @@ async fn start_with(
     github_url: String,
     anthropic: Log,
     github: Log,
+    google: (String, Log),
 ) -> Harness {
     let lookups = fake.lookups.clone();
+    let (google_url, google) = google;
     let proxy = Proxy::with_http(
         fake,
         ProxyConfig {
             anthropic_base: anthropic_url,
             openai_base: openai_url,
+            google_base: google_url,
             github_base: github_url,
         },
         plain_client(),
@@ -253,6 +274,7 @@ async fn start_with(
         url: serve(router(proxy)).await,
         anthropic,
         openai: Log::default(),
+        google,
         github,
         client: plain_client(),
         lookups,
@@ -330,6 +352,30 @@ impl Harness {
             .send()
             .await
             .unwrap()
+    }
+
+    async fn generate(
+        &self,
+        path: &str,
+        token_header: (&str, &str),
+        body: &str,
+    ) -> reqwest::Response {
+        self.client
+            .post(format!("{}/google{path}", self.url))
+            .header(token_header.0, token_header.1)
+            .header("content-type", "application/json")
+            .header("accept-encoding", "x-agy-coding")
+            .header("x-goog-api-client", "gl-go/1.0 container-token")
+            .header("user-agent", "agy/1.5.3")
+            .body(body.to_owned())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn agy(&self, body: &str) -> reqwest::Response {
+        self.generate(&stream_path(AGY_WIRE), ("x-goog-api-key", TASK_TOKEN), body)
+            .await
     }
 
     async fn git_get(&self, path: &str, token: &str) -> reqwest::Response {
@@ -1374,4 +1420,303 @@ async fn an_organization_without_an_openai_key_gets_a_clear_403() {
     assert_eq!(response.status(), 403);
     assert!(response.text().await.unwrap().contains("OpenAI key"));
     assert!(Harness::received(&h.openai).is_empty());
+}
+
+fn stream_path(model: &str) -> String {
+    format!("/v1beta/models/{model}:streamGenerateContent?alt=sse")
+}
+
+fn agy_json() -> serde_json::Value {
+    serde_json::from_str(AGY_BODY).unwrap()
+}
+
+#[tokio::test]
+async fn an_agy_request_is_forwarded_with_the_organizations_google_key() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let response = h.agy(AGY_BODY).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text().await.unwrap(), "upstream-ok");
+
+    let seen = Harness::received(&h.google);
+    assert_eq!(seen.len(), 1);
+    let request = &seen[0];
+    assert_eq!(request.method, Method::POST);
+    assert_eq!(
+        request.uri,
+        "/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse"
+    );
+    assert_eq!(request.headers["x-goog-api-key"], GOOGLE_KEY);
+    assert_eq!(request.headers["content-type"], "application/json");
+    assert!(request.headers.get("authorization").is_none());
+    assert!(request.headers.get("x-goog-api-client").is_none());
+    assert!(request.headers.get("x-api-key").is_none());
+    assert!(request.headers.get("user-agent").is_none());
+    assert!(
+        !request
+            .headers
+            .get("accept-encoding")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .contains("x-agy-coding")
+    );
+    for (_, value) in &request.headers {
+        assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
+    }
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&request.body).unwrap(),
+        serde_json::from_str::<serde_json::Value>(AGY_BODY).unwrap()
+    );
+    assert!(Harness::received(&h.anthropic).is_empty());
+    assert!(Harness::received(&h.openai).is_empty());
+}
+
+async fn start_google(fake: Fake, google_url: String, google: Log) -> Harness {
+    let (anthropic_url, anthropic) = capturing_upstream().await;
+    let (github_url, github) = capturing_upstream().await;
+    let (openai_url, _) = capturing_upstream().await;
+    start_with(
+        fake,
+        anthropic_url,
+        openai_url,
+        github_url,
+        anthropic,
+        github,
+        (google_url, google),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn the_google_stream_is_relayed() {
+    let sse = "data: {\"candidates\":[]}\n\ndata: {\"usageMetadata\":{}}\n\n";
+    let upstream = Router::new().fallback(move || async move {
+        Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(Body::from(sse))
+            .unwrap()
+    });
+    let h = start_google(
+        Fake::with(agy_grant()),
+        serve(upstream).await,
+        Log::default(),
+    )
+    .await;
+    let response = h.agy(AGY_BODY).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "text/event-stream");
+    assert_eq!(response.text().await.unwrap(), sse);
+}
+
+#[tokio::test]
+async fn the_grant_model_is_translated_to_the_wire_model_and_the_cli_id_is_refused() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let cli_id = h
+        .generate(
+            &stream_path(AGY_MODEL),
+            ("x-goog-api-key", TASK_TOKEN),
+            AGY_BODY,
+        )
+        .await;
+    assert_eq!(cli_id.status(), 403);
+    assert!(Harness::received(&h.google).is_empty());
+    assert_eq!(h.agy(AGY_BODY).await.status(), 200);
+    assert!(
+        Harness::received(&h.google)[0]
+            .uri
+            .starts_with("/v1beta/models/gemini-3.1-pro-preview:")
+    );
+}
+
+#[tokio::test]
+async fn helper_models_are_refused_without_an_upstream_call() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    for model in [
+        HELPER_WIRE,
+        "gemini-3.8-flash",
+        "gemini-3.1-pro-preview-x",
+        "",
+    ] {
+        let response = h
+            .generate(
+                &stream_path(model),
+                ("x-goog-api-key", TASK_TOKEN),
+                AGY_BODY,
+            )
+            .await;
+        assert_eq!(response.status(), 403, "{model}");
+    }
+    assert!(Harness::received(&h.google).is_empty());
+}
+
+#[tokio::test]
+async fn other_google_paths_and_methods_are_refused() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    for path in [
+        format!("/v1beta/models/{AGY_WIRE}:countTokens"),
+        format!("/v1beta/models/{AGY_WIRE}:embedContent"),
+        format!("/v1beta/models/{AGY_WIRE}"),
+        "/v1beta/models".to_owned(),
+        "/v1beta/files".to_owned(),
+        format!("/v1beta/models/{AGY_WIRE}:generateContent/extra"),
+        format!("/v1beta/models/{AGY_WIRE}%3AgenerateContent"),
+        format!("/v1/models/{AGY_WIRE}:generateContent"),
+        format!("/v1beta/tunedModels/{AGY_WIRE}:generateContent"),
+    ] {
+        let response = h
+            .generate(&path, ("x-goog-api-key", TASK_TOKEN), AGY_BODY)
+            .await;
+        assert_eq!(response.status(), 403, "{path}");
+    }
+    for path in [
+        format!("/v1beta/models/{AGY_WIRE}:streamGenerateContent?alt=sse"),
+        "/v1beta/models".to_owned(),
+    ] {
+        let get = h
+            .client
+            .get(format!("{}/google{path}", h.url))
+            .header("x-goog-api-key", TASK_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(get.status(), 403, "{path}");
+    }
+    assert!(Harness::received(&h.google).is_empty());
+}
+
+#[tokio::test]
+async fn the_google_query_keeps_only_alt_sse() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let path = format!("/v1beta/models/{AGY_WIRE}:generateContent");
+    let with_extras = h
+        .generate(
+            &format!("{path}?alt=sse&key=stolen&cachedContent=x"),
+            ("x-goog-api-key", TASK_TOKEN),
+            AGY_BODY,
+        )
+        .await;
+    assert_eq!(with_extras.status(), 200);
+    let without = h
+        .generate(
+            &format!("{path}?key=stolen&alt=json"),
+            ("x-goog-api-key", TASK_TOKEN),
+            AGY_BODY,
+        )
+        .await;
+    assert_eq!(without.status(), 200);
+    let seen = Harness::received(&h.google);
+    assert_eq!(
+        seen[0].uri,
+        "/v1beta/models/gemini-3.1-pro-preview:generateContent?alt=sse"
+    );
+    assert_eq!(
+        seen[1].uri,
+        "/v1beta/models/gemini-3.1-pro-preview:generateContent"
+    );
+}
+
+#[tokio::test]
+async fn other_harness_grants_cannot_use_the_google_route() {
+    for grant in [grant(), codex_grant()] {
+        let h = harness_with(Fake::with(grant)).await;
+        assert_eq!(h.agy(AGY_BODY).await.status(), 403);
+        assert!(Harness::received(&h.google).is_empty());
+    }
+}
+
+#[tokio::test]
+async fn an_antigravity_grant_cannot_use_the_openai_or_anthropic_routes() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let responses = h
+        .responses(TASK_TOKEN, serde_json::json!({"model": AGY_MODEL}))
+        .await;
+    assert_eq!(responses.status(), 403);
+    let messages = h
+        .messages_with(serde_json::json!({"model": AGY_MODEL}))
+        .await;
+    assert_eq!(messages.status(), 403);
+    assert!(Harness::received(&h.openai).is_empty());
+    assert!(Harness::received(&h.anthropic).is_empty());
+}
+
+#[tokio::test]
+async fn google_bodies_that_escape_the_task_are_refused() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let with = |field: &str, value: serde_json::Value| {
+        let mut body = agy_json();
+        body[field] = value;
+        body.to_string()
+    };
+    let remote_part = serde_json::json!([{"role": "user", "parts": [
+        {"fileData": {"fileUri": "https://attacker.example/", "mimeType": "image/png"}},
+    ]}]);
+    let snake_part = serde_json::json!([{"role": "user", "parts": [
+        {"file_data": {"file_uri": "gs://bucket/object"}},
+    ]}]);
+    let refused = [
+        "[1]".to_owned(),
+        "nope".to_owned(),
+        with("cachedContent", "cachedContents/x".into()),
+        with("tools", serde_json::json!([{"googleSearch": {}}])),
+        with("tools", serde_json::json!([{"codeExecution": {}}])),
+        with("tools", serde_json::json!([{"urlContext": {}}])),
+        with(
+            "tools",
+            serde_json::json!([{"functionDeclarations": [], "googleSearch": {}}]),
+        ),
+        with(
+            "generationConfig",
+            serde_json::json!({"maxOutputTokens": 128_001}),
+        ),
+        with("contents", remote_part),
+        with("contents", snake_part.clone()),
+        with(
+            "systemInstruction",
+            serde_json::json!({"parts": snake_part[0]["parts"]}),
+        ),
+    ];
+    for body in refused {
+        let response = h.agy(&body).await;
+        assert_eq!(response.status(), 400, "{body}");
+    }
+    assert!(Harness::received(&h.google).is_empty());
+    let inline = with(
+        "contents",
+        serde_json::json!([{"role": "user", "parts": [
+            {"inlineData": {"mimeType": "image/png", "data": "AAAA"}},
+        ]}]),
+    );
+    assert_eq!(h.agy(&inline).await.status(), 200);
+}
+
+#[tokio::test]
+async fn an_unknown_token_is_401_on_the_google_route() {
+    let h = harness_with(Fake::with(agy_grant())).await;
+    let response = h
+        .generate(
+            &stream_path(AGY_WIRE),
+            ("x-goog-api-key", "who-knows"),
+            AGY_BODY,
+        )
+        .await;
+    assert_eq!(response.status(), 401);
+    let none = h
+        .client
+        .post(format!("{}/google{}", h.url, stream_path(AGY_WIRE)))
+        .body(AGY_BODY)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), 401);
+    assert!(Harness::received(&h.google).is_empty());
+}
+
+#[tokio::test]
+async fn an_organization_without_a_google_key_gets_a_clear_403() {
+    let mut fake = Fake::with(agy_grant());
+    fake.google_key = None;
+    let h = harness_with(fake).await;
+    let response = h.agy(AGY_BODY).await;
+    assert_eq!(response.status(), 403);
+    assert!(response.text().await.unwrap().contains("Google key"));
+    assert!(Harness::received(&h.google).is_empty());
 }

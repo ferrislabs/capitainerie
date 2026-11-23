@@ -5,6 +5,7 @@ mod credentials;
 mod error;
 mod forward;
 mod git;
+mod google;
 mod openai;
 pub mod pktline;
 mod proxy;

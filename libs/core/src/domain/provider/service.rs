@@ -322,7 +322,10 @@ pub fn validate_provider(
             }
             Ok(Some(url))
         }
-        ProviderKind::Anthropic | ProviderKind::Mistral | ProviderKind::OpenAi => {
+        ProviderKind::Anthropic
+        | ProviderKind::Mistral
+        | ProviderKind::OpenAi
+        | ProviderKind::Google => {
             if secret.expose().trim().is_empty() {
                 return Err(CoreError::Invalid(format!(
                     "an API key is required for {}",

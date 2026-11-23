@@ -239,6 +239,8 @@ executor:
     tag: ""
   # -- Full image reference of the Codex executor (value of EXECUTOR_CODEX_IMAGE). Codex executions fail to start while empty.
   codexImage: ""
+  # -- Full image reference of the Antigravity executor (value of EXECUTOR_ANTIGRAVITY_IMAGE). Antigravity executions fail to start while empty.
+  antigravityImage: ""
   # -- Value of EXECUTOR_MAX_TURNS (--max-turns of Claude Code).
   maxTurns: 50
   # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).

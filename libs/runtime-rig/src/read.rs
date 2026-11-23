@@ -80,9 +80,12 @@ impl RigDocumentReader {
                     .as_deref()
                     .map_or(MISTRAL_BASE, |url| url.trim_end_matches('/'))
             )),
-            ProviderKind::Anthropic | ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => Err(
-                CoreError::Invalid("only mistral offers a document reader".into()),
-            ),
+            ProviderKind::Anthropic
+            | ProviderKind::Google
+            | ProviderKind::OpenAi
+            | ProviderKind::OpenAiCompatible => Err(CoreError::Invalid(
+                "only mistral offers a document reader".into(),
+            )),
         }
     }
 }

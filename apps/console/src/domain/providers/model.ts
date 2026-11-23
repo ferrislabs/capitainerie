@@ -34,6 +34,13 @@ export const PROVIDER_SPECS: ReadonlyArray<ProviderSpec> = [
 		keyRequired: true,
 	},
 	{
+		kind: 'google',
+		name: 'Google Gemini',
+		modelPlaceholder: 'gemini-3.8-flash',
+		needsBaseUrl: false,
+		keyRequired: true,
+	},
+	{
 		kind: 'openai_compatible',
 		name: 'Compatible OpenAI',
 		modelPlaceholder: 'gemini-3-flash-preview',

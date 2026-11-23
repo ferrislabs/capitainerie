@@ -83,6 +83,9 @@ impl RigTranscriber {
             ProviderKind::Anthropic => Err(CoreError::Invalid(
                 "anthropic offers no transcription model".into(),
             )),
+            ProviderKind::Google => Err(CoreError::Invalid(
+                "google offers no transcription model".into(),
+            )),
         }
     }
 }

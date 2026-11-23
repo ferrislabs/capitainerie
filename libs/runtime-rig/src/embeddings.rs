@@ -13,7 +13,7 @@ use tracing::{Instrument, field, info_span};
 
 use crate::{
     args::LlmArgs,
-    client::{MISTRAL_BASE, OPENAI_BASE, http_client, provider_name},
+    client::{GOOGLE_BASE, MISTRAL_BASE, OPENAI_BASE, http_client, provider_name},
     error::RuntimeError,
 };
 
@@ -97,6 +97,11 @@ impl RigEmbedder {
             }
             ProviderKind::OpenAi => Ok(Endpoint {
                 url: format!("{}/embeddings", base_url.unwrap_or(OPENAI_BASE)),
+                key,
+                provider,
+            }),
+            ProviderKind::Google => Ok(Endpoint {
+                url: format!("{}/embeddings", base_url.unwrap_or(GOOGLE_BASE)),
                 key,
                 provider,
             }),

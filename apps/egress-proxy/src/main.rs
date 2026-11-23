@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
         ProxyConfig {
             anthropic_base: args.proxy.anthropic_base.clone(),
             openai_base: args.proxy.openai_base.clone(),
+            google_base: args.proxy.google_base.clone(),
             github_base: args.proxy.github_base.clone(),
         },
     )
