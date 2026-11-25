@@ -245,6 +245,8 @@ executor:
   codexImage: ""
   # -- Full image reference of the Antigravity executor (value of EXECUTOR_ANTIGRAVITY_IMAGE). Antigravity executions fail to start while empty.
   antigravityImage: ""
+  # -- Full image reference of the Mistral Vibe executor (value of EXECUTOR_MISTRAL_VIBE_IMAGE). Mistral Vibe executions fail to start while empty.
+  mistralVibeImage: ""
   # -- Value of EXECUTOR_MAX_TURNS (--max-turns of Claude Code).
   maxTurns: 50
   # -- Value of EXECUTOR_DEADLINE_SECS (activeDeadlineSeconds of the Job).

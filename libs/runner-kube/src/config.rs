@@ -14,6 +14,7 @@ pub struct KubeRunnerConfig {
     pub image: String,
     pub codex_image: Option<String>,
     pub antigravity_image: Option<String>,
+    pub mistral_vibe_image: Option<String>,
     pub proxy_base_url: String,
     pub resources: ResourceRequirements,
     pub ttl_seconds_after_finished: i32,
@@ -47,12 +48,18 @@ impl KubeRunnerConfig {
         self
     }
 
+    pub fn with_mistral_vibe_image(mut self, image: Option<String>) -> Self {
+        self.mistral_vibe_image = image;
+        self
+    }
+
     pub fn new(image: impl Into<String>, proxy_base_url: impl Into<String>) -> Self {
         Self {
             namespace: DEFAULT_NAMESPACE.to_owned(),
             image: image.into(),
             codex_image: None,
             antigravity_image: None,
+            mistral_vibe_image: None,
             proxy_base_url: proxy_base_url.into().trim_end_matches('/').to_owned(),
             resources: default_resources(),
             ttl_seconds_after_finished: DEFAULT_TTL_SECONDS,

@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { InlineAlert } from '#/components/layout/inline-alert'
 import { Page } from '#/components/layout/page'
 import { uniqueAgentId } from '#/domain/agent-team/agent-identity'
+import { hasUsableKey, keySourceOf } from '#/domain/agent-team/harness'
+import { useHarnesses } from '#/domain/agent-team/hooks/use-harnesses'
 import {
 	useCreateTeamAgent,
 	useTeamAgents,
@@ -19,6 +21,11 @@ import {
 } from '#/domain/agent-team/wizard'
 import { useMcpConnectors } from '#/domain/connectors/hooks/use-mcp-connectors'
 import { useGithubRepositoryChoices } from '#/domain/integrations/hooks/use-github'
+import {
+	useMyProviders,
+	useOrgProviders,
+	usePutMyProvider,
+} from '#/domain/providers/hooks/use-providers'
 import { useSkillCatalog } from '#/domain/skills/hooks/use-skills'
 
 export function AgentWizardPage() {
@@ -29,7 +36,22 @@ export function AgentWizardPage() {
 	const connectorsQuery = useMcpConnectors(false)
 	const catalog = useSkillCatalog()
 	const repositories = useGithubRepositoryChoices()
+	const harnessesQuery = useHarnesses()
+	const mine = useMyProviders()
+	const org = useOrgProviders()
+	const saveKey = usePutMyProvider()
 	const navigate = useNavigate()
+	const harnesses = harnessesQuery.data?.harnesses ?? []
+	const harness = harnesses.find((h) => h.id === state.adapter)
+	const orgKeys = org.isError
+		? 'forbidden'
+		: org.isPending
+			? undefined
+			: org.data.providers
+	const keySource = harness
+		? keySourceOf(harness.provider, mine.data, orgKeys)
+		: ({ kind: 'loading' } as const)
+	const keyAvailable = hasUsableKey(keySource)
 	const agents = team.data?.items ?? []
 	const connectors = (connectorsQuery.data?.items ?? []).map((c) => ({
 		slug: c.slug,
@@ -39,12 +61,12 @@ export function AgentWizardPage() {
 		...catalog,
 		...state.skills.filter((s) => !catalog.includes(s)),
 	]
-	const pending = create.isPending || configure.isPending
+	const pending = create.isPending || configure.isPending || saveKey.isPending
 
 	const patch = (change: Partial<WizardState>) =>
 		setState((current) => ({ ...current, ...change }))
 
-	const submit = () => {
+	const createAgent = () => {
 		const slug = uniqueAgentId(
 			state.name,
 			agents.map((a) => a.slug),
@@ -67,7 +89,7 @@ export function AgentWizardPage() {
 					configure.mutate(
 						{
 							path: { agent_id: agent.id },
-							body: buildWizardPatch(state, agent),
+							body: buildWizardPatch(state, agent, harness?.name),
 						},
 						{ onSettled: open },
 					)
@@ -76,8 +98,32 @@ export function AgentWizardPage() {
 		)
 	}
 
+	const submit = () => {
+		const typed = state.key.trim()
+		if (!harness || !typed) {
+			createAgent()
+			return
+		}
+		saveKey.mutate(
+			{
+				path: { kind: harness.provider },
+				body: {
+					api_key: typed,
+					default_model: state.model,
+					is_default: false,
+				},
+			},
+			{ onSuccess: createAgent },
+		)
+	}
+
 	return (
 		<Page>
+			{saveKey.isError ? (
+				<InlineAlert tone="danger" className="mb-2.5">
+					Impossible d'enregistrer ta clé API. Vérifie-la puis réessaie.
+				</InlineAlert>
+			) : null}
 			{create.isError ? (
 				<InlineAlert tone="danger" className="mb-2.5">
 					{describeAgentError(create.error)}
@@ -89,11 +135,22 @@ export function AgentWizardPage() {
 				connectors={connectors}
 				connectorsLoading={connectorsQuery.isPending}
 				repositories={repositories}
+				harnesses={harnesses}
+				harnessesStatus={
+					harnessesQuery.isError
+						? 'error'
+						: harnessesQuery.isPending
+							? 'pending'
+							: 'success'
+				}
+				keySource={keySource}
 				skillOptions={skillOptions}
-				canAdvance={canAdvance(state) && !pending}
+				canAdvance={canAdvance(state, keyAvailable) && !pending}
 				onChange={patch}
 				onBack={() => patch({ step: Math.max(0, state.step - 1) })}
-				onNext={() => canAdvance(state) && patch({ step: state.step + 1 })}
+				onNext={() =>
+					canAdvance(state, keyAvailable) && patch({ step: state.step + 1 })
+				}
 				onCreate={() => {
 					if (!pending) submit()
 				}}

@@ -37,6 +37,11 @@ const CODEX_MODEL: &str = "gpt-6-luna";
 const AGY_MODEL: &str = "gemini-3.1-pro";
 const AGY_WIRE: &str = "gemini-3.1-pro-preview";
 const HELPER_WIRE: &str = "gemini-3.1-flash-lite-preview";
+const MISTRAL_KEY: &str = "mistral-real-key";
+const VIBE_MODEL: &str = "mistral-medium-3.5";
+const VIBE_LARGE: &str = "mistral-large-4-0";
+const VIBE_MEDIUM_WIRE: &str = "mistral-vibe-cli-latest";
+const VIBE_BODY: &str = include_str!("fixtures/vibe-request-body.json");
 const AGY_BODY: &str = include_str!("fixtures/agy-request-body.json");
 const INSTALLATION_TOKEN: &str = "ghs_installation";
 const READ_ONLY_TOKEN: &str = "ghs_read_only";
@@ -71,6 +76,13 @@ fn agy_grant() -> TaskGrant {
     }
 }
 
+fn vibe_grant() -> TaskGrant {
+    TaskGrant {
+        model: VIBE_LARGE.into(),
+        ..grant()
+    }
+}
+
 fn grant() -> TaskGrant {
     TaskGrant {
         run_id: RunId::new(),
@@ -90,6 +102,7 @@ struct Fake {
     anthropic_key: Option<&'static str>,
     openai_key: Option<&'static str>,
     google_key: Option<&'static str>,
+    mistral_key: Option<&'static str>,
     user_keys: HashMap<&'static str, &'static str>,
     github_token: Option<&'static str>,
     lookups: Arc<AtomicUsize>,
@@ -103,6 +116,7 @@ impl Fake {
             anthropic_key: Some(ANTHROPIC_KEY),
             openai_key: Some(OPENAI_KEY),
             google_key: Some(GOOGLE_KEY),
+            mistral_key: Some(MISTRAL_KEY),
             user_keys: HashMap::new(),
             github_token: Some(INSTALLATION_TOKEN),
             lookups: Arc::new(AtomicUsize::new(0)),
@@ -130,6 +144,7 @@ impl Credentials for Fake {
             }
             ProviderKind::OpenAi => self.openai_key,
             ProviderKind::Google => self.google_key,
+            ProviderKind::Mistral => self.mistral_key,
             _ => None,
         };
         Ok(key.map(SecretToken::new))
@@ -195,6 +210,7 @@ struct Harness {
     anthropic: Log,
     openai: Log,
     google: Log,
+    mistral: Log,
     github: Log,
     client: reqwest::Client,
     lookups: Arc<AtomicUsize>,
@@ -260,12 +276,14 @@ async fn start_with(
 ) -> Harness {
     let lookups = fake.lookups.clone();
     let (google_url, google) = google;
+    let (mistral_url, mistral) = capturing_upstream().await;
     let proxy = Proxy::with_http(
         fake,
         ProxyConfig {
             anthropic_base: anthropic_url,
             openai_base: openai_url,
             google_base: google_url,
+            mistral_base: mistral_url,
             github_base: github_url,
         },
         plain_client(),
@@ -275,6 +293,7 @@ async fn start_with(
         anthropic,
         openai: Log::default(),
         google,
+        mistral,
         github,
         client: plain_client(),
         lookups,
@@ -376,6 +395,25 @@ impl Harness {
     async fn agy(&self, body: &str) -> reqwest::Response {
         self.generate(&stream_path(AGY_WIRE), ("x-goog-api-key", TASK_TOKEN), body)
             .await
+    }
+
+    async fn vibe_at(&self, path: &str, token: &str, body: &str) -> reqwest::Response {
+        self.client
+            .post(format!("{}/mistral{path}", self.url))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream")
+            .header("accept-encoding", "x-vibe-coding")
+            .header("user-agent", "Mistral-Vibe/3.1.4")
+            .header("x-affinity", "container-session")
+            .body(body.to_owned())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn vibe(&self, body: &str) -> reqwest::Response {
+        self.vibe_at("/v1/chat/completions", TASK_TOKEN, body).await
     }
 
     async fn git_get(&self, path: &str, token: &str) -> reqwest::Response {
@@ -1719,4 +1757,292 @@ async fn an_organization_without_a_google_key_gets_a_clear_403() {
     assert_eq!(response.status(), 403);
     assert!(response.text().await.unwrap().contains("Google key"));
     assert!(Harness::received(&h.google).is_empty());
+}
+
+fn vibe_json() -> serde_json::Value {
+    serde_json::from_str(VIBE_BODY).unwrap()
+}
+
+fn forwarded_vibe_json() -> serde_json::Value {
+    let mut body = vibe_json();
+    body["max_tokens"] = 128_000.into();
+    body
+}
+
+fn vibe_with(field: &str, value: serde_json::Value) -> String {
+    let mut body = vibe_json();
+    body[field] = value;
+    body.to_string()
+}
+
+#[tokio::test]
+async fn a_vibe_request_is_forwarded_with_the_organizations_mistral_key() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    let response = h.vibe(VIBE_BODY).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text().await.unwrap(), "upstream-ok");
+
+    let seen = Harness::received(&h.mistral);
+    assert_eq!(seen.len(), 1);
+    let request = &seen[0];
+    assert_eq!(request.method, Method::POST);
+    assert_eq!(request.uri, "/v1/chat/completions");
+    assert_eq!(
+        request.headers["authorization"],
+        format!("Bearer {MISTRAL_KEY}")
+    );
+    assert_eq!(request.headers["content-type"], "application/json");
+    assert_eq!(request.headers["accept"], "text/event-stream");
+    assert!(request.headers.get("user-agent").is_none());
+    assert!(request.headers.get("x-affinity").is_none());
+    assert!(request.headers.get("x-api-key").is_none());
+    assert!(
+        !request
+            .headers
+            .get("accept-encoding")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .contains("x-vibe-coding")
+    );
+    for (_, value) in &request.headers {
+        assert!(!value.to_str().unwrap_or_default().contains(TASK_TOKEN));
+    }
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&request.body).unwrap(),
+        forwarded_vibe_json()
+    );
+    assert!(Harness::received(&h.anthropic).is_empty());
+    assert!(Harness::received(&h.openai).is_empty());
+    assert!(Harness::received(&h.google).is_empty());
+}
+
+#[tokio::test]
+async fn the_forwarded_vibe_body_is_the_checked_one() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    let raw = VIBE_BODY.replacen("\"stream\":true", "\"stream\":false,\"stream\":true", 1);
+    assert_ne!(raw, VIBE_BODY);
+    assert_eq!(h.vibe(&raw).await.status(), 200);
+    let seen = Harness::received(&h.mistral);
+    let forwarded = std::str::from_utf8(&seen[0].body).unwrap();
+    assert_eq!(forwarded.matches("\"stream\":").count(), 1);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(forwarded).unwrap(),
+        forwarded_vibe_json()
+    );
+}
+
+#[tokio::test]
+async fn the_vibe_stream_is_relayed() {
+    let sse = "data: {\"choices\":[]}\n\ndata: [DONE]\n\n";
+    let upstream = Router::new().fallback(move || async move {
+        Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(Body::from(sse))
+            .unwrap()
+    });
+    let mistral_url = serve(upstream).await;
+    let fake = Fake::with(vibe_grant());
+    let lookups = fake.lookups.clone();
+    let (anthropic_url, anthropic) = capturing_upstream().await;
+    let (github_url, github) = capturing_upstream().await;
+    let (openai_url, openai) = capturing_upstream().await;
+    let (google_url, google) = capturing_upstream().await;
+    let proxy = Proxy::with_http(
+        fake,
+        ProxyConfig {
+            anthropic_base: anthropic_url,
+            openai_base: openai_url,
+            google_base: google_url,
+            mistral_base: mistral_url,
+            github_base: github_url,
+        },
+        plain_client(),
+    );
+    let h = Harness {
+        url: serve(router(proxy)).await,
+        anthropic,
+        openai,
+        google,
+        mistral: Log::default(),
+        github,
+        client: plain_client(),
+        lookups,
+    };
+    let response = h.vibe(VIBE_BODY).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "text/event-stream");
+    assert_eq!(response.text().await.unwrap(), sse);
+}
+
+#[tokio::test]
+async fn the_vibe_model_is_translated_to_the_wire_model() {
+    let mut fake = Fake::with(TaskGrant {
+        model: VIBE_MODEL.into(),
+        ..grant()
+    });
+    fake.mistral_key = Some(MISTRAL_KEY);
+    let h = harness_with(fake).await;
+    let large = h.vibe(VIBE_BODY).await;
+    assert_eq!(large.status(), 400);
+    let cli_id = h.vibe(&vibe_with("model", VIBE_MODEL.into())).await;
+    assert_eq!(cli_id.status(), 400);
+    assert!(Harness::received(&h.mistral).is_empty());
+    let wire = h.vibe(&vibe_with("model", VIBE_MEDIUM_WIRE.into())).await;
+    assert_eq!(wire.status(), 200);
+    assert_eq!(Harness::received(&h.mistral).len(), 1);
+}
+
+#[tokio::test]
+async fn another_model_in_the_vibe_body_is_refused() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    for model in [
+        "devstral-2512",
+        "mistral-small-latest",
+        "",
+        "mistral-large-4-0 ",
+    ] {
+        let response = h.vibe(&vibe_with("model", model.into())).await;
+        assert_eq!(response.status(), 400, "{model}");
+    }
+    assert!(Harness::received(&h.mistral).is_empty());
+}
+
+#[tokio::test]
+async fn other_mistral_paths_and_methods_are_refused() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    for path in [
+        "/v1/embeddings",
+        "/v1/files",
+        "/v1/models",
+        "/v1/fim/completions",
+        "/v1/agents/completions",
+        "/v1/chat/completions/extra",
+        "/v1/chat/completions/",
+        "/v1/chat/../files",
+        "/v1/chat/completions%2Fx",
+        "/v2/chat/completions",
+    ] {
+        let response = h.vibe_at(path, TASK_TOKEN, VIBE_BODY).await;
+        assert_eq!(response.status(), 403, "{path}");
+    }
+    let get = h
+        .client
+        .get(format!("{}/mistral/v1/chat/completions", h.url))
+        .header("authorization", format!("Bearer {TASK_TOKEN}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get.status(), 403);
+    assert!(Harness::received(&h.mistral).is_empty());
+}
+
+#[tokio::test]
+async fn a_query_string_on_the_mistral_route_is_refused() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    for path in [
+        "/v1/chat/completions?x=1",
+        "/v1/chat/completions?",
+        "/v1/chat/completions?model=other",
+    ] {
+        let response = h.vibe_at(path, TASK_TOKEN, VIBE_BODY).await;
+        assert_eq!(response.status(), 403, "{path}");
+    }
+    assert!(Harness::received(&h.mistral).is_empty());
+}
+
+#[tokio::test]
+async fn other_harness_grants_cannot_use_the_mistral_route() {
+    for grant in [grant(), codex_grant(), agy_grant()] {
+        let h = harness_with(Fake::with(grant)).await;
+        assert_eq!(h.vibe(VIBE_BODY).await.status(), 403);
+        assert!(Harness::received(&h.mistral).is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_mistral_grant_cannot_use_the_other_routes() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    let responses = h
+        .responses(TASK_TOKEN, serde_json::json!({"model": VIBE_LARGE}))
+        .await;
+    assert_eq!(responses.status(), 403);
+    let messages = h
+        .messages_with(serde_json::json!({"model": VIBE_LARGE}))
+        .await;
+    assert_eq!(messages.status(), 403);
+    assert_eq!(h.agy(AGY_BODY).await.status(), 403);
+    assert!(Harness::received(&h.openai).is_empty());
+    assert!(Harness::received(&h.anthropic).is_empty());
+    assert!(Harness::received(&h.google).is_empty());
+}
+
+#[tokio::test]
+async fn vibe_bodies_that_escape_the_task_are_refused() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    let user = |content: serde_json::Value| {
+        vibe_with(
+            "messages",
+            serde_json::json!([{"role": "user", "content": content}]),
+        )
+    };
+    let refused = [
+        "[1]".to_owned(),
+        "nope".to_owned(),
+        vibe_with("n", 2.into()),
+        vibe_with("metadata", serde_json::json!({})),
+        vibe_with("max_tokens", 128_001.into()),
+        vibe_with("tools", serde_json::json!([{"type": "web_search"}])),
+        vibe_with("stream_options", serde_json::json!({"x": true})),
+        vibe_with("response_format", serde_json::json!({"type": "grammar"})),
+        user(serde_json::json!([
+            {"type": "image_url", "image_url": "https://attacker.example/x.png"}
+        ])),
+        user(serde_json::json!([
+            {"type": "image_url", "image_url": {"url": "http://169.254.169.254/"}}
+        ])),
+        user(serde_json::json!([
+            {"type": "document_url", "document_url": "https://attacker.example/x.pdf"}
+        ])),
+        user(serde_json::json!([{"type": "file", "file_id": "f"}])),
+        user(serde_json::json!([{"type": "input_audio", "input_audio": "AAAA"}])),
+    ];
+    for body in refused {
+        let response = h.vibe(&body).await;
+        assert_eq!(response.status(), 400, "{body}");
+    }
+    assert!(Harness::received(&h.mistral).is_empty());
+    let inline = user(serde_json::json!([
+        {"type": "text", "text": "look"},
+        {"type": "image_url", "image_url": "data:image/png;base64,AAAA"}
+    ]));
+    assert_eq!(h.vibe(&inline).await.status(), 200);
+}
+
+#[tokio::test]
+async fn an_unknown_token_is_401_on_the_mistral_route() {
+    let h = harness_with(Fake::with(vibe_grant())).await;
+    let response = h
+        .vibe_at("/v1/chat/completions", "who-knows", VIBE_BODY)
+        .await;
+    assert_eq!(response.status(), 401);
+    let none = h
+        .client
+        .post(format!("{}/mistral/v1/chat/completions", h.url))
+        .body(VIBE_BODY)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), 401);
+    assert!(Harness::received(&h.mistral).is_empty());
+}
+
+#[tokio::test]
+async fn an_organization_without_a_mistral_key_gets_a_clear_403() {
+    let mut fake = Fake::with(vibe_grant());
+    fake.mistral_key = None;
+    let h = harness_with(fake).await;
+    let response = h.vibe(VIBE_BODY).await;
+    assert_eq!(response.status(), 403);
+    assert!(response.text().await.unwrap().contains("Mistral key"));
+    assert!(Harness::received(&h.mistral).is_empty());
 }

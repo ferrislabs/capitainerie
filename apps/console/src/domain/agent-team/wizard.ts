@@ -5,13 +5,10 @@ import { DIRECTION } from '#/domain/agent-team/constants'
 import { isValidModelId } from '#/domain/agent-team/model-id'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 
-export type Connection = 'sub' | 'key' | 'gw'
-
 export interface WizardState {
 	step: number
 	name: string
 	adapter: string
-	conn: Connection
 	key: string
 	role: string
 	title: string
@@ -32,7 +29,6 @@ export function initialWizard(): WizardState {
 		step: 0,
 		name: '',
 		adapter: '',
-		conn: 'sub',
 		key: '',
 		role: 'Général',
 		title: '',
@@ -47,11 +43,11 @@ export function initialWizard(): WizardState {
 	}
 }
 
-export function canAdvance(w: WizardState): boolean {
+export function canAdvance(w: WizardState, keyAvailable = true): boolean {
 	if (w.step === 0) return w.name.trim().length > 0
 	if (w.step === 1) return w.adapter.length > 0
-	if (w.step === 3 && !isValidModelId(w.model)) return false
-	if (w.step === 2 && w.conn !== 'sub') return w.key.trim().length > 0
+	if (w.step === 2) return keyAvailable || w.key.trim().length > 0
+	if (w.step === 3) return w.model.length > 0 && isValidModelId(w.model)
 	return true
 }
 
@@ -85,13 +81,14 @@ export function buildCreateRequest(
 export function buildWizardPatch(
 	w: WizardState,
 	agent: TeamAgent,
+	adapterName: string = w.adapter,
 ): Schemas.UpdateTeamAgentRequest {
 	return {
 		config: {
 			...agent.config,
 			...buildDefaultConfig(agent, {
 				title: w.title.trim() || w.role,
-				adapter: w.adapter,
+				adapter: adapterName,
 				effort: w.effort,
 				hb: w.interval !== 'Manuelle',
 				interval: w.interval === 'Manuelle' ? '1 h' : w.interval,

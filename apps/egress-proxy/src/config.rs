@@ -35,5 +35,6 @@ mod tests {
         assert_eq!(args.proxy.port, 4130);
         assert_eq!(args.proxy.anthropic_base, "https://api.anthropic.com");
         assert_eq!(args.proxy.github_base, "https://github.com");
+        assert_eq!(args.proxy.mistral_base, "https://api.mistral.ai");
     }
 }

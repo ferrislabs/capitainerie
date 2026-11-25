@@ -16,6 +16,7 @@ import { StatusIcon } from '#/domain/tasks/ui/status-icon'
 interface Props {
 	agent: TeamAgent
 	form: AgentForm
+	adapter: string
 	subCount: number
 	reportsTo: string
 	tasks: ReadonlyArray<Task>
@@ -160,6 +161,7 @@ function TaskList({
 export function OverviewTab({
 	agent,
 	form,
+	adapter,
 	subCount,
 	reportsTo,
 	tasks,
@@ -212,7 +214,7 @@ export function OverviewTab({
 					}
 				>
 					<InfoList>
-						<InfoRow label="Adaptateur">{form.adapter}</InfoRow>
+						<InfoRow label="Adaptateur">{adapter}</InfoRow>
 						<InfoRow label="Modèle" mono={Boolean(agent.model)}>
 							{agent.model || 'Modèle par défaut du fournisseur'}
 						</InfoRow>

@@ -35,6 +35,9 @@ data:
   {{- with .Values.executor.antigravityImage }}
   EXECUTOR_ANTIGRAVITY_IMAGE: {{ . | quote }}
   {{- end }}
+  {{- with .Values.executor.mistralVibeImage }}
+  EXECUTOR_MISTRAL_VIBE_IMAGE: {{ . | quote }}
+  {{- end }}
   EXECUTOR_PROXY_URL: {{ include "capitainerie.egressProxyUrl" . | quote }}
   EXECUTOR_MAX_TURNS: {{ .Values.executor.maxTurns | quote }}
   EXECUTOR_DEADLINE_SECS: {{ .Values.executor.deadlineSeconds | quote }}

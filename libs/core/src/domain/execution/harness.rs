@@ -4,6 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::provider::ProviderKind;
 
+pub const CLAUDE_CODE_MODELS: [&str; 4] = [
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-haiku-5-5",
+    "claude-fable-5-1",
+];
+
 pub const CODEX_MODELS: [&str; 9] = [
     "gpt-6.1-sol",
     "gpt-6.1-terra",
@@ -23,23 +30,54 @@ pub const ANTIGRAVITY_MODELS: [(&str, &str); 4] = [
     ("gemini-3.1-pro", "gemini-3.1-pro-preview"),
 ];
 
+pub const MISTRAL_VIBE_MODELS: [(&str, &str); 2] = [
+    ("mistral-large-4-0", "mistral-large-4-0"),
+    ("mistral-medium-3.5", "mistral-vibe-cli-latest"),
+];
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Harness {
     #[default]
     ClaudeCode,
     Codex,
+    MistralVibe,
     Antigravity,
 }
 
 impl Harness {
-    pub const ALL: [Harness; 3] = [Self::ClaudeCode, Self::Codex, Self::Antigravity];
+    pub const ALL: [Harness; 4] = [
+        Self::ClaudeCode,
+        Self::Codex,
+        Self::MistralVibe,
+        Self::Antigravity,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::MistralVibe => "mistral-vibe",
             Self::Antigravity => "antigravity",
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "Claude Code",
+            Self::Codex => "Codex",
+            Self::MistralVibe => "Mistral Vibe",
+            Self::Antigravity => "Antigravity",
+        }
+    }
+
+    /// The models offered for this harness, default first.
+    pub fn models(self) -> Vec<&'static str> {
+        match self {
+            Self::ClaudeCode => CLAUDE_CODE_MODELS.to_vec(),
+            Self::Codex => CODEX_MODELS.to_vec(),
+            Self::MistralVibe => MISTRAL_VIBE_MODELS.iter().map(|(id, _)| *id).collect(),
+            Self::Antigravity => ANTIGRAVITY_MODELS.iter().map(|(id, _)| *id).collect(),
         }
     }
 
@@ -47,14 +85,16 @@ impl Harness {
         match self {
             Self::ClaudeCode => ProviderKind::Anthropic,
             Self::Codex => ProviderKind::OpenAi,
+            Self::MistralVibe => ProviderKind::Mistral,
             Self::Antigravity => ProviderKind::Google,
         }
     }
 
     pub const fn default_model(self) -> &'static str {
         match self {
-            Self::ClaudeCode => "claude-sonnet-5-5",
+            Self::ClaudeCode => CLAUDE_CODE_MODELS[0],
             Self::Codex => CODEX_MODELS[0],
+            Self::MistralVibe => MISTRAL_VIBE_MODELS[0].0,
             Self::Antigravity => ANTIGRAVITY_MODELS[0].0,
         }
     }
@@ -63,6 +103,7 @@ impl Harness {
         match self {
             Self::ClaudeCode => model.starts_with("claude-"),
             Self::Codex => CODEX_MODELS.contains(&model),
+            Self::MistralVibe => MISTRAL_VIBE_MODELS.iter().any(|(id, _)| *id == model),
             Self::Antigravity => ANTIGRAVITY_MODELS.iter().any(|(id, _)| *id == model),
         }
     }
@@ -70,10 +111,8 @@ impl Harness {
     pub fn wire_model(self, model: &str) -> &str {
         match self {
             Self::ClaudeCode | Self::Codex => model,
-            Self::Antigravity => ANTIGRAVITY_MODELS
-                .iter()
-                .find(|(id, _)| *id == model)
-                .map_or(model, |(_, wire)| wire),
+            Self::MistralVibe => wire_of(&MISTRAL_VIBE_MODELS, model),
+            Self::Antigravity => wire_of(&ANTIGRAVITY_MODELS, model),
         }
     }
 
@@ -82,6 +121,13 @@ impl Harness {
             .into_iter()
             .find(|harness| harness.accepts_model(model))
     }
+}
+
+fn wire_of<'a>(table: &[(&str, &'static str)], model: &'a str) -> &'a str {
+    table
+        .iter()
+        .find(|(id, _)| *id == model)
+        .map_or(model, |(_, wire)| wire)
 }
 
 impl fmt::Display for Harness {

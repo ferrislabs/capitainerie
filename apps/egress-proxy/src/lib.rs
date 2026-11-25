@@ -6,6 +6,7 @@ mod error;
 mod forward;
 mod git;
 mod google;
+mod mistral;
 mod openai;
 pub mod pktline;
 mod proxy;

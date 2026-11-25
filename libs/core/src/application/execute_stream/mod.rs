@@ -1,6 +1,7 @@
 mod antigravity;
 mod claude_code;
 mod codex;
+mod vibe;
 
 use std::{collections::HashMap, time::Instant};
 
@@ -256,6 +257,7 @@ enum AgentParser {
     ClaudeCode,
     Antigravity,
     Codex(codex::CodexParser),
+    MistralVibe(vibe::VibeParser),
 }
 
 impl AgentParser {
@@ -263,6 +265,7 @@ impl AgentParser {
         match harness {
             Harness::ClaudeCode => Self::ClaudeCode,
             Harness::Codex => Self::Codex(codex::CodexParser::default()),
+            Harness::MistralVibe => Self::MistralVibe(vibe::VibeParser::default()),
             Harness::Antigravity => Self::Antigravity,
         }
     }
@@ -272,6 +275,7 @@ impl AgentParser {
             Self::ClaudeCode => claude_code::events(line),
             Self::Antigravity => antigravity::events(line),
             Self::Codex(parser) => parser.events(line),
+            Self::MistralVibe(parser) => parser.events(line),
         }
     }
 }
@@ -442,6 +446,60 @@ mod tests {
             })
         );
         assert_eq!(digest.cached_usage().fresh_input, 800);
+    }
+
+    const VIBE_SAMPLE: &str = include_str!("../../../tests/fixtures/vibe-stream.jsonl");
+
+    #[test]
+    fn a_recorded_vibe_stream_gives_tool_calls_usage_summary_and_marker() {
+        let mut reader = StreamReader::new(Harness::MistralVibe, Redactor::new(""));
+        for line in lines(VIBE_SAMPLE) {
+            reader.accept(&line);
+        }
+        let digest = reader.finish();
+
+        let tools: Vec<_> = digest
+            .tool_calls
+            .iter()
+            .map(|call| (call.tool.as_str(), call.succeeded))
+            .collect();
+        assert_eq!(tools, [("file_system.bash", true)], "{digest:?}");
+        assert!(digest.tool_calls[0].summary.contains("VIBE_LAB_OK"));
+        assert_eq!(digest.input_tokens, 2_000);
+        assert_eq!(digest.cache_read_tokens, 800);
+        assert_eq!(digest.cache_creation_tokens, 0);
+        assert_eq!(digest.output_tokens, 100);
+        assert_eq!(
+            digest.summary.as_deref(),
+            Some("Done: the command printed VIBE_LAB_OK.")
+        );
+        assert_eq!(digest.stopped, None);
+        assert_eq!(digest.reported_cost_usd, None);
+        assert_eq!(digest.turns, Some(2));
+        assert_eq!(
+            digest.marker,
+            Some(TaskMarker::Pushed {
+                sha: "3f9c2a7d1e5b48a6c0d7e9f1a2b3c4d5e6f70812".into()
+            })
+        );
+        assert_eq!(digest.cached_usage().fresh_input, 1_200);
+    }
+
+    #[test]
+    fn a_reattached_follower_does_not_keep_a_vibe_summary_from_the_first_attempt() {
+        let mut reader = StreamReader::new(Harness::MistralVibe, Redactor::new(""));
+        let sample = lines(VIBE_SAMPLE);
+        for line in &sample[..sample.len() - 2] {
+            reader.accept(line);
+        }
+        reader.reset();
+        for line in sample
+            .iter()
+            .filter(|line| matches!(line, TaskLine::Agent(value) if value["type"] == "vibe_export"))
+        {
+            reader.accept(line);
+        }
+        assert_eq!(reader.finish().summary, None);
     }
 
     #[test]

@@ -3,6 +3,7 @@ use capitainerie_common::CoreError;
 use capitainerie_core::{
     application::ModelListing,
     domain::execution::ExecutorModel,
+    domain::execution::harness::Harness,
     domain::provider::{
         ModelAssignments, ModelRef, ProviderKind, ProviderSummary, ports::CatalogModel,
     },
@@ -345,6 +346,56 @@ pub struct ModelAssignmentsResponse {
     /// `null` while the organization has chosen nothing: runs then use the
     /// worker's default endpoint.
     pub assignments: Option<ModelAssignmentsDto>,
+}
+
+/// A coding agent an execution can run on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum HarnessDto {
+    ClaudeCode,
+    Codex,
+    MistralVibe,
+    Antigravity,
+}
+
+impl From<Harness> for HarnessDto {
+    fn from(harness: Harness) -> Self {
+        match harness {
+            Harness::ClaudeCode => Self::ClaudeCode,
+            Harness::Codex => Self::Codex,
+            Harness::MistralVibe => Self::MistralVibe,
+            Harness::Antigravity => Self::Antigravity,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HarnessResponse {
+    pub id: HarnessDto,
+    pub name: &'static str,
+    /// The provider whose key the execution uses: the initiator's own key,
+    /// else the organization's.
+    pub provider: ProviderKindDto,
+    pub default_model: &'static str,
+    /// Every model the harness accepts, `default_model` first.
+    pub models: Vec<&'static str>,
+}
+
+impl From<Harness> for HarnessResponse {
+    fn from(harness: Harness) -> Self {
+        Self {
+            id: harness.into(),
+            name: harness.name(),
+            provider: harness.provider().into(),
+            default_model: harness.default_model(),
+            models: harness.models(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HarnessListResponse {
+    pub harnesses: Vec<HarnessResponse>,
 }
 
 #[cfg(test)]

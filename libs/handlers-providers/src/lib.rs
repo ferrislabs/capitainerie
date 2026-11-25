@@ -2,6 +2,7 @@ pub mod delete_provider;
 pub mod delete_user_provider;
 pub mod dto;
 pub mod get_assignments;
+pub mod list_harnesses;
 pub mod list_models;
 pub mod list_providers;
 pub mod list_user_providers;
@@ -35,6 +36,7 @@ where
         .typed_delete(delete_user_provider::handler::<C>)
         .typed_post(test_user_provider::handler::<C>)
         .typed_get(list_models::handler::<C>)
+        .typed_get(list_harnesses::handler)
         .typed_get(get_assignments::handler::<C>)
         .typed_put(put_assignments::handler::<C>)
         .with_state(ProvidersState::new(usecase, catalog))

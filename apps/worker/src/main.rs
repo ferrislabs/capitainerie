@@ -344,7 +344,8 @@ async fn build_executor(
     };
     let mut config = KubeRunnerConfig::new(image.as_str(), proxy_url.as_str())
         .with_codex_image(args.executor.codex_image.clone())
-        .with_antigravity_image(args.executor.antigravity_image.clone());
+        .with_antigravity_image(args.executor.antigravity_image.clone())
+        .with_mistral_vibe_image(args.executor.mistral_vibe_image.clone());
     config.namespace = namespace.to_owned();
     let runner = KubeTaskRunner::try_default(config)
         .await

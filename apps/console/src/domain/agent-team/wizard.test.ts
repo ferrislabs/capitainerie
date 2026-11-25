@@ -9,20 +9,18 @@ import {
 import { DEV } from '#/test-utils/team-agents'
 
 describe('wizard', () => {
-	it('blocks until name, adapter and key are set', () => {
+	it('blocks until name, adapter, key and model are set', () => {
 		const w = initialWizard()
 		expect(canAdvance({ ...w, step: 0 })).toBe(false)
 		expect(canAdvance({ ...w, step: 0, name: ' Zoé ' })).toBe(true)
 		expect(canAdvance({ ...w, step: 1 })).toBe(false)
-		expect(canAdvance({ ...w, step: 1, adapter: 'Pi' })).toBe(true)
-		expect(canAdvance({ ...w, step: 2, conn: 'key' })).toBe(false)
-		expect(canAdvance({ ...w, step: 2, conn: 'key', key: 'sk' })).toBe(true)
-		expect(canAdvance({ ...w, step: 2 })).toBe(true)
-		expect(canAdvance({ ...w, step: 3 })).toBe(true)
-		expect(canAdvance({ ...w, step: 3, model: 'Claude Sonnet 5.5' })).toBe(
-			false,
-		)
-		expect(canAdvance({ ...w, step: 3, model: 'claude-sonnet-5-5' })).toBe(true)
+		expect(canAdvance({ ...w, step: 1, adapter: 'codex' })).toBe(true)
+		expect(canAdvance({ ...w, step: 2 }, false)).toBe(false)
+		expect(canAdvance({ ...w, step: 2, key: ' ' }, false)).toBe(false)
+		expect(canAdvance({ ...w, step: 2, key: 'sk' }, false)).toBe(true)
+		expect(canAdvance({ ...w, step: 2 }, true)).toBe(true)
+		expect(canAdvance({ ...w, step: 3 })).toBe(false)
+		expect(canAdvance({ ...w, step: 3, model: 'gpt-6-sol' })).toBe(true)
 	})
 
 	it('starts with no connector and no parent', () => {
@@ -83,11 +81,12 @@ describe('wizard', () => {
 		const patch = buildWizardPatch(
 			{
 				...initialWizard(),
-				adapter: 'Codex',
+				adapter: 'codex',
 				interval: 'Manuelle',
 				skills: ['humanizer'],
 			},
 			DEV,
+			'Codex',
 		)
 		expect(patch.config).toMatchObject({
 			adapter: 'Codex',

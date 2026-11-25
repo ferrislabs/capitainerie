@@ -48,3 +48,12 @@ export function useTestMyProvider() {
 			.mutationOptions,
 	)
 }
+
+export function useOrgProviders() {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/providers').queryOptions,
+		enabled: Boolean(accessToken),
+		retry: false,
+	})
+}

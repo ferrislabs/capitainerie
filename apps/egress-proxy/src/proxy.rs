@@ -16,7 +16,9 @@ use capitainerie_core::domain::{
 };
 use chrono::Utc;
 
-use crate::{anthropic, auth, credentials::Credentials, error::ProxyError, git, google, openai};
+use crate::{
+    anthropic, auth, credentials::Credentials, error::ProxyError, git, google, mistral, openai,
+};
 
 const GRANT_CACHE_TTL: Duration = Duration::from_secs(10);
 const UNKNOWN_TOKEN_TTL: Duration = Duration::from_secs(10);
@@ -48,6 +50,7 @@ pub struct ProxyConfig {
     pub anthropic_base: String,
     pub openai_base: String,
     pub google_base: String,
+    pub mistral_base: String,
     pub github_base: String,
 }
 
@@ -77,6 +80,7 @@ impl<C: Credentials> Proxy<C> {
                 anthropic_base: config.anthropic_base.trim_end_matches('/').to_owned(),
                 openai_base: config.openai_base.trim_end_matches('/').to_owned(),
                 google_base: config.google_base.trim_end_matches('/').to_owned(),
+                mistral_base: config.mistral_base.trim_end_matches('/').to_owned(),
                 github_base: config.github_base.trim_end_matches('/').to_owned(),
             },
             cache: Mutex::new(HashMap::new()),
@@ -188,6 +192,7 @@ pub fn router<C: Credentials>(proxy: Proxy<C>) -> Router {
         .route("/anthropic/{*path}", any(anthropic::handle::<C>))
         .route("/openai/{*path}", any(openai::handle::<C>))
         .route("/google/{*path}", any(google::handle::<C>))
+        .route("/mistral/{*path}", any(mistral::handle::<C>))
         .route("/git/{owner}/{repo}/{*rest}", any(git::handle::<C>))
         .with_state(Arc::new(proxy))
 }

@@ -10,6 +10,7 @@ import { source } from '#/domain/sources/test-fixtures'
 import { card } from '#/domain/tasks/test-fixtures'
 import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
+import { HARNESS_LIST } from '#/test-utils/harnesses'
 import {
 	DEV,
 	identityOf,
@@ -37,6 +38,7 @@ async function open(props: Page, extra: Routes = {}, agent = DEV) {
 	const fetchMock = mockApi({
 		...teamRoutes(agent),
 		[`PATCH /api/v1/team/agents/${agent.id}`]: { ...agent, revision: 2 },
+		'GET /api/v1/harnesses': HARNESS_LIST,
 		'GET /api/v1/cards': { items: [] },
 		'GET /api/v1/runs/active': { items: [] },
 		...extra,
@@ -456,8 +458,10 @@ describe('agent detail page', () => {
 			await user.clear(screen.getByLabelText('Description'))
 			await user.type(screen.getByLabelText('Description'), 'Nouvelle')
 			await user.selectOptions(screen.getByLabelText('Rôle'), 'DevOps')
-			await user.clear(screen.getByLabelText('Modèle'))
-			await user.type(screen.getByLabelText('Modèle'), 'claude-haiku-5-5')
+			await user.selectOptions(
+				screen.getByLabelText('Modèle'),
+				'claude-haiku-5-5',
+			)
 			await user.selectOptions(screen.getByLabelText('Rapporte à'), 'a-legal')
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 			expect(await screen.findByText(/Enregistré · révision 2/)).toBeTruthy()
@@ -471,33 +475,56 @@ describe('agent detail page', () => {
 			})
 		})
 
-		it('hints at the providers screen and rejects display names', async () => {
+		it('derives the adapter from the model and lists only its models', async () => {
 			const user = userEvent.setup()
-			const fetchMock = await open({ agentId: 'a-dev', tab: 'runtime' })
+			const fetchMock = await open(
+				{ agentId: 'a-dev', tab: 'runtime' },
+				{},
+				{ ...DEV, model: 'gpt-6-mini' },
+			)
+			await screen.findByRole('option', { name: 'Codex' })
 			expect(
-				screen.getByText(/Le modèle utilisé est celui de votre fournisseur/),
+				(screen.getByLabelText('Adaptateur') as HTMLSelectElement).value,
+			).toBe('Codex')
+			expect(
+				within(screen.getByLabelText('Modèle'))
+					.getAllByRole('option')
+					.map((o) => o.textContent),
+			).toEqual(['gpt-6-sol', 'gpt-6-mini'])
+			expect(
+				screen.getByText(/L'adaptateur est décidé par le modèle/),
 			).toBeTruthy()
 			expect(
 				screen
 					.getByRole('link', { name: 'Gérer mes fournisseurs' })
 					.getAttribute('href'),
 			).toBe('/providers')
-			const model = screen.getByLabelText('Modèle')
-			expect(model.getAttribute('placeholder')).toBe(
-				'ex. claude-sonnet-5-5 (vide = modèle par défaut du fournisseur)',
+			await user.selectOptions(
+				screen.getByLabelText('Adaptateur'),
+				'Antigravity',
 			)
-			await user.clear(model)
-			await user.type(model, 'Claude Haiku 5.5')
-			expect(screen.getByText(/Identifiant de modèle invalide/)).toBeTruthy()
+			expect((screen.getByLabelText('Modèle') as HTMLSelectElement).value).toBe(
+				'gemini-3-pro',
+			)
 			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(patches(fetchMock)).toEqual([])
-			await user.clear(model)
-			await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
-			expect(await screen.findByText(/Enregistré · révision 2/)).toBeTruthy()
-			expect(patches(fetchMock)[0]?.body).toEqual({
-				model: '',
-				change_summary: 'modèle',
+			await waitFor(() => expect(patches(fetchMock)).toHaveLength(1))
+			expect(patches(fetchMock)[0]?.body).toMatchObject({
+				model: 'gemini-3-pro',
+				config: { adapter: 'Antigravity' },
 			})
+		})
+
+		it('keeps an unknown current model as an extra first option', async () => {
+			await open({ agentId: 'a-dev', tab: 'runtime' })
+			await screen.findByRole('option', { name: 'claude-opus-5' })
+			const options = within(screen.getByLabelText('Modèle')).getAllByRole(
+				'option',
+			)
+			expect(options[0]?.textContent).toBe('Claude Sonnet 5.5')
+			expect(options).toHaveLength(4)
+			expect(
+				(screen.getByLabelText('Adaptateur') as HTMLSelectElement).value,
+			).toBe('Claude Code')
 		})
 
 		it('moves an agent back to the direction with a null parent', async () => {

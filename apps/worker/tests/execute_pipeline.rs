@@ -36,6 +36,7 @@ use uuid::Uuid;
 
 const SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/claude-stream.jsonl");
 const CODEX_SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/codex-stream.jsonl");
+const VIBE_SAMPLE: &str = include_str!("../../../libs/core/tests/fixtures/vibe-stream.jsonl");
 const ANTIGRAVITY_SAMPLE: &str =
     include_str!("../../../libs/core/tests/fixtures/antigravity-stream.jsonl");
 const PR_URL: &str = "https://github.com/acme/web/pull/7";
@@ -432,6 +433,64 @@ async fn an_antigravity_execution_is_priced_from_its_stream_and_opens_the_pull_r
         .await
         .unwrap();
     assert_eq!(model, "gemini-3.8-flash");
+    assert_closed(&world).await;
+}
+
+#[tokio::test]
+async fn a_mistral_vibe_execution_is_priced_from_its_stream_and_opens_the_pull_request() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let runner = runner_ending(&seen, lines_of(VIBE_SAMPLE), TaskOutcome::Succeeded);
+    let mut vibe = config();
+    vibe.default_models.executor =
+        ExecutorModel::new(Harness::MistralVibe, "mistral-medium-3.5").unwrap();
+    vibe.prices = vec![(
+        "mistral-medium-3.5".into(),
+        Pricing {
+            input_per_million_micros: 1_500_000,
+            output_per_million_micros: 7_500_000,
+        },
+    )];
+    let pipeline = ExecutePipeline::new(
+        world.usecase.clone(),
+        Executor::Ready {
+            runner,
+            host: host(&seen, world.organization_id, world.installation_id),
+        },
+        vibe,
+    );
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    let pull_requests = seen.pull_requests.lock().unwrap().clone();
+    assert_eq!(pull_requests.len(), 1);
+    assert!(
+        pull_requests[0]
+            .body
+            .contains("2000 en entrée, 100 en sortie")
+    );
+    let posted = comments(&world.pool, world.card.id).await;
+    assert_eq!(posted.len(), 1);
+    assert!(posted[0].2.contains(PR_URL));
+    assert!(
+        posted[0]
+            .2
+            .contains("Done: the command printed VIBE_LAB_OK.")
+    );
+    let (status, kind, cost, input_tokens, output) = step(&world.pool, world.run_id).await;
+    assert_eq!((status.as_str(), kind.as_str()), ("succeeded", "execute"));
+    assert_eq!(input_tokens, 2_000);
+    assert_eq!(cost, 2_670, "1200 fresh, 800 cached at 10 %, 100 out");
+    assert_eq!(output["pull_request"], PR_URL);
+    assert_eq!(output["comment"], "posted");
+    assert_eq!(output["tool_calls"].as_array().unwrap().len(), 1);
+    let model: String = sqlx::query_scalar("SELECT model FROM task_grants WHERE run_id = $1")
+        .bind(world.run_id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(model, "mistral-medium-3.5");
     assert_closed(&world).await;
 }
 
