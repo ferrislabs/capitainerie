@@ -45,6 +45,16 @@ export function useTeamAgentRevisions(agentId: string, enabled = true) {
 	})
 }
 
+export function useTeamAgentIdentity(agentId: string) {
+	const accessToken = useAccessToken()
+	return useQuery({
+		...tanstackApi.get('/api/v1/team/agents/{agent_id}/identity', {
+			path: { agent_id: agentId },
+		}).queryOptions,
+		enabled: Boolean(accessToken),
+	})
+}
+
 export function useAgentCards(agentId: string) {
 	const accessToken = useAccessToken()
 	return useQuery({

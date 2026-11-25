@@ -6,7 +6,7 @@ pub mod infrastructure;
 
 pub use application::{
     AgentDelegation, AgentTaskConfig, AgentTaskPipeline, AgentTaskSource, CapitainerieUseCase,
-    ExecuteConfig, ExecutePipeline, ExecutionContext, Executor, InterventionConfig,
+    ExecuteConfig, ExecutePipeline, ExecutionContext, Executor, IdentitySweep, InterventionConfig,
     InterventionPipeline, MeetingPipeline, PipelineConfig, RunCardLinks, RunContext, RunTimeline,
     StartedAgentRun, StartedExecution, StartedIntervention, SubmittedTranscript,
 };

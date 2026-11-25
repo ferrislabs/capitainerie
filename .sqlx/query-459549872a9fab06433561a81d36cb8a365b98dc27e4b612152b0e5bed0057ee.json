@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT organization_id, agent_id, client_uuid, status, secret_nonce,\n                   secret_ciphertext, failure, created_at, updated_at\n            FROM agent_identities\n            WHERE status = 'pending'\n            ORDER BY updated_at\n            LIMIT $1\n            ",
+  "query": "\n            SELECT organization_id, agent_id, client_uuid, status, secret_nonce,\n                   secret_ciphertext, failure, synced, created_at, updated_at\n            FROM agent_identities\n            WHERE organization_id = $1 AND agent_id = $2\n            ",
   "describe": {
     "columns": [
       {
@@ -40,18 +40,24 @@
       },
       {
         "ordinal": 7,
+        "name": "synced",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Uuid",
+        "Uuid"
       ]
     },
     "nullable": [
@@ -63,8 +69,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "330636f26093b3d3c2832605c3e577fa98a84d16a8a1ba7a1c33760213218466"
+  "hash": "459549872a9fab06433561a81d36cb8a365b98dc27e4b612152b0e5bed0057ee"
 }

@@ -12,6 +12,7 @@ import { clearAuth } from '#/store/auth.store'
 import { mockApi, withQueryClient } from '#/test-utils/api-mock'
 import {
 	DEV,
+	identityOf,
 	LEGAL,
 	REGISTRE,
 	TEAM,
@@ -98,6 +99,36 @@ describe('agent detail page', () => {
 				.getByRole('link', { name: "Vue d'ensemble" })
 				.getAttribute('aria-current'),
 		).toBe('page')
+	})
+
+	it("shows the agent's FerrisKey client and its status", async () => {
+		await open({ agentId: 'a-dev' })
+		const section = (await screen.findByText('Identité FerrisKey')).closest(
+			'section',
+		) as HTMLElement
+		expect(
+			await within(section).findByText('capitainerie-agent-a-dev'),
+		).toBeTruthy()
+		expect(within(section).getByText('active')).toBeTruthy()
+		expect(
+			within(section).getByText("L'agent agit avec son propre client."),
+		).toBeTruthy()
+	})
+
+	it('shows why a pending client is not created yet', async () => {
+		await open(
+			{ agentId: 'a-dev' },
+			{
+				'GET /api/v1/team/agents/a-dev/identity': identityOf(DEV, {
+					status: 'pending',
+					failure: 'agent identity: FerrisKey answered 503',
+				}),
+			},
+		)
+		expect(await screen.findByText('en attente')).toBeTruthy()
+		expect(
+			screen.getByText('agent identity: FerrisKey answered 503'),
+		).toBeTruthy()
 	})
 
 	it('opens connectors for the legacy tools segment', async () => {

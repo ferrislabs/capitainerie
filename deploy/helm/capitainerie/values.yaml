@@ -26,6 +26,8 @@ secrets:
   # -- Variables read from the Secret with `optional: true` (the application has a default).
   optionalKeys:
     - LLM_API_KEY
+    - PROVISIONER_CLIENT_ID
+    - PROVISIONER_CLIENT_SECRET
 
 config:
   # -- Value of LOG_FILTER (tracing EnvFilter).
@@ -209,6 +211,8 @@ worker:
     - EXCHANGE_CLIENT_ID
     - EXCHANGE_CLIENT_SECRET
     - AGENT_CREDENTIALS
+    - PROVISIONER_CLIENT_ID
+    - PROVISIONER_CLIENT_SECRET
     - IGGY_USERNAME
     - IGGY_PASSWORD
     - LLM_API_KEY

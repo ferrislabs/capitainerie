@@ -133,6 +133,7 @@ use capitainerie_handlers_sources::{
 };
 use capitainerie_handlers_team::{
     self as team,
+    agent_identity::{TeamAgentIdentityResponse, TeamAgentIdentityStatusDto},
     create_agent::CreateTeamAgentRequest,
     response::{
         TeamAgentListResponse, TeamAgentResponse, TeamAgentRevisionListResponse,
@@ -186,6 +187,7 @@ use utoipa::{
         team::create_agent::handler,
         team::get_agent::handler,
         team::update_agent::handler,
+        team::agent_identity::handler,
         team::agent_revisions::list_handler,
         team::agent_revisions::restore_handler,
         skills::list_skills::handler,
@@ -359,6 +361,8 @@ use utoipa::{
         UpdateTeamAgentRequest,
         TeamAgentRevisionResponse,
         TeamAgentRevisionListResponse,
+        TeamAgentIdentityResponse,
+        TeamAgentIdentityStatusDto,
         SkillResponse,
         SkillListResponse,
         CreateSkillRequest,

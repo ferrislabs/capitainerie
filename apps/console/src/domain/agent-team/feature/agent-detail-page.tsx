@@ -23,6 +23,7 @@ import {
 	useAgentCards,
 	useRestoreTeamAgentRevision,
 	useTeamAgent,
+	useTeamAgentIdentity,
 	useTeamAgentRevisions,
 	useTeamAgents,
 	useUpdateTeamAgent,
@@ -95,6 +96,7 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 	const agentCards = useAgentCards(agent.id)
 	const allCards = useCards()
 	const activeRuns = useActiveRuns()
+	const identity = useTeamAgentIdentity(agent.id)
 	const [draft, setDraft] = useState<AgentForm | null>(null)
 	const [assignTo, setAssignTo] = useState<string | null>(null)
 	const [message, setMessage] = useNotice()
@@ -308,6 +310,11 @@ function AgentDetailBody({ agent, agents, tab, mode }: BodyProps) {
 						tasksLoading={agentCards.isPending}
 						tasksError={agentCards.isError}
 						activeRuns={runs}
+						identity={{
+							identity: identity.data,
+							loading: identity.isPending,
+							error: identity.isError,
+						}}
 					/>
 				) : null}
 				{tab === 'instructions' ? (

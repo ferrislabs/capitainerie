@@ -816,6 +816,13 @@ export namespace Schemas {
     title: string;
   };
   export type TaskCostsResponse = { from: string; rows: Array<TaskSpendResponse>; to: string; total: SpentResponse };
+  export type TeamAgentIdentityStatusDto = "pending" | "active" | "disabled";
+  export type TeamAgentIdentityResponse = {
+    client_id: string;
+    failure?: (string | null) | undefined;
+    status: TeamAgentIdentityStatusDto;
+    synced: boolean;
+  };
   export type TeamAgentStatusDto = "idle" | "running";
   export type TeamAgentResponse = {
     archived: boolean;
@@ -2531,6 +2538,20 @@ export namespace Endpoints {
       422: Schemas.ApiErrorResponse;
     };
   };
+  export type get_GetTeamAgentIdentity = {
+    method: "GET";
+    path: "/api/v1/team/agents/{agent_id}/identity";
+    requestFormat: "json";
+    parameters: {
+      path: { agent_id: string };
+    };
+    responses: {
+      200: Schemas.TeamAgentIdentityResponse;
+      401: Schemas.ApiErrorResponse;
+      403: Schemas.ApiErrorResponse;
+      404: Schemas.ApiErrorResponse;
+    };
+  };
   export type get_ListTeamAgentRevisions = {
     method: "GET";
     path: "/api/v1/team/agents/{agent_id}/revisions";
@@ -2692,6 +2713,7 @@ export type EndpointByMethod = {
     "/api/v1/sources/{source_id}/events": Endpoints.get_ListSourceEvents;
     "/api/v1/team/agents": Endpoints.get_ListTeamAgents;
     "/api/v1/team/agents/{agent_id}": Endpoints.get_GetTeamAgent;
+    "/api/v1/team/agents/{agent_id}/identity": Endpoints.get_GetTeamAgentIdentity;
     "/api/v1/team/agents/{agent_id}/revisions": Endpoints.get_ListTeamAgentRevisions;
     "/health/live": Endpoints.get_GetLiveness;
     "/health/ready": Endpoints.get_GetReadiness;

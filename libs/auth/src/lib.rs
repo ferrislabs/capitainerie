@@ -7,4 +7,4 @@ pub use domain::identity::{AcceptedClients, Identity};
 pub use domain::ports::TokenVerifier;
 pub use infrastructure::exchange::{ClientCredentials, ExchangeArgs, FerrisKeyTokenExchange};
 pub use infrastructure::ferriskey::{FerrisKeyVerifier, unverified_issuer};
-pub use infrastructure::provisioning::FerrisKeyProvisioner;
+pub use infrastructure::provisioning::{FerrisKeyProvisioner, ProvisionerArgs};

@@ -53,5 +53,19 @@ export function teamRoutes(
 	return {
 		'GET /api/v1/team/agents': { items },
 		[`GET /api/v1/team/agents/${agent.id}`]: agent,
+		[`GET /api/v1/team/agents/${agent.id}/identity`]: identityOf(agent),
+	}
+}
+
+export function identityOf(
+	agent: Schemas.TeamAgentResponse,
+	change: Partial<Schemas.TeamAgentIdentityResponse> = {},
+): Schemas.TeamAgentIdentityResponse {
+	return {
+		client_id: `capitainerie-agent-${agent.id}`,
+		status: 'active',
+		failure: null,
+		synced: true,
+		...change,
 	}
 }
