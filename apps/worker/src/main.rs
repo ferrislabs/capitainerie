@@ -1,4 +1,5 @@
 mod dispatch;
+mod identities;
 mod inbox;
 mod indexer;
 mod orchestrator;
@@ -11,7 +12,7 @@ use capitainerie_args::{
     DatabaseArgs, DelegationArgs, ExecutorArgs, GithubArgs, IntegrationsArgs, LogArgs,
     ObservabilityArgs, SecretsArgs,
 };
-use capitainerie_auth::ExchangeArgs;
+use capitainerie_auth::{ExchangeArgs, ProvisionerArgs};
 use capitainerie_bus_iggy::{IggyArgs, IggyEventBus};
 use capitainerie_core::{
     AgentTaskConfig, AgentTaskPipeline, CapitainerieUseCase, ExecuteConfig, ExecutePipeline,
@@ -40,8 +41,8 @@ use clap::Parser;
 use tokio::sync::watch;
 
 use crate::{
-    dispatch::Dispatcher, inbox::InboxProjector, indexer::CardIndexer, orchestrator::Orchestrator,
-    scheduler::RoutineScheduler,
+    dispatch::Dispatcher, identities::IdentitySweeper, inbox::InboxProjector, indexer::CardIndexer,
+    orchestrator::Orchestrator, scheduler::RoutineScheduler,
 };
 
 #[derive(Debug, Parser)]
@@ -77,6 +78,8 @@ struct Args {
     dedup_gray_floor: f32,
     #[command(flatten)]
     exchange: ExchangeArgs,
+    #[command(flatten)]
+    provisioner: ProvisionerArgs,
     #[command(flatten)]
     delegation: DelegationArgs,
     #[command(flatten)]
@@ -224,6 +227,15 @@ async fn main() -> anyhow::Result<()> {
         AgentTaskConfig::new(default_models.clone(), args.console_url.clone()),
     );
     let routines = RoutineScheduler::new(usecase.clone());
+    let identities = match args.provisioner.provisioner(&args.exchange)? {
+        Some(provisioner) => Some(IdentitySweeper::new(usecase.clone(), provisioner)),
+        None => {
+            tracing::warn!(
+                "PROVISIONER_CLIENT_ID is unset: new agents get no FerrisKey client and keep a pending identity"
+            );
+            None
+        }
+    };
     let inbox = InboxProjector::new(usecase.clone());
     let execution = ExecutePipeline::new(
         usecase,
@@ -258,13 +270,19 @@ async fn main() -> anyhow::Result<()> {
     );
     let relay = OutboxRelay::new(pool, bus, OutboxRelayConfig::default());
     let mut relay_stop = stopped.clone();
-    let (relayed, orchestrated, (), (), (), ()) = tokio::join!(
+    let identities_stopped = stopped.clone();
+    let (relayed, orchestrated, (), (), (), (), ()) = tokio::join!(
         relay.run(async move {
             let _ = relay_stop.wait_for(|stop| *stop).await;
         }),
         orchestrator.run(stopped.clone()),
         indexer.run(stopped.clone()),
         routines.run(stopped.clone()),
+        async move {
+            if let Some(identities) = identities {
+                identities.run(identities_stopped).await;
+            }
+        },
         inbox.run(stopped),
         async move {
             capitainerie_telemetry::shutdown_signal().await;

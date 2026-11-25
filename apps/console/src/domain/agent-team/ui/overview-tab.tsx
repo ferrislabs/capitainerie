@@ -4,6 +4,7 @@ import type { Schemas } from '#/api/api.client'
 import type { AgentForm } from '#/domain/agent-team/agent-config'
 import type { TeamAgent } from '#/domain/agent-team/team-agent'
 import { InfoList, InfoRow } from '#/domain/agent-team/ui/field-row'
+import { IdentitySection } from '#/domain/agent-team/ui/identity-section'
 import { DetailSection, SectionGrid } from '#/domain/agent-team/ui/panel'
 import { Chip, ChipList, Empty } from '#/domain/agent-team/ui/rows'
 import { Sev, type SevTone } from '#/domain/agent-team/ui/sev'
@@ -22,6 +23,7 @@ interface Props {
 	tasksLoading: boolean
 	tasksError: boolean
 	activeRuns: ReadonlyArray<Schemas.ActiveRunResponse>
+	identity: Parameters<typeof IdentitySection>[0]
 }
 
 const RUN_STATUS: Record<
@@ -165,6 +167,7 @@ export function OverviewTab({
 	tasksLoading,
 	tasksError,
 	activeRuns,
+	identity,
 }: Props) {
 	const params = { agentId: agent.id }
 	const status = agent.paused
@@ -279,6 +282,8 @@ export function OverviewTab({
 					)}
 				</DetailSection>
 			</SectionGrid>
+
+			<IdentitySection {...identity} />
 
 			<DetailSection
 				title="Tâches récentes"

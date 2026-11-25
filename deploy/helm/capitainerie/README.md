@@ -19,6 +19,7 @@ Le chart ne crée aucune valeur secrète. Créer le Secret `secrets.existingSecr
 | `SECRETS_KEY` (`openssl rand -base64 32`, identique pour api et worker ; chiffre les clés des fournisseurs) | api, worker |
 | `EXCHANGE_CLIENT_ID`, `EXCHANGE_CLIENT_SECRET` | api, worker |
 | `AGENT_CREDENTIALS` (`client=secret,...`) | api, worker |
+| `PROVISIONER_CLIENT_ID`, `PROVISIONER_CLIENT_SECRET` (optionnelles ; sans elles, les agents gardent une identité en attente) | worker |
 | `IGGY_USERNAME`, `IGGY_PASSWORD` | api, worker, exporter |
 | `LLM_API_KEY` (optionnelle) | api, worker |
 

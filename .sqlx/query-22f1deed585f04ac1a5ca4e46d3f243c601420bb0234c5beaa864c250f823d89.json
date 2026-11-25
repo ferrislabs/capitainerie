@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE agent_identities\n            SET client_uuid = $3,\n                status = $4,\n                secret_nonce = $5,\n                secret_ciphertext = $6,\n                failure = $7,\n                synced = $8,\n                updated_at = $9\n            WHERE organization_id = $1 AND agent_id = $2 AND updated_at = $10\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bytea",
+        "Bytea",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22f1deed585f04ac1a5ca4e46d3f243c601420bb0234c5beaa864c250f823d89"
+}

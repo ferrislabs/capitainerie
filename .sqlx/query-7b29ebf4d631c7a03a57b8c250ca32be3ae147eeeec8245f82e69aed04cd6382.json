@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT status, failure, synced, updated_at\n            FROM agent_identities\n            WHERE organization_id = $1 AND agent_id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "failure",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "synced",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7b29ebf4d631c7a03a57b8c250ca32be3ae147eeeec8245f82e69aed04cd6382"
+}

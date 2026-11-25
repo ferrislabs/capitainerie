@@ -198,6 +198,48 @@ async fn an_agent_is_created_read_updated_and_archived() {
 }
 
 #[tokio::test]
+async fn an_agent_gets_its_own_identity_which_follows_its_archive() {
+    let Some(fixture) = fixture(None).await else {
+        return;
+    };
+    let (status, created) = fixture
+        .post(
+            "/api/v1/team/agents",
+            json!({"slug": "bernard", "name": "Bernard"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["id"].as_str().unwrap();
+    let path = format!("/api/v1/team/agents/{id}");
+    let identity_path = format!("{path}/identity");
+
+    let (status, identity) = fixture.get(&identity_path).await;
+    assert_eq!(status, StatusCode::OK, "{identity}");
+    assert_eq!(
+        identity,
+        json!({
+            "client_id": format!("capitainerie-agent-{id}"),
+            "status": "pending",
+            "failure": null,
+            "synced": true,
+        })
+    );
+
+    fixture.patch(&path, json!({"archived": true})).await;
+    let (_, identity) = fixture.get(&identity_path).await;
+    assert_eq!(identity["status"], "disabled");
+
+    fixture.patch(&path, json!({"archived": false})).await;
+    let (_, identity) = fixture.get(&identity_path).await;
+    assert_eq!(identity["status"], "pending");
+
+    let (status, _) = fixture
+        .get(&format!("/api/v1/team/agents/{}/identity", Uuid::now_v7()))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn an_empty_model_is_accepted_on_create_and_clears_on_patch() {
     let Some(fixture) = fixture(None).await else {
         return;

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE agent_identities\n            SET synced = true\n            WHERE organization_id = $1 AND agent_id = $2 AND updated_at = $3 AND NOT synced\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fc12b479664400a601846ed95fc1b568e40e2a9b9c0559ecbad07874740e71e8"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO agent_identities (\n                agent_id, organization_id, client_id, status, synced, created_at, updated_at\n            )\n            SELECT agents.id, agents.organization_id, $1 || agents.id::text,\n                   CASE WHEN agents.archived THEN 'disabled' ELSE 'pending' END,\n                   true, $2, $2\n            FROM agents\n            WHERE NOT EXISTS (\n                SELECT 1 FROM agent_identities WHERE agent_identities.agent_id = agents.id\n            )\n            ON CONFLICT (agent_id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f92ee71bcbd750a410e91598d4894bf5845756bf0ee132fddbfb3d126554f2dc"
+}

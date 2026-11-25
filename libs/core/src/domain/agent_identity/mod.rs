@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::agent::SecretToken;
 
-const CLIENT_PREFIX: &str = "capitainerie-agent-";
+/// Followed by the agent's id, hyphenated and lowercase.
+pub const CLIENT_PREFIX: &str = "capitainerie-agent-";
 const FAILURE_MAX_CHARS: usize = 1000;
 
 /// The FerrisKey client id of an agent. Built from the agent's id, never from
@@ -84,7 +85,31 @@ pub struct AgentIdentity {
     pub agent_id: AgentId,
     pub client_id: AgentClientId,
     pub state: IdentityState,
+    /// False while FerrisKey still has to enable or disable the client after
+    /// an unarchive or an archive.
+    pub synced: bool,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A client FerrisKey has yet to enable or disable after its agent came back
+/// or was archived. Read without the secret, which the sweep never needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsyncedClient {
+    pub organization_id: OrganizationId,
+    pub agent_id: AgentId,
+    pub client_uuid: String,
+    pub enabled: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// What the console shows of an identity: never the secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentitySummary {
+    pub client_id: AgentClientId,
+    pub status: IdentityStatus,
+    pub failure: Option<String>,
+    pub synced: bool,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -95,6 +120,7 @@ impl AgentIdentity {
             agent_id,
             client_id: AgentClientId::of(agent_id),
             state: IdentityState::Pending { failure: None },
+            synced: true,
             created_at: now,
             updated_at: now,
         }
@@ -142,6 +168,8 @@ impl AgentIdentity {
         }
     }
 
+    /// An existing client still has to be turned off in FerrisKey: the
+    /// identity stays out of sync until it is.
     #[must_use]
     pub fn disabled(self, now: DateTime<Utc>) -> Self {
         let client = match self.state {
@@ -154,8 +182,10 @@ impl AgentIdentity {
                 };
             }
         };
+        let synced = client.is_none();
         Self {
             state: IdentityState::Disabled { client },
+            synced,
             updated_at: now,
             ..self
         }
@@ -163,11 +193,13 @@ impl AgentIdentity {
 
     #[must_use]
     pub fn enabled(self, now: DateTime<Utc>) -> Self {
-        let state = match self.state {
+        let (state, synced) = match self.state {
             IdentityState::Disabled {
                 client: Some(client),
-            } => IdentityState::Active(client),
-            IdentityState::Disabled { client: None } => IdentityState::Pending { failure: None },
+            } => (IdentityState::Active(client), false),
+            IdentityState::Disabled { client: None } => {
+                (IdentityState::Pending { failure: None }, true)
+            }
             other => {
                 return Self {
                     state: other,
@@ -177,14 +209,29 @@ impl AgentIdentity {
         };
         Self {
             state,
+            synced,
             updated_at: now,
             ..self
+        }
+    }
+
+    pub fn summary(&self) -> IdentitySummary {
+        IdentitySummary {
+            client_id: self.client_id.clone(),
+            status: self.status(),
+            failure: match &self.state {
+                IdentityState::Pending { failure } => failure.clone(),
+                _ => None,
+            },
+            synced: self.synced,
+            updated_at: self.updated_at,
         }
     }
 
     fn with(self, state: IdentityState, now: DateTime<Utc>) -> Self {
         Self {
             state,
+            synced: true,
             updated_at: now,
             ..self
         }
@@ -358,5 +405,37 @@ mod tests {
         .await;
 
         assert_eq!(after, active);
+    }
+
+    #[test]
+    fn archiving_a_client_leaves_ferriskey_to_follow() {
+        let disabled = identity()
+            .activated(client(), Utc::now())
+            .disabled(Utc::now());
+        assert!(!disabled.synced);
+
+        let back = disabled.enabled(Utc::now());
+        assert_eq!(back.status(), IdentityStatus::Active);
+        assert!(!back.synced);
+    }
+
+    #[test]
+    fn archiving_before_the_client_exists_needs_nothing_from_ferriskey() {
+        let disabled = identity().disabled(Utc::now());
+
+        assert!(disabled.synced);
+        assert!(disabled.enabled(Utc::now()).synced);
+    }
+
+    #[test]
+    fn a_summary_carries_the_failure_but_no_secret() {
+        let failed = identity().failed("idp down", Utc::now());
+
+        let summary = failed.summary();
+
+        assert_eq!(summary.status, IdentityStatus::Pending);
+        assert_eq!(summary.failure.as_deref(), Some("idp down"));
+        let active = identity().activated(client(), Utc::now()).summary();
+        assert!(!format!("{active:?}").contains("s3cret"));
     }
 }

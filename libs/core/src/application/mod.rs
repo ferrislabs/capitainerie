@@ -1,3 +1,4 @@
+mod agent_identity;
 mod agent_run;
 mod agent_task_pipeline;
 mod approval;
@@ -40,6 +41,7 @@ use crate::infrastructure::{
     postgres,
 };
 
+pub use agent_identity::IdentitySweep;
 pub use agent_run::{AgentTaskSource, ExecutionAgentSource, StartedAgentRun, TaskStage};
 pub use agent_task_pipeline::{AgentTaskConfig, AgentTaskPipeline};
 pub use approval::DecidedApproval;

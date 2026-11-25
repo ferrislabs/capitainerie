@@ -9,7 +9,8 @@ use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::exchange::ClientCredentials;
+use super::exchange::{ClientCredentials, ExchangeArgs};
+use crate::AuthError;
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -302,5 +303,59 @@ impl AgentIdentityProvisioner for FerrisKeyProvisioner {
     ) -> Result<(), CoreError> {
         let admin = self.admin(issuer).await?;
         admin.patch(client_uuid, json!({"enabled": enabled})).await
+    }
+}
+
+/// The provisioner's own client, one pair per deployment. Unset, agents keep
+/// a pending identity.
+#[derive(Clone, clap::Args)]
+pub struct ProvisionerArgs {
+    #[arg(long = "provisioner-client-id", env = "PROVISIONER_CLIENT_ID")]
+    pub provisioner_client_id: Option<String>,
+    #[arg(long = "provisioner-client-secret", env = "PROVISIONER_CLIENT_SECRET")]
+    pub provisioner_client_secret: Option<String>,
+}
+
+impl std::fmt::Debug for ProvisionerArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProvisionerArgs")
+            .field("client_id", &self.provisioner_client_id)
+            .field(
+                "client_secret",
+                &self.provisioner_client_secret.as_ref().map(|_| "***"),
+            )
+            .finish()
+    }
+}
+
+impl ProvisionerArgs {
+    /// `None` when no provisioner is configured. The API's client, which
+    /// the exchange args name, is the one allowed to address the agents.
+    pub fn provisioner(
+        &self,
+        exchange: &ExchangeArgs,
+    ) -> Result<Option<FerrisKeyProvisioner>, AuthError> {
+        let credentials = match (&self.provisioner_client_id, &self.provisioner_client_secret) {
+            (Some(id), Some(secret)) => ClientCredentials {
+                client_id: id.clone(),
+                client_secret: SecretToken::new(secret.as_str()),
+            },
+            (None, None) => return Ok(None),
+            _ => {
+                return Err(AuthError::Config(
+                    "provisioner client id and secret must be set together".to_owned(),
+                ));
+            }
+        };
+        let api_client_id = exchange.client_id.clone().ok_or_else(|| {
+            AuthError::Config(
+                "EXCHANGE_CLIENT_ID is required with a provisioner: it names the client allowed to act as the agents".to_owned(),
+            )
+        })?;
+        Ok(Some(FerrisKeyProvisioner::new(
+            credentials,
+            api_client_id,
+            exchange.mcp_audience.clone(),
+        )))
     }
 }
