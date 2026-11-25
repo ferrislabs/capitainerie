@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT organization_id, agent_id, client_uuid, status, secret_nonce,\n                   secret_ciphertext, failure, created_at, updated_at\n            FROM agent_identities\n            WHERE organization_id = $1 AND agent_id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "organization_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "agent_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "client_uuid",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "secret_nonce",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 5,
+        "name": "secret_ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 6,
+        "name": "failure",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c57b5355ab36289dd3dae46f4b1a40114719e14789d756779d27a2ec949fb6a4"
+}

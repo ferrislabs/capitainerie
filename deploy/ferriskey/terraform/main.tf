@@ -100,6 +100,27 @@ resource "ferriskey_client" "agent" {
   direct_access_grants_enabled = false
 }
 
+# Signs Capitainerie in to the admin API to create, enable and disable the
+# client of each agent of the crew. Its service account holds the provisioner
+# role and nothing else; the bootstrap script grants it.
+resource "ferriskey_client" "provisioner" {
+  realm       = ferriskey_realm.organization.name
+  client_id   = "capitainerie-provisioner"
+  name        = "Capitainerie agent provisioner"
+  client_type = "confidential"
+
+  public_client                = false
+  service_account_enabled      = true
+  direct_access_grants_enabled = false
+}
+
+resource "ferriskey_role" "provisioner" {
+  realm       = ferriskey_realm.organization.name
+  name        = "capitainerie-provisioner"
+  description = "Manages the clients of the crew's agents."
+  permissions = ["manage_clients"]
+}
+
 # Marks a member as an admin of the organization: only they manage the
 # providers' API keys and choose the models. It reaches the API as
 # `realm_access.roles` in the access token.

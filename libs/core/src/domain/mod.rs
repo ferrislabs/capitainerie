@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_identity;
 pub mod agent_task;
 pub mod approval;
 pub mod artifact;
