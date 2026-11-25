@@ -25,6 +25,9 @@ API_RESOURCE="$(terraform -chdir="${TF_DIR}" output -raw api_resource)"
 MCP_CLIENT_ID="$(terraform -chdir="${TF_DIR}" output -raw mcp_client_id)"
 AGENT_CLIENTS="$(terraform -chdir="${TF_DIR}" output -json agent_clients)"
 ADMIN_ROLE_UUID="$(terraform -chdir="${TF_DIR}" output -raw admin_role_uuid)"
+PROVISIONER_CLIENT_ID="$(terraform -chdir="${TF_DIR}" output -raw provisioner_client_id)"
+PROVISIONER_CLIENT_UUID="$(terraform -chdir="${TF_DIR}" output -raw provisioner_client_uuid)"
+PROVISIONER_ROLE_UUID="$(terraform -chdir="${TF_DIR}" output -raw provisioner_role_uuid)"
 ADMIN_USERNAME="${ADMIN_USERNAME:-demo}"
 
 # What provider 0.1.0 cannot declare: token exchange, resource ownership and
@@ -78,10 +81,24 @@ else
     echo "ℹ️  no user ${ADMIN_USERNAME} yet: register it, then run this script again to grant capitainerie-admin"
 fi
 
+# The provisioner's service account manages the agents' clients, and only
+# that. Same check-first as above: granting a held role answers 500.
+provisioner_account="service-account-${PROVISIONER_CLIENT_ID}"
+provisioner_user_id="$(admin GET "/users" \
+    | jq -r --arg u "${provisioner_account}" '(if type == "array" then . else .data end)[]? | select(.username == $u) | .id' \
+    | head -1)"
+[ -n "${provisioner_user_id}" ] || { echo "❌ no user ${provisioner_account}" >&2; exit 1; }
+echo "🛠  ${provisioner_account} -> capitainerie-provisioner"
+if ! admin GET "/users/${provisioner_user_id}/roles" \
+    | jq -e '(if type == "array" then . else .data end)[]? | select(.name == "capitainerie-provisioner")' >/dev/null; then
+    admin POST "/users/${provisioner_user_id}/roles/${PROVISIONER_ROLE_UUID}" >/dev/null
+fi
+
 client_secret() {
     admin GET "/clients/$1/client-secret" | jq -r '.data.client_secret // .client_secret'
 }
 API_SECRET="$(client_secret "${API_CLIENT_UUID}")"
+PROVISIONER_SECRET="$(client_secret "${PROVISIONER_CLIENT_UUID}")"
 AGENT_CREDENTIALS=""
 for agent in $(jq -r 'keys[]' <<<"${AGENT_CLIENTS}"); do
     secret="$(client_secret "$(jq -r --arg a "${agent}" '.[$a]' <<<"${AGENT_CLIENTS}")")"
@@ -111,6 +128,8 @@ cat <<SUMMARY
      EXCHANGE_CLIENT_ID=capitainerie-api
      EXCHANGE_CLIENT_SECRET=${API_SECRET}
      AGENT_CREDENTIALS=${AGENT_CREDENTIALS}
+     PROVISIONER_CLIENT_ID=${PROVISIONER_CLIENT_ID}
+     PROVISIONER_CLIENT_SECRET=${PROVISIONER_SECRET}
      DELEGATION_KEY=<openssl rand -base64 32, the same for the API and the worker>
      SECRETS_KEY=<openssl rand -base64 32, distinct from DELEGATION_KEY, the same for the API and the worker>
 

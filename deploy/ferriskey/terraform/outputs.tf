@@ -31,3 +31,16 @@ output "admin_role_uuid" {
   description = "capitainerie-admin; the bootstrap script grants it to ADMIN_USERNAME."
   value       = ferriskey_role.admin.role_uuid
 }
+
+output "provisioner_client_id" {
+  value = ferriskey_client.provisioner.client_id
+}
+
+output "provisioner_client_uuid" {
+  value = ferriskey_client.provisioner.client_uuid
+}
+
+output "provisioner_role_uuid" {
+  description = "capitainerie-provisioner; the bootstrap script grants it to the provisioner's service account."
+  value       = ferriskey_role.provisioner.role_uuid
+}
