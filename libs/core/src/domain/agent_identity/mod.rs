@@ -19,6 +19,14 @@ impl AgentClientId {
         Self(format!("{CLIENT_PREFIX}{}", agent_id.0))
     }
 
+    /// The agent a client id names, `None` for any other client, such as
+    /// the shared `capitainerie-agent-writer`.
+    pub fn parse(client_id: &str) -> Option<AgentId> {
+        let id = client_id.strip_prefix(CLIENT_PREFIX)?;
+        let parsed = uuid::Uuid::try_parse(id).ok()?;
+        (parsed.hyphenated().to_string() == id).then_some(AgentId(parsed))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -266,6 +274,25 @@ mod tests {
     use uuid::Uuid;
 
     use super::{ports::MockAgentIdentityProvisioner, *};
+
+    #[test]
+    fn a_client_id_names_its_agent_and_nothing_else_does() {
+        let agent = AgentId(uuid::Uuid::now_v7());
+        assert_eq!(
+            AgentClientId::parse(AgentClientId::of(agent).as_str()),
+            Some(agent)
+        );
+        assert_eq!(AgentClientId::parse("capitainerie-agent-writer"), None);
+        assert_eq!(
+            AgentClientId::parse(&AgentClientId::of(agent).as_str().to_uppercase()),
+            None
+        );
+        assert_eq!(
+            AgentClientId::parse(&format!("capitainerie-agent-{}", agent.0.simple())),
+            None
+        );
+        assert_eq!(AgentClientId::parse(&agent.0.to_string()), None);
+    }
 
     fn identity() -> AgentIdentity {
         AgentIdentity::pending(

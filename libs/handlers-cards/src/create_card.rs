@@ -87,7 +87,7 @@ pub async fn handler(
             hand_off(
                 &state,
                 &github,
-                caller.subject(),
+                &caller,
                 card.id,
                 Handoff::Created { repository },
             )

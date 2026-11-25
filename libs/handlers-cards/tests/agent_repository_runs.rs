@@ -6,9 +6,7 @@ use std::sync::{
 };
 
 use axum::{Extension, Json, Router, routing::get, routing::post};
-use capitainerie_auth::{
-    AcceptedClients, ClientCredentials, FerrisKeyTokenExchange, FerrisKeyVerifier, Identity,
-};
+use capitainerie_auth::{AcceptedClients, FerrisKeyVerifier, Identity};
 use capitainerie_common::{CardId, OrganizationId};
 use capitainerie_core::{
     CapitainerieUseCase, Organization, OrganizationSlug,
@@ -24,8 +22,12 @@ use capitainerie_core::{
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
+use capitainerie_core::{
+    domain::agent_identity::{AgentIdentity, ProvisionedClient, ports::AgentIdentityRepository},
+    infrastructure::agent_identity::postgres::PgAgentIdentityRepository,
+};
 use capitainerie_github::{GithubApps, GithubBases};
-use capitainerie_handlers::{AppState, Caller, Delegation};
+use capitainerie_handlers::{AppState, Caller};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -129,17 +131,7 @@ async fn fixture() -> Option<Fixture> {
     let state = AppState {
         usecase: usecase.clone(),
         verifier: FerrisKeyVerifier::new(AcceptedClients::new(["capitainerie-console"])),
-        delegation: Some(Delegation {
-            exchanger: FerrisKeyTokenExchange::new(
-                Some(ClientCredentials {
-                    client_id: "capitainerie-api".into(),
-                    client_secret: SecretToken::new("secret"),
-                }),
-                vec![],
-                "capitainerie-mcp",
-            ),
-            agents: vec![],
-        }),
+        delegation: None,
     };
     let github_calls = Arc::new(AtomicUsize::new(0));
     let base = fake_github(Arc::clone(&github_calls)).await;
@@ -233,7 +225,8 @@ impl Fixture {
     }
 
     async fn agent(&self, slug: &str, repositories: &[&str]) -> CrewAgent {
-        self.usecase
+        let agent = self
+            .usecase
             .create_crew_agent(
                 self.subject(false),
                 CreateAgent {
@@ -250,7 +243,9 @@ impl Fixture {
                 },
             )
             .await
-            .unwrap()
+            .unwrap();
+        activate_identity(&self.pool, &SecretCipher::new(&[2u8; 32]).unwrap(), &agent).await;
+        agent
     }
 
     async fn card(&self, agent: &CrewAgent) -> Card {
@@ -496,4 +491,24 @@ async fn an_agent_with_repositories_but_no_connector_still_needs_one_for_the_mcp
     let (status, code, _) = failure(fixture.run(&card, json!({})).await).await;
 
     assert_eq!((status, code.as_str()), (422, "agent_without_connector"));
+}
+
+/// Stands in for the worker's sweep: an agent runs only once FerrisKey holds
+/// its client.
+async fn activate_identity(pool: &PgPool, secrets: &SecretCipher, agent: &CrewAgent) {
+    let now = chrono::Utc::now();
+    let identity = AgentIdentity::pending(agent.organization_id, agent.id, now).activated(
+        ProvisionedClient {
+            client_uuid: "fk-test".into(),
+            secret: SecretToken::new("agent-secret"),
+        },
+        now,
+    );
+    postgres::with_tx(pool, async |tx| {
+        PgAgentIdentityRepository::new(&tx, Some(secrets))
+            .upsert(&identity)
+            .await
+    })
+    .await
+    .unwrap();
 }

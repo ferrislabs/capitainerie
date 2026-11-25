@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Actor {
+    /// FerrisKey leaves it out of a nested actor, such as the API that made
+    /// the first hop of a delegation.
+    #[serde(default)]
     pub sub: String,
     pub client_id: Option<String>,
     pub act: Option<Box<Actor>>,
@@ -26,4 +29,26 @@ pub struct Claims {
 pub struct RealmAccess {
     #[serde(default)]
     pub roles: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_nested_actor_without_a_subject_still_parses() {
+        let actor: Actor = serde_json::from_value(serde_json::json!({
+            "sub": "service-account-bernard",
+            "client_id": "capitainerie-agent-bernard",
+            "act": {"client_id": "capitainerie-api"},
+        }))
+        .unwrap();
+        assert_eq!(
+            actor.client_id.as_deref(),
+            Some("capitainerie-agent-bernard")
+        );
+        let first = actor.act.unwrap();
+        assert_eq!(first.client_id.as_deref(), Some("capitainerie-api"));
+        assert_eq!(first.sub, "");
+    }
 }

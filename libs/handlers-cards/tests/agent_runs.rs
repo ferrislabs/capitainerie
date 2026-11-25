@@ -1,6 +1,9 @@
 #![allow(clippy::unwrap_used)]
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use axum::Extension;
 use capitainerie_auth::{
@@ -11,6 +14,7 @@ use capitainerie_core::{
     CapitainerieUseCase, Organization, OrganizationSlug,
     domain::{
         agent::SecretToken,
+        agent_identity::AgentClientId,
         authorization::Subject,
         card::edit::EditCard,
         card::{
@@ -31,6 +35,10 @@ use capitainerie_core::{
         user_provider::service::PutUserProvider,
     },
     infrastructure::{crypto::SecretCipher, postgres},
+};
+use capitainerie_core::{
+    domain::agent_identity::{AgentIdentity, ProvisionedClient, ports::AgentIdentityRepository},
+    infrastructure::agent_identity::postgres::PgAgentIdentityRepository,
 };
 use capitainerie_github::{GithubApps, GithubBases};
 use capitainerie_handlers::{AppState, Caller, Delegation};
@@ -89,12 +97,46 @@ struct Fixture {
     usecase: CapitainerieUseCase,
     organization: Organization,
     base: String,
+    exchanges: Exchanges,
 }
 
-async fn organization(pool: &PgPool) -> Organization {
+type Exchanges = Arc<Mutex<Vec<HashMap<String, String>>>>;
+
+/// A realm that answers every token exchange, and keeps the forms it got.
+async fn identity_provider() -> (String, Exchanges) {
+    let exchanges = Exchanges::default();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}/realms/acme", listener.local_addr().unwrap());
+    let discovered = json!({
+        "issuer": issuer,
+        "token_endpoint": format!("{issuer}/protocol/openid-connect/token"),
+    });
+    let recorded = exchanges.clone();
+    let app = axum::Router::new()
+        .route(
+            "/realms/acme/.well-known/openid-configuration",
+            axum::routing::get(move || async move { axum::Json(discovered) }),
+        )
+        .route(
+            "/realms/acme/protocol/openid-connect/token",
+            axum::routing::post(
+                move |axum::Form(form): axum::Form<HashMap<String, String>>| async move {
+                    recorded.lock().unwrap().push(form);
+                    axum::Json(json!({
+                        "access_token": "token-for-the-agent",
+                        "token_type": "Bearer",
+                        "expires_in": 300,
+                    }))
+                },
+            ),
+        );
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    (issuer, exchanges)
+}
+
+async fn organization(pool: &PgPool, issuer_url: String) -> Organization {
     let id = Uuid::now_v7();
     let slug = format!("test-{}", id.simple());
-    let issuer_url = format!("http://idp.test/realms/{id}");
     sqlx::query(
         "INSERT INTO organizations (id, slug, name, issuer_url) VALUES ($1, $2, 'Test', $3)",
     )
@@ -125,7 +167,8 @@ async fn fixture_as(actor: Option<&str>) -> Option<Fixture> {
         return None;
     };
     let pool = postgres::connect(&url, 3).await.unwrap();
-    let organization = organization(&pool).await;
+    let (issuer, exchanges) = identity_provider().await;
+    let organization = organization(&pool, issuer).await;
     let usecase = CapitainerieUseCase::with_local_policies(pool.clone())
         .with_cipher(SecretCipher::new(&[1u8; 32]).unwrap())
         .with_secrets_cipher(SecretCipher::new(&[2u8; 32]).unwrap());
@@ -183,6 +226,7 @@ async fn fixture_as(actor: Option<&str>) -> Option<Fixture> {
         usecase,
         organization,
         base: format!("http://{address}"),
+        exchanges,
     })
 }
 
@@ -255,7 +299,8 @@ impl Fixture {
     }
 
     async fn agent(&self, slug: &str, grants: &[&str]) -> CrewAgent {
-        self.usecase
+        let agent = self
+            .usecase
             .create_crew_agent(
                 self.subject(),
                 CreateAgent {
@@ -272,7 +317,9 @@ impl Fixture {
                 },
             )
             .await
-            .unwrap()
+            .unwrap();
+        activate_identity(&self.pool, &SecretCipher::new(&[2u8; 32]).unwrap(), &agent).await;
+        agent
     }
 
     async fn card(&self, agent: Option<&CrewAgent>) -> Card {
@@ -375,6 +422,70 @@ async fn a_member_runs_the_assigned_agent_of_a_card() {
             .unwrap();
     assert_eq!(agent_id, agent.id.0);
     assert!(allow_writes);
+}
+
+#[tokio::test]
+async fn a_start_from_the_console_stores_the_callers_token_exchanged_for_the_agents_client() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", true).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+    let card = fixture.card(Some(&agent)).await;
+
+    let response = fixture.run(card.id, body(&card)).await;
+
+    assert_eq!(response.status(), 202);
+    let created: Value = response.json().await.unwrap();
+    let run_id: Uuid = created["run_id"].as_str().unwrap().parse().unwrap();
+    let client = AgentClientId::of(agent.id);
+    let exchanges = fixture.exchanges.lock().unwrap().clone();
+    assert_eq!(exchanges.len(), 1);
+    assert_eq!(
+        exchanges[0]["grant_type"],
+        "urn:ietf:params:oauth:grant-type:token-exchange"
+    );
+    assert_eq!(exchanges[0]["subject_token"], "user-token");
+    assert_eq!(exchanges[0]["audience"], client.as_str());
+    let stored: Vec<String> =
+        sqlx::query_scalar("SELECT agent_client_id FROM run_delegations WHERE run_id = $1")
+            .bind(run_id)
+            .fetch_all(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, [client.as_str()]);
+}
+
+#[tokio::test]
+async fn an_agent_whose_identity_is_not_active_is_a_409_and_exchanges_nothing() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connector("mestier", true).await;
+    let agent = fixture.agent("darnold", &["mestier"]).await;
+    sqlx::query(
+        "UPDATE agent_identities SET status = 'pending', client_uuid = NULL, \
+         secret_nonce = NULL, secret_ciphertext = NULL WHERE agent_id = $1",
+    )
+    .bind(agent.id.0)
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let card = fixture.card(Some(&agent)).await;
+
+    let response = fixture.run(card.id, body(&card)).await;
+
+    assert_eq!(response.status(), 409);
+    let refused: Value = response.json().await.unwrap();
+    assert_eq!(refused["code"], "agent_identity_not_active");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("identité FerrisKey")
+    );
+    assert!(fixture.exchanges.lock().unwrap().is_empty());
+    assert_eq!(fixture.runs(card.id).await, 0);
 }
 
 #[tokio::test]
@@ -530,7 +641,11 @@ async fn a_card_of_another_organization_is_a_404() {
     let Some(fixture) = fixture().await else {
         return;
     };
-    let other = organization(&fixture.pool).await;
+    let other = organization(
+        &fixture.pool,
+        format!("http://idp.test/realms/{}", Uuid::now_v7()),
+    )
+    .await;
     let foreign = fixture
         .usecase
         .create_card_linked(
@@ -615,7 +730,8 @@ impl Fixture {
     }
 
     async fn agent_with_repositories(&self, slug: &str, repositories: &[&str]) -> CrewAgent {
-        self.usecase
+        let agent = self
+            .usecase
             .create_crew_agent(
                 self.subject(),
                 CreateAgent {
@@ -632,7 +748,9 @@ impl Fixture {
                 },
             )
             .await
-            .unwrap()
+            .unwrap();
+        activate_identity(&self.pool, &SecretCipher::new(&[2u8; 32]).unwrap(), &agent).await;
+        agent
     }
 }
 
@@ -799,4 +917,24 @@ async fn assigning_an_agent_starts_it() {
     assert_eq!(response.status(), 200);
     let patched: Value = response.json().await.unwrap();
     assert!(patched["agent_run"]["run_id"].is_string());
+}
+
+/// Stands in for the worker's sweep: an agent runs only once FerrisKey holds
+/// its client.
+async fn activate_identity(pool: &PgPool, secrets: &SecretCipher, agent: &CrewAgent) {
+    let now = chrono::Utc::now();
+    let identity = AgentIdentity::pending(agent.organization_id, agent.id, now).activated(
+        ProvisionedClient {
+            client_uuid: "fk-test".into(),
+            secret: SecretToken::new("agent-secret"),
+        },
+        now,
+    );
+    postgres::with_tx(pool, async |tx| {
+        PgAgentIdentityRepository::new(&tx, Some(secrets))
+            .upsert(&identity)
+            .await
+    })
+    .await
+    .unwrap();
 }

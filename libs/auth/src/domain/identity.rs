@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use super::claims::{Actor, Claims};
 use super::errors::AuthError;
+use capitainerie_core::domain::agent_identity::AgentClientId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
@@ -51,15 +52,30 @@ fn display_name(given: Option<&str>, family: Option<&str>) -> Option<String> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AcceptedClients(HashSet<String>);
+pub struct AcceptedClients {
+    listed: HashSet<String>,
+    agent_clients: bool,
+}
 
 impl AcceptedClients {
     pub fn new(clients: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        Self(clients.into_iter().map(Into::into).collect())
+        Self {
+            listed: clients.into_iter().map(Into::into).collect(),
+            agent_clients: false,
+        }
+    }
+
+    /// Also accepts every crew agent's client. FerrisKey only signs for
+    /// clients that exist and are enabled; whether the agent is still active
+    /// in its organization is for the caller to check.
+    pub fn with_agent_clients(mut self) -> Self {
+        self.agent_clients = true;
+        self
     }
 
     pub fn accepts(&self, client_id: &str) -> bool {
-        self.0.contains(client_id)
+        self.listed.contains(client_id)
+            || (self.agent_clients && AgentClientId::parse(client_id).is_some())
     }
 }
 
@@ -149,5 +165,15 @@ mod tests {
         assert!(accepted.accepts("cli"));
         assert!(!accepted.accepts("other"));
         assert!(!AcceptedClients::new(Vec::<String>::new()).accepts("web"));
+    }
+
+    #[test]
+    fn agent_clients_are_accepted_only_when_asked() {
+        let agent = AgentClientId::of(capitainerie_common::AgentId(uuid::Uuid::now_v7()));
+        assert!(!AcceptedClients::new(["web"]).accepts(agent.as_str()));
+        let accepted = AcceptedClients::new(["web"]).with_agent_clients();
+        assert!(accepted.accepts(agent.as_str()));
+        assert!(accepted.accepts("web"));
+        assert!(!accepted.accepts("capitainerie-agent-writer"));
     }
 }

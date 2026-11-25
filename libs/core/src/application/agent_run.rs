@@ -7,6 +7,8 @@ use serde_json::Value;
 use super::{CapitainerieUseCase, execution::COMMENT_ID_FIELD};
 use crate::{
     domain::{
+        agent::SecretToken,
+        agent_identity::{AgentClientId, IdentityStatus, ports::AgentIdentityRepository},
         agent_task::{
             AgentRunError, AgentRunRefusal, AgentTask, RepositoryTarget, StartAgentRun, actor_of,
             ports::AgentTaskRepository,
@@ -22,6 +24,10 @@ use crate::{
             service::CardService,
         },
         crew::{CrewAgent, ports::CrewRepository},
+        delegation::{
+            DelegatedToken,
+            ports::{DelegationVault, TokenExchanger},
+        },
         event::ports::EventEmitter,
         execution::{RepositoryRef, ports::GithubInstallationRepository},
         mcp::{
@@ -41,9 +47,11 @@ use crate::{
         user_provider::ports::UserProviderRepository,
     },
     infrastructure::{
+        agent_identity::postgres::PgAgentIdentityRepository,
         agent_task::postgres::PgAgentTaskRepository,
         card::postgres::PgCardRepository,
         crew::postgres::PgCrewRepository,
+        delegation::PgDelegationVault,
         execution::postgres::{PgGithubInstallationRepository, executor_status_in},
         mcp::postgres::PgMcpConnectionRepository,
         postgres::SharedTx,
@@ -90,6 +98,14 @@ pub struct AgentTaskSource {
     pub approved_call: Option<ApprovedCall>,
 }
 
+/// What lets the agent of a run act for the person starting it: the
+/// person's token, exchanged for one addressed to the agent's own client.
+pub struct RunDelegation<'a, X> {
+    pub exchanger: &'a X,
+    pub issuer: &'a str,
+    pub user_token: &'a SecretToken,
+}
+
 /// What a member is called in text the system writes.
 pub(super) const UNNAMED_MEMBER: &str = "un membre";
 
@@ -103,8 +119,60 @@ impl CapitainerieUseCase {
         command: StartAgentRun,
     ) -> Result<StartedAgentRun, AgentRunError> {
         Ok(self
-            .store_agent_run(subject, card_id, command, None)
+            .store_agent_run(subject, card_id, command, None, None)
             .await??)
+    }
+
+    /// Starts the run like `start_agent_run`, and stores the person's token
+    /// exchanged for the agent's client, so the run can act for them. The
+    /// exchange comes first: an identity provider outage refuses the start
+    /// instead of queueing a run without its delegation.
+    pub async fn start_agent_run_delegated<X: TokenExchanger>(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        command: StartAgentRun,
+        delegation: RunDelegation<'_, X>,
+    ) -> Result<StartedAgentRun, AgentRunError> {
+        let delegated = match self
+            .assigned_agent_client(subject.organization_id, card_id)
+            .await?
+        {
+            Some(client) => {
+                let token = delegation
+                    .exchanger
+                    .for_agent(delegation.issuer, delegation.user_token, client.as_str())
+                    .await?;
+                Some((client, token))
+            }
+            None => None,
+        };
+        Ok(self
+            .store_agent_run(subject, card_id, command, None, delegated)
+            .await??)
+    }
+
+    /// The client of the card's agent when its identity is active. Anything
+    /// else is refused by `store_agent_run`, which checks it again.
+    #[transactional(card)]
+    async fn assigned_agent_client(
+        &self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Option<AgentClientId>, CoreError> {
+        let mut card_repository = card_repository;
+        let Some(agent_id) = card_repository
+            .find(organization_id, card_id)
+            .await?
+            .and_then(|card| card.attributes.assignee_agent_id)
+        else {
+            return Ok(None);
+        };
+        let active = PgAgentIdentityRepository::new(&tx, None)
+            .summary(organization_id, agent_id)
+            .await?
+            .is_some_and(|identity| identity.status == IdentityStatus::Active);
+        Ok(active.then(|| AgentClientId::of(agent_id)))
     }
 
     /// Starts a run of the card's agent for `subject`, the approved call of
@@ -120,7 +188,7 @@ impl CapitainerieUseCase {
             allow_writes: false,
         };
         Ok(self
-            .store_agent_run(subject, card_id, command, Some(resume))
+            .store_agent_run(subject, card_id, command, Some(resume), None)
             .await??)
     }
 
@@ -140,6 +208,7 @@ impl CapitainerieUseCase {
         card_id: CardId,
         command: StartAgentRun,
         resume: Option<Approval>,
+        delegation: Option<(AgentClientId, DelegatedToken)>,
     ) -> Stored<StartedAgentRun> {
         let mut card_repository = card_repository;
         let mut run_repository = run_repository;
@@ -178,6 +247,19 @@ impl CapitainerieUseCase {
         }
         if agent.paused {
             return Ok(Err(AgentRunRefusal::AgentPaused));
+        }
+        let active = PgAgentIdentityRepository::new(&tx, None)
+            .summary(organization_id, agent.id)
+            .await?
+            .is_some_and(|identity| identity.status == IdentityStatus::Active);
+        if !active {
+            return Ok(Err(AgentRunRefusal::IdentityNotActive));
+        }
+        if delegation
+            .as_ref()
+            .is_some_and(|(client, _)| *client != AgentClientId::of(agent.id))
+        {
+            return Err(CoreError::Conflict("the card's agent changed".into()));
         }
         let own = PgUserProviderRepository::new(&tx, self.secrets.as_deref())
             .list(organization_id, &subject.id)
@@ -238,6 +320,11 @@ impl CapitainerieUseCase {
                 created_at: now,
             })
             .await?;
+        if let Some((client, token)) = &delegation {
+            PgDelegationVault::new(&tx, self.cipher()?)
+                .store(run.id, client.as_str(), token)
+                .await?;
+        }
         if let Some(approval) = resume {
             ApprovalService::new(approval_repository, emitter, authz)
                 .link_resumed(&approval, run.id, subject.id, now)

@@ -42,7 +42,9 @@ use crate::infrastructure::{
 };
 
 pub use agent_identity::IdentitySweep;
-pub use agent_run::{AgentTaskSource, ExecutionAgentSource, StartedAgentRun, TaskStage};
+pub use agent_run::{
+    AgentTaskSource, ExecutionAgentSource, RunDelegation, StartedAgentRun, TaskStage,
+};
 pub use agent_task_pipeline::{AgentTaskConfig, AgentTaskPipeline};
 pub use approval::DecidedApproval;
 pub use client::RunCardLinks;
