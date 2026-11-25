@@ -35,6 +35,10 @@ use capitainerie_core::{
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
+use capitainerie_core::{
+    domain::agent_identity::{AgentIdentity, ProvisionedClient, ports::AgentIdentityRepository},
+    infrastructure::agent_identity::postgres::PgAgentIdentityRepository,
+};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -335,6 +339,7 @@ async fn world(options: Options, oauth: &OAuth) -> Option<World> {
         )
         .await
         .unwrap();
+    activate_identity(&pool, &SecretCipher::new(&[9u8; 32]).unwrap(), &agent).await;
     let card = usecase
         .create_card_linked(
             human(organization_id),
@@ -1631,4 +1636,28 @@ async fn without_a_reply_the_agents_own_comment_starts_nothing() {
         .unwrap();
 
     assert_eq!(runs_of_card(&world).await.len(), 1);
+}
+
+/// Stands in for the worker's sweep: an agent runs only once FerrisKey holds
+/// its client.
+async fn activate_identity(
+    pool: &PgPool,
+    secrets: &SecretCipher,
+    agent: &capitainerie_core::domain::crew::CrewAgent,
+) {
+    let now = chrono::Utc::now();
+    let identity = AgentIdentity::pending(agent.organization_id, agent.id, now).activated(
+        ProvisionedClient {
+            client_uuid: "fk-test".into(),
+            secret: SecretToken::new("agent-secret"),
+        },
+        now,
+    );
+    postgres::with_tx(pool, async |tx| {
+        PgAgentIdentityRepository::new(&tx, Some(secrets))
+            .upsert(&identity)
+            .await
+    })
+    .await
+    .unwrap();
 }

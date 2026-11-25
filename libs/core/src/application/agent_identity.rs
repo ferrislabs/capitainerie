@@ -1,4 +1,4 @@
-use capitainerie_common::{AgentId, CoreError};
+use capitainerie_common::{AgentId, CoreError, OrganizationId};
 use capitainerie_macros::transactional;
 use chrono::{DateTime, Utc};
 
@@ -6,10 +6,12 @@ use super::CapitainerieUseCase;
 use crate::{
     domain::{
         agent_identity::{
-            AgentIdentity, IdentityState, IdentitySummary, UnsyncedClient,
+            AgentClientId, AgentIdentity, IdentityState, IdentityStatus, IdentitySummary,
+            UnsyncedClient,
             ports::{AgentIdentityProvisioner, AgentIdentityRepository},
             provision,
         },
+        agent_task::actor_of,
         authorization::Subject,
         crew::{ports::CrewRepository, service::CrewService},
         organization::ports::OrganizationRepository,
@@ -53,6 +55,33 @@ impl CapitainerieUseCase {
         PgAgentIdentityRepository::new(&tx, None)
             .summary(agent.organization_id, agent.id)
             .await
+    }
+
+    /// The actor a delegated token's client acts as: `agent:<slug>` when it
+    /// is the active client of an unarchived agent of the organization.
+    /// `None` for any other client, even one FerrisKey still accepts.
+    #[transactional(crew_agent)]
+    pub async fn active_agent_actor(
+        &self,
+        organization_id: OrganizationId,
+        client_id: &str,
+    ) -> Result<Option<String>, CoreError> {
+        let Some(agent_id) = AgentClientId::parse(client_id) else {
+            return Ok(None);
+        };
+        let mut crew_agent_repository = crew_agent_repository;
+        let Some(agent) = crew_agent_repository
+            .find(organization_id, agent_id)
+            .await?
+            .filter(|agent| !agent.archived)
+        else {
+            return Ok(None);
+        };
+        let active = PgAgentIdentityRepository::new(&tx, None)
+            .summary(organization_id, agent_id)
+            .await?
+            .is_some_and(|identity| identity.status == IdentityStatus::Active);
+        Ok(active.then(|| actor_of(agent.slug.as_str())))
     }
 
     /// Adopts the agents without an identity, provisions up to `limit`

@@ -8,7 +8,8 @@ use capitainerie_common::OrganizationId;
 use capitainerie_core::{
     CapitainerieUseCase,
     domain::{
-        authorization::Subject, client::service::CreateClient, project::service::CreateProject,
+        agent_identity::AgentClientId, authorization::Subject, client::service::CreateClient,
+        crew::service::CreateAgent, project::service::CreateProject,
         run::service::SubmitTranscript,
     },
     infrastructure::postgres,
@@ -62,6 +63,7 @@ async fn jwks(State(state): State<IdpState>) -> axum::Json<Value> {
 
 struct Harness {
     usecase: Option<CapitainerieUseCase>,
+    pool: PgPool,
     organization_id: Uuid,
     issuer: String,
     base: String,
@@ -114,15 +116,18 @@ async fn harness() -> Option<Harness> {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let verifier =
-        FerrisKeyVerifier::with_audience(AcceptedClients::new([AGENT, CAPTAIN]), AUDIENCE);
-    let usecase = CapitainerieUseCase::with_local_policies(pool);
+    let verifier = FerrisKeyVerifier::with_audience(
+        AcceptedClients::new([AGENT, CAPTAIN]).with_agent_clients(),
+        AUDIENCE,
+    );
+    let usecase = CapitainerieUseCase::with_local_policies(pool.clone());
     let app = router(usecase.clone(), verifier, base.clone());
     tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
     Some(Harness {
         usecase: Some(usecase),
+        pool,
         organization_id: id,
         issuer,
         base,
@@ -285,6 +290,7 @@ async fn a_token_from_an_unknown_issuer_is_refused() {
     assert_eq!(response.status(), 200);
     let stranger = Harness {
         usecase: None,
+        pool: h.pool.clone(),
         organization_id: Uuid::nil(),
         issuer: "http://127.0.0.1:1/realms/nobody".into(),
         base: h.base.clone(),
@@ -303,6 +309,76 @@ async fn a_token_that_is_not_delegated_is_forbidden() {
     assert_eq!(response.status(), 403);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body, json!({"error": "delegation_required"}));
+}
+
+#[tokio::test]
+async fn a_crew_agents_own_client_acts_as_that_agent_only_while_it_is_active() {
+    let Some(h) = harness().await else { return };
+    let usecase = h.usecase.as_ref().unwrap();
+    let agent = usecase
+        .create_crew_agent(
+            h.member(),
+            CreateAgent {
+                slug: "bernard".into(),
+                name: "Bernard".into(),
+                role: String::new(),
+                description: String::new(),
+                model: String::new(),
+                hue: 0,
+                reports_to: None,
+                instructions: "Tu aides.".into(),
+                connector_grants: vec![],
+                repository_grants: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    let client_id = AgentClientId::of(agent.id);
+    let token = h.token_of(client_id.as_str(), AUDIENCE, true);
+    assert_eq!(h.post_mcp(Some(&token)).await.status(), 401, "pending");
+
+    sqlx::query(
+        "UPDATE agent_identities SET status = 'active', client_uuid = 'fk-bernard', \
+         secret_nonce = '\\x00', secret_ciphertext = '\\x00' WHERE agent_id = $1",
+    )
+    .bind(agent.id.0)
+    .execute(&h.pool)
+    .await
+    .unwrap();
+    let client = h.client(token.clone()).await;
+    let created = client
+        .call_tool(call(
+            "create_card",
+            json!({"title": "Relancer Acme", "description": "Facture en retard"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        created.is_error,
+        Some(true),
+        "a crew agent proposes no card"
+    );
+    assert!(
+        payload(&created).to_string().contains("agent:bernard"),
+        "{created:?}"
+    );
+    let found = client
+        .call_tool(call("search_cards", json!({"query": "acme"})))
+        .await
+        .unwrap();
+    assert_ne!(found.is_error, Some(true), "{found:?}");
+    client.cancel().await.unwrap();
+
+    sqlx::query("UPDATE agents SET archived = true WHERE id = $1")
+        .bind(agent.id.0)
+        .execute(&h.pool)
+        .await
+        .unwrap();
+    assert_eq!(h.post_mcp(Some(&token)).await.status(), 401, "archived");
+
+    let stranger = AgentClientId::of(capitainerie_common::AgentId(Uuid::now_v7()));
+    let token = h.token_of(stranger.as_str(), AUDIENCE, true);
+    assert_eq!(h.post_mcp(Some(&token)).await.status(), 401, "unknown");
 }
 
 #[tokio::test]

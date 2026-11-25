@@ -4,18 +4,17 @@
 use capitainerie_common::{CardId, CoreError, RunId};
 use capitainerie_core::domain::{
     agent_task::{RepositoryTarget, StartAgentRun},
-    authorization::Subject,
     card::Column,
     crew::CrewAgent,
     execution::RepositoryRef,
     run::RunSubject,
 };
 use capitainerie_github::GithubApps;
-use capitainerie_handlers::{ApiError, AppState};
+use capitainerie_handlers::{ApiError, AppState, Caller};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::run_agent::{RunAgentError, start_on_repository};
+use crate::run_agent::{RunAgentError, start_on_repository, start_with_connectors};
 
 /// What handed the agent work.
 pub enum Handoff {
@@ -63,17 +62,17 @@ enum Plan {
     Repository(RepositoryTarget),
 }
 
-/// Starts the agent of `card_id` for `subject`, writes off: each write asks
+/// Starts the agent of `card_id` for the caller, writes off: each write asks
 /// for an approval. `None` when there is no agent to start. Never fails the
 /// request that handed the work: a refusal comes back as `skipped`.
 pub async fn hand_off(
     state: &AppState,
     github: &GithubApps,
-    subject: Subject,
+    caller: &Caller,
     card_id: CardId,
     handoff: Handoff,
 ) -> Option<AgentRunOutcome> {
-    match try_hand_off(state, github, subject, card_id, handoff).await {
+    match try_hand_off(state, github, caller, card_id, handoff).await {
         Ok(outcome) => outcome,
         Err(error) => {
             tracing::warn!(%card_id, ?error, "the agent was not started");
@@ -88,10 +87,11 @@ pub async fn hand_off(
 async fn try_hand_off(
     state: &AppState,
     github: &GithubApps,
-    subject: Subject,
+    caller: &Caller,
     card_id: CardId,
     handoff: Handoff,
 ) -> Result<Option<AgentRunOutcome>, CoreError> {
+    let subject = caller.subject();
     let detail = state.usecase.card_detail(subject.clone(), card_id).await?;
     let card = detail.card;
     let Some(agent_id) = card.attributes.assignee_agent_id else {
@@ -144,9 +144,7 @@ async fn try_hand_off(
         allow_writes: false,
     };
     let started = match plan {
-        Plan::Connectors => state
-            .usecase
-            .start_agent_run(subject, card_id, command)
+        Plan::Connectors => start_with_connectors(state, caller, card_id, command)
             .await
             .map_err(RunAgentError::from),
         Plan::Repository(target) => {

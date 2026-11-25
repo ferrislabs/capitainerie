@@ -122,14 +122,7 @@ pub async fn handler(
         )
         .await?;
     let agent_run = if assigned {
-        hand_off(
-            &state,
-            &github,
-            caller.subject(),
-            card.id,
-            Handoff::Assigned,
-        )
-        .await
+        hand_off(&state, &github, &caller, card.id, Handoff::Assigned).await
     } else {
         None
     };

@@ -176,6 +176,11 @@ export function describeRunError(error: unknown): RunErrorInfo {
 				`Les exécutions sur un dépôt sont désactivées sur ce serveur${reason ? ` : ${reason}` : ''}.`,
 			)
 		}
+		if (is('agent_identity_not_active')) {
+			return info(
+				"L'identité FerrisKey de l'agent n'est pas encore prête : réessaie dans une minute.",
+			)
+		}
 		if (is('execution_already_active')) {
 			return info('Une exécution est déjà en cours pour cette tâche.')
 		}

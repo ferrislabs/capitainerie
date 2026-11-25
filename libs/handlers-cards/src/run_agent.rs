@@ -6,10 +6,13 @@ use axum::{
 };
 use axum_extra::routing::TypedPath;
 use capitainerie_common::{CardId, CoreError, RunId};
-use capitainerie_core::domain::{
-    agent_task::{AgentRunError, AgentRunRefusal, RepositoryTarget, StartAgentRun},
-    authorization::Subject,
-    execution::{RepositoryRef, ports::CodeHost},
+use capitainerie_core::{
+    RunDelegation,
+    domain::{
+        agent_task::{AgentRunError, AgentRunRefusal, RepositoryTarget, StartAgentRun},
+        authorization::Subject,
+        execution::{RepositoryRef, ports::CodeHost},
+    },
 };
 use capitainerie_github::GithubApps;
 use capitainerie_handlers::{ApiError, AppState, Caller, errors::ApiErrorResponse};
@@ -75,6 +78,7 @@ impl IntoResponse for RunAgentError {
             Self::Refused(refusal) => {
                 let status = match refusal {
                     AgentRunRefusal::NotConnected(_)
+                    | AgentRunRefusal::IdentityNotActive
                     | AgentRunRefusal::NoProvider
                     | AgentRunRefusal::GithubNotConnected
                     | AgentRunRefusal::ExecutorDisabled(_) => StatusCode::CONFLICT,
@@ -103,7 +107,7 @@ impl IntoResponse for RunAgentError {
         (status = 401, description = "Missing or invalid token", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 403, description = "The policy refused (an agent cannot start an agent run), or repository_not_allowed: the GitHub installation does not reach that repository", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 404, description = "No such card in the caller's organization", body = capitainerie_handlers::errors::ApiErrorResponse),
-        (status = 409, description = "not_connected (the message names the connector slug), no_provider (neither the caller nor the organization connected an LLM provider; with `repository`, an Anthropic one), github_not_connected, executor_disabled, execution_already_active, or the card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
+        (status = 409, description = "not_connected (the message names the connector slug), agent_identity_not_active (the agent's FerrisKey client is not ready yet), no_provider (neither the caller nor the organization connected an LLM provider; with `repository`, an Anthropic one), github_not_connected, executor_disabled, execution_already_active, or the card changed since it was read", body = capitainerie_handlers::errors::ApiErrorResponse),
         (status = 422, description = "card_without_agent, agent_archived, agent_paused, agent_without_connector (without `repository`), repository_not_granted (the agent may not work on that repository), or an invalid repository or base_branch", body = capitainerie_handlers::errors::ApiErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -120,12 +124,7 @@ pub async fn handler(
         allow_writes: request.allow_writes,
     };
     let started = match request.repository {
-        None => {
-            state
-                .usecase
-                .start_agent_run(caller.subject(), card_id, command)
-                .await?
-        }
+        None => start_with_connectors(&state, &caller, card_id, command).await?,
         Some(repository) => {
             let target = RepositoryTarget::new(repository.parse()?, request.base_branch)?;
             start_on_repository(&state, &github, caller.subject(), card_id, command, target).await?
@@ -137,6 +136,39 @@ pub async fn handler(
             run_id: started.run_id,
         }),
     ))
+}
+
+/// Starts the agent with its connectors. When the API exchanges tokens, the
+/// caller's token goes to the agent's own client, for the run to act for them.
+pub(crate) async fn start_with_connectors(
+    state: &AppState,
+    caller: &Caller,
+    card_id: CardId,
+    command: StartAgentRun,
+) -> Result<capitainerie_core::StartedAgentRun, AgentRunError> {
+    match &state.delegation {
+        Some(delegation) => {
+            state
+                .usecase
+                .start_agent_run_delegated(
+                    caller.subject(),
+                    card_id,
+                    command,
+                    RunDelegation {
+                        exchanger: &delegation.exchanger,
+                        issuer: &caller.organization.issuer_url,
+                        user_token: &caller.token,
+                    },
+                )
+                .await
+        }
+        None => {
+            state
+                .usecase
+                .start_agent_run(caller.subject(), card_id, command)
+                .await
+        }
+    }
 }
 
 /// Refuses what the agent and the organization lack before it asks GitHub

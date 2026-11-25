@@ -9,7 +9,10 @@ use axum::{
 };
 use capitainerie_auth::{AuthError, Identity, TokenVerifier, unverified_issuer};
 use capitainerie_common::CoreError;
-use capitainerie_core::{CapitainerieUseCase, domain::authorization::Subject};
+use capitainerie_core::{
+    CapitainerieUseCase,
+    domain::{agent_identity::AgentClientId, authorization::Subject},
+};
 use serde_json::{Value, json};
 
 pub struct AuthState<V> {
@@ -158,7 +161,25 @@ async fn subject_of<V: TokenVerifier>(
         .verifier
         .verify(token, &organization.issuer_url)
         .await?;
-    delegated_subject(&identity, organization.id)
+    let mut subject = delegated_subject(&identity, organization.id)?;
+    if let Some(client) = subject
+        .actor
+        .as_deref()
+        .filter(|client| AgentClientId::parse(client).is_some())
+    {
+        subject.actor = Some(
+            state
+                .usecase
+                .active_agent_actor(organization.id, client)
+                .await
+                .map_err(|error| match error {
+                    CoreError::Database(_) => Rejection::Unavailable,
+                    _ => Rejection::Internal,
+                })?
+                .ok_or_else(|| Rejection::InvalidToken("the agent is not active".into()))?,
+        );
+    }
+    Ok(subject)
 }
 
 #[cfg(test)]

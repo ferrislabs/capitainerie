@@ -100,6 +100,8 @@ pub enum AgentRunRefusal {
     GithubNotConnected,
     #[error("les exécutions sur un dépôt sont désactivées : {0}")]
     ExecutorDisabled(String),
+    #[error("l'identité FerrisKey de l'agent n'est pas encore active : réessayez dans une minute")]
+    IdentityNotActive,
 }
 
 impl AgentRunRefusal {
@@ -114,6 +116,7 @@ impl AgentRunRefusal {
             Self::RepositoryNotGranted(_) => "repository_not_granted",
             Self::GithubNotConnected => "github_not_connected",
             Self::ExecutorDisabled(_) => "executor_disabled",
+            Self::IdentityNotActive => "agent_identity_not_active",
         }
     }
 }

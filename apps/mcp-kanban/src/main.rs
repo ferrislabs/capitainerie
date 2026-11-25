@@ -19,8 +19,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to postgres")?;
     let usecase = CapitainerieUseCase::with_local_policies(pool);
-    let verifier =
-        FerrisKeyVerifier::with_audience(AcceptedClients::new(args.accepted_agents), args.audience);
+    let verifier = FerrisKeyVerifier::with_audience(
+        AcceptedClients::new(args.accepted_agents).with_agent_clients(),
+        args.audience,
+    );
     let app = router(usecase, verifier, args.public_url).layer(
         TraceLayer::new_for_http()
             .make_span_with(|request: &Request<_>| {

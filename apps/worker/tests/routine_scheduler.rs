@@ -18,6 +18,10 @@ use capitainerie_core::{
     },
     infrastructure::{crypto::SecretCipher, postgres},
 };
+use capitainerie_core::{
+    domain::agent_identity::{AgentIdentity, ProvisionedClient, ports::AgentIdentityRepository},
+    infrastructure::agent_identity::postgres::PgAgentIdentityRepository,
+};
 use chrono::{DateTime, Duration, SubsecRound, Utc};
 use sqlx::PgPool;
 use tokio::sync::Mutex;
@@ -125,7 +129,8 @@ impl Fixture {
     }
 
     async fn agent(&self, slug: &str, grants: &[&str]) -> CrewAgent {
-        self.usecase
+        let agent = self
+            .usecase
             .create_crew_agent(
                 self.subject(),
                 CreateAgent {
@@ -142,7 +147,9 @@ impl Fixture {
                 },
             )
             .await
-            .unwrap()
+            .unwrap();
+        activate_identity(&self.pool, &SecretCipher::new(&[2u8; 32]).unwrap(), &agent).await;
+        agent
     }
 
     async fn connected(&self, slug: &str) {
@@ -565,4 +572,24 @@ async fn two_concurrent_ticks_run_a_passage_once() {
     let passages = fixture.passages(routine).await;
     assert_eq!(passages.len(), 1, "{passages:?}");
     assert_eq!(passages[0].status, "created");
+}
+
+/// Stands in for the worker's sweep: an agent runs only once FerrisKey holds
+/// its client.
+async fn activate_identity(pool: &PgPool, secrets: &SecretCipher, agent: &CrewAgent) {
+    let now = chrono::Utc::now();
+    let identity = AgentIdentity::pending(agent.organization_id, agent.id, now).activated(
+        ProvisionedClient {
+            client_uuid: "fk-test".into(),
+            secret: SecretToken::new("agent-secret"),
+        },
+        now,
+    );
+    postgres::with_tx(pool, async |tx| {
+        PgAgentIdentityRepository::new(&tx, Some(secrets))
+            .upsert(&identity)
+            .await
+    })
+    .await
+    .unwrap();
 }

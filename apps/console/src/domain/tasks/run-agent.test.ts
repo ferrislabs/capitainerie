@@ -138,6 +138,11 @@ describe('describeRunError', () => {
 			'no_provider',
 			/Aucun fournisseur Anthropic/,
 		],
+		[
+			error(409, 'agent_identity_not_active'),
+			'message',
+			/identité FerrisKey de l'agent n'est pas encore prête/,
+		],
 		[error(422, 'agent_paused'), 'message', /en pause/],
 		[error(422, 'agent_archived'), 'message', /archivé/],
 		[

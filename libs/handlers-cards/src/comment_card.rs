@@ -64,7 +64,7 @@ pub async fn handler(
         .usecase
         .comment_card(subject.clone(), card_id, request.body, None)
         .await?;
-    let agent_run = hand_off(&state, &github, subject, card_id, Handoff::Replied).await;
+    let agent_run = hand_off(&state, &github, &caller, card_id, Handoff::Replied).await;
     Ok((
         StatusCode::CREATED,
         Json(PostedCommentResponse {
