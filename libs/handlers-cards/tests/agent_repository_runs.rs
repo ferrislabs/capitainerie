@@ -197,6 +197,20 @@ impl Fixture {
             .unwrap();
     }
 
+    async fn mistral_key(&self) {
+        self.usecase
+            .put_user_provider(PutUserProvider {
+                subject: self.subject(false),
+                kind: ProviderKind::Mistral,
+                secret: Some(SecretToken::new("mistral-test-key-abcdefgh1234")),
+                base_url: None,
+                default_model: "mistral-large-4-0".into(),
+                is_default: None,
+            })
+            .await
+            .unwrap();
+    }
+
     async fn connect_github(&self) {
         self.usecase
             .save_github_app(
@@ -225,6 +239,10 @@ impl Fixture {
     }
 
     async fn agent(&self, slug: &str, repositories: &[&str]) -> CrewAgent {
+        self.agent_on(slug, repositories, "").await
+    }
+
+    async fn agent_on(&self, slug: &str, repositories: &[&str], model: &str) -> CrewAgent {
         let agent = self
             .usecase
             .create_crew_agent(
@@ -234,7 +252,7 @@ impl Fixture {
                     name: slug.into(),
                     role: String::new(),
                     description: String::new(),
-                    model: String::new(),
+                    model: model.into(),
                     hue: 0,
                     reports_to: None,
                     instructions: "Tu audites.".into(),
@@ -454,6 +472,27 @@ async fn a_granted_repository_queues_an_execute_run_linked_to_the_agent() {
     .unwrap();
     assert_eq!(base_branch, "release/2");
     assert!(allow_writes, "change mode");
+}
+
+#[tokio::test]
+async fn an_agent_on_a_mistral_model_needs_a_mistral_key_not_an_anthropic_one() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.connect_github().await;
+    let agent = fixture
+        .agent_on("sebastien", &["acme/web"], "mistral-large-4-0")
+        .await;
+    let card = fixture.card(&agent).await;
+
+    let (status, code, _) =
+        failure(fixture.run(&card, json!({"repository": "acme/web"})).await).await;
+    assert_eq!((status, code.as_str()), (409, "no_provider"));
+    assert_eq!(fixture.runs(card.id).await, 0);
+
+    fixture.mistral_key().await;
+    let response = fixture.run(&card, json!({"repository": "acme/web"})).await;
+    assert_eq!(response.status(), 202);
 }
 
 #[tokio::test]

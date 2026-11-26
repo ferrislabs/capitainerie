@@ -29,7 +29,9 @@ use crate::{
             ports::{DelegationVault, TokenExchanger},
         },
         event::ports::EventEmitter,
-        execution::{RepositoryRef, ports::GithubInstallationRepository},
+        execution::{
+            RepositoryRef, harness::Harness, harness_of_agent, ports::GithubInstallationRepository,
+        },
         mcp::{
             McpConnector,
             ports::{McpConnectionRepository, McpConnectorRepository},
@@ -498,18 +500,20 @@ impl CapitainerieUseCase {
                     .unwrap_or_else(|| "aucun exécutant disponible".into()),
             )));
         }
+        // The executor's default harness is Claude Code: an agent whose model
+        // no harness accepts runs there.
+        let needed =
+            harness_of_agent(&agent.model).map_or(ProviderKind::Anthropic, Harness::provider);
         let own = PgUserProviderRepository::new(tx, self.secrets.as_deref())
             .list(organization_id, &subject.id)
             .await?;
-        let anthropic = own
-            .iter()
-            .any(|summary| summary.kind == ProviderKind::Anthropic)
+        let connected = own.iter().any(|summary| summary.kind == needed)
             || PgProviderRepository::new(tx, self.secrets.as_deref())
                 .list(organization_id)
                 .await?
                 .iter()
-                .any(|summary| summary.kind == ProviderKind::Anthropic);
-        if !anthropic {
+                .any(|summary| summary.kind == needed);
+        if !connected {
             return Ok(Err(AgentRunRefusal::NoProvider));
         }
         if PgRunRepository::new(tx)
