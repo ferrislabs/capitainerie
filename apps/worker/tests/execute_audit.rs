@@ -7,12 +7,13 @@ use std::{
 
 use aws_lc_rs::digest;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use capitainerie_common::{CardId, OrganizationId, RunId};
+use capitainerie_common::{AgentId, ApprovalId, CardId, OrganizationId, RunId};
 use capitainerie_core::{
     CapitainerieUseCase, ExecuteConfig, ExecutePipeline, Executor,
     domain::{
         agent::SecretToken,
         agent_task::{RepositoryTarget, StartAgentRun},
+        approval::{PlannedChange, Verdict},
         authorization::Subject,
         card::{Card, edit::EditCard, service::CreateCard},
         client::links::Change,
@@ -532,4 +533,231 @@ async fn a_change_run_of_an_agent_keeps_the_change_prompt_after_the_agent() {
     let posted = comments(&world.pool, world.card.id).await;
     assert_eq!(posted[0].0.as_deref(), Some("agent:auditrice"));
     assert!(posted[0].1.starts_with("Aucun changement"));
+}
+
+const PLAN: &str =
+    "1. Retirer SLOT_PITCHOUT de menus.rs\n2. Retirer le socle pitchout de lobby.json\n";
+
+/// An audit's lines with a plan sent after its report, as the entrypoint does.
+fn audit_lines_with_plan(plan: &str) -> Vec<TaskLine> {
+    let mut lines = audit_lines(true, Some(REPORT));
+    let done = lines.pop().unwrap();
+    let encoded = STANDARD.encode(plan);
+    for chunk in encoded.as_bytes().chunks(16) {
+        lines.push(TaskLine::Capitainerie(TaskMarker::PlanChunk {
+            data: String::from_utf8(chunk.to_vec()).unwrap(),
+        }));
+    }
+    let hash = digest::digest(&digest::SHA256, plan.as_bytes());
+    lines.push(TaskLine::Capitainerie(TaskMarker::PlanEnd {
+        sha256: hash
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+        bytes: plan.len() as u64,
+        truncated: false,
+    }));
+    lines.push(done);
+    lines
+}
+
+async fn audit_with_plan(world: &World) -> Arc<Mutex<Vec<TaskSpec>>> {
+    let specs = Arc::new(Mutex::new(Vec::new()));
+    let pipeline = ExecutePipeline::new(
+        world.usecase.clone(),
+        Executor::Ready {
+            runner: runner(audit_lines_with_plan(PLAN), Arc::clone(&specs)),
+            host: untouched_host(),
+        },
+        config(),
+    );
+    pipeline.execute(world.run_id, None).await.unwrap();
+    specs
+}
+
+async fn pending_plan(world: &World) -> ApprovalId {
+    let (id, kind, status, detail): (Uuid, String, String, serde_json::Value) =
+        sqlx::query_as("SELECT id, kind, status, detail FROM approvals WHERE run_id = $1")
+            .bind(world.run_id.0)
+            .fetch_one(&world.pool)
+            .await
+            .unwrap();
+    assert_eq!(kind, "repository_change");
+    assert_eq!(status, "pending");
+    assert_eq!(detail["repository"], "acme/web");
+    assert_eq!(detail["base_branch"], "main");
+    assert_eq!(detail["plan"], PLAN);
+    ApprovalId(id)
+}
+
+#[tokio::test]
+async fn an_audit_proposing_a_plan_waits_for_a_member_then_applying_it_runs_the_plan() {
+    let Some(world) = world(false).await else {
+        return;
+    };
+    let organization_id = world.card.organization_id;
+    world
+        .usecase
+        .comment_card(
+            human(organization_id, false),
+            world.card.id,
+            "Garde SheepWars et TowerWars".into(),
+            None,
+        )
+        .await
+        .unwrap();
+
+    let specs = audit_with_plan(&world).await;
+
+    assert_eq!(run_row(&world.pool, world.run_id).await.0, "succeeded");
+    let audit = specs.lock().unwrap()[0].clone();
+    assert!(audit.prompt.contains("/workspace/.capitainerie/plan.md"));
+    assert!(audit.prompt.contains("Replies on the card, oldest first:"));
+    assert!(audit.prompt.contains("Garde SheepWars et TowerWars"));
+    let approval_id = pending_plan(&world).await;
+    let posted = comments(&world.pool, world.card.id).await;
+    let report = posted.last().unwrap();
+    assert_eq!(report.0.as_deref(), Some("agent:auditrice"));
+    assert!(report.1.contains("**Plan proposé**"), "{}", report.1);
+    let (_, _, output) = step_output(&world.pool, world.run_id).await;
+    assert!(output["plan"].as_str().unwrap().starts_with("proposed: "));
+
+    let decided = world
+        .usecase
+        .decide_approval(
+            human(organization_id, false),
+            approval_id,
+            Verdict::Approve,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(decided.resume_error, None);
+    let change_run = decided.approval.resumed_run_id.unwrap();
+    let (allow_writes, initiated_by, repository): (bool, String, String) = sqlx::query_as(
+        "SELECT t.allow_writes, r.initiated_by, r.repository FROM agent_tasks t JOIN runs r ON r.id = t.run_id WHERE t.run_id = $1",
+    )
+    .bind(change_run.0)
+    .fetch_one(&world.pool)
+    .await
+    .unwrap();
+    assert!(allow_writes);
+    assert_eq!(initiated_by, "user-1");
+    assert_eq!(repository, "acme/web");
+
+    let specs = Arc::new(Mutex::new(Vec::new()));
+    let mut lines = audit_lines(true, None);
+    lines.pop();
+    lines.push(TaskLine::Capitainerie(TaskMarker::NoChanges));
+    ExecutePipeline::new(
+        world.usecase.clone(),
+        Executor::Ready {
+            runner: runner(lines, Arc::clone(&specs)),
+            host: untouched_host(),
+        },
+        config(),
+    )
+    .execute(change_run, None)
+    .await
+    .unwrap();
+    let change = specs.lock().unwrap()[0].clone();
+    assert_eq!(change.mode, ExecutionMode::Change);
+    assert!(
+        change
+            .prompt
+            .contains(&format!("<plan>\n{}\n</plan>", PLAN))
+    );
+    assert!(change.prompt.contains("A member approved the plan"));
+
+    let again = world
+        .usecase
+        .decide_approval(
+            human(organization_id, false),
+            approval_id,
+            Verdict::Approve,
+            None,
+        )
+        .await;
+    assert!(again.is_err(), "a plan is applied once");
+}
+
+#[tokio::test]
+async fn a_refused_plan_starts_nothing_and_says_so_on_the_card() {
+    let Some(world) = world(false).await else {
+        return;
+    };
+    let organization_id = world.card.organization_id;
+    audit_with_plan(&world).await;
+    let approval_id = pending_plan(&world).await;
+
+    let decided = world
+        .usecase
+        .decide_approval(
+            human(organization_id, false),
+            approval_id,
+            Verdict::Reject,
+            Some("garde aussi Rush".into()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(decided.approval.resumed_run_id, None);
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runs WHERE card_id = $1")
+        .bind(world.card.id.0)
+        .fetch_one(&world.pool)
+        .await
+        .unwrap();
+    assert_eq!(runs, 1);
+    let posted = comments(&world.pool, world.card.id).await;
+    let refusal = posted.last().unwrap();
+    assert!(refusal.1.starts_with("**Plan refusé**"), "{}", refusal.1);
+    assert!(refusal.1.contains("garde aussi Rush"));
+    let replies = world
+        .usecase
+        .card_replies(organization_id, world.card.id)
+        .await
+        .unwrap();
+    assert!(
+        replies
+            .iter()
+            .any(|reply| reply.body.contains("garde aussi Rush"))
+    );
+}
+
+#[tokio::test]
+async fn a_newer_plan_replaces_the_one_still_waiting() {
+    let Some(world) = world(false).await else {
+        return;
+    };
+    audit_with_plan(&world).await;
+    let first = pending_plan(&world).await;
+    let approval = world
+        .usecase
+        .request_repository_change(
+            world.card.organization_id,
+            (AgentId(world.agent_id), "Auditrice"),
+            world.card.id,
+            world.run_id,
+            PlannedChange {
+                repository: "acme/web".into(),
+                base_branch: "main".into(),
+                plan: "autre plan".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let statuses: Vec<(Uuid, String)> =
+        sqlx::query_as("SELECT id, status FROM approvals WHERE card_id = $1 ORDER BY created_at")
+            .bind(world.card.id.0)
+            .fetch_all(&world.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        statuses,
+        vec![
+            (first.0, "expired".to_owned()),
+            (approval.id.0, "pending".to_owned())
+        ]
+    );
 }

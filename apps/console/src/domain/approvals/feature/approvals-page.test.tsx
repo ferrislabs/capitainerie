@@ -66,6 +66,46 @@ describe('ApprovalsPage', () => {
 		expect(screen.queryByText(/démonstration/i)).toBeNull()
 	})
 
+	it('shows a plan and applies it', async () => {
+		const user = userEvent.setup()
+		const PLAN = approval('ap-9', {
+			kind: 'repository_change',
+			title: 'Plan de Dev à appliquer sur Hypolia/lobby',
+			requested_by_agent_id: DEV.id,
+			card_id: CARD,
+			detail: {
+				repository: 'Hypolia/lobby',
+				base_branch: 'main',
+				plan: '## Menu\n\n- Retirer **Pitchout**',
+				truncated: false,
+			},
+		})
+		const fetchMock = await open({
+			'GET /api/v1/approvals': { items: [PLAN], pending: 1 },
+			'POST /api/v1/approvals/ap-9/decide': {
+				...PLAN,
+				status: 'approved',
+				resumed_run_id: 'run-3',
+				resume_error: null,
+			},
+		})
+		const card = await screen.findByRole('article', { name: PLAN.title })
+		expect(
+			within(card).getByText('Plan à appliquer', { exact: false }),
+		).toBeTruthy()
+		expect(within(card).getByText('Hypolia/lobby')).toBeTruthy()
+		const plan = within(card).getByLabelText('Plan')
+		expect(within(plan).getByRole('heading', { name: 'Menu' })).toBeTruthy()
+		expect(within(plan).getByText('Pitchout').tagName).toBe('STRONG')
+		await user.click(
+			within(card).getByRole('button', { name: `Appliquer : ${PLAN.title}` }),
+		)
+		expect(await screen.findByText(/Plan appliqué/)).toBeTruthy()
+		expect(calls(fetchMock, 'POST')[0]).toMatchObject({
+			body: { decision: 'approve' },
+		})
+	})
+
 	it('shows the empty state', async () => {
 		await open({ 'GET /api/v1/approvals': { items: [], pending: 0 } })
 		expect(

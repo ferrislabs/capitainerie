@@ -23,6 +23,21 @@ pub trait ApprovalRepository: Send {
         arguments_hash: &str,
     ) -> impl Future<Output = Result<Option<Approval>, CoreError>> + Send;
 
+    /// Expires the plans still waiting on the card, so a newer one replaces
+    /// them; the number expired.
+    fn expire_pending_changes(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> impl Future<Output = Result<u64, CoreError>> + Send;
+
+    /// The approved plan a change run was started to carry out.
+    fn applied_change(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> impl Future<Output = Result<Option<Approval>, CoreError>> + Send;
+
     /// Records the decision of an approval still pending in storage; false
     /// when another decision got there first.
     fn save_decision(

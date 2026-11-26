@@ -3,6 +3,7 @@ import {
 	type Approval,
 	decisionOutcome,
 	describeDecideError,
+	planOf,
 	prettyJson,
 	toolCallOf,
 } from '#/domain/approvals/model'
@@ -82,5 +83,69 @@ describe('decisionOutcome', () => {
 				resume_error: null,
 			}),
 		).toEqual({ tone: 'success', message: 'Demande refusée.', cardId: null })
+	})
+})
+
+describe('planOf', () => {
+	const plan = (detail: Record<string, unknown>) =>
+		approval('p1', { kind: 'repository_change', detail })
+
+	it('reads the repository, the branch and the plan', () => {
+		expect(
+			planOf(
+				plan({
+					repository: 'Hypolia/lobby',
+					base_branch: 'main',
+					plan: '1. Retirer Pitchout',
+					truncated: false,
+				}),
+			),
+		).toEqual({
+			repository: 'Hypolia/lobby',
+			baseBranch: 'main',
+			plan: '1. Retirer Pitchout',
+			truncated: false,
+		})
+	})
+
+	it('returns null for a tool call or a malformed detail', () => {
+		expect(planOf(approval('t1'))).toBeNull()
+		expect(planOf(plan({ repository: 'Hypolia/lobby' }))).toBeNull()
+	})
+})
+
+describe('decisionOutcome for a plan', () => {
+	const change = { kind: 'repository_change' as const, card_id: 'card-1' }
+
+	it('says the agent now works on a branch', () => {
+		expect(
+			decisionOutcome('approve', {
+				...change,
+				resumed_run_id: 'run-2',
+				resume_error: null,
+			}).message,
+		).toMatch(/pull request en brouillon/)
+	})
+
+	it('says why the agent did not start', () => {
+		const outcome = decisionOutcome('approve', {
+			...change,
+			resumed_run_id: null,
+			resume_error: 'aucun fournisseur',
+		})
+		expect(outcome.tone).toBe('info')
+		expect(outcome.message).toBe(
+			"Plan approuvé, mais l'agent n'a pas été lancé : aucun fournisseur",
+		)
+	})
+
+	it('asks for a reply after a refusal', () => {
+		expect(
+			decisionOutcome('reject', {
+				...change,
+				resumed_run_id: null,
+				resume_error: null,
+			}).message,
+		).toMatch(/réponds-y/)
 	})
 })

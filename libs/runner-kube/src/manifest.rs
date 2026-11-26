@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, net::IpAddr};
 
 use capitainerie_common::RunId;
-use capitainerie_core::domain::execution::{REPORT_PATH, TaskSpec, harness::Harness};
+use capitainerie_core::domain::execution::{PLAN_PATH, REPORT_PATH, TaskSpec, harness::Harness};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
@@ -94,6 +94,7 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
         plain("MODEL", cli_model(spec)),
         plain("CAPITAINERIE_MODE", spec.mode.as_str()),
         plain("REPORT_PATH", REPORT_PATH),
+        plain("PLAN_PATH", PLAN_PATH),
         plain("MAX_TURNS", spec.max_turns.to_string()),
         plain("PROMPT", &spec.prompt),
         plain("HOME", "/home/executor"),
@@ -583,6 +584,10 @@ mod tests {
         assert_eq!(report, "/workspace/.capitainerie/report.md");
         assert!(report.starts_with("/workspace/"));
         assert!(!report.starts_with("/workspace/repo/"));
+        assert_eq!(
+            env(&job, "PLAN_PATH").value.as_deref(),
+            Some("/workspace/.capitainerie/plan.md")
+        );
     }
 
     #[test]
