@@ -22,6 +22,7 @@ import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
 import { hueOf } from '#/domain/agent-team/agent-identity'
 import { useTeamAgents } from '#/domain/agent-team/hooks/use-team-agents'
+import { TaskPlanPanel } from '#/domain/approvals/feature/task-plan-panel'
 import { TaskArtifactsPanel } from '#/domain/artifacts/feature/task-artifacts-panel'
 import { useMe } from '#/domain/identity/hooks/use-me'
 import { RunAgentDialog } from '#/domain/tasks/feature/run-agent-dialog'
@@ -383,6 +384,7 @@ export function TaskPage({ pathId }: Props) {
 									onActiveChange={setRunActive}
 								/>
 							) : null}
+							<TaskPlanPanel cardId={task.id} agentName={agent.name} />
 						</div>
 					</div>
 					<div className="mx-auto w-full max-w-[820px] px-5 pb-5 sm:px-8">

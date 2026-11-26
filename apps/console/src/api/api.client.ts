@@ -91,7 +91,7 @@ export namespace Schemas {
   export type ApiErrorResponse = { code: string; message: string; status: number };
   export type ApprovalDecisionDto = "approve" | "reject";
   export type ApprovalId = string;
-  export type ApprovalKindDto = "tool_call" | "agent_action";
+  export type ApprovalKindDto = "tool_call" | "agent_action" | "repository_change";
   export type ApprovalStatusDto = "pending" | "approved" | "rejected" | "expired";
   export type ApprovalResponse = {
     card_id?: (null | CardId) | undefined;
@@ -448,6 +448,16 @@ export namespace Schemas {
     installation: null | GithubInstallationResponse;
   }>;
   export type GrantAccessDto = "read" | "write";
+  export type HarnessDto = "claude-code" | "codex" | "mistral-vibe" | "antigravity";
+  export type ProviderKindDto = "anthropic" | "mistral" | "openai" | "google" | "openai_compatible";
+  export type HarnessResponse = {
+    default_model: string;
+    id: HarnessDto;
+    models: Array<string>;
+    name: string;
+    provider: ProviderKindDto;
+  };
+  export type HarnessListResponse = { harnesses: Array<HarnessResponse> };
   export type SourceEventId = string;
   export type HookResponse = { event_id: SourceEventId };
   export type InboxItemId = string;
@@ -644,16 +654,6 @@ export namespace Schemas {
     subject: string;
   };
   export type MemberListResponse = { items: Array<MemberResponse> };
-  export type ProviderKindDto = "anthropic" | "mistral" | "openai" | "google" | "openai_compatible";
-  export type HarnessDto = "claude-code" | "codex" | "mistral-vibe" | "antigravity";
-  export type HarnessResponse = {
-    default_model: string;
-    id: HarnessDto;
-    models: Array<string>;
-    name: string;
-    provider: ProviderKindDto;
-  };
-  export type HarnessListResponse = { harnesses: Array<HarnessResponse> };
   export type ModelRefDto = { model: string; provider: ProviderKindDto };
   export type ModelAssignmentsDto = {
     captain?: (null | ModelRefDto) | undefined;
@@ -1536,6 +1536,13 @@ export namespace Endpoints {
       503: Schemas.ApiErrorResponse;
     };
   };
+  export type get_ListHarnesses = {
+    method: "GET";
+    path: "/api/v1/harnesses";
+    requestFormat: "json";
+    parameters: never;
+    responses: { 200: Schemas.HarnessListResponse; 401: Schemas.ApiErrorResponse };
+  };
   export type get_ListInbox = {
     method: "GET";
     path: "/api/v1/inbox";
@@ -1948,13 +1955,6 @@ export namespace Endpoints {
       403: Schemas.ApiErrorResponse;
       422: Schemas.ApiErrorResponse;
     };
-  };
-  export type get_ListHarnesses = {
-    method: "GET";
-    path: "/api/v1/harnesses";
-    requestFormat: "json";
-    parameters: never;
-    responses: { 200: Schemas.HarnessListResponse; 401: Schemas.ApiErrorResponse };
   };
   export type get_ListModels = {
     method: "GET";
@@ -2698,8 +2698,8 @@ export type EndpointByMethod = {
     "/api/v1/clients/{client_id}/integrations": Endpoints.get_ListIntegrationInstances;
     "/api/v1/conversations": Endpoints.get_ListConversations;
     "/api/v1/conversations/{id}": Endpoints.get_GetConversation;
-    "/api/v1/inbox": Endpoints.get_ListInbox;
     "/api/v1/harnesses": Endpoints.get_ListHarnesses;
+    "/api/v1/inbox": Endpoints.get_ListInbox;
     "/api/v1/integrations/github": Endpoints.get_GetGithubIntegration;
     "/api/v1/integrations/github/install": Endpoints.get_GetGithubInstallUrl;
     "/api/v1/integrations/github/issues": Endpoints.get_ListGithubIssues;

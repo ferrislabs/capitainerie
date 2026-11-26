@@ -31,10 +31,11 @@ REPORT_MAX_BYTES=1048576
 REPORT_CHUNK_CHARS=4096
 REPORT_NOTE=$'\n\n_[rapport tronque a 1 Mio]_\n'
 
-# Sends the report on stdout as base64 chunks, then its SHA-256 and size;
-# a report above REPORT_MAX_BYTES is cut and ends with a note.
+# Sends a document on stdout as base64 chunks, then its SHA-256 and size;
+# one above REPORT_MAX_BYTES is cut and ends with a note. The second argument
+# names it in the markers: report (report_chunk, report_end) or plan.
 emit_report() {
-  local source="$1" sent truncated=false size keep
+  local source="$1" doc="${2:-report}" sent truncated=false size keep
   [ -s "$source" ] || return 1
   sent="$(mktemp /tmp/report.XXXXXX)"
   size="$(wc -c <"$source" | tr -d ' ')"
@@ -47,9 +48,9 @@ emit_report() {
     cat "$source" >"$sent"
   fi
   base64 -w0 <"$sent" | fold -w "$REPORT_CHUNK_CHARS" | while IFS= read -r chunk || [ -n "$chunk" ]; do
-    marker report_chunk ",\"data\":\"$chunk\""
+    marker "${doc}_chunk" ",\"data\":\"$chunk\""
   done
-  marker report_end ",\"sha256\":\"$(sha256sum "$sent" | cut -d' ' -f1)\",\"bytes\":$(wc -c <"$sent" | tr -d ' '),\"truncated\":$truncated"
+  marker "${doc}_end" ",\"sha256\":\"$(sha256sum "$sent" | cut -d' ' -f1)\",\"bytes\":$(wc -c <"$sent" | tr -d ' '),\"truncated\":$truncated"
   rm -f "$sent"
 }
 
@@ -195,14 +196,16 @@ esac
 agent_status=0
 
 if [ "$mode" = audit ]; then
-  : "${REPORT_PATH:?}"
-  mkdir -p "$(dirname "$REPORT_PATH")"
-  rm -f "$REPORT_PATH"
+  : "${REPORT_PATH:?}" "${PLAN_PATH:?}"
+  mkdir -p "$(dirname "$REPORT_PATH")" "$(dirname "$PLAN_PATH")"
+  rm -f "$REPORT_PATH" "$PLAN_PATH"
   # Read-only: no Edit, and nothing is ever committed or pushed (the proxy
   # refuses a push of this run anyway). Write is kept for the report only.
   run_agent audit || agent_status=$?
   echo "$harness exited with $agent_status" >&2
   emit_report "$REPORT_PATH" || echo "no report at $REPORT_PATH" >&2
+  # A plan is optional: the agent writes one only when the card asks for a change.
+  emit_report "$PLAN_PATH" plan || true
   # The worker judges the audit from the report and the summary it read;
   # a stop of Claude Code is in its stream.
   marker audit_done

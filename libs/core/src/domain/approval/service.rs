@@ -109,6 +109,11 @@ where
         {
             return Ok(pending);
         }
+        if let (ApprovalKind::RepositoryChange, Some(card_id)) = (approval.kind, approval.card_id) {
+            self.approvals
+                .expire_pending_changes(approval.organization_id, card_id)
+                .await?;
+        }
         self.approvals.insert(&approval).await?;
         self.emitter.emit(&ApprovalRequested {
             approval_id: approval.id.0,
@@ -152,6 +157,37 @@ where
             tool: grant.tool.clone(),
         })?;
         Ok(grant)
+    }
+
+    /// Hands an approved plan to the change run started to carry it out: the
+    /// approval points to the run, which reads the plan from it.
+    pub async fn link_applied(
+        mut self,
+        approval: &Approval,
+        run_id: RunId,
+        initiated_by: String,
+    ) -> Result<(), CoreError> {
+        if approval.status != ApprovalStatus::Approved || approval.planned_change().is_none() {
+            return Err(CoreError::Invalid("the plan is not approved".into()));
+        }
+        if !self
+            .approvals
+            .mark_resumed(approval.organization_id, approval.id, run_id)
+            .await?
+        {
+            return Err(CoreError::Conflict("the plan was applied already".into()));
+        }
+        self.emitter.emit(&ApprovalResumed {
+            approval_id: approval.id.0,
+            organization_id: approval.organization_id.0,
+            card_id: approval.card_id.map(|id| id.0),
+            run_id: approval.run_id.map(|id| id.0),
+            resumed_run_id: run_id.0,
+            decided_by: approval.decided_by.clone().unwrap_or_default(),
+            initiated_by,
+            tool: approval.kind.as_str().to_owned(),
+        })?;
+        Ok(())
     }
 
     /// Spends the grant of a run for this call; false when the run has no

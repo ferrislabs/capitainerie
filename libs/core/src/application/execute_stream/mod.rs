@@ -106,6 +106,7 @@ pub(super) struct StreamReader {
     redactor: Redactor,
     digest: Digest,
     report: ReportAssembler,
+    plan: ReportAssembler,
     pending: HashMap<String, PendingCall>,
     order: Vec<String>,
     dirty: bool,
@@ -119,6 +120,7 @@ impl StreamReader {
             redactor,
             digest: Digest::default(),
             report: ReportAssembler::default(),
+            plan: ReportAssembler::default(),
             pending: HashMap::new(),
             order: Vec::new(),
             dirty: false,
@@ -129,6 +131,7 @@ impl StreamReader {
         self.parser = AgentParser::new(self.harness);
         self.digest = Digest::default();
         self.report = ReportAssembler::default();
+        self.plan = ReportAssembler::default();
         self.pending.clear();
         self.order.clear();
         self.dirty = true;
@@ -157,8 +160,32 @@ impl StreamReader {
         }
     }
 
+    /// The plan the output carried, redacted; `None` without a complete and
+    /// intact one, which proposes nothing.
+    pub(super) fn plan(&self) -> Option<String> {
+        match self.plan.outcome() {
+            ReportOutcome::Ready { text, .. } if !text.trim().is_empty() => {
+                Some(self.redactor.apply(&text))
+            }
+            ReportOutcome::Ready { .. } | ReportOutcome::Missing => None,
+            ReportOutcome::Invalid(reason) => {
+                tracing::warn!(%reason, "the plan the task sent is unusable");
+                None
+            }
+        }
+    }
+
     pub(super) fn accept(&mut self, line: &TaskLine) {
         match line {
+            TaskLine::Capitainerie(TaskMarker::PlanChunk { data }) => self.plan.chunk(data),
+            TaskLine::Capitainerie(TaskMarker::PlanEnd {
+                sha256,
+                bytes,
+                truncated,
+            }) => {
+                self.plan.end(sha256, *bytes, *truncated);
+                self.dirty = true;
+            }
             TaskLine::Capitainerie(TaskMarker::ReportChunk { data }) => self.report.chunk(data),
             TaskLine::Capitainerie(TaskMarker::ReportEnd {
                 sha256,
@@ -636,6 +663,59 @@ mod tests {
             }
         );
         assert_eq!(reader.finish().tool_calls.len(), 3);
+    }
+
+    fn plan_lines(text: &str) -> Vec<TaskLine> {
+        report_lines(text, 6, None)
+            .into_iter()
+            .filter_map(|line| match line {
+                TaskLine::Capitainerie(TaskMarker::ReportChunk { data }) => {
+                    Some(TaskLine::Capitainerie(TaskMarker::PlanChunk { data }))
+                }
+                TaskLine::Capitainerie(TaskMarker::ReportEnd {
+                    sha256,
+                    bytes,
+                    truncated,
+                }) => Some(TaskLine::Capitainerie(TaskMarker::PlanEnd {
+                    sha256,
+                    bytes,
+                    truncated,
+                })),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_plan_arrives_beside_the_report_redacted_and_apart_from_it() {
+        let mut reader = StreamReader::new(Harness::MistralVibe, Redactor::new("tok-secret"));
+        for line in report_lines("# Rapport", 4, None) {
+            reader.accept(&line);
+        }
+        assert_eq!(reader.plan(), None);
+        for line in plan_lines("- retirer Pitchout (tok-secret)") {
+            reader.accept(&line);
+        }
+        assert_eq!(reader.plan().as_deref(), Some("- retirer Pitchout (***)"));
+        assert!(
+            matches!(reader.report(), ReportOutcome::Ready { text, .. } if text == "# Rapport")
+        );
+        reader.reset();
+        assert_eq!(reader.plan(), None);
+    }
+
+    #[test]
+    fn a_blank_or_broken_plan_proposes_nothing() {
+        let mut reader = StreamReader::new(Harness::MistralVibe, Redactor::new(""));
+        for line in plan_lines("  \n") {
+            reader.accept(&line);
+        }
+        assert_eq!(reader.plan(), None);
+        let mut reader = StreamReader::new(Harness::MistralVibe, Redactor::new(""));
+        reader.accept(&TaskLine::Capitainerie(TaskMarker::PlanChunk {
+            data: "aGk=".into(),
+        }));
+        assert_eq!(reader.plan(), None);
     }
 
     #[test]

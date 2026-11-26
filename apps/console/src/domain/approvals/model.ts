@@ -33,6 +33,7 @@ export const STATUS_TONE: Record<ApprovalStatus, SevTone> = {
 export const KIND_LABEL: Record<Schemas.ApprovalKindDto, string> = {
 	tool_call: "Appel d'outil",
 	agent_action: "Action d'agent",
+	repository_change: 'Plan à appliquer',
 }
 
 export interface ToolCall {
@@ -46,6 +47,31 @@ export function toolCallOf(approval: Approval): ToolCall | null {
 	const { tool, arguments: args } = approval.detail
 	if (typeof tool !== 'string') return null
 	return { tool, arguments: args ?? {} }
+}
+
+export interface PlannedChange {
+	repository: string
+	baseBranch: string
+	plan: string
+	truncated: boolean
+}
+
+/** Le détail d'un `repository_change` : le dépôt, la branche et le plan. */
+export function planOf(approval: Approval): PlannedChange | null {
+	if (approval.kind !== 'repository_change') return null
+	const { repository, base_branch, plan, truncated } = approval.detail
+	if (
+		typeof repository !== 'string' ||
+		typeof base_branch !== 'string' ||
+		typeof plan !== 'string'
+	)
+		return null
+	return {
+		repository,
+		baseBranch: base_branch,
+		plan,
+		truncated: truncated === true,
+	}
 }
 
 export function prettyJson(value: unknown): string {
@@ -88,8 +114,18 @@ export function decisionOutcome(
 	>,
 ): DecisionOutcome {
 	const cardId = decided.card_id ?? null
-	const onCard = decided.kind === 'tool_call' && cardId !== null
+	const onCard =
+		(decided.kind === 'tool_call' || decided.kind === 'repository_change') &&
+		cardId !== null
+	const plan = decided.kind === 'repository_change'
 	if (decision === 'reject') {
+		if (plan)
+			return {
+				tone: 'success',
+				message:
+					"Plan refusé. Le refus est noté sur la tâche : réponds-y pour que l'agent en propose un autre.",
+				cardId,
+			}
 		return onCard
 			? {
 					tone: 'success',
@@ -99,12 +135,20 @@ export function decisionOutcome(
 			: { tone: 'success', message: 'Demande refusée.', cardId }
 	}
 	if (decided.resumed_run_id) {
-		return { tone: 'success', message: 'Exécution relancée.', cardId }
+		return {
+			tone: 'success',
+			message: plan
+				? "Plan appliqué : l'agent travaille sur une branche et ouvrira une pull request en brouillon."
+				: 'Exécution relancée.',
+			cardId,
+		}
 	}
 	if (decided.resume_error) {
 		return {
 			tone: 'info',
-			message: `Approbation accordée, mais l'exécution n'a pas été relancée : ${decided.resume_error}`,
+			message: plan
+				? `Plan approuvé, mais l'agent n'a pas été lancé : ${decided.resume_error}`
+				: `Approbation accordée, mais l'exécution n'a pas été relancée : ${decided.resume_error}`,
 			cardId,
 		}
 	}

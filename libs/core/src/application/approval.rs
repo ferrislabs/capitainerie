@@ -6,7 +6,7 @@ use super::{
     execute_stream::truncate_chars,
 };
 use crate::domain::{
-    agent_task::AgentRunError,
+    agent_task::{AgentRunError, RepositoryTarget},
     approval::{
         Approval, ApprovalKind, ApprovalStatus, SYSTEM_ACTOR, Verdict,
         service::{ApprovalList, ApprovalService},
@@ -61,16 +61,27 @@ impl CapitainerieUseCase {
     ) -> Result<DecidedApproval, CoreError> {
         let mut approval = self.record_decision(subject, id, verdict, note).await?;
         let mut resume_error = None;
-        if approval.kind == ApprovalKind::ToolCall
-            && let Some(card_id) = approval.card_id
-        {
-            match approval.status {
-                ApprovalStatus::Approved => match self.resume(&approval, card_id).await {
-                    Ok(run_id) => approval.resumed_run_id = Some(run_id),
-                    Err(reason) => resume_error = Some(reason),
-                },
-                ApprovalStatus::Rejected => self.note_rejection(&approval, card_id).await,
-                ApprovalStatus::Pending | ApprovalStatus::Expired => {}
+        if let Some(card_id) = approval.card_id {
+            let started = match (approval.kind, approval.status) {
+                (ApprovalKind::ToolCall, ApprovalStatus::Approved) => {
+                    Some(self.resume(&approval, card_id).await)
+                }
+                (ApprovalKind::RepositoryChange, ApprovalStatus::Approved) => {
+                    Some(self.apply(&approval, card_id).await)
+                }
+                (
+                    ApprovalKind::ToolCall | ApprovalKind::RepositoryChange,
+                    ApprovalStatus::Rejected,
+                ) => {
+                    self.note_rejection(&approval, card_id).await;
+                    None
+                }
+                _ => None,
+            };
+            match started {
+                Some(Ok(run_id)) => approval.resumed_run_id = Some(run_id),
+                Some(Err(reason)) => resume_error = Some(reason),
+                None => {}
             }
         }
         Ok(DecidedApproval {
@@ -99,7 +110,9 @@ impl CapitainerieUseCase {
             .await
     }
 
-    async fn resume(&self, approval: &Approval, card_id: CardId) -> Result<RunId, String> {
+    /// Who a run started on an approval runs for: the member who started the
+    /// run that asked, else the one who decided.
+    async fn resumed_subject(&self, approval: &Approval) -> Result<Subject, String> {
         let organization_id = approval.organization_id;
         let decider = approval.decided_by.clone().unwrap_or_default();
         let initiator = match approval.run_id {
@@ -109,12 +122,41 @@ impl CapitainerieUseCase {
                 .map_err(|error| failure(&error))?,
             None => None,
         };
-        let subject = Subject {
+        Ok(Subject {
             id: initiator.unwrap_or(decider),
             organization_id,
             actor: None,
             is_admin: false,
-        };
+        })
+    }
+
+    /// Starts the change run of an approved plan.
+    async fn apply(&self, approval: &Approval, card_id: CardId) -> Result<RunId, String> {
+        let change = approval
+            .planned_change()
+            .ok_or_else(|| "le plan enregistré est illisible".to_owned())?;
+        let repository = change
+            .repository
+            .parse()
+            .map_err(|error: CoreError| failure(&error))?;
+        let target = RepositoryTarget::new(repository, Some(change.base_branch))
+            .map_err(|error| failure(&error))?;
+        let subject = self.resumed_subject(approval).await?;
+        match self
+            .start_applied_repository_run(subject, card_id, target, approval.clone())
+            .await
+        {
+            Ok(started) => Ok(started.run_id),
+            Err(AgentRunError::Refused(refusal)) => Err(refusal.to_string()),
+            Err(AgentRunError::Core(error)) => {
+                tracing::warn!(approval_id = %approval.id.0, %error, "the approved plan was not applied");
+                Err(failure(&error))
+            }
+        }
+    }
+
+    async fn resume(&self, approval: &Approval, card_id: CardId) -> Result<RunId, String> {
+        let subject = self.resumed_subject(approval).await?;
         match self
             .start_resumed_agent_run(subject, card_id, approval.clone())
             .await
@@ -192,12 +234,18 @@ fn failure(error: &CoreError) -> String {
 }
 
 fn rejection_comment(approval: &Approval, decider: &str) -> String {
-    let tool = approval.tool().unwrap_or("?");
-    let mut body = format!(
-        "**Demande refusée** : {} a refusé l'appel `{}` demandé par l'agent ; il n'a pas été exécuté et aucune exécution n'est relancée.",
-        defang_mentions(decider),
-        defang_mentions(tool)
-    );
+    let mut body = match approval.planned_change() {
+        Some(change) => format!(
+            "**Plan refusé** : {} a refusé le plan proposé pour {} ; rien n'a été modifié. Répondez sur la carte pour que l'agent en propose un autre.",
+            defang_mentions(decider),
+            defang_mentions(&change.repository)
+        ),
+        None => format!(
+            "**Demande refusée** : {} a refusé l'appel `{}` demandé par l'agent ; il n'a pas été exécuté et aucune exécution n'est relancée.",
+            defang_mentions(decider),
+            defang_mentions(approval.tool().unwrap_or("?"))
+        ),
+    };
     if let Some(note) = approval.decision_note.as_deref() {
         body.push_str(&format!(
             "\n\nNote : {}",

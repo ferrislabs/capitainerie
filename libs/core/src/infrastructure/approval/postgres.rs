@@ -115,6 +115,53 @@ impl ApprovalRepository for PgApprovalRepository<'_> {
         .transpose()
     }
 
+    async fn expire_pending_changes(
+        &mut self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<u64, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query!(
+            r#"
+            UPDATE approvals SET status = 'expired'
+            WHERE organization_id = $1 AND card_id = $2 AND status = 'pending'
+              AND kind = 'repository_change'
+            "#,
+            organization_id.0,
+            card_id.0,
+        )
+        .execute(&mut ***tx)
+        .await
+        .map(|done| done.rows_affected())
+        .map_err(map_sqlx_error)
+    }
+
+    async fn applied_change(
+        &mut self,
+        organization_id: OrganizationId,
+        run_id: RunId,
+    ) -> Result<Option<Approval>, CoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query_as!(
+            ApprovalRow,
+            r#"
+            SELECT id, organization_id, kind, title, detail, requested_by_agent_id, card_id,
+                   run_id, status, decided_by, decided_at, decision_note, created_at,
+                   arguments_hash, resumed_run_id
+            FROM approvals
+            WHERE organization_id = $1 AND resumed_run_id = $2 AND kind = 'repository_change'
+              AND status = 'approved'
+            "#,
+            organization_id.0,
+            run_id.0,
+        )
+        .fetch_optional(&mut ***tx)
+        .await
+        .map_err(map_sqlx_error)?
+        .map(Approval::try_from)
+        .transpose()
+    }
+
     async fn mark_resumed(
         &mut self,
         organization_id: OrganizationId,

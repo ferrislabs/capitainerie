@@ -21,6 +21,10 @@ pub const EXECUTOR_AGENT: &str = "capitainerie-agent-executor";
 /// checkout, so the report is never part of the repository.
 pub const REPORT_PATH: &str = "/workspace/.capitainerie/report.md";
 
+/// Where an audit writes the change it proposes, when the card asks for one:
+/// outside the checkout too.
+pub const PLAN_PATH: &str = "/workspace/.capitainerie/plan.md";
+
 /// What an execution may do to its repository.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ExecutionMode {
@@ -401,6 +405,17 @@ pub enum TaskMarker {
         #[serde(default)]
         truncated: bool,
     },
+    /// A piece of the plan an audit proposes, base64.
+    PlanChunk {
+        data: String,
+    },
+    /// The plan is complete, as `ReportEnd` for the report.
+    PlanEnd {
+        sha256: String,
+        bytes: u64,
+        #[serde(default)]
+        truncated: bool,
+    },
     AuditDone,
 }
 
@@ -647,6 +662,8 @@ mod tests {
     fn the_report_lives_outside_the_checkout() {
         assert!(REPORT_PATH.starts_with("/workspace/"));
         assert!(!REPORT_PATH.starts_with("/workspace/repo/"));
+        assert!(PLAN_PATH.starts_with("/workspace/"));
+        assert!(!PLAN_PATH.starts_with("/workspace/repo/"));
     }
 
     #[test]

@@ -1,11 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
+import { Markdown } from '#/components/markdown'
 import { Button } from '#/components/ui/button'
 import {
 	type Approval,
 	type Decision,
 	formatWhen,
 	KIND_LABEL,
+	planOf,
 	prettyJson,
 	STATUS_LABEL,
 	STATUS_TONE,
@@ -35,6 +37,7 @@ export function ApprovalCard({
 	const [note, setNote] = useState('')
 	const noteId = useId()
 	const call = toolCallOf(a)
+	const plan = planOf(a)
 	const hasDetail = Object.keys(a.detail).length > 0
 	const pending = a.status === 'pending'
 
@@ -68,7 +71,33 @@ export function ApprovalCard({
 				</div>
 				<Sev tone={STATUS_TONE[a.status]}>{STATUS_LABEL[a.status]}</Sev>
 			</header>
-			{call ? (
+			{plan ? (
+				<div className="grid gap-1.5">
+					<p className="m-0 text-xs text-muted-foreground">
+						Sur{' '}
+						<code className="rounded bg-secondary px-1.5 py-px font-mono text-[12px] text-foreground">
+							{plan.repository}
+						</code>{' '}
+						depuis{' '}
+						<code className="rounded bg-secondary px-1.5 py-px font-mono text-[12px] text-foreground">
+							{plan.baseBranch}
+						</code>
+						. Rien n'est modifié avant « Appliquer » : l'agent travaille alors
+						sur une branche et ouvre une pull request en brouillon.
+					</p>
+					<section
+						aria-label="Plan"
+						className="max-h-96 overflow-auto rounded-md border bg-background px-3 py-2"
+					>
+						<Markdown source={plan.plan} variant="document" />
+					</section>
+					{plan.truncated ? (
+						<p className="m-0 text-xs text-muted-foreground">
+							Le plan était trop long : sa fin est coupée.
+						</p>
+					) : null}
+				</div>
+			) : call ? (
 				<div className="grid gap-1.5">
 					<p className="m-0 text-xs text-muted-foreground">
 						Outil{' '}
@@ -115,10 +144,10 @@ export function ApprovalCard({
 							type="button"
 							size="sm"
 							disabled={busy}
-							aria-label={`Approuver : ${a.title}`}
+							aria-label={`${plan ? 'Appliquer' : 'Approuver'} : ${a.title}`}
 							onClick={() => onDecide(a.id, 'approve', note)}
 						>
-							Approuver
+							{plan ? 'Appliquer' : 'Approuver'}
 						</Button>
 					</div>
 				</div>

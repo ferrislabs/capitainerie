@@ -1,4 +1,4 @@
-use capitainerie_common::{CardCommentId, CardId, CoreError, OrganizationId, RunId};
+use capitainerie_common::{AgentId, CardCommentId, CardId, CoreError, OrganizationId, RunId};
 use capitainerie_events::card::{CardAuthor, CardMoved};
 use capitainerie_macros::transactional;
 use chrono::{SubsecRound, Utc};
@@ -14,8 +14,8 @@ use crate::{
             ports::AgentTaskRepository,
         },
         approval::{
-            Approval, ApprovalStatus, ApprovedCall, ToolGrant, ports::ApprovalRepository,
-            service::ApprovalService,
+            Approval, ApprovalStatus, ApprovedCall, PlannedChange, SYSTEM_ACTOR, ToolGrant,
+            ports::ApprovalRepository, service::ApprovalService,
         },
         authorization::{AccessRequest, Action, Decision, ResourceKind, Subject, require},
         card::{
@@ -75,6 +75,8 @@ pub struct ExecutionAgentSource {
     pub agent: CrewAgent,
     /// The agent's active skills, in the order it lists them.
     pub skills: Vec<Skill>,
+    /// The plan a member approved, when the run was started to carry it out.
+    pub plan: Option<PlannedChange>,
 }
 
 fn in_agent_order(mut found: Vec<Skill>, agent: &CrewAgent) -> Vec<Skill> {
@@ -358,7 +360,7 @@ impl CapitainerieUseCase {
         repository: RepositoryRef,
     ) -> Stored<()> {
         Ok(self
-            .vet_repository_run(&tx, &subject, card_id, command, &repository)
+            .vet_repository_run(&tx, &subject, card_id, command, &repository, true)
             .await?
             .map(|_| ()))
     }
@@ -373,17 +375,38 @@ impl CapitainerieUseCase {
         target: RepositoryTarget,
     ) -> Result<StartedAgentRun, AgentRunError> {
         Ok(self
-            .store_agent_repository_run(subject, card_id, command, target)
+            .store_agent_repository_run(subject, card_id, command, target, None)
             .await??)
     }
 
-    #[transactional(run, model_assignment, emitter)]
+    /// Starts the change run that carries out an approved plan, for
+    /// `subject`, on the repository and base branch the plan was written on.
+    /// The card version is not checked; its agent must still be the one
+    /// that wrote the plan.
+    pub(super) async fn start_applied_repository_run(
+        &self,
+        subject: Subject,
+        card_id: CardId,
+        target: RepositoryTarget,
+        approval: Approval,
+    ) -> Result<StartedAgentRun, AgentRunError> {
+        let command = StartAgentRun {
+            expected_version: 0,
+            allow_writes: true,
+        };
+        Ok(self
+            .store_agent_repository_run(subject, card_id, command, target, Some(approval))
+            .await??)
+    }
+
+    #[transactional(run, model_assignment, emitter, approval, authz)]
     async fn store_agent_repository_run(
         &self,
         subject: Subject,
         card_id: CardId,
         command: StartAgentRun,
         target: RepositoryTarget,
+        applied: Option<Approval>,
     ) -> Stored<StartedAgentRun> {
         let mut run_repository = run_repository;
         let mut model_assignment_repository = model_assignment_repository;
@@ -392,12 +415,28 @@ impl CapitainerieUseCase {
             .clone()
             .ok_or_else(|| CoreError::Invalid("the base branch is unknown".into()))?;
         let agent = match self
-            .vet_repository_run(&tx, &subject, card_id, command, &target.repository)
+            .vet_repository_run(
+                &tx,
+                &subject,
+                card_id,
+                command,
+                &target.repository,
+                applied.is_none(),
+            )
             .await?
         {
             Ok(agent) => agent,
             Err(refusal) => return Ok(Err(refusal)),
         };
+        if applied
+            .as_ref()
+            .is_some_and(|approval| approval.requested_by_agent_id != Some(agent.id))
+        {
+            return Err(CoreError::Conflict(
+                "l'agent de la carte a changé depuis le plan : relancez-le pour un nouveau plan"
+                    .into(),
+            ));
+        }
         let organization_id = subject.organization_id;
         let now = Utc::now().trunc_subsecs(6);
         let (mut run, queued) = Run::queue_execution(
@@ -419,10 +458,15 @@ impl CapitainerieUseCase {
                 agent_id: agent.id,
                 allow_writes: command.allow_writes,
                 model: None,
-                created_by: subject.id,
+                created_by: subject.id.clone(),
                 created_at: now,
             })
             .await?;
+        if let Some(approval) = applied {
+            ApprovalService::new(approval_repository, emitter, authz)
+                .link_applied(&approval, run.id, subject.id)
+                .await?;
+        }
         Ok(Ok(StartedAgentRun { run_id: run.id }))
     }
 
@@ -435,6 +479,7 @@ impl CapitainerieUseCase {
         card_id: CardId,
         command: StartAgentRun,
         repository: &RepositoryRef,
+        check_version: bool,
     ) -> Stored<CrewAgent> {
         let organization_id = subject.organization_id;
         require(
@@ -463,7 +508,9 @@ impl CapitainerieUseCase {
             .find(organization_id, card_id)
             .await?
             .ok_or(CoreError::NotFound)?;
-        card.ensure_version(command.expected_version)?;
+        if check_version {
+            card.ensure_version(command.expected_version)?;
+        }
         let Some(agent_id) = card.attributes.assignee_agent_id else {
             return Ok(Err(AgentRunRefusal::NoAssignee));
         };
@@ -548,7 +595,7 @@ impl CapitainerieUseCase {
 
     /// `None` for an execution no agent was asked to run (a worksite). An
     /// execution whose agent vanished is refused rather than run without it.
-    #[transactional(crew_agent, skill)]
+    #[transactional(crew_agent, skill, approval)]
     pub async fn execution_agent_source(
         &self,
         organization_id: OrganizationId,
@@ -572,11 +619,65 @@ impl CapitainerieUseCase {
                 .await?,
             &agent,
         );
+        let mut approval_repository = approval_repository;
+        let plan = approval_repository
+            .applied_change(organization_id, run_id)
+            .await?
+            .and_then(|approval| approval.planned_change());
         Ok(Some(ExecutionAgentSource {
             task,
             agent,
             skills,
+            plan,
         }))
+    }
+
+    /// What members wrote on the card, oldest first: the replies an execution
+    /// reads beside the card. The system's notes on a decision count, since
+    /// they carry the member's note; agents' comments are left out.
+    #[transactional(card_comment)]
+    pub async fn card_replies(
+        &self,
+        organization_id: OrganizationId,
+        card_id: CardId,
+    ) -> Result<Vec<CardComment>, CoreError> {
+        let mut card_comment_repository = card_comment_repository;
+        Ok(card_comment_repository
+            .list(organization_id, card_id)
+            .await?
+            .into_iter()
+            .filter(|comment| {
+                comment
+                    .author
+                    .actor
+                    .as_deref()
+                    .is_none_or(|actor| actor == SYSTEM_ACTOR)
+            })
+            .collect())
+    }
+
+    /// Files the plan a read-only run of `agent` wrote, as an approval on the
+    /// card; it replaces a plan still waiting there.
+    #[transactional(approval, emitter, authz)]
+    pub async fn request_repository_change(
+        &self,
+        organization_id: OrganizationId,
+        agent: (AgentId, &str),
+        card_id: CardId,
+        run_id: RunId,
+        change: PlannedChange,
+    ) -> Result<Approval, CoreError> {
+        let approval = Approval::repository_change(
+            organization_id,
+            agent,
+            card_id,
+            run_id,
+            &change,
+            Utc::now().trunc_subsecs(6),
+        );
+        ApprovalService::new(approval_repository, emitter, authz)
+            .request(approval)
+            .await
     }
 
     #[transactional(card, card_comment, crew_agent, mcp_connector, skill, approval, member)]

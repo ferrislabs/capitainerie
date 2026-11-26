@@ -69,6 +69,57 @@ const open = (pathId: string) =>
 	)
 
 describe('TaskPage', () => {
+	it('shows the plan waiting on the task and applies it', async () => {
+		const plan = {
+			id: 'ap-7',
+			kind: 'repository_change',
+			title: 'Plan de Lead à appliquer sur Hypolia/lobby',
+			detail: {
+				repository: 'Hypolia/lobby',
+				base_branch: 'main',
+				plan: '- Retirer Pitchout du menu',
+				truncated: false,
+			},
+			requested_by_agent_id: AGENT_LEAD,
+			card_id: ROOT,
+			run_id: 'run-1',
+			status: 'pending',
+			decided_by: null,
+			decided_at: null,
+			decision_note: null,
+			created_at: new Date().toISOString(),
+			resumed_run_id: null,
+		}
+		const fetchMock = mockApi({
+			...BASE,
+			'GET /api/v1/approvals': {
+				items: [plan, { ...plan, id: 'ap-8', card_id: KID_OPEN }],
+				pending: 2,
+			},
+			'POST /api/v1/approvals/ap-7/decide': {
+				...plan,
+				status: 'approved',
+				resumed_run_id: 'run-2',
+				resume_error: null,
+			},
+		})
+		await open(ROOT)
+		const panel = await screen.findByRole('region', { name: 'Plan proposé' })
+		expect(within(panel).getAllByRole('article')).toHaveLength(1)
+		expect(within(panel).getByText('Retirer Pitchout du menu')).toBeTruthy()
+		fireEvent.click(
+			within(panel).getByRole('button', { name: `Appliquer : ${plan.title}` }),
+		)
+		expect(await within(panel).findByText(/Plan appliqué/)).toBeTruthy()
+		expect(
+			fetchMock.mock.calls.some(
+				([url, init]) =>
+					String(url).endsWith('/api/v1/approvals/ap-7/decide') &&
+					init?.method === 'POST',
+			),
+		).toBe(true)
+	})
+
 	it('renders the card, its comments, properties and sub-tasks', async () => {
 		mockApi(BASE)
 		await open(ROOT)

@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 pub enum ApprovalKindDto {
     ToolCall,
     AgentAction,
+    RepositoryChange,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
@@ -48,7 +49,9 @@ pub struct ApprovalResponse {
     pub id: ApprovalId,
     pub kind: ApprovalKindDto,
     pub title: String,
-    /// A JSON object; for a `tool_call`, `tool` and `arguments` (secrets masked).
+    /// A JSON object. For a `tool_call`, `tool` and `arguments` (secrets
+    /// masked). For a `repository_change`, `repository`, `base_branch`, `plan`
+    /// (Markdown) and `truncated`.
     #[schema(value_type = Object)]
     pub detail: Value,
     /// The agent asking for the decision; null when the system asks.
@@ -63,7 +66,7 @@ pub struct ApprovalResponse {
     pub decided_at: Option<DateTime<Utc>>,
     pub decision_note: Option<String>,
     pub created_at: DateTime<Utc>,
-    /// The run started when this tool call was approved, to carry it out.
+    /// The run started when this tool call or plan was approved, to carry it out.
     pub resumed_run_id: Option<RunId>,
 }
 
@@ -71,7 +74,7 @@ pub struct ApprovalResponse {
 pub struct DecideApprovalResponse {
     #[serde(flatten)]
     pub approval: ApprovalResponse,
-    /// Why an approved tool call did not start a new run (no provider,
+    /// Why an approved tool call or plan did not start a new run (no provider,
     /// connector disconnected, agent archived or paused, a run already
     /// active on the card…); null otherwise. The decision stands either way.
     pub resume_error: Option<String>,
@@ -92,6 +95,7 @@ impl From<Approval> for ApprovalResponse {
             kind: match approval.kind {
                 ApprovalKind::ToolCall => ApprovalKindDto::ToolCall,
                 ApprovalKind::AgentAction => ApprovalKindDto::AgentAction,
+                ApprovalKind::RepositoryChange => ApprovalKindDto::RepositoryChange,
             },
             title: approval.title,
             detail: approval.detail,

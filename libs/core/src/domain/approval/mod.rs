@@ -64,6 +64,16 @@ pub struct ApprovedCall {
     pub note: Option<String>,
 }
 
+/// What a read-only run proposes to change, and where.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedChange {
+    /// `owner/name`.
+    pub repository: String,
+    pub base_branch: String,
+    /// Markdown, written by the agent.
+    pub plan: String,
+}
+
 /// Author of the comments the system posts on a card about an approval.
 pub const SYSTEM_ACTOR: &str = "Capitainerie";
 
@@ -71,6 +81,8 @@ pub const SYSTEM_ACTOR: &str = "Capitainerie";
 pub enum ApprovalKind {
     ToolCall,
     AgentAction,
+    /// A plan an agent wrote in a read-only run, to carry out in a change run.
+    RepositoryChange,
 }
 
 impl ApprovalKind {
@@ -78,6 +90,7 @@ impl ApprovalKind {
         match self {
             Self::ToolCall => "tool_call",
             Self::AgentAction => "agent_action",
+            Self::RepositoryChange => "repository_change",
         }
     }
 }
@@ -89,6 +102,7 @@ impl TryFrom<&str> for ApprovalKind {
         match value {
             "tool_call" => Ok(Self::ToolCall),
             "agent_action" => Ok(Self::AgentAction),
+            "repository_change" => Ok(Self::RepositoryChange),
             other => Err(CoreError::Invalid(format!("unknown approval kind {other}"))),
         }
     }
@@ -138,6 +152,10 @@ pub enum Verdict {
 pub const TITLE_MAX_CHARS: usize = 300;
 pub const NOTE_MAX_CHARS: usize = 2_000;
 pub const DETAIL_MAX_BYTES: usize = 64 * 1024;
+/// The most of a plan a `repository_change` approval keeps, so its detail
+/// stays under `DETAIL_MAX_BYTES` whatever the characters.
+pub const PLAN_MAX_CHARS: usize = 12_000;
+const PLAN_CUT_NOTE: &str = "\n\n_[plan tronqué]_";
 /// What a tool call approval keeps of the arguments when they are too large.
 const ARGUMENTS_PREVIEW_CHARS: usize = 4_000;
 
@@ -176,11 +194,73 @@ impl Approval {
         }
     }
 
+    /// A pending request to carry out the plan a read-only run wrote, on the
+    /// repository and base branch that run read.
+    pub fn repository_change(
+        organization_id: OrganizationId,
+        agent: (AgentId, &str),
+        card_id: CardId,
+        run_id: RunId,
+        change: &PlannedChange,
+        now: DateTime<Utc>,
+    ) -> Self {
+        let (agent_id, agent_name) = agent;
+        let title: String = format!("Plan de {agent_name} à appliquer sur {}", change.repository)
+            .chars()
+            .take(TITLE_MAX_CHARS)
+            .collect();
+        let truncated = change.plan.chars().count() > PLAN_MAX_CHARS;
+        let plan = if truncated {
+            let kept: String = change
+                .plan
+                .chars()
+                .take(PLAN_MAX_CHARS - PLAN_CUT_NOTE.chars().count())
+                .collect();
+            format!("{kept}{PLAN_CUT_NOTE}")
+        } else {
+            change.plan.clone()
+        };
+        Self {
+            id: ApprovalId::new(),
+            organization_id,
+            kind: ApprovalKind::RepositoryChange,
+            title,
+            detail: json!({
+                "repository": change.repository,
+                "base_branch": change.base_branch,
+                "plan": plan,
+                "truncated": truncated,
+            }),
+            requested_by_agent_id: Some(agent_id),
+            card_id: Some(card_id),
+            run_id: Some(run_id),
+            status: ApprovalStatus::Pending,
+            decided_by: None,
+            decided_at: None,
+            decision_note: None,
+            created_at: now,
+            arguments_hash: None,
+            resumed_run_id: None,
+        }
+    }
+
+    /// The change a `repository_change` approval asks to make.
+    pub fn planned_change(&self) -> Option<PlannedChange> {
+        if self.kind != ApprovalKind::RepositoryChange {
+            return None;
+        }
+        Some(PlannedChange {
+            repository: self.detail["repository"].as_str()?.to_owned(),
+            base_branch: self.detail["base_branch"].as_str()?.to_owned(),
+            plan: self.detail["plan"].as_str()?.to_owned(),
+        })
+    }
+
     /// The tool a `tool_call` approval asks for.
     pub fn tool(&self) -> Option<&str> {
         match self.kind {
             ApprovalKind::ToolCall => self.detail["tool"].as_str(),
-            ApprovalKind::AgentAction => None,
+            ApprovalKind::AgentAction | ApprovalKind::RepositoryChange => None,
         }
     }
 
@@ -499,6 +579,55 @@ mod tests {
         assert!(legacy.grant(RunId::new(), Utc::now()).is_err());
     }
 
+    fn change(plan: &str) -> PlannedChange {
+        PlannedChange {
+            repository: "Hypolia/lobby".into(),
+            base_branch: "main".into(),
+            plan: plan.into(),
+        }
+    }
+
+    #[test]
+    fn a_repository_change_keeps_where_and_what_and_asks_for_no_tool() {
+        let approval = Approval::repository_change(
+            OrganizationId::new(),
+            (AgentId::new(), "Sébastien"),
+            CardId::new(),
+            RunId::new(),
+            &change("- retirer Pitchout du menu"),
+            Utc::now(),
+        );
+        assert_eq!(approval.kind, ApprovalKind::RepositoryChange);
+        assert_eq!(
+            approval.title,
+            "Plan de Sébastien à appliquer sur Hypolia/lobby"
+        );
+        assert_eq!(
+            approval.planned_change(),
+            Some(change("- retirer Pitchout du menu"))
+        );
+        assert_eq!(approval.tool(), None);
+        assert_eq!(approval.arguments_hash, None);
+        assert_eq!(approval.detail["truncated"], false);
+    }
+
+    #[test]
+    fn a_long_plan_is_cut_and_the_detail_stays_under_its_limit() {
+        let approval = Approval::repository_change(
+            OrganizationId::new(),
+            (AgentId::new(), "Sébastien"),
+            CardId::new(),
+            RunId::new(),
+            &change(&"é".repeat(PLAN_MAX_CHARS * 2)),
+            Utc::now(),
+        );
+        let plan = approval.planned_change().unwrap().plan;
+        assert_eq!(plan.chars().count(), PLAN_MAX_CHARS);
+        assert!(plan.ends_with("_[plan tronqué]_"));
+        assert_eq!(approval.detail["truncated"], true);
+        assert!(serde_json::to_vec(&approval.detail).unwrap().len() <= DETAIL_MAX_BYTES);
+    }
+
     #[test]
     fn statuses_and_kinds_round_trip() {
         for status in [
@@ -509,7 +638,11 @@ mod tests {
         ] {
             assert_eq!(ApprovalStatus::try_from(status.as_str()).unwrap(), status);
         }
-        for kind in [ApprovalKind::ToolCall, ApprovalKind::AgentAction] {
+        for kind in [
+            ApprovalKind::ToolCall,
+            ApprovalKind::AgentAction,
+            ApprovalKind::RepositoryChange,
+        ] {
             assert_eq!(ApprovalKind::try_from(kind.as_str()).unwrap(), kind);
         }
         assert!(ApprovalStatus::try_from("maybe").is_err());
