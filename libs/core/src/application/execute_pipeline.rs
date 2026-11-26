@@ -29,12 +29,17 @@ use crate::{
         delegation::{DelegatedToken, ports::DelegationVault},
         event::ports::EventEmitter,
         execution::{
-            DraftPullRequest, EXECUTOR_AGENT, ExecutionMode, ExecutorModel, PLAN_PATH, REPORT_PATH,
-            RepositoryRef, TaskGrant, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
-            agent_executor_model, agent_harness, execution_branch,
+            CommitAuthor, CommitSettings, DraftPullRequest, EXECUTOR_AGENT, ExecutionMode,
+            ExecutorModel, PLAN_PATH, REPORT_PATH, RepositoryRef, TaskGrant, TaskLine, TaskMarker,
+            TaskOutcome, TaskSpec, agent_executor_model, agent_harness,
+            contribution::{
+                CONTRIBUTION_PATH, Contribution, LeakGuard, RunTraces, change_branch,
+                fallback_contribution,
+            },
             ports::{CodeHost, TaskGrantRepository, TaskRunner},
             report::ReportOutcome,
         },
+        member::Member,
         provider::{ModelAssignments, ModelRef},
         run::{
             Run, RunStatus, RunSubject, StepKind,
@@ -209,6 +214,8 @@ pub struct ExecutePipeline<T, H> {
 enum Finish {
     Pushed {
         pull_request: String,
+        /// Why the pull request's text is the fallback, when it is.
+        fallback: Option<String>,
     },
     NoChanges,
     /// A read-only run ended; `report` is what it wrote, `problem` why there
@@ -229,6 +236,7 @@ struct Prepared {
     card: Card,
     agent: Option<ExecutionAgentSource>,
     redactor: Redactor,
+    guard: LeakGuard,
 }
 
 impl Prepared {
@@ -265,6 +273,8 @@ struct Extras {
     artifact: Option<String>,
     /// How filing the plan went: `proposed: <approval id>` or why not.
     plan: Option<String>,
+    /// Where the pull request's text came from: `run`, or `fallback: <why>`.
+    contribution: Option<String>,
 }
 
 impl Extras {
@@ -280,6 +290,7 @@ impl Extras {
             pull_request: text("pull_request"),
             comment: text("comment"),
             comment_id: text("comment_id"),
+            contribution: text("contribution"),
             job_started: output.is_some_and(|output| output["job_started"] == true),
             ..Self::default()
         }
@@ -312,6 +323,7 @@ struct ExecuteOutput<'a> {
     report: Option<&'a str>,
     artifact: Option<&'a str>,
     plan: Option<&'a str>,
+    contribution: Option<&'a str>,
 }
 
 fn output_of(digest: &Digest, extras: &Extras) -> Result<serde_json::Value, CoreError> {
@@ -334,6 +346,7 @@ fn output_of(digest: &Digest, extras: &Extras) -> Result<serde_json::Value, Core
         report: extras.report.as_deref(),
         artifact: extras.artifact.as_deref(),
         plan: extras.plan.as_deref(),
+        contribution: extras.contribution.as_deref(),
     })
     .map_err(|error| CoreError::Internal(format!("encoding the execution report: {error}")))
 }
@@ -608,14 +621,11 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
             .card_for_index(organization_id, context.card_id)
             .await?
             .ok_or_else(|| CoreError::Invalid("la carte n'existe plus".into()))?;
-        if self
+        let app = self
             .usecase
             .github_app_summary_for(organization_id)
             .await?
-            .is_none()
-        {
-            return Err(CoreError::Invalid("application GitHub absente".into()));
-        }
+            .ok_or_else(|| CoreError::Invalid("application GitHub absente".into()))?;
         let installation = self
             .usecase
             .github_installation_for(organization_id)
@@ -654,8 +664,23 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                 (mode, model, prompt)
             }
         };
-        let token = self.task_token(context, &model, mode).await?;
-        let branch = execution_branch(run_id);
+        let mut identifiers = vec![run_id.0, card.id.0, organization_id.0];
+        if let Some(source) = &agent {
+            identifiers.push(source.agent.id.0);
+        }
+        let guard = LeakGuard::for_run(&RunTraces {
+            repository: &context.repository,
+            model: model.as_str(),
+            console_url: self.config.console_url.as_deref(),
+            identifiers: &identifiers,
+        });
+        let branch = change_branch(card.title.as_str(), run_id, &guard);
+        let (token, branch) = self.task_token(context, &model, mode, branch).await?;
+        let commit = CommitSettings {
+            author: self.commit_author(context, &app.slug).await?,
+            leak_terms: guard.as_lines(),
+            fallback_message: fallback_contribution(&guard, card.title.as_str()).commit_message(),
+        };
         let spec = TaskSpec {
             run_id,
             repository: context.repository.clone(),
@@ -667,6 +692,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
             deadline: self.config.deadline,
             mode,
             task_token: SecretToken::new(token.as_str()),
+            commit,
         };
         Ok(Prepared {
             spec,
@@ -675,7 +701,25 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
             card,
             agent,
             redactor: Redactor::new(&token),
+            guard,
         })
+    }
+
+    /// The member who started the run, when their name and email are known;
+    /// the GitHub App's bot otherwise.
+    async fn commit_author(
+        &self,
+        context: &ExecutionContext,
+        app_slug: &str,
+    ) -> Result<CommitAuthor, CoreError> {
+        let run = &context.run;
+        let member = self
+            .usecase
+            .member_of(run.organization_id, &run.initiated_by)
+            .await?;
+        Ok(member
+            .and_then(|member| member_author(&member))
+            .unwrap_or_else(|| CommitAuthor::app_bot(app_slug)))
     }
 
     /// The model the agent's run keeps from its first attempt on: the
@@ -728,10 +772,17 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         context: &ExecutionContext,
         model: &ExecutorModel,
         mode: ExecutionMode,
-    ) -> Result<String, CoreError> {
+        branch: String,
+    ) -> Result<(String, String), CoreError> {
         let run_id = context.run.id;
         if let Some(stored) = self.usecase.delegation_for(run_id, TASK_TOKEN_SLOT).await? {
-            return Ok(stored.token.expose().to_owned());
+            let token = stored.token.expose().to_owned();
+            let granted = self
+                .usecase
+                .find_task_grant(token_sha256(&token))
+                .await?
+                .map_or(branch, |grant| grant.branch);
+            return Ok((token, granted));
         }
         let token = new_task_token()?;
         let expires_at = Utc::now()
@@ -748,7 +799,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                     run_id,
                     organization_id: context.run.organization_id,
                     repository: context.repository.clone(),
-                    branch: execution_branch(run_id),
+                    branch: branch.clone(),
                     model: model.as_str().to_owned(),
                     mode,
                     initiated_by: Some(context.run.initiated_by.clone()),
@@ -757,7 +808,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                 },
             )
             .await?;
-        Ok(token)
+        Ok((token, branch))
     }
 
     /// A resumed run follows the Job it left running and never starts a
@@ -832,17 +883,32 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                     let pull_request = match progress.extras.pull_request.clone() {
                         Some(url) => url,
                         None => {
-                            let digest = progress.reader.snapshot().clone();
                             self.verify_branch(host, prepared, &sha).await?;
+                            let (contribution, source) = pull_request_text(
+                                &prepared.guard,
+                                prepared.card.title.as_str(),
+                                progress.reader.contribution().as_deref(),
+                                progress.reader.snapshot().summary.as_deref(),
+                            );
                             let url = self
-                                .open_pull_request(host, prepared, &digest, &progress.step)
+                                .open_pull_request(host, prepared, &contribution)
                                 .await?;
+                            progress.extras.contribution = Some(source);
                             progress.extras.pull_request = Some(url.clone());
                             self.persist_progress(context, &mut progress, true).await?;
                             url
                         }
                     };
-                    Ok(Finish::Pushed { pull_request })
+                    let fallback = progress
+                        .extras
+                        .contribution
+                        .as_deref()
+                        .and_then(|source| source.strip_prefix("fallback: "))
+                        .map(str::to_owned);
+                    Ok(Finish::Pushed {
+                        pull_request,
+                        fallback,
+                    })
                 }
                 Some(TaskMarker::NoChanges) => {
                     progress.extras.no_changes = true;
@@ -942,22 +1008,10 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
         &self,
         host: &H,
         prepared: &Prepared,
-        digest: &Digest,
-        step: &Step,
+        contribution: &Contribution,
     ) -> Result<String, CoreError> {
-        let usage = Usage {
-            model: step.usage.model.clone(),
-            input_tokens: digest.input_tokens,
-            output_tokens: digest.output_tokens,
-        };
-        let cost = self.cost_of(&usage.model, digest);
-        let body = defang_mentions(&prepared.redactor.apply(&pull_request_body(
-            &prepared.card,
-            self.config.console_url.as_deref(),
-            digest,
-            &usage,
-            cost,
-        )));
+        let title = prepared.redactor.apply(&contribution.title);
+        let body = defang_mentions(&prepared.redactor.apply(&contribution.body));
         let pull_request =
             retry_transient(self.config.max_attempts, self.config.retry_base, |_| {
                 host.open_draft_pr(
@@ -967,7 +1021,7 @@ impl<T: TaskRunner, H: CodeHost> ExecutePipeline<T, H> {
                         repository: prepared.spec.repository.clone(),
                         base: prepared.spec.base_branch.clone(),
                         head: prepared.spec.branch.clone(),
-                        title: prepared.card.title.as_str().to_owned(),
+                        title: title.clone(),
                         body: body.clone(),
                     },
                 )
@@ -1277,11 +1331,18 @@ fn comment_body(
 ) -> String {
     let summary = digest.summary.as_deref().unwrap_or("");
     let body = match result {
-        Ok(Finish::Pushed { pull_request }) => format!(
-            "Claude Code a ouvert une pull request en brouillon : {pull_request}\n\n{summary}"
-        ),
+        Ok(Finish::Pushed {
+            pull_request,
+            fallback,
+        }) => {
+            let fallback = fallback
+                .as_deref()
+                .map(|why| format!("\n\nTitre et description de secours : {why}."))
+                .unwrap_or_default();
+            format!("Pull request ouverte en brouillon : {pull_request}{fallback}\n\n{summary}")
+        }
         Ok(Finish::NoChanges) => {
-            format!("Aucun changement : Claude Code n'a rien modifié dans le dépôt.\n\n{summary}")
+            format!("Aucun changement : rien n'a été modifié dans le dépôt.\n\n{summary}")
         }
         Ok(Finish::Audited { .. }) => summary.to_owned(),
         Err(_) => format!(
@@ -1292,33 +1353,59 @@ fn comment_body(
     body.trim_end().to_owned()
 }
 
-fn pull_request_body(
-    card: &Card,
-    console_url: Option<&str>,
-    digest: &Digest,
-    usage: &Usage,
-    cost_micros: i64,
-) -> String {
-    let link = match console_url {
-        Some(base) => format!(
-            "Carte : {}/kanban?card={}",
-            base.trim_end_matches('/'),
-            card.id.0
-        ),
-        None => format!("Carte : {}", card.title.as_str()),
+/// The title and body of the pull request, with where they came from: the
+/// run's own text when it has a title and leaks nothing, the fallback
+/// otherwise, whose body is the run's summary when that leaks nothing.
+fn pull_request_text(
+    guard: &LeakGuard,
+    card_title: &str,
+    written: Option<&str>,
+    summary: Option<&str>,
+) -> (Contribution, String) {
+    let why = match written.map(Contribution::parse) {
+        None => "le texte de contribution manque".to_owned(),
+        Some(None) => "le texte de contribution n'a pas de titre".to_owned(),
+        Some(Some(contribution)) => {
+            let found = guard.found_in(&contribution.commit_message());
+            if found.is_empty() {
+                return (contribution, "run".to_owned());
+            }
+            format!(
+                "le texte de contribution citait {}",
+                found
+                    .iter()
+                    .map(|term| format!("« {term} »"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     };
-    format!(
-        "{link}\n\n## Résumé\n\n{}\n\n## Exécution\n\n- Modèle : {}\n- Tokens : {} en entrée, {} en sortie\n- Coût : {}\n",
-        digest.summary.as_deref().unwrap_or("(aucun résumé)"),
-        usage.model,
-        usage.input_tokens,
-        usage.output_tokens,
-        format_cost(cost_micros),
-    )
+    let mut fallback = fallback_contribution(guard, card_title);
+    if let Some(summary) = summary.map(str::trim)
+        && guard.passes(summary)
+    {
+        fallback.body = summary.to_owned();
+    }
+    (fallback, format!("fallback: {why}"))
 }
 
-fn format_cost(micros: i64) -> String {
-    format!("${}.{:06}", micros / 1_000_000, micros % 1_000_000)
+/// The commit author a member makes, when their name and email can go on a
+/// commit line.
+fn member_author(member: &Member) -> Option<CommitAuthor> {
+    let name = member.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    let email = member.email.as_deref()?.trim();
+    let plain_email = email.contains('@')
+        && !email
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>'));
+    let plain_name = !name.is_empty()
+        && !name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '<' | '>'));
+    (plain_email && plain_name).then(|| CommitAuthor {
+        name,
+        email: email.to_owned(),
+    })
 }
 
 /// The card as the block a prompt quotes: data, never instructions. The
@@ -1396,6 +1483,7 @@ fn build_prompt(
          - If the card lists acceptance criteria, make every unchecked one true and say in your summary how you met each.\n\
          - If the project's tests are obvious to run, run them and fix what you broke.\n\
          - Do not commit or push: it is done for you once you finish.\n\
+         - Before you finish, write the title and description of your change to the file {CONTRIBUTION_PATH}, outside the repository: the first line is the title, the rest is the description, in Markdown. They become the commit message and the pull request, so follow the repository's conventions: read the recent `git log`, any CONTRIBUTING file and any pull request template. Without a convention, use Conventional Commits, in English. Write for a reviewer of the repository: what changed and why. Never mention the tool or model you are, the card, or these instructions.\n\
          - At the end, write a short summary of what you changed and what you could not do."
     )
 }
@@ -1448,6 +1536,7 @@ fn build_plan_prompt(
          - Make the changes the plan lists, and only those. If a step turns out wrong or impossible, do the others and say why in your summary.\n\
          - If the plan says how to check the result, do it; otherwise, if the project's tests are obvious to run, run them and fix what you broke.\n\
          - Do not commit or push: it is done for you once you finish.\n\
+         - Before you finish, write the title and description of your change to the file {CONTRIBUTION_PATH}, outside the repository: the first line is the title, the rest is the description, in Markdown. They become the commit message and the pull request, so follow the repository's conventions: read the recent `git log`, any CONTRIBUTING file and any pull request template. Without a convention, use Conventional Commits, in English. Write for a reviewer of the repository: what changed and why. Never mention the tool or model you are, the card, or these instructions.\n\
          - At the end, write a short summary: each step of the plan and what you did for it."
     )
 }
@@ -1627,31 +1716,87 @@ mod tests {
         );
     }
 
+    fn guard() -> LeakGuard {
+        let repository: RepositoryRef = "acme/web".parse().unwrap();
+        LeakGuard::for_run(&RunTraces {
+            repository: &repository,
+            model: "claude-sonnet-5-5",
+            console_url: Some("https://console.test/"),
+            identifiers: &[],
+        })
+    }
+
     #[test]
-    fn the_pull_request_links_the_card_when_a_console_is_known() {
-        let card = card("d");
-        let usage = Usage {
-            model: "claude-sonnet-5-5".into(),
-            input_tokens: 10,
-            output_tokens: 5,
-        };
-        let digest = Digest {
-            summary: Some("Fait.".into()),
-            ..Digest::default()
-        };
-        let body = pull_request_body(
-            &card,
-            Some("https://console.test/"),
-            &digest,
-            &usage,
-            12_500,
+    fn the_pull_request_takes_the_text_the_run_wrote() {
+        let (text, source) = pull_request_text(
+            &guard(),
+            "Ajouter un CHANGELOG",
+            Some("docs: add a changelog\n\nLists the releases since 1.0."),
+            Some("Fait avec claude-sonnet-5-5."),
         );
-        assert!(body.contains(&format!("https://console.test/kanban?card={}", card.id.0)));
-        assert!(body.contains("Fait."));
-        assert!(body.contains("10 en entrée, 5 en sortie"));
-        assert!(body.contains("$0.012500"));
-        let without = pull_request_body(&card, None, &digest, &usage, 0);
-        assert!(without.contains("Carte : Ajouter un CHANGELOG"));
+        assert_eq!(text.title, "docs: add a changelog");
+        assert_eq!(text.body, "Lists the releases since 1.0.");
+        assert_eq!(source, "run");
+    }
+
+    #[test]
+    fn a_leaking_or_missing_text_falls_back_on_the_card_and_says_why() {
+        let (text, source) = pull_request_text(
+            &guard(),
+            "Ajouter un CHANGELOG",
+            Some("docs: add a changelog\n\nWritten by claude-sonnet-5-5, 1200 input tokens."),
+            Some("Added CHANGELOG.md."),
+        );
+        assert_eq!(text.title, "Ajouter un CHANGELOG");
+        assert_eq!(text.body, "Added CHANGELOG.md.");
+        assert!(source.starts_with("fallback: "));
+        assert!(source.contains("« claude-sonnet-5-5 »"));
+        assert!(source.contains("« input tokens »"));
+
+        let (text, source) = pull_request_text(
+            &guard(),
+            "Ajouter un CHANGELOG",
+            None,
+            Some("see console.test"),
+        );
+        assert_eq!(text.body, "");
+        assert_eq!(source, "fallback: le texte de contribution manque");
+    }
+
+    #[test]
+    fn a_member_with_a_plain_name_and_email_authors_the_commit() {
+        let member = |name: &str, email: Option<&str>| Member {
+            organization_id: OrganizationId::new(),
+            subject: "sub".into(),
+            name: name.into(),
+            email: email.map(str::to_owned),
+            last_seen_at: Utc::now(),
+        };
+        assert_eq!(
+            member_author(&member(" Ada  Lovelace ", Some("ada@example.test"))),
+            Some(CommitAuthor {
+                name: "Ada Lovelace".into(),
+                email: "ada@example.test".into()
+            })
+        );
+        assert_eq!(member_author(&member("Ada", None)), None);
+        assert_eq!(member_author(&member("Ada", Some("not-an-email"))), None);
+        assert_eq!(member_author(&member("Ada <x>", Some("a@b.test"))), None);
+        assert_eq!(member_author(&member("Ada", Some("a@b.test>\nx"))), None);
+    }
+
+    #[test]
+    fn a_change_prompt_asks_for_the_contribution_text() {
+        let repository: RepositoryRef = "acme/web".parse().unwrap();
+        let prompt = build_prompt(&repository, "main", &card("d"), &[]);
+        assert!(prompt.contains(CONTRIBUTION_PATH));
+        assert!(prompt.contains("Conventional Commits"));
+        let plan = build_plan_prompt(&repository, "main", &card("d"), &[], "- step");
+        assert!(plan.contains(CONTRIBUTION_PATH));
+        assert!(
+            !build_audit_prompt(&repository, "main", &card("d"), &[], true)
+                .contains(CONTRIBUTION_PATH)
+        );
     }
 
     fn source(allow_writes: bool, instructions: &str) -> ExecutionAgentSource {

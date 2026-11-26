@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, net::IpAddr};
 
 use capitainerie_common::RunId;
-use capitainerie_core::domain::execution::{PLAN_PATH, REPORT_PATH, TaskSpec, harness::Harness};
+use capitainerie_core::domain::execution::{
+    PLAN_PATH, REPORT_PATH, TaskSpec, contribution::CONTRIBUTION_PATH, harness::Harness,
+};
 use k8s_openapi::{
     api::{
         batch::v1::{Job, JobSpec},
@@ -95,6 +97,11 @@ fn environment(config: &KubeRunnerConfig, spec: &TaskSpec, secret: &str) -> Vec<
         plain("CAPITAINERIE_MODE", spec.mode.as_str()),
         plain("REPORT_PATH", REPORT_PATH),
         plain("PLAN_PATH", PLAN_PATH),
+        plain("CONTRIBUTION_PATH", CONTRIBUTION_PATH),
+        plain("COMMIT_AUTHOR_NAME", &spec.commit.author.name),
+        plain("COMMIT_AUTHOR_EMAIL", &spec.commit.author.email),
+        plain("COMMIT_FALLBACK_MESSAGE", &spec.commit.fallback_message),
+        plain("LEAK_TERMS", &spec.commit.leak_terms),
         plain("MAX_TURNS", spec.max_turns.to_string()),
         plain("PROMPT", &spec.prompt),
         plain("HOME", "/home/executor"),
@@ -289,7 +296,7 @@ mod tests {
 
     use capitainerie_core::domain::{
         agent::SecretToken,
-        execution::{ExecutionMode, ExecutorModel, RepositoryRef},
+        execution::{CommitAuthor, CommitSettings, ExecutionMode, ExecutorModel, RepositoryRef},
     };
 
     use super::*;
@@ -301,13 +308,21 @@ mod tests {
             run_id: RunId(uuid::Uuid::parse_str("0a1b2c3d-0000-7000-8000-000000000000").unwrap()),
             repository: "acme/web".parse::<RepositoryRef>().unwrap(),
             base_branch: "main".into(),
-            branch: "capitainerie/0a1b2c3d4e5f".into(),
+            branch: "change/fix-the-bug-4e5f00".into(),
             prompt: "Fix the bug".into(),
             model: ExecutorModel::default(),
             max_turns: 50,
             deadline: Duration::from_secs(1800),
             mode: ExecutionMode::Change,
             task_token: SecretToken::new(TOKEN),
+            commit: CommitSettings {
+                author: CommitAuthor {
+                    name: "Ada Lovelace".into(),
+                    email: "ada@example.test".into(),
+                },
+                leak_terms: "claude-opus-5-5\ncapitainerie".into(),
+                fallback_message: "Fix the bug".into(),
+            },
         }
     }
 
@@ -555,7 +570,7 @@ mod tests {
         assert_eq!(env(&job, "BASE_BRANCH").value.as_deref(), Some("main"));
         assert_eq!(
             env(&job, "BRANCH").value.as_deref(),
-            Some("capitainerie/0a1b2c3d4e5f")
+            Some("change/fix-the-bug-4e5f00")
         );
         assert_eq!(
             env(&job, "MODEL").value.as_deref(),
@@ -587,6 +602,20 @@ mod tests {
         assert_eq!(
             env(&job, "PLAN_PATH").value.as_deref(),
             Some("/workspace/.capitainerie/plan.md")
+        );
+    }
+
+    #[test]
+    fn the_commit_author_the_leak_terms_and_the_fallback_reach_the_container() {
+        let job = build_job(&config(), &spec(), Some(&proxy())).unwrap();
+        let value = |name| env(&job, name).value.clone().unwrap();
+        assert_eq!(value("COMMIT_AUTHOR_NAME"), "Ada Lovelace");
+        assert_eq!(value("COMMIT_AUTHOR_EMAIL"), "ada@example.test");
+        assert_eq!(value("COMMIT_FALLBACK_MESSAGE"), "Fix the bug");
+        assert_eq!(value("LEAK_TERMS"), "claude-opus-5-5\ncapitainerie");
+        assert_eq!(
+            value("CONTRIBUTION_PATH"),
+            "/workspace/.capitainerie/contribution.md"
         );
     }
 

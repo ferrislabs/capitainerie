@@ -107,6 +107,7 @@ pub(super) struct StreamReader {
     digest: Digest,
     report: ReportAssembler,
     plan: ReportAssembler,
+    contribution: ReportAssembler,
     pending: HashMap<String, PendingCall>,
     order: Vec<String>,
     dirty: bool,
@@ -121,6 +122,7 @@ impl StreamReader {
             digest: Digest::default(),
             report: ReportAssembler::default(),
             plan: ReportAssembler::default(),
+            contribution: ReportAssembler::default(),
             pending: HashMap::new(),
             order: Vec::new(),
             dirty: false,
@@ -132,6 +134,7 @@ impl StreamReader {
         self.digest = Digest::default();
         self.report = ReportAssembler::default();
         self.plan = ReportAssembler::default();
+        self.contribution = ReportAssembler::default();
         self.pending.clear();
         self.order.clear();
         self.dirty = true;
@@ -163,13 +166,23 @@ impl StreamReader {
     /// The plan the output carried, redacted; `None` without a complete and
     /// intact one, which proposes nothing.
     pub(super) fn plan(&self) -> Option<String> {
-        match self.plan.outcome() {
+        self.document(&self.plan, "plan")
+    }
+
+    /// The title and body the change run wrote, redacted; `None` without a
+    /// complete and intact text.
+    pub(super) fn contribution(&self) -> Option<String> {
+        self.document(&self.contribution, "contribution text")
+    }
+
+    fn document(&self, assembler: &ReportAssembler, what: &str) -> Option<String> {
+        match assembler.outcome() {
             ReportOutcome::Ready { text, .. } if !text.trim().is_empty() => {
                 Some(self.redactor.apply(&text))
             }
             ReportOutcome::Ready { .. } | ReportOutcome::Missing => None,
             ReportOutcome::Invalid(reason) => {
-                tracing::warn!(%reason, "the plan the task sent is unusable");
+                tracing::warn!(%reason, what, "a document the task sent is unusable");
                 None
             }
         }
@@ -177,6 +190,17 @@ impl StreamReader {
 
     pub(super) fn accept(&mut self, line: &TaskLine) {
         match line {
+            TaskLine::Capitainerie(TaskMarker::ContributionChunk { data }) => {
+                self.contribution.chunk(data)
+            }
+            TaskLine::Capitainerie(TaskMarker::ContributionEnd {
+                sha256,
+                bytes,
+                truncated,
+            }) => {
+                self.contribution.end(sha256, *bytes, *truncated);
+                self.dirty = true;
+            }
             TaskLine::Capitainerie(TaskMarker::PlanChunk { data }) => self.plan.chunk(data),
             TaskLine::Capitainerie(TaskMarker::PlanEnd {
                 sha256,
@@ -716,6 +740,42 @@ mod tests {
             data: "aGk=".into(),
         }));
         assert_eq!(reader.plan(), None);
+    }
+
+    #[test]
+    fn a_contribution_text_arrives_redacted_and_leaves_the_pushed_marker_alone() {
+        let mut reader = StreamReader::new(Harness::ClaudeCode, Redactor::new("tok-secret"));
+        for line in report_lines("feat: x (tok-secret)", 4, None)
+            .into_iter()
+            .filter_map(|line| match line {
+                TaskLine::Capitainerie(TaskMarker::ReportChunk { data }) => {
+                    Some(TaskLine::Capitainerie(TaskMarker::ContributionChunk {
+                        data,
+                    }))
+                }
+                TaskLine::Capitainerie(TaskMarker::ReportEnd {
+                    sha256,
+                    bytes,
+                    truncated,
+                }) => Some(TaskLine::Capitainerie(TaskMarker::ContributionEnd {
+                    sha256,
+                    bytes,
+                    truncated,
+                })),
+                _ => None,
+            })
+        {
+            reader.accept(&line);
+        }
+        reader.accept(&TaskLine::Capitainerie(TaskMarker::Pushed {
+            sha: "abc".into(),
+        }));
+        assert_eq!(reader.contribution().as_deref(), Some("feat: x (***)"));
+        assert_eq!(reader.plan(), None);
+        assert_eq!(
+            reader.marker(),
+            Some(&TaskMarker::Pushed { sha: "abc".into() })
+        );
     }
 
     #[test]
