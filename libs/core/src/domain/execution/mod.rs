@@ -1,3 +1,4 @@
+pub mod contribution;
 pub mod harness;
 pub mod ports;
 pub mod report;
@@ -374,6 +375,34 @@ pub struct TaskSpec {
     pub mode: ExecutionMode,
     /// Only the credentials proxy accepts it; never a real key.
     pub task_token: SecretToken,
+    pub commit: CommitSettings,
+}
+
+/// How a change run commits: as whom, what its message may not contain, and
+/// the message used when the run's own is missing or leaks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitSettings {
+    pub author: CommitAuthor,
+    /// One term per line, matched without case.
+    pub leak_terms: String,
+    pub fallback_message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitAuthor {
+    pub name: String,
+    pub email: String,
+}
+
+impl CommitAuthor {
+    /// The GitHub App's bot, for a run no member started.
+    pub fn app_bot(slug: &str) -> Self {
+        let login = format!("{slug}[bot]");
+        Self {
+            email: format!("{login}@users.noreply.github.com"),
+            name: login,
+        }
+    }
 }
 
 /// One line of the task's output.
@@ -411,6 +440,17 @@ pub enum TaskMarker {
     },
     /// The plan is complete, as `ReportEnd` for the report.
     PlanEnd {
+        sha256: String,
+        bytes: u64,
+        #[serde(default)]
+        truncated: bool,
+    },
+    /// A piece of the title and body a change run wrote, base64.
+    ContributionChunk {
+        data: String,
+    },
+    /// The contribution text is complete, as `ReportEnd` for the report.
+    ContributionEnd {
         sha256: String,
         bytes: u64,
         #[serde(default)]
@@ -462,13 +502,6 @@ impl TaskGrant {
     }
 }
 
-/// The branch an execution pushes to: `capitainerie/<last 12 hex of the run id>`.
-/// The head of a UUIDv7 is a timestamp, so only the random tail tells runs apart.
-pub fn execution_branch(run_id: RunId) -> String {
-    let simple = run_id.0.simple().to_string();
-    format!("capitainerie/{}", &simple[simple.len() - 12..])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,20 +527,6 @@ mod tests {
         ] {
             assert!(value.parse::<RepositoryRef>().is_err(), "{value}");
         }
-    }
-
-    #[test]
-    fn an_execution_branch_uses_the_random_tail_of_the_run_id() {
-        let run_id = RunId(uuid::Uuid::parse_str("0a1b2c3d-0000-7000-8000-0123456789ab").unwrap());
-        assert_eq!(execution_branch(run_id), "capitainerie/0123456789ab");
-    }
-
-    #[test]
-    fn two_runs_created_back_to_back_get_different_branches() {
-        let first = execution_branch(RunId::new());
-        let second = execution_branch(RunId::new());
-        assert_ne!(first, second);
-        assert_eq!(first.len(), "capitainerie/".len() + 12);
     }
 
     #[test]

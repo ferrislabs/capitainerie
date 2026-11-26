@@ -17,11 +17,12 @@ use capitainerie_core::{
         },
         delegation::DelegatedToken,
         execution::{
-            DraftPullRequest, ExecutionMode, ExecutorModel, GithubAppCredentials, PullRequestUrl,
-            TaskGrant, TaskLine, TaskMarker, TaskOutcome, execution_branch,
+            CommitAuthor, DraftPullRequest, ExecutionMode, ExecutorModel, GithubAppCredentials,
+            PullRequestUrl, TaskGrant, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
             harness::Harness,
             ports::{MockCodeHost, MockTaskRunner},
         },
+        member::Member,
         provider::ModelAssignments,
         run::{
             StepKind,
@@ -198,6 +199,15 @@ fn config() -> ExecuteConfig {
     }
 }
 
+/// The branch of the fixture card's run: its title, then the run's tail.
+fn branch_of(run_id: RunId) -> String {
+    let simple = run_id.0.simple().to_string();
+    format!(
+        "change/ajouter-un-changelog-{}",
+        &simple[simple.len() - 6..]
+    )
+}
+
 fn lines_of(sample: &str) -> Vec<TaskLine> {
     sample
         .lines()
@@ -263,7 +273,7 @@ fn host(seen: &Seen, organization_id: OrganizationId, installation_id: i64) -> M
     host.expect_branch_head()
         .returning(|_, _, repository, branch| {
             assert_eq!(repository.to_string(), "acme/web");
-            assert!(branch.starts_with("capitainerie/"));
+            assert!(branch.starts_with("change/ajouter-un-changelog-"));
             Box::pin(std::future::ready(Ok(Some(PUSHED_SHA.to_owned()))))
         });
     host
@@ -358,9 +368,8 @@ async fn a_codex_execution_is_priced_from_its_stream_and_opens_the_pull_request(
     let pull_requests = seen.pull_requests.lock().unwrap().clone();
     assert_eq!(pull_requests.len(), 1);
     assert!(
-        pull_requests[0]
-            .body
-            .contains("27500 en entrée, 420 en sortie")
+        !pull_requests[0].body.contains("27500"),
+        "no token count leaves"
     );
     let posted = comments(&world.pool, world.card.id).await;
     assert_eq!(posted.len(), 1);
@@ -412,9 +421,8 @@ async fn an_antigravity_execution_is_priced_from_its_stream_and_opens_the_pull_r
     let pull_requests = seen.pull_requests.lock().unwrap().clone();
     assert_eq!(pull_requests.len(), 1);
     assert!(
-        pull_requests[0]
-            .body
-            .contains("2400 en entrée, 70 en sortie")
+        !pull_requests[0].body.contains("2400"),
+        "no token count leaves"
     );
     let posted = comments(&world.pool, world.card.id).await;
     assert_eq!(posted.len(), 1);
@@ -466,9 +474,8 @@ async fn a_mistral_vibe_execution_is_priced_from_its_stream_and_opens_the_pull_r
     let pull_requests = seen.pull_requests.lock().unwrap().clone();
     assert_eq!(pull_requests.len(), 1);
     assert!(
-        pull_requests[0]
-            .body
-            .contains("2000 en entrée, 100 en sortie")
+        !pull_requests[0].body.contains("2000"),
+        "no token count leaves"
     );
     let posted = comments(&world.pool, world.card.id).await;
     assert_eq!(posted.len(), 1);
@@ -505,7 +512,7 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
     runner.expect_start().returning(move |spec| {
         *token.lock().unwrap() = Some(spec.task_token.expose().to_owned());
         *starts.lock().unwrap() += 1;
-        assert_eq!(spec.branch, execution_branch(spec.run_id));
+        assert_eq!(spec.branch, branch_of(spec.run_id));
         assert_eq!(spec.model.as_str(), "claude-sonnet-5-5");
         assert_eq!(spec.max_turns, 50);
         assert!(spec.prompt.contains("Ajouter un CHANGELOG"));
@@ -555,13 +562,18 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
     assert_eq!(pull_requests.len(), 1);
     let pull_request = &pull_requests[0];
     assert_eq!(pull_request.base, "main");
-    assert_eq!(pull_request.head, execution_branch(world.run_id));
+    assert_eq!(pull_request.head, branch_of(world.run_id));
     assert_eq!(pull_request.title, "Ajouter un CHANGELOG");
-    assert!(pull_request.body.contains(&format!(
-        "https://console.test/kanban?card={}",
-        world.card.id.0
-    )));
-    assert!(pull_request.body.contains("22174 en entrée, 283 en sortie"));
+    assert!(pull_request.body.contains("I added CHANGELOG.md"));
+    for internal in [
+        "console.test",
+        "claude-sonnet-5-5",
+        "22174",
+        "Coût",
+        "Modèle",
+    ] {
+        assert!(!pull_request.body.contains(internal), "{internal}");
+    }
     let posted = comments(&world.pool, world.card.id).await;
     assert_eq!(posted.len(), 1);
     assert_eq!(posted[0].0, "user-1");
@@ -610,6 +622,146 @@ async fn a_pushed_branch_opens_a_draft_pull_request_and_comments_the_card() {
     );
     assert!(!stored.contains(&token), "the task token reached storage");
     assert!(output.to_string().contains("***"));
+}
+
+/// The sample's lines with a contribution text sent before its last marker.
+fn lines_with_contribution(text: &str) -> Vec<TaskLine> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut lines = lines_of(SAMPLE);
+    let pushed = lines.pop().unwrap();
+    for chunk in STANDARD.encode(text).as_bytes().chunks(12) {
+        lines.push(TaskLine::Capitainerie(TaskMarker::ContributionChunk {
+            data: String::from_utf8(chunk.to_vec()).unwrap(),
+        }));
+    }
+    let hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, text.as_bytes());
+    lines.push(TaskLine::Capitainerie(TaskMarker::ContributionEnd {
+        sha256: hash.as_ref().iter().map(|b| format!("{b:02x}")).collect(),
+        bytes: text.len() as u64,
+        truncated: false,
+    }));
+    lines.push(pushed);
+    lines
+}
+
+fn recording_runner(lines: Vec<TaskLine>, specs: Arc<Mutex<Vec<TaskSpec>>>) -> MockTaskRunner {
+    let mut runner = MockTaskRunner::new();
+    runner.expect_start().returning(move |spec| {
+        specs.lock().unwrap().push(spec.clone());
+        Box::pin(std::future::ready(Ok(())))
+    });
+    runner.expect_follow().returning(move |_, sender| {
+        let lines = lines.clone();
+        Box::pin(async move {
+            for line in lines {
+                sender.send(line).await.unwrap();
+            }
+            Ok(TaskOutcome::Succeeded)
+        })
+    });
+    runner
+}
+
+#[tokio::test]
+async fn the_run_writes_the_pull_request_and_the_member_who_started_it_authors_the_commit() {
+    let Some(world) = world().await else { return };
+    world
+        .usecase
+        .record_member(Member {
+            organization_id: world.organization_id,
+            subject: "user-1".into(),
+            name: "Ada Lovelace".into(),
+            email: Some("ada@example.test".into()),
+            last_seen_at: Utc::now(),
+        })
+        .await
+        .unwrap();
+    let seen = Seen::default();
+    let specs = Arc::new(Mutex::new(Vec::new()));
+    let runner = recording_runner(
+        lines_with_contribution(
+            "# docs: add a changelog\n\nStarts CHANGELOG.md with an Unreleased section.\n",
+        ),
+        specs.clone(),
+    );
+    let pipeline = pipeline(
+        &world,
+        runner,
+        host(&seen, world.organization_id, world.installation_id),
+    );
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let spec = specs.lock().unwrap()[0].clone();
+    assert_eq!(
+        spec.commit.author,
+        CommitAuthor {
+            name: "Ada Lovelace".into(),
+            email: "ada@example.test".into()
+        }
+    );
+    assert_eq!(spec.commit.fallback_message, "Ajouter un CHANGELOG");
+    let terms: Vec<&str> = spec.commit.leak_terms.lines().collect();
+    for term in [
+        "claude-sonnet-5-5",
+        "capitainerie",
+        "console.test",
+        world.run_id.0.to_string().as_str(),
+        world.card.id.0.to_string().as_str(),
+    ] {
+        assert!(terms.contains(&term), "{term}");
+    }
+    assert!(
+        spec.prompt
+            .contains("/workspace/.capitainerie/contribution.md")
+    );
+    let pull_request = seen.pull_requests.lock().unwrap()[0].clone();
+    assert_eq!(pull_request.title, "docs: add a changelog");
+    assert_eq!(
+        pull_request.body,
+        "Starts CHANGELOG.md with an Unreleased section."
+    );
+    let (_, _, _, _, output) = step(&world.pool, world.run_id).await;
+    assert_eq!(output["contribution"], "run");
+    let posted = comments(&world.pool, world.card.id).await;
+    assert!(!posted[0].2.contains("secours"));
+}
+
+#[tokio::test]
+async fn a_contribution_naming_the_model_is_replaced_and_the_card_says_why() {
+    let Some(world) = world().await else { return };
+    let seen = Seen::default();
+    let specs = Arc::new(Mutex::new(Vec::new()));
+    let runner = recording_runner(
+        lines_with_contribution(
+            "docs: add a changelog\n\nWritten by claude-sonnet-5-5.\n\nCo-Authored-By: a bot\n",
+        ),
+        specs.clone(),
+    );
+    let pipeline = pipeline(
+        &world,
+        runner,
+        host(&seen, world.organization_id, world.installation_id),
+    );
+
+    pipeline.execute(world.run_id, None).await.unwrap();
+
+    let spec = specs.lock().unwrap()[0].clone();
+    assert_eq!(
+        spec.commit.author,
+        CommitAuthor::app_bot("capitainerie-test"),
+        "no member is known for the initiator"
+    );
+    let pull_request = seen.pull_requests.lock().unwrap()[0].clone();
+    assert_eq!(pull_request.title, "Ajouter un CHANGELOG");
+    assert!(pull_request.body.starts_with("I added CHANGELOG.md"));
+    let (_, _, _, _, output) = step(&world.pool, world.run_id).await;
+    let source = output["contribution"].as_str().unwrap();
+    assert!(source.starts_with("fallback: "), "{source}");
+    let posted = comments(&world.pool, world.card.id).await;
+    assert!(posted[0].2.contains("Titre et description de secours"));
+    assert!(posted[0].2.contains("« claude-sonnet-5-5 »"));
+    assert!(posted[0].2.contains("« co-authored-by: »"));
 }
 
 #[tokio::test]
@@ -779,7 +931,7 @@ async fn crashed_attempt(world: &World, token: &str, output: Option<serde_json::
                 run_id: world.run_id,
                 organization_id: world.organization_id,
                 repository: "acme/web".parse().unwrap(),
-                branch: execution_branch(world.run_id),
+                branch: branch_of(world.run_id),
                 model: "claude-sonnet-5-5".into(),
                 mode: ExecutionMode::Change,
                 initiated_by: None,
@@ -896,7 +1048,7 @@ async fn a_pull_request_opened_before_a_crash_is_not_opened_again_after_two_resu
         &first_token,
         Some(serde_json::json!({
             "job_started": true,
-            "branch": execution_branch(world.run_id),
+            "branch": branch_of(world.run_id),
             "sha": PUSHED_SHA,
             "pull_request": PR_URL,
         })),

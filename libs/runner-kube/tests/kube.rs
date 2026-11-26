@@ -6,8 +6,8 @@ use capitainerie_common::RunId;
 use capitainerie_core::domain::{
     agent::SecretToken,
     execution::{
-        ExecutionMode, ExecutorModel, RepositoryRef, TaskLine, TaskMarker, TaskOutcome, TaskSpec,
-        ports::TaskRunner,
+        CommitAuthor, CommitSettings, ExecutionMode, ExecutorModel, RepositoryRef, TaskLine,
+        TaskMarker, TaskOutcome, TaskSpec, ports::TaskRunner,
     },
 };
 use capitainerie_runner_kube::{KubeRunnerConfig, KubeTaskRunner, job_name};
@@ -32,13 +32,18 @@ fn spec(deadline: Duration) -> TaskSpec {
         run_id: RunId::new(),
         repository: "acme/web".parse::<RepositoryRef>().unwrap(),
         base_branch: "main".into(),
-        branch: "capitainerie/test".into(),
+        branch: "change/test-000000".into(),
         prompt: "test".into(),
         model: ExecutorModel::default(),
         max_turns: 1,
         deadline,
         mode: ExecutionMode::Change,
         task_token: SecretToken::new("tt_integration"),
+        commit: CommitSettings {
+            author: CommitAuthor::app_bot("acme-app"),
+            leak_terms: String::new(),
+            fallback_message: "test".into(),
+        },
     }
 }
 

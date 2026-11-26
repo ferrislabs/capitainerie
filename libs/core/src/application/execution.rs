@@ -18,6 +18,7 @@ use crate::{
             GithubInstallation, RepositoryRef, TaskGrant,
             ports::{GithubAppRepository, GithubInstallationRepository, TaskGrantRepository},
         },
+        member::{Member, ports::MemberRepository},
         provider::ports::ModelAssignmentRepository,
         run::{
             Run, StepKind,
@@ -425,6 +426,17 @@ impl CapitainerieUseCase {
     ) -> Result<Option<TaskGrant>, CoreError> {
         let mut task_grant_repository = task_grant_repository;
         task_grant_repository.find(token_sha256).await
+    }
+
+    /// The member a run's commits are authored as.
+    #[transactional(member)]
+    pub async fn member_of(
+        &self,
+        organization_id: OrganizationId,
+        subject: &str,
+    ) -> Result<Option<Member>, CoreError> {
+        let mut member_repository = member_repository;
+        member_repository.find(organization_id, subject).await
     }
 
     #[transactional(task_grant)]

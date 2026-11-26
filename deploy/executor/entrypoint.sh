@@ -67,8 +67,8 @@ chmod 0700 "$askpass"
 export GIT_ASKPASS="$askpass"
 export GIT_TERMINAL_PROMPT=0
 
-git config --global user.name "Capitainerie Executor"
-git config --global user.email "noreply@capitainerie.dev"
+git config --global user.name "${COMMIT_AUTHOR_NAME:-executor}"
+git config --global user.email "${COMMIT_AUTHOR_EMAIL:-executor@localhost}"
 
 git clone --depth 50 --branch "$BASE_BRANCH" "$GIT_REMOTE" repo >&2
 marker cloned
@@ -212,17 +212,50 @@ if [ "$mode" = audit ]; then
   exit 0
 fi
 
+# The title and body the agent wrote, as a commit message, when the file has
+# a title and holds none of the terms that may not leave the platform.
+contribution_message() {
+  local out="$1" terms
+  [ -s "$CONTRIBUTION_PATH" ] || return 1
+  awk '
+    !titled && /[^[:space:]]/ {
+      sub(/^[[:space:]]*#*[[:space:]]*/, ""); sub(/[[:space:]]+$/, "")
+      if ($0 == "") exit 1
+      print; print ""; titled = 1; next
+    }
+    titled { print }
+    END { if (!titled) exit 1 }
+  ' "$CONTRIBUTION_PATH" >"$out" || return 1
+  terms="$(mktemp /tmp/terms.XXXXXX)"
+  printf '%s\n' "${LEAK_TERMS:-}" | grep -v '^[[:space:]]*$' >"$terms" || true
+  if [ -s "$terms" ] && grep -qiF -f "$terms" "$out"; then
+    echo "the contribution text names what may not leave the platform, the fallback message is used" >&2
+    rm -f "$terms"
+    return 1
+  fi
+  rm -f "$terms"
+}
+
+: "${COMMIT_FALLBACK_MESSAGE:?}" "${CONTRIBUTION_PATH:?}"
+mkdir -p "$(dirname "$CONTRIBUTION_PATH")"
+rm -f "$CONTRIBUTION_PATH"
+base_sha="$(git rev-parse HEAD)"
 git switch -c "$BRANCH" >&2
 run_agent change || agent_status=$?
 
-if [ -n "$(git status --porcelain)" ]; then
-  first_line="${PROMPT%%$'\n'*}"
-  git add -A
-  git commit -q -m "capitainerie: ${first_line:0:72}" >&2
-  git push origin "$BRANCH" >&2
-  marker pushed ",\"sha\":\"$(git rev-parse HEAD)\""
-else
+# Commits the agent made itself are folded into one, with its message.
+git reset -q --soft "$base_sha"
+git add -A
+if git diff --cached --quiet; then
   marker no_changes
+else
+  message="$(mktemp /tmp/message.XXXXXX)"
+  contribution_message "$message" || printf '%s\n' "$COMMIT_FALLBACK_MESSAGE" >"$message"
+  git commit -q --cleanup=whitespace -F "$message" >&2
+  rm -f "$message"
+  git push origin "HEAD:refs/heads/$BRANCH" >&2
+  emit_report "$CONTRIBUTION_PATH" contribution || true
+  marker pushed ",\"sha\":\"$(git rev-parse HEAD)\""
 fi
 
 exit "$agent_status"
