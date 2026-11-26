@@ -200,18 +200,20 @@ impl ExecutorModel {
     }
 }
 
+/// The harness that accepts the agent's own model, if one does.
+pub fn harness_of_agent(agent_model: &str) -> Option<Harness> {
+    use crate::domain::provider::model_ref_of;
+    Harness::ALL.into_iter().find(|harness| {
+        model_ref_of(agent_model, harness.provider()).is_some_and(|wanted| {
+            wanted.provider == harness.provider() && harness.accepts_model(&wanted.model)
+        })
+    })
+}
+
 /// The harness an agent's execution runs on: the one that accepts the
 /// agent's own model, else the fallback's.
 pub fn agent_harness(agent_model: &str, fallback: &ExecutorModel) -> Harness {
-    use crate::domain::provider::model_ref_of;
-    Harness::ALL
-        .into_iter()
-        .find(|harness| {
-            model_ref_of(agent_model, harness.provider()).is_some_and(|wanted| {
-                wanted.provider == harness.provider() && harness.accepts_model(&wanted.model)
-            })
-        })
-        .unwrap_or_else(|| fallback.harness())
+    harness_of_agent(agent_model).unwrap_or_else(|| fallback.harness())
 }
 
 /// The model an agent's execution runs on: the agent's own model when its
@@ -594,6 +596,11 @@ mod tests {
         assert_eq!(prefixed.as_str(), "gpt-6-sol");
         assert_eq!(agent_harness("gpt-6-luna", &fallback), Harness::Codex);
         assert_eq!(agent_harness("gpt-4o", &fallback), Harness::ClaudeCode);
+        assert_eq!(
+            harness_of_agent("mistral-large-4-0"),
+            Some(Harness::MistralVibe)
+        );
+        assert_eq!(harness_of_agent("gpt-4o"), None);
     }
 
     #[test]

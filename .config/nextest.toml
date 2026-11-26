@@ -1,0 +1,8 @@
+# The executor status is one row for the whole database: tests that switch it
+# off must not run beside tests that start an execution.
+[test-groups]
+executor-status = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(agent_repository_runs)'
+test-group = 'executor-status'
